@@ -335,10 +335,7 @@ impl Root {
             let announcements = open.announcer.read(cx).announcements();
             open.rail_counted_at.replace(announcements) != announcements
         });
-        let reads = self
-            .open
-            .as_ref()
-            .map(|open| &open.rail_reads as &dyn lib_shell::ShellRailCounts);
+        let reads = self.open.as_ref().map(|open| &*open.rail_reads);
         self.presenter
             .refresh_rail_counts(reads, changed || announced);
     }

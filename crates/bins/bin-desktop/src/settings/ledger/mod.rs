@@ -2,8 +2,8 @@
 //! LEDGER group: `lib-settings`' Ledger Presenter is the [`PageView`] the generic `ModulePage`
 //! hosts (ADR-0056), which the Settings View hosts as any other page. The identity fields and the
 //! summary are the mockup's placeholder values; the *Base unit* select is real, read from the
-//! Units store through `lib-database`'s `StoredSettingsReads` and set through its
-//! `LedgerPreferencesAdapter`, so the page holds no Units. Clicks are Presenter events through
+//! Units store through `lib-settings`' `LedgerUnits` and set through its
+//! `LedgerPreferences`, so the page holds no Units. Clicks are Presenter events through
 //! `PageClicks`, and the view model is drawn in `render.rs`. Each key and click is one input
 //! (`crate::input::send`).
 
@@ -13,8 +13,10 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Context, Entity, Window};
 use lib_database::Domain;
-use lib_database::{LedgerPorts, LedgerPreferencesAdapter, StoredSettingsReads};
-use lib_settings::{LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel};
+use lib_database::LedgerPorts;
+use lib_settings::{
+    LedgerEvent, LedgerPresenter, LedgerSetup, LedgerSummaries, LedgerViewModel, SettingsLedger,
+};
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::announcer::Announcer;
@@ -33,15 +35,20 @@ pub type LedgerPage = ModulePage<LedgerPresenter>;
 pub struct LedgerPageSetup {
     /// Settings' reads `LedgerPorts` built (the Units and the index pane's counts) and the base
     /// Unit write.
-    pub settings_reads: Rc<StoredSettingsReads>,
-    pub preferences: Rc<LedgerPreferencesAdapter>,
+    pub ledger: SettingsLedger,
+}
+
+impl LedgerPageSetup {
+    /// The index pane's counts.
+    pub fn summaries(&self) -> Rc<dyn LedgerSummaries> {
+        self.ledger.summaries.clone()
+    }
 }
 
 impl LedgerPageSetup {
     pub fn new(ports: &LedgerPorts) -> Self {
         Self {
-            settings_reads: ports.settings_reads.clone(),
-            preferences: ports.ledger_preferences.clone(),
+            ledger: ports.settings_ledger(),
         }
     }
 }
@@ -55,8 +62,8 @@ pub fn ledger_page(
 ) -> LedgerPage {
     let presenter = LedgerPresenter::new(
         LedgerSetup {
-            units: setup.settings_reads,
-            preferences: setup.preferences,
+            units: setup.ledger.units,
+            preferences: setup.ledger.preferences,
         },
         config,
     );

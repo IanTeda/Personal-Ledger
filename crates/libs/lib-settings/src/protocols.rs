@@ -228,6 +228,15 @@ pub trait TracingLog {
     fn clear(&self);
 }
 
+/// What the Client hands the Ledger page and the Settings index as one value: the Units read, the
+/// summaries read and the base Unit write, all trait objects the persistence layer fills.
+#[derive(Clone)]
+pub struct SettingsLedger {
+    pub units: Rc<dyn LedgerUnits>,
+    pub summaries: Rc<dyn LedgerSummaries>,
+    pub preferences: Rc<dyn LedgerPreferences>,
+}
+
 /// What Settings › Ledger reads of the Units: the Client answers it over the Units store
 /// (`lib-database`'s `StoredSettingsReads`), so the page never holds a copy.
 pub trait LedgerUnits {

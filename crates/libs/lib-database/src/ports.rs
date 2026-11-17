@@ -357,6 +357,23 @@ impl LedgerPorts {
         self.bills.clone()
     }
 
+    /// What Settings › Ledger and the Settings index read and write through, as `lib-settings`'
+    /// own bundle of trait objects.
+    #[must_use]
+    pub fn settings_ledger(&self) -> lib_settings::SettingsLedger {
+        lib_settings::SettingsLedger {
+            units: self.settings_reads.clone(),
+            summaries: self.settings_reads.clone(),
+            preferences: self.ledger_preferences.clone(),
+        }
+    }
+
+    /// The Shell's rail-count reads, as the trait object its Presenter reads.
+    #[must_use]
+    pub fn shell_rail(&self) -> Rc<dyn lib_shell::ShellRailCounts> {
+        Rc::new(self.shell_reads.clone())
+    }
+
     /// What the Delete account Dialog reads and writes through, as `lib-account-deletion`'s own
     /// bundle: the deletion port, the Accounts and Bills ports and the reads it quotes.
     #[must_use]

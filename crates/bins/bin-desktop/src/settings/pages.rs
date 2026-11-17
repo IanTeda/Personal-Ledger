@@ -161,7 +161,7 @@ impl LedgerPages {
             inventory,
             ledger,
         } = setup;
-        let summaries = CachedCounts::new(ledger.settings_reads.clone());
+        let summaries = CachedCounts::new(ledger.summaries());
         // Every domain's write can change a count, so any announcement drops them.
         let _ledger_changed = cx.subscribe(announcer, |view: &mut SettingsView, _, _, cx| {
             view.ledger_changed(cx);

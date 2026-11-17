@@ -84,7 +84,7 @@ pub struct OpenLedger {
     /// only after a change rather than after every input.
     pub(super) rail_counted_at: std::cell::Cell<usize>,
     /// The rail's badge counts over the stores, which the Shell's Presenter reads after each input.
-    pub(super) rail_reads: lib_database::StoredShellReads,
+    pub(super) rail_reads: Rc<dyn lib_shell::ShellRailCounts>,
     /// The Views that render themselves and handle their own input (ADR-0037): the Dashboard,
     /// Bills, Budgets, Transactions with its Import step, and Documents. Each reaches `Root` only
     /// through `ViewEvent`. Settings is `Root`'s own, given its This Ledger pages here.
@@ -213,7 +213,7 @@ impl OpenLedger {
         ));
         // The Dashboard and the rail's badges read through the reads `LedgerPorts` built.
         let dashboard_reads = ports.dashboard_reads.clone();
-        let rail_reads = ports.shell_reads.clone();
+        let rail_reads = ports.shell_rail();
         let budgets_ports = ports.budgets();
         let units_ports = settings_setup.units.1.ports.clone();
         // The pages repaint when a domain they read is announced.
