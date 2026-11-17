@@ -129,12 +129,8 @@ mod tests {
     fn the_account_deletion_bundle_quotes_and_deletes_over_the_same_stores_on_either() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         for ledger in [fakes(), file(dir.path())] {
-            let lib_account_deletion::DeletionPorts {
-                deletion,
-                accounts,
-                reads,
-                ..
-            } = ledger.account_deletion();
+            let lib_account_deletion::DeletionPorts { deletion, reads } = ledger.account_deletion();
+            let accounts = ledger.accounts();
             let wallet = accounts
                 .borrow()
                 .accounts()

@@ -52,7 +52,7 @@ fn on_storage_with_bills(storage: crate::Storage) -> OnStorage {
     let stores = shared.stores.clone();
     let (built, _) = LedgerPorts::over(
         shared,
-        lib_core::Clock::fixed(chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a date")),
+        lib_core::Clock::fixed(crate::ports::test_support::today()),
     );
     let bills = built.bills();
     let payments = built.bill_payments();
@@ -83,7 +83,7 @@ fn delete_account(
 #[test]
 fn a_deleted_accounts_transactions_survive_a_restart() {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
+    let today = crate::ports::test_support::today();
     let storage = storage_in(dir.path(), today);
     let writer = storage.writer.clone();
     let on = on_storage_with_bills(storage);
@@ -114,7 +114,7 @@ fn a_deleted_accounts_transactions_survive_a_restart() {
 #[test]
 fn a_deleted_categorys_rows_survive_a_restart() {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
+    let today = crate::ports::test_support::today();
     let storage = storage_in(dir.path(), today);
     let writer = storage.writer.clone();
     let OnStorage {
@@ -245,7 +245,7 @@ fn paying_matching_skipping_and_editing_a_plan_survive_a_restart() {
     use lib_bills::{BillPlanDraft, Resolution};
 
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
+    let today = crate::ports::test_support::today();
     let storage = storage_in(dir.path(), today);
     let writer = storage.writer.clone();
     let OnStorage {
@@ -364,7 +364,7 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
     use lib_bills::Resolution;
 
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
+    let today = crate::ports::test_support::today();
     let storage = storage_in(dir.path(), today);
     let writer = storage.writer.clone();
     let on = on_storage_with_bills(storage);
@@ -436,7 +436,7 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
 #[test]
 fn deleting_an_account_a_bill_plan_pays_from_is_refused_whole() {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
+    let today = crate::ports::test_support::today();
     let storage = storage_in(dir.path(), today);
     let writer = storage.writer.clone();
     let on = on_storage_with_bills(storage);

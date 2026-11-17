@@ -83,7 +83,7 @@ pub struct LedgerPorts {
     accounts: lib_accounts::SharedPorts,
     /// What names an Account and the Units it may count in, over the stores: what the Delete
     /// account Dialog quotes when it opens.
-    account_reads: StoredAccountReads,
+    account_reads: Rc<StoredAccountReads>,
     /// Account delete's atomic port over the Accounts, Transactions and Bills stores
     /// ([`AccountDeletionAdapter`]).
     account_deletion: lib_account_deletion::SharedDeletion,
@@ -97,7 +97,7 @@ pub struct LedgerPorts {
     /// ([`TagRemovalAdapter`]).
     tag_removal: lib_tag_removal::SharedTagRemoval,
     /// What the Remove tag and Merge tags Dialogs show when they open.
-    tag_removal_reads: StoredTagRemovalReads,
+    tag_removal_reads: Rc<StoredTagRemovalReads>,
     /// The Categories page's repository ([`StoredCategoriesPorts`]).
     categories: lib_categories::SharedCategories,
     /// The same ports for the Add and Edit category Dialogs' save: the usage, the Monthly budget
@@ -108,7 +108,9 @@ pub struct LedgerPorts {
     /// stores ([`CategoryDeletionAdapter`]).
     category_deletion: lib_category_deletion::SharedCategoryDeletion,
     /// What the Delete category Dialog shows when it opens.
-    category_deletion_reads: StoredCategoryDeletionReads,
+    category_deletion_reads: Rc<StoredCategoryDeletionReads>,
+    /// The months the Categories' Monthly budgets have a record in, over the Budgets store.
+    category_budget_months: Rc<StoredCategoryBudgetMonths>,
     /// The Transactions page's ports ([`StoredTransactionsPorts`]).
     transactions: lib_transactions::SharedPorts,
     /// The Import's atomic port over the Payees and Transactions stores, which is also its Payees
@@ -126,9 +128,9 @@ pub struct LedgerPorts {
     /// The Documents and Document Types pages' repository ([`StoredDocumentsPorts`]).
     documents: lib_documents::SharedRepository,
     /// What the Inventory page and its Dialogs read the Units and Documents through.
-    inventory_reads: StoredInventoryReads,
+    inventory_reads: Rc<StoredInventoryReads>,
     /// What the Documents page reads the other domains through.
-    document_reads: StoredDocumentReads,
+    document_reads: Rc<StoredDocumentReads>,
     /// Settings' reads ([`StoredSettingsReads`]): the Ledger page's Units and the X-Large index
     /// pane's counts.
     settings_reads: Rc<StoredSettingsReads>,
@@ -137,7 +139,7 @@ pub struct LedgerPorts {
     /// The Dashboard's Bills and Budgets reads ([`StoredDashboardReads`]).
     dashboard_reads: Rc<StoredDashboardReads>,
     /// The Shell's rail-count reads ([`StoredShellReads`]).
-    shell_reads: StoredShellReads,
+    shell_reads: Rc<StoredShellReads>,
     /// The one commit every input ends with, returning what it wrote ([`Committed`](crate::Committed)).
     commit: Rc<dyn Commit>,
 }
@@ -181,35 +183,35 @@ impl LedgerPorts {
             units: stores.units.clone(),
             payees: stores.payees.clone(),
         });
-        let account_reads = StoredAccountReads {
+        let account_reads = Rc::new(StoredAccountReads {
             transactions: stores.transactions.clone(),
             budgets: stores.budgets.clone(),
             units: stores.units.clone(),
             institutions: stores.institutions.clone(),
-        };
+        });
         let dashboard_reads = Rc::new(StoredDashboardReads {
             budgets: stores.budgets.clone(),
             budget_reads: (*budget_reads).clone(),
         });
-        let shell_reads = StoredShellReads {
+        let shell_reads = Rc::new(StoredShellReads {
             budgets: stores.budgets.clone(),
             documents: stores.documents.clone(),
             budget_reads: (*budget_reads).clone(),
-        };
+        });
         let ports = Self {
-            inventory_reads: StoredInventoryReads {
+            inventory_reads: Rc::new(StoredInventoryReads {
                 units: stores.units.clone(),
                 inventory: stores.inventory.clone(),
                 documents: stores.documents.clone(),
-            },
-            document_reads: StoredDocumentReads {
+            }),
+            document_reads: Rc::new(StoredDocumentReads {
                 transactions: stores.transactions.clone(),
                 payees: stores.payees.clone(),
                 accounts: stores.accounts.clone(),
                 institutions: stores.institutions.clone(),
                 bills: stores.bills.clone(),
                 inventory: stores.inventory.clone(),
-            },
+            }),
             settings_reads: Rc::new(StoredSettingsReads::over(&stores)),
             ledger_preferences: Rc::new(LedgerPreferencesAdapter::new(stores.units.clone())),
             dashboard_reads,
@@ -238,7 +240,7 @@ impl LedgerPorts {
             ))),
             accounts: Rc::new(RefCell::new(StoredAccountsPorts::new(
                 stores.accounts.clone(),
-                account_reads.clone(),
+                (*account_reads).clone(),
             ))),
             account_reads,
             account_deletion: Rc::new(RefCell::new(AccountDeletionAdapter::new(
@@ -275,11 +277,14 @@ impl LedgerPorts {
                 stores.payees.clone(),
                 stores.budgets.clone(),
             ))),
-            category_deletion_reads: StoredCategoryDeletionReads {
+            category_deletion_reads: Rc::new(StoredCategoryDeletionReads {
                 categories: stores.categories.clone(),
                 transactions: stores.transactions.clone(),
                 budgets: stores.budgets.clone(),
-            },
+            }),
+            category_budget_months: Rc::new(StoredCategoryBudgetMonths {
+                budgets: stores.budgets.clone(),
+            }),
             transactions: Rc::new(RefCell::new(StoredTransactionsPorts::new(
                 stores.transactions.clone(),
                 StoredTransactionReads {
@@ -321,10 +326,10 @@ impl LedgerPorts {
                 stores.tags.clone(),
                 stores.transactions.clone(),
             ))),
-            tag_removal_reads: StoredTagRemovalReads {
+            tag_removal_reads: Rc::new(StoredTagRemovalReads {
                 tags: stores.tags.clone(),
                 transactions: stores.transactions.clone(),
-            },
+            }),
             stores,
             commit,
         };
@@ -395,18 +400,16 @@ impl LedgerPorts {
     /// The Shell's rail-count reads, as the trait object its Presenter reads.
     #[must_use]
     pub fn shell_rail(&self) -> Rc<dyn lib_shell::ShellRailCounts> {
-        Rc::new(self.shell_reads.clone())
+        self.shell_reads.clone()
     }
 
     /// What the Delete account Dialog reads and writes through, as `lib-account-deletion`'s own
-    /// bundle: the deletion port, the Accounts and Bills ports and the reads it quotes.
+    /// bundle: the deletion port and the reads it quotes.
     #[must_use]
     pub fn account_deletion(&self) -> lib_account_deletion::DeletionPorts {
         lib_account_deletion::DeletionPorts {
             deletion: self.account_deletion.clone(),
-            accounts: self.accounts(),
-            bills: self.bills(),
-            reads: Rc::new(self.account_reads.clone()),
+            reads: self.account_reads.clone(),
         }
     }
 
@@ -416,7 +419,7 @@ impl LedgerPorts {
     pub fn tag_removal(&self) -> lib_tag_removal::TagRemovalPorts {
         lib_tag_removal::TagRemovalPorts {
             removal: self.tag_removal.clone(),
-            reads: Rc::new(self.tag_removal_reads.clone()),
+            reads: self.tag_removal_reads.clone(),
         }
     }
 
@@ -438,9 +441,7 @@ impl LedgerPorts {
     /// ([`StoredCategoryBudgetMonths`]).
     #[must_use]
     pub fn category_budget_months(&self) -> lib_categories::SharedBudgetMonths {
-        Rc::new(StoredCategoryBudgetMonths {
-            budgets: self.stores.budgets.clone(),
-        })
+        self.category_budget_months.clone()
     }
 
     /// What the Delete category Dialog reads and writes through, as `lib-category-deletion`'s own
@@ -449,7 +450,7 @@ impl LedgerPorts {
     pub fn category_deletion(&self) -> lib_category_deletion::CategoryDeletionPorts {
         lib_category_deletion::CategoryDeletionPorts {
             deletion: self.category_deletion.clone(),
-            reads: Rc::new(self.category_deletion_reads.clone()),
+            reads: self.category_deletion_reads.clone(),
         }
     }
 
@@ -474,14 +475,14 @@ impl LedgerPorts {
     /// `lib-inventory`'s own read traits.
     #[must_use]
     pub fn inventory_reads(&self) -> lib_inventory::SharedReads {
-        Rc::new(self.inventory_reads.clone())
+        self.inventory_reads.clone()
     }
 
     /// What the Documents page reads the other domains through, as `lib-documents`' own read
     /// traits.
     #[must_use]
     pub fn document_reads(&self) -> lib_documents::SharedReads {
-        Rc::new(self.document_reads.clone())
+        self.document_reads.clone()
     }
 
     /// The tags ports, a clone of the one value every page shares.
@@ -539,7 +540,7 @@ pub(crate) mod test_support {
 
     use crate::{FakeStores, LedgerPorts, Stores, open_storage, seed};
 
-    fn today() -> NaiveDate {
+    pub(crate) fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
     }
 

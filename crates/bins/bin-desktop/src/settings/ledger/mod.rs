@@ -9,14 +9,9 @@
 
 mod render;
 
-use std::rc::Rc;
-
 use gpui::{AnyElement, App, Context, Entity, Window};
 use lib_database::Domain;
-use lib_database::LedgerPorts;
-use lib_settings::{
-    LedgerEvent, LedgerPresenter, LedgerSetup, LedgerSummaries, LedgerViewModel, SettingsLedger,
-};
+use lib_settings::{LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel, SettingsLedger};
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::announcer::Announcer;
@@ -31,37 +26,18 @@ use crate::shell::view::statusline::{PageStatus, StatusRight};
 /// The Ledger page: the Presenter, over the Units store, in the generic page Entity.
 pub type LedgerPage = ModulePage<LedgerPresenter>;
 
-/// What `shell::router::build` hands the Ledger page: its reads and its write.
-pub struct LedgerPageSetup {
-    /// Settings' reads `LedgerPorts` built (the Units and the index pane's counts) and the base
-    /// Unit write.
-    pub ledger: SettingsLedger,
-}
-
-impl LedgerPageSetup {
-    pub fn new(ports: &LedgerPorts) -> Self {
-        Self {
-            ledger: ports.settings_ledger(),
-        }
-    }
-
-    /// The index pane's counts.
-    pub fn summaries(&self) -> Rc<dyn LedgerSummaries> {
-        self.ledger.summaries.clone()
-    }
-}
-
-/// The Ledger page on `setup`, its keys from `config`, repainting when the Units change.
+/// The Ledger page on `ledger`, the reads and write `LedgerPorts::settings_ledger` hands out, its
+/// keys from `config`, repainting when the Units change.
 pub fn ledger_page(
-    setup: LedgerPageSetup,
+    ledger: SettingsLedger,
     config: &KeyBindingConfig,
     announcer: &Entity<Announcer>,
     cx: &mut Context<'_, LedgerPage>,
 ) -> LedgerPage {
     let presenter = LedgerPresenter::new(
         LedgerSetup {
-            units: setup.ledger.units,
-            preferences: setup.ledger.preferences,
+            units: ledger.units,
+            preferences: ledger.preferences,
         },
         config,
     );

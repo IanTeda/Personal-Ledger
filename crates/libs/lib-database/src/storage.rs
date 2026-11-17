@@ -748,10 +748,7 @@ mod committed_tests {
         for stores in [fakes(), file(dir.path()).0] {
             let shared = stores.share();
             let tags = shared.stores.tags.borrow().tags().tags();
-            let (ledger, _) = crate::LedgerPorts::over(
-                shared,
-                lib_core::Clock::fixed(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")),
-            );
+            let (ledger, _) = crate::LedgerPorts::over(shared, lib_core::Clock::fixed(today()));
             let ports = ledger.tag_removal();
             let mut removal = ports.removal.borrow_mut();
             let source = tags

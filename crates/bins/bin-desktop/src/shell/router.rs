@@ -335,9 +335,9 @@ impl Root {
             let announcements = open.announcer.read(cx).announcements();
             open.rail_counted_at.replace(announcements) != announcements
         });
-        let reads = self.open.as_ref().map(|open| &*open.rail_reads);
+        let reads = self.open.as_ref().map(|open| open.ports.shell_rail());
         self.presenter
-            .refresh_rail_counts(reads, changed || announced);
+            .refresh_rail_counts(reads.as_deref(), changed || announced);
     }
 
     /// Whether a Ledger is open: whether `Root` holds an Open Ledger.

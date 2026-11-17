@@ -77,8 +77,6 @@ pub struct OpenLedger {
     /// The Announcer's count when the rail's counts were last read, so the Shell reads them afresh
     /// only after a change rather than after every input.
     pub(super) rail_counted_at: std::cell::Cell<usize>,
-    /// The rail's badge counts over the stores, which the Shell's Presenter reads after each input.
-    pub(super) rail_reads: Rc<dyn lib_shell::ShellRailCounts>,
     /// The Views that render themselves and handle their own input (ADR-0037): the Dashboard,
     /// Bills, Budgets, Transactions with its Import step, and Documents. Each reaches `Root` only
     /// through `ViewEvent`. Settings is `Root`'s own, given its This Ledger pages here.
@@ -197,7 +195,7 @@ impl OpenLedger {
             categories: categories_setup,
             tags: tags_setup,
             inventory: inventory_setup,
-            ledger: crate::settings::ledger::LedgerPageSetup::new(&ports),
+            ledger: ports.settings_ledger(),
         };
 
         // The Transactions page and the Import step come from `lib-database`'s `LedgerPorts`.
@@ -205,9 +203,8 @@ impl OpenLedger {
         let import_ports = ports.transaction_import(Rc::new(
             lib_transaction_import::SeededStatement::stub(clock.today()),
         ));
-        // The Dashboard and the rail's badges read through the reads `LedgerPorts` built.
+        // The Dashboard reads through the reads `LedgerPorts` built.
         let dashboard_reads = ports.dashboard_reads();
-        let rail_reads = ports.shell_rail();
         let budgets_ports = ports.budgets();
         // The pages repaint when a domain they read is announced.
         let categories_subscription = notify_on(&announcer, lib_database::Domain::Categories, cx);
@@ -295,7 +292,6 @@ impl OpenLedger {
             ports,
             // No count read yet, so the first refresh after the Ledger opens reads its counts.
             rail_counted_at: std::cell::Cell::new(usize::MAX),
-            rail_reads,
             views,
             dialog_keys,
             path,

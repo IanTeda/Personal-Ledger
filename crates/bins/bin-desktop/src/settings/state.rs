@@ -820,7 +820,7 @@ mod tests {
             categories: crate::categories::CategoriesSetup::sample(&storage),
             tags: crate::tags::TagsSetup::sample(&storage, &clock),
             inventory: crate::inventory::InventorySetup::sample(&storage),
-            ledger: crate::settings::ledger::LedgerPageSetup::new(&storage),
+            ledger: storage.settings_ledger(),
         };
         let announcer = cx.new(|_| Announcer::default());
         let view = cx.new(|cx| {

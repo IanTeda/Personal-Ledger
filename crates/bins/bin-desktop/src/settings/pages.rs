@@ -26,7 +26,7 @@ use crate::{
         data_backup::{DataBackupPage, data_backup_page},
         display::{DisplayPage, display_page},
         general::{GeneralPage, general_page},
-        ledger::{LedgerPage, LedgerPageSetup, ledger_page},
+        ledger::{LedgerPage, ledger_page},
         state::SettingsView,
         sync_server::{SyncServerPage, sync_server_page},
         tracing::{
@@ -64,7 +64,7 @@ pub struct SettingsSetup {
     pub categories: Built<CategoriesPagePresenter>,
     pub tags: Built<TagsPagePresenter>,
     pub inventory: Built<InventoryPagePresenter>,
-    pub ledger: LedgerPageSetup,
+    pub ledger: lib_settings::SettingsLedger,
 }
 
 /// What the Settings View tells the open page about the space it is drawn in, before its keys and
@@ -161,7 +161,7 @@ impl LedgerPages {
             inventory,
             ledger,
         } = setup;
-        let summaries = CachedCounts::new(ledger.summaries());
+        let summaries = CachedCounts::new(ledger.summaries.clone());
         // Every domain's write can change a count, so any announcement drops them.
         let _ledger_changed = cx.subscribe(announcer, |view: &mut SettingsView, _, _, cx| {
             view.ledger_changed(cx);

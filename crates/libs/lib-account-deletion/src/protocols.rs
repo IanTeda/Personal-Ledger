@@ -63,16 +63,11 @@ pub trait DeletionReads: AccountUsage {
 }
 
 /// Everything the Delete Dialog reads and writes through, as the Client's Ledger hands it out in
-/// one value: the deletion port, the Accounts and Bills ports beside it, and the reads it quotes.
-/// This crate declares it so a Client names only trait objects, and the persistence layer fills
-/// it over its stores.
+/// one value: the deletion port and the reads it quotes. This crate declares it so a Client names
+/// only trait objects, and the persistence layer fills it over its stores.
 #[derive(Clone)]
 pub struct DeletionPorts {
     pub deletion: SharedDeletion,
-    /// The Accounts ports, which read the Account the Dialog deletes.
-    pub accounts: lib_accounts::SharedPorts,
-    /// The Bills ports, whose reads a confirm copies back.
-    pub bills: lib_bills::SharedPorts,
     /// What the Dialog quotes as it opens.
     pub reads: Rc<dyn DeletionReads>,
 }
