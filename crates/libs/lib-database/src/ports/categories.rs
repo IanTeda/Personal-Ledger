@@ -14,8 +14,9 @@ use lib_categories::{
 };
 use lib_core::{CategoryId, Clock, Money};
 
+use crate::StoredCategoryRows;
+use crate::adapter::categories::category_refs;
 use crate::adapter::store::{SharedBudgetsStore, SharedCategoriesStore, StoredBudgetCategories};
-use crate::{StoredCategoryRows, category_refs};
 
 /// [`lib_categories`]' repository, usage, budget and handover ports over the shared Categories and
 /// Budgets stores and the rows naming a Category, each borrowed for one call. A write reaches the

@@ -206,7 +206,7 @@ pub(crate) fn account_institutions(
 }
 
 /// How many of `institutions` name `unit` as their Usual unit.
-pub fn unit_institutions(institutions: &[Institution], unit: UnitId) -> usize {
+pub(crate) fn unit_institutions(institutions: &[Institution], unit: UnitId) -> usize {
     institutions
         .iter()
         .filter(|institution| institution.usual_unit == Some(unit))

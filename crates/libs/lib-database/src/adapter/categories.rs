@@ -124,7 +124,7 @@ impl CategoryRepository for CategoriesAdapter {
 /// `categories` as the other modules read them, in tree order (each parent before its children),
 /// each with its path and whether it is a leaf by `lib-categories`' rules: the one mapping from a
 /// Category to `lib_core::CategoryRef`.
-pub fn category_refs(categories: &[Category]) -> Vec<CategoryRef> {
+pub(crate) fn category_refs(categories: &[Category]) -> Vec<CategoryRef> {
     lib_categories::paths_in_tree_order(categories)
         .into_iter()
         .filter_map(|(id, path)| {

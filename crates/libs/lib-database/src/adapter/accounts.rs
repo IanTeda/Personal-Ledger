@@ -145,9 +145,8 @@ pub(crate) fn import_account(accounts: &[Account], id: AccountId) -> Option<Impo
 }
 
 /// The Accounts in `accounts` whose Unit is `unit`, in order, as the Units page lists them, each
-/// with the Transactions `transactions` says are booked to it. Public for the TUI's Units usage,
-/// which holds its stores unshared.
-pub fn holdings(
+/// with the Transactions `transactions` says are booked to it.
+pub(crate) fn holdings(
     accounts: &[Account],
     unit: UnitId,
     transactions: impl Fn(AccountId) -> usize,
@@ -165,7 +164,7 @@ pub fn holdings(
 }
 
 /// How many of `accounts` count in `unit`.
-pub fn unit_accounts(accounts: &[Account], unit: UnitId) -> usize {
+pub(crate) fn unit_accounts(accounts: &[Account], unit: UnitId) -> usize {
     accounts
         .iter()
         .filter(|account| account.unit == unit)
@@ -301,7 +300,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Account>> {
 }
 
 /// The ids of the `accounts` that count in `unit`, in order.
-pub fn unit_account_ids(accounts: &[Account], unit: UnitId) -> Vec<AccountId> {
+pub(crate) fn unit_account_ids(accounts: &[Account], unit: UnitId) -> Vec<AccountId> {
     accounts
         .iter()
         .filter(|account| account.unit == unit)

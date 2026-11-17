@@ -63,19 +63,17 @@ pub use change_sets::ChangeSet;
 /// The per-domain adapters behind the VIPER modules' ports (ADR-0046).
 pub mod adapter;
 pub(crate) use adapter::account_deletion::AccountDeletionAdapter;
-pub use adapter::accounts::{
-    AccountsAdapter, holdings as account_holdings, unit_account_ids, unit_accounts,
-};
+pub use adapter::accounts::AccountsAdapter;
 pub(crate) use adapter::bill_payments::BillPaymentsAdapter;
-pub use adapter::bills::{BillsAdapter, unit_bill_plans};
+pub use adapter::bills::BillsAdapter;
 pub use adapter::budgets::BudgetsAdapter;
-pub use adapter::categories::{CategoriesAdapter, category_refs};
+pub use adapter::categories::CategoriesAdapter;
 pub(crate) use adapter::category_deletion::CategoryDeletionAdapter;
 pub(crate) use adapter::category_rows::StoredCategoryRows;
 pub use adapter::documents::DocumentsAdapter;
 pub use adapter::fake_fails::FakeFails;
-pub use adapter::institutions::{InstitutionsAdapter, unit_institutions};
-pub use adapter::inventory::{InventoryAdapter, unit_locations};
+pub use adapter::institutions::InstitutionsAdapter;
+pub use adapter::inventory::InventoryAdapter;
 // Public, unlike the Ledger-bound adapters: it runs before any Ledger is open, so a Client's
 // composition root builds it rather than taking it from `LedgerPorts` (#1212).
 pub use adapter::ledger_creation::{LedgerCreationAdapter, remove_ledger_files};

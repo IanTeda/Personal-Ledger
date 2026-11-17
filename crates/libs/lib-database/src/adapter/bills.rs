@@ -468,7 +468,7 @@ async fn read_entries(conn: &mut SqliteConnection) -> Result<Vec<BillScheduleEnt
 }
 
 /// How many of `plans` are named in `unit`.
-pub fn unit_bill_plans(plans: &[BillPlan], unit: UnitId) -> usize {
+pub(crate) fn unit_bill_plans(plans: &[BillPlan], unit: UnitId) -> usize {
     plans.iter().filter(|plan| plan.unit == unit).count()
 }
 

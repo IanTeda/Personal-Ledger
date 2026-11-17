@@ -231,7 +231,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Payee>> {
 
 /// `payees` as the modules that read them (Transactions, Bills, Documents) see them, in store
 /// order and inactive ones included: each reads the fields it uses.
-pub fn payee_refs(payees: &[Payee]) -> Vec<PayeeRef> {
+pub(crate) fn payee_refs(payees: &[Payee]) -> Vec<PayeeRef> {
     payees
         .iter()
         .map(|payee| PayeeRef {

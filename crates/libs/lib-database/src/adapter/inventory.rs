@@ -406,7 +406,7 @@ pub(crate) fn location_item_links(
 }
 
 /// How many of `locations` are priced in `unit`.
-pub fn unit_locations(locations: &[Location], unit: UnitId) -> usize {
+pub(crate) fn unit_locations(locations: &[Location], unit: UnitId) -> usize {
     locations
         .iter()
         .filter(|location| location.unit == unit)
