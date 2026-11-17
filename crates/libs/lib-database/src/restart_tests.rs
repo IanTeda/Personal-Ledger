@@ -2,8 +2,7 @@
 //! restart: the file's foreign keys let each cross-domain write through, and a reopen reads the
 //! result as it was left.
 
-use gpui::{AppContext, Entity, TestAppContext};
-use lib_database::{Commit, LedgerPorts, PayeesStore, PendingWrites, SharedStores, Stores};
+use crate::{Commit, LedgerPorts, PayeesStore, PendingWrites, SharedStores, Stores};
 
 /// An Open Ledger's ports with the stores they were built over, which a test reads the rows
 /// back through, since `LedgerPorts` hands out only ports (#1212).
@@ -12,29 +11,37 @@ struct Opened {
     stores: SharedStores,
 }
 
+/// Reads `opened` through `f`.
+fn read<R>(opened: &Opened, f: impl FnOnce(&Opened) -> R) -> R {
+    f(opened)
+}
+
+/// The Desktop's quit: commits the writes still queued, since the writer thread dies with the
+/// process.
+fn quit(writer: &crate::Writer) {
+    writer.flush().expect("the queued writes are saved");
+}
+
 /// The Desktop's start-up storage on the Ledger file in `dir`, the Sample Ledger as of `today`
 /// when there is none yet.
-fn storage_in(dir: &std::path::Path, today: chrono::NaiveDate) -> lib_database::Storage {
+fn storage_in(dir: &std::path::Path, today: chrono::NaiveDate) -> crate::Storage {
     let path = dir.join("ledger.pldb");
     if !path.exists() {
-        lib_database::seed::sample_ledger(&path, today).expect("the Sample Ledger is created");
+        crate::seed::sample_ledger(&path, today).expect("the Sample Ledger is created");
     }
-    lib_database::open_storage(&path).expect("the Ledger opens")
+    crate::open_storage(&path).expect("the Ledger opens")
 }
 
 /// The stores on `storage`, as an Entity a test reads them through, with the pending writes
 /// the test commits, as an input's `send` would.
-fn on_storage(
-    cx: &mut TestAppContext,
-    storage: lib_database::Storage,
-) -> (Entity<Opened>, PendingWrites) {
-    let on = on_storage_with_bills(cx, storage);
+fn on_storage(storage: crate::Storage) -> (Opened, PendingWrites) {
+    let on = on_storage_with_bills(storage);
     (on.store, on.pending)
 }
 
 /// The stores on the Ledger file, with the ports the modules that write beside them hold.
 struct OnStorage {
-    store: Entity<Opened>,
+    store: Opened,
     /// The Bills ports the store shares, which the Bills module writes.
     bills: lib_bills::SharedPorts,
     /// The payments port over the Transactions and Bills stores, the Bill Payments module's.
@@ -50,7 +57,7 @@ struct OnStorage {
 
 /// [`on_storage`] with the ports the Bills, Bill Payments, Account Deletion and Category
 /// Deletion modules write.
-fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage) -> OnStorage {
+fn on_storage_with_bills(storage: crate::Storage) -> OnStorage {
     let pending = storage.pending.clone();
     let shared = Stores::from(storage).share();
     let stores = shared.stores.clone();
@@ -63,10 +70,10 @@ fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage
     let deletion = built.account_deletion().deletion;
     let category_deletion = built.category_deletion().deletion;
     OnStorage {
-        store: cx.new(|_| Opened {
+        store: Opened {
             ports: built,
             stores,
-        }),
+        },
         bills,
         payments,
         deletion,
@@ -84,14 +91,13 @@ fn delete_account(
     lib_account_deletion::interactor::DeleteAccount { id }.run(&mut *on.deletion.borrow_mut())
 }
 
-#[gpui::test]
-fn a_deleted_accounts_transactions_survive_a_restart(cx: &mut TestAppContext) {
+#[test]
+fn a_deleted_accounts_transactions_survive_a_restart() {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
     let storage = storage_in(dir.path(), today);
     let writer = storage.writer.clone();
-    let on = on_storage_with_bills(cx, storage);
-    let store = on.store.clone();
+    let on = on_storage_with_bills(storage);
     let wallet = lib_accounts::sample_accounts()
         .into_iter()
         .find(|account| account.name == "Wallet")
@@ -100,18 +106,14 @@ fn a_deleted_accounts_transactions_survive_a_restart(cx: &mut TestAppContext) {
 
     delete_account(&on, wallet).expect("nothing pays from the Wallet");
     on.pending.commit();
-    let before = store.read_with(cx, |store, _| transactions_of(store));
-    crate::quit(&writer);
-    drop(store);
+    let before = read(&on.store, transactions_of);
+    quit(&writer);
     drop(on);
     drop(writer);
 
     // The next day, so a re-seed would show as shifted dates.
-    let (reopened, _) = on_storage(
-        cx,
-        storage_in(dir.path(), today.succ_opt().expect("a date")),
-    );
-    let after = reopened.read_with(cx, |store, _| transactions_of(store));
+    let (reopened, _) = on_storage(storage_in(dir.path(), today.succ_opt().expect("a date")));
+    let after = read(&reopened, transactions_of);
 
     assert_eq!(after, before);
     assert!(
@@ -124,8 +126,8 @@ fn a_deleted_accounts_transactions_survive_a_restart(cx: &mut TestAppContext) {
 /// Category delete, through the Category Deletion module's port, re-points the Splits and Bill
 /// Plans to an Uncategorised it creates and clears the Payee defaults before the delete, so the
 /// file's foreign keys let it through, and a restart reads the result back.
-#[gpui::test]
-fn a_deleted_categorys_rows_survive_a_restart(cx: &mut TestAppContext) {
+#[test]
+fn a_deleted_categorys_rows_survive_a_restart() {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
     let storage = storage_in(dir.path(), today);
@@ -135,8 +137,8 @@ fn a_deleted_categorys_rows_survive_a_restart(cx: &mut TestAppContext) {
         category_deletion,
         pending,
         ..
-    } = on_storage_with_bills(cx, storage);
-    let gone = store.read_with(cx, |store, _| {
+    } = on_storage_with_bills(storage);
+    let gone = read(&store, |store| {
         let payees = payees_of(store);
         categories_of(store)
             .iter()
@@ -158,9 +160,9 @@ fn a_deleted_categorys_rows_survive_a_restart(cx: &mut TestAppContext) {
     drop(category_deletion);
     assert!(deleted.splits_moved > 0 && deleted.bill_plans_moved > 0);
     assert!(deleted.payee_defaults_cleared > 0);
-    let reopened = restart(cx, (store, pending), writer, dir.path(), today);
+    let reopened = restart((store, pending), writer, dir.path(), today);
 
-    reopened.read_with(cx, |store, _| {
+    read(&reopened, |store| {
         let categories = categories_of(store);
         assert!(categories.iter().all(|c| c.id != gone));
         let home = lib_categories::find_by_name(&categories, "Uncategorised")
@@ -193,11 +195,8 @@ fn payees_of(store: &Opened) -> Vec<lib_payees::Payee> {
 
 /// The Bill Plans and the Bill Schedule as the Bills store holds them, the entries by due date
 /// and then Plan, since a port lists them in no particular order.
-fn bills_of(
-    cx: &mut TestAppContext,
-    store: &Entity<Opened>,
-) -> (Vec<lib_bills::BillPlan>, Vec<lib_bills::BillScheduleEntry>) {
-    store.read_with(cx, |store, _| (plans_of(store), entries_of(store)))
+fn bills_of(store: &Opened) -> (Vec<lib_bills::BillPlan>, Vec<lib_bills::BillScheduleEntry>) {
+    read(store, |store| (plans_of(store), entries_of(store)))
 }
 
 /// The Transactions as the Transactions store holds them, newest first, since a store lists
@@ -243,21 +242,20 @@ fn budgets_of(store: &Opened) -> Vec<lib_budgets::Budget> {
 /// Commits what was written, as the input's `send` would, then opens the Ledger in `dir`
 /// again a day later, so a re-seed would show as shifted dates.
 fn restart(
-    cx: &mut TestAppContext,
-    (store, pending): (Entity<Opened>, PendingWrites),
-    writer: lib_database::Writer,
+    (store, pending): (Opened, PendingWrites),
+    writer: crate::Writer,
     dir: &std::path::Path,
     today: chrono::NaiveDate,
-) -> Entity<Opened> {
+) -> Opened {
     pending.commit();
-    crate::quit(&writer);
+    quit(&writer);
     drop(store);
     drop(writer);
-    on_storage(cx, storage_in(dir, today.succ_opt().expect("a date"))).0
+    on_storage(storage_in(dir, today.succ_opt().expect("a date"))).0
 }
 
-#[gpui::test]
-fn paying_matching_skipping_and_editing_a_plan_survive_a_restart(cx: &mut TestAppContext) {
+#[test]
+fn paying_matching_skipping_and_editing_a_plan_survive_a_restart() {
     use lib_bill_payments::interactor::PayBill;
     use lib_bills::interactor::{EditBillPlan, MatchBill, SkipBill};
     use lib_bills::{BillPlanDraft, Resolution};
@@ -272,11 +270,11 @@ fn paying_matching_skipping_and_editing_a_plan_survive_a_restart(cx: &mut TestAp
         payments,
         pending,
         ..
-    } = on_storage_with_bills(cx, storage);
-    let (plans, entries) = bills_of(cx, &store);
+    } = on_storage_with_bills(storage);
+    let (plans, entries) = bills_of(&store);
     let bill_accounts = bills.borrow().accounts().bill_accounts();
     let bill_categories = bills.borrow().categories().bill_categories();
-    let (matched, split) = store.read_with(cx, |store, _| {
+    let (matched, split) = read(&store, |store| {
         entries
             .iter()
             .filter(|entry| entry.is_open())
@@ -351,12 +349,12 @@ fn paying_matching_skipping_and_editing_a_plan_survive_a_restart(cx: &mut TestAp
         .run(ports.bills, ports.accounts, ports.categories)
         .expect("the plan is edited");
     }
-    let before = bills_of(cx, &store);
-    let transactions = store.read_with(cx, |store, _| transactions_of(store));
+    let before = bills_of(&store);
+    let transactions = read(&store, transactions_of);
 
-    let reopened = restart(cx, (store, pending), writer, dir.path(), today);
+    let reopened = restart((store, pending), writer, dir.path(), today);
 
-    assert_eq!(bills_of(cx, &reopened), before);
+    assert_eq!(bills_of(&reopened), before);
     let after = &before.1;
     let resolution = |id| lib_bills::entry(after, id).map(|entry| entry.resolution.clone());
     assert_eq!(resolution(matched), Some(Resolution::Paid(split)));
@@ -368,30 +366,25 @@ fn paying_matching_skipping_and_editing_a_plan_survive_a_restart(cx: &mut TestAp
         panic!("the paid entry stays Paid");
     };
     assert!(
-        reopened.read_with(cx, |store, _| transactions_of(store)
+        read(&reopened, |store| transactions_of(store)
             .iter()
             .any(|t| t.id == payment.transaction_id)),
         "Pay's Transaction is stored with it"
     );
-    assert_eq!(
-        reopened.read_with(cx, |store, _| transactions_of(store)),
-        transactions
-    );
+    assert_eq!(read(&reopened, transactions_of), transactions);
     assert_eq!(before.0[0].name, "Renamed plan");
 }
 
-#[gpui::test]
-fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_a_restart(
-    cx: &mut TestAppContext,
-) {
+#[test]
+fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_a_restart() {
     use lib_bills::Resolution;
 
     let dir = tempfile::tempdir().expect("a temporary directory");
     let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
     let storage = storage_in(dir.path(), today);
     let writer = storage.writer.clone();
-    let on = on_storage_with_bills(cx, storage);
-    let (entry, account) = on.store.read_with(cx, |store, _| {
+    let on = on_storage_with_bills(storage);
+    let (entry, account) = read(&on.store, |store| {
         entries_of(store)
             .iter()
             .find_map(|entry| match entry.resolution {
@@ -403,15 +396,15 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
             })
             .expect("the sample pays an entry")
     });
-    let resolution = |cx: &mut TestAppContext, store: &Entity<Opened>| {
-        store.read_with(cx, |store, _| {
+    let resolution = |store: &Opened| {
+        read(store, |store| {
             lib_bills::entry(&entries_of(store), entry).map(|entry| entry.resolution.clone())
         })
     };
 
     // An Account a Bill Plan pays from can't be deleted, so its Plans move to another Account
     // first: what's tested is the Unmatch.
-    let other = on.store.read_with(cx, |store, _| {
+    let other = read(&on.store, |store| {
         accounts_of(store)
             .iter()
             .find(|a| a.id != account)
@@ -427,15 +420,15 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
         }
     }
     on.pending.commit();
-    let budgets = on.store.read_with(cx, |store, _| budgets_of(store));
+    let budgets = read(&on.store, budgets_of);
     assert!(
         budgets.iter().any(|b| b.account_ids.contains(&account)),
         "a sample Budget counts the Account"
     );
 
     delete_account(&on, account).expect("no Plan pays from it now");
-    assert_eq!(resolution(cx, &on.store), Some(Resolution::Unresolved));
-    on.store.read_with(cx, |store, _| {
+    assert_eq!(resolution(&on.store), Some(Resolution::Unresolved));
+    read(&on.store, |store| {
         assert!(accounts_of(store).iter().all(|a| a.id != account));
         assert!(
             transactions_of(store)
@@ -450,10 +443,10 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
     });
 
     let OnStorage { store, pending, .. } = on;
-    let reopened = restart(cx, (store, pending), writer, dir.path(), today);
+    let reopened = restart((store, pending), writer, dir.path(), today);
 
-    assert_eq!(resolution(cx, &reopened), Some(Resolution::Unresolved));
-    reopened.read_with(cx, |store, _| {
+    assert_eq!(resolution(&reopened), Some(Resolution::Unresolved));
+    read(&reopened, |store| {
         assert!(accounts_of(store).iter().all(|a| a.id != account));
         assert!(
             budgets_of(store)
@@ -466,14 +459,14 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
 
 /// An Account a Bill Plan pays from is refused by `lib-account-deletion` before anything is
 /// written, so a restart finds the Account and its Transactions as they were.
-#[gpui::test]
-fn deleting_an_account_a_bill_plan_pays_from_is_refused_whole(cx: &mut TestAppContext) {
+#[test]
+fn deleting_an_account_a_bill_plan_pays_from_is_refused_whole() {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
     let storage = storage_in(dir.path(), today);
     let writer = storage.writer.clone();
-    let on = on_storage_with_bills(cx, storage);
-    let (account, plans, booked) = on.store.read_with(cx, |store, _| {
+    let on = on_storage_with_bills(storage);
+    let (account, plans, booked) = read(&on.store, |store| {
         let account = plans_of(store)[0].account_id;
         let plans = plans_of(store)
             .iter()
@@ -493,8 +486,8 @@ fn deleting_an_account_a_bill_plan_pays_from_is_refused_whole(cx: &mut TestAppCo
     );
 
     let OnStorage { store, pending, .. } = on;
-    let reopened = restart(cx, (store, pending), writer, dir.path(), today);
-    reopened.read_with(cx, |store, _| {
+    let reopened = restart((store, pending), writer, dir.path(), today);
+    read(&reopened, |store| {
         assert!(accounts_of(store).iter().any(|a| a.id == account));
         assert_eq!(
             transactions_of(store)

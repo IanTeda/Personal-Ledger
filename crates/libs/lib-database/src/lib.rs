@@ -129,6 +129,10 @@ pub use writer::{Domain, WriteFailure, Writer};
 #[cfg(test)]
 mod test_support;
 
+/// A Ledger file's cross-domain writes read back after a reopen.
+#[cfg(test)]
+mod restart_tests;
+
 /// Crate error type for all database operations.
 mod error;
 pub use error::Error;

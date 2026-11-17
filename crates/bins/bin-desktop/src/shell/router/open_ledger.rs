@@ -13,9 +13,6 @@
 //! (#1202). The input door announces each input's
 //! writes through its [`Announcer`] (#1081).
 
-#[cfg(test)]
-mod restart_tests;
-
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
