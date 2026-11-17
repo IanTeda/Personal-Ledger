@@ -131,4 +131,17 @@ mod tests {
             assert!(reads.tag_count(tag).is_none());
         }
     }
+
+    #[test]
+    fn the_import_bundle_reads_payees_and_categories_and_keeps_the_statement_given_on_either() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for ledger in [fakes(), file(dir.path())] {
+            let today = chrono::NaiveDate::from_ymd_opt(2026, 3, 15).expect("a date");
+            let statement = std::rc::Rc::new(lib_transaction_import::SeededStatement::stub(today));
+            let ports = ledger.transaction_import(statement);
+
+            assert!(!ports.payees.borrow().import_payees().is_empty());
+            assert!(!ports.categories.import_categories().is_empty());
+        }
+    }
 }

@@ -8,49 +8,12 @@
 //! - `router.rs` is `impl ImportRouter`: a commit lands on the Transactions list's first row, and
 //!   Notices go onto the bin's queue.
 //!
-//! A commit writes through `lib-database`'s `TransactionImportAdapter`, over the Payees and
-//! Transactions stores, so its new Payees and Transactions join the one
-//! pending batch and land in the commit of the input that continued.
+//! A commit writes through the ports `LedgerPorts::transaction_import` builds, over the Payees and
+//! Transactions stores, so its new Payees and Transactions join the one pending batch and land in
+//! the commit of the input that continued.
 
 pub(crate) mod router;
 pub(crate) mod view;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use lib_core::Clock;
-use lib_database::{StoredImportReads, TransactionImportAdapter};
-use lib_transaction_import::{ImportPorts, SeededStatement};
-
 pub use router::import_page;
 pub use view::page::ImportPage;
-
-/// What the step reads and writes, which `lib-database`'s `LedgerPorts` built over the stores: the
-/// import port (also its Payees read) and the Accounts and Categories reads. The seeded statement
-/// is dated back from `clock`'s today when the step opens.
-#[derive(Clone)]
-pub struct ImportStores {
-    pub import: Rc<RefCell<TransactionImportAdapter>>,
-    pub reads: Rc<StoredImportReads>,
-}
-
-impl ImportStores {
-    /// The port and reads `ports` built.
-    pub fn of(ports: &lib_database::LedgerPorts) -> Self {
-        Self {
-            import: ports.transaction_import.clone(),
-            reads: ports.import_reads.clone(),
-        }
-    }
-
-    /// The ports the step opens on, its statement dated from `clock`'s today.
-    pub(crate) fn ports(&self, clock: &Clock) -> ImportPorts {
-        ImportPorts {
-            import: self.import.clone(),
-            payees: self.import.clone(),
-            accounts: self.reads.clone(),
-            categories: self.reads.clone(),
-            statement: Rc::new(SeededStatement::stub(clock.today())),
-        }
-    }
-}

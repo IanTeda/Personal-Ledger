@@ -208,7 +208,9 @@ impl OpenLedger {
 
         // The Transactions page and the Import step come from `lib-database`'s `LedgerPorts`.
         let transactions_ports = ports.transactions();
-        let import_stores = crate::transaction_import::ImportStores::of(&ports);
+        let import_ports = ports.transaction_import(Rc::new(
+            lib_transaction_import::SeededStatement::stub(clock.today()),
+        ));
         // The Dashboard and the rail's badges read through the reads `LedgerPorts` built.
         let dashboard_reads = ports.dashboard_reads.clone();
         let rail_reads = ports.shell_reads.clone();
@@ -236,7 +238,7 @@ impl OpenLedger {
         );
         crate::transactions::router::install(&transactions_view, cx);
         let import_view = crate::transaction_import::import_page(
-            import_stores,
+            import_ports,
             &announcer,
             keybindings,
             clock.clone(),

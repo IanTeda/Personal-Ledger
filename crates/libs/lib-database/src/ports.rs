@@ -412,6 +412,23 @@ impl LedgerPorts {
         }
     }
 
+    /// What the Import step writes and reads through, as `lib-transaction-import`'s own bundle: the
+    /// import port and its Payees read over the one adapter, and the Accounts and Categories reads.
+    /// The caller dates `statement` (the seeded one, from the Clock).
+    #[must_use]
+    pub fn transaction_import(
+        &self,
+        statement: Rc<dyn lib_transaction_import::StatementSource>,
+    ) -> lib_transaction_import::ImportPorts {
+        lib_transaction_import::ImportPorts {
+            import: self.transaction_import.clone(),
+            payees: self.transaction_import.clone(),
+            accounts: self.import_reads.clone(),
+            categories: self.import_reads.clone(),
+            statement,
+        }
+    }
+
     /// The tags ports, a clone of the one value every page shares.
     #[must_use]
     pub fn tags(&self) -> lib_tags::SharedPorts {
