@@ -29,7 +29,8 @@ use super::statusline::PageStatus;
 use crate::announcer::{Announcer, LedgerChanged, notify_on};
 use crate::navigation::chord::chord;
 use crate::settings::SettingsPage;
-use crate::settings::pages::{PageFrame, PageRowClicked};
+use crate::settings::pages::PageRowClicked;
+use crate::shell::view::window_size::WindowSize;
 use crate::view::event::{Reveal, ViewEvent, ViewMode};
 use crate::view::help::HelpGroup;
 
@@ -183,9 +184,12 @@ pub enum PageCue {
     /// that keeps what it read until told. Sent only by [`ModulePage`]'s own Announcer
     /// subscription, never by a host; a page that translates it to `None` only repaints.
     LedgerChanged,
-    /// The space the page is drawn in (Display's grid columns), told as the Settings View hands
-    /// it its frame, which can be every draw. Layout, not an input, so nothing commits.
-    Framed(PageFrame),
+    /// The Window Size the page is drawn at (Units docks its pane at X-Large), told as the page is
+    /// built and as the Window Size changes, and by `Root` on every draw of its active page.
+    /// Layout, not an input, so nothing commits. It is read from the window as it draws, so it
+    /// never lags; a page measuring its own element (Display's Colour Theme grid) does so as it
+    /// paints and runs what it measured through [`ModulePage::told`].
+    Framed(WindowSize),
     /// A record another View handed off, to show.
     Reveal(Reveal),
     /// Whether the page has the keyboard, told as the host draws it and as focus moves in or out,
@@ -393,7 +397,7 @@ impl<P: PageView> ModulePage<P> {
     /// takes it. On [`PageCue::Entered`] the widget state starts afresh (scrolled to the top) and
     /// the page redraws, even when it has no event for it; on [`PageCue::Focused`] the page notes
     /// the focus its own rings follow. A [`PageCue::Reveal`] is sent as an input, joining the
-    /// hand-off's; the others are told outside any input and commit nothing.
+    /// hand-off's; the others are [`Self::told`], outside any input, committing nothing.
     pub fn cued(&mut self, cue: PageCue, cx: &mut Context<'_, Self>) {
         // The host's half first: what the page keeps of the cue itself, whether the cue is an
         // input, and whether it redraws with no event.
@@ -411,13 +415,22 @@ impl<P: PageView> ModulePage<P> {
         };
         match P::cued(cue).filter(|event| self.presenter.takes(event)) {
             Some(event) if input => self.send(event, cx),
-            Some(event) => {
-                if let Some(followed) = self.handle(event, cx) {
-                    cx.emit(followed);
-                }
-            }
+            Some(event) => self.told(event, cx),
             None if redraws => cx.notify(),
             None => {}
+        }
+    }
+
+    /// An event of the page's own Presenter run outside any input, the one way a page does so:
+    /// through `takes` and `handle` as a cue's event is, committing nothing, then redrawing. For
+    /// what is layout, not a person's input: a cue, or what the page measured as it painted
+    /// (Display's grid columns), which it defers to after the draw.
+    pub fn told(&mut self, event: P::Event, cx: &mut Context<'_, Self>) {
+        if !self.presenter.takes(&event) {
+            return;
+        }
+        if let Some(followed) = self.handle(event, cx) {
+            cx.emit(followed);
         }
     }
 

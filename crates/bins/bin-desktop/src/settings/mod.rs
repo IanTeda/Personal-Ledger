@@ -11,6 +11,10 @@
 //! by [`state::SettingsView`] and drawn here from its view model, its clicks going through
 //! [`PageClicks`]. What stays the Desktop's of a page's identity is its icon ([`icon`]) and which
 //! page shows a revealed record ([`for_reveal`]).
+//!
+//! The pages are framed in the Window Size as they are built and as it changes, never as the body
+//! draws or before a key: a page that lays out by a width it draws at (Display's Colour Theme
+//! grid) measures its own element as it paints (#1222).
 
 pub mod about;
 pub(crate) mod controls;
@@ -170,7 +174,6 @@ impl Render for SettingsView {
                 .children(pane)
                 .into_any_element();
         }
-        self.sync_frame(cx);
         let page = self.selected_page();
         page.cue(PageCue::Focused(page_focused), cx);
         let meta = page

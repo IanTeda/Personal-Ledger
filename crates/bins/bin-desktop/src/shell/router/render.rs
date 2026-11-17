@@ -19,7 +19,6 @@ use crate::{
     documents::{self},
     navigation::explorer::{self as explorer_view},
     navigation::nav::{FocusZone, InputMode},
-    settings::pages::PageFrame,
     shell::view::dialog_entity::DialogHandle,
     shell::view::page_clicks::PageClicks,
     shell::view::rail::{self as rail_view, context::ContextRail, primary::PrimaryRail},
@@ -166,16 +165,12 @@ impl Render for Root {
         let clicks = PageClicks::new(cx);
 
         // The active View's own element and the narrowest it lays out at, the View told whether
-        // the View zone has focus and the space it is drawn in before the status line reads its
-        // page status. A View with no handle is drawn here (`render_view`).
+        // the View zone has focus and the Window Size it is drawn at before the status line reads
+        // its page status. A View with no handle is drawn here (`render_view`).
         let active_view = self.active_view(cx);
-        let frame = PageFrame {
-            window_size,
-            body_width: f32::from(self.view_x_scroll_handle.bounds().size.width),
-        };
         let active_element = self.active_page(cx).map(|page| {
             page.cue(PageCue::Focused(focus == FocusZone::View), cx);
-            page.cue(PageCue::Framed(frame), cx);
+            page.cue(PageCue::Framed(window_size), cx);
             (page.view().into_any_element(), page.layout().min_width)
         });
         let view_status = self.view_status(cx);

@@ -1,8 +1,9 @@
 //! Settings › Display's View: `lib-settings`' Display Presenter is the [`PageView`] the generic
 //! `ModulePage` hosts (ADR-0056), which the Settings View hosts as any other page. It names the
-//! page's Router, tells the Presenter how many Colour Theme cards fit a row ([`PageView::cued`]),
-//! and draws the view model (`render.rs`, `colour_theme.rs`); the keymap, the take, send and handle
-//! path and the clicks' path are the generic page's. The date style, Colour Theme and Appearance
+//! page's Router, tells the Presenter how many Colour Theme cards fit a row as the grid measures
+//! itself ([`colour_theme::GridColumns`], through `ModulePage::told`), and draws the view model
+//! (`render.rs`, `colour_theme.rs`); the keymap, the take, send and handle path and the clicks'
+//! path are the generic page's. The date style, Colour Theme and Appearance
 //! are written through the Presenter's `DeviceConfiguration` (`super::device`); the Display output
 //! reaches the Shell as `ViewEvent::DisplayChanged` and a saved colour is applied by the page's
 //! Router (`super::router`). Each key and click is one input (`crate::input::send`).
@@ -45,7 +46,7 @@ pub fn display_page(
 
 impl PageView for DisplayPresenter {
     type Setup = ();
-    type Widgets = ();
+    type Widgets = colour_theme::GridColumns;
     type Before = ();
 
     /// Display reads Configuration, not the Ledger.
@@ -62,15 +63,14 @@ impl PageView for DisplayPresenter {
 
     page_router!();
 
-    /// The page body's width sets how many Colour Theme cards fit a row, and the focus is the
-    /// Presenter's to place on its controls.
+    /// The focus is the Presenter's to place on its controls. The Window Size alone doesn't say
+    /// how many Colour Theme cards fit a row: the grid measures that itself as it paints.
     fn cued(cue: PageCue) -> Option<DisplayEvent> {
         match cue {
-            PageCue::Framed(frame) => Some(DisplayEvent::SetGridColumns(
-                colour_theme::grid_columns(frame.body_width),
-            )),
             PageCue::Focused(focused) => Some(DisplayEvent::Focused(focused)),
-            PageCue::Entered | PageCue::LedgerChanged | PageCue::Reveal(_) => None,
+            PageCue::Entered | PageCue::LedgerChanged | PageCue::Framed(_) | PageCue::Reveal(_) => {
+                None
+            }
         }
     }
 
@@ -92,7 +92,7 @@ impl PageView for DisplayPresenter {
         _window: &mut Window,
         cx: &mut Context<'_, DisplayPage>,
     ) -> AnyElement {
-        render::page(view, page.clicks, cx)
+        render::page(view, page.clicks, page.widgets, cx)
     }
 
     /// The keys the status line shows: the grid's while it has the keyboard, else the controls'.

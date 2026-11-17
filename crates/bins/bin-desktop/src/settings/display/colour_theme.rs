@@ -9,7 +9,10 @@
 //! read from the `crate::theme::colours::Colours` Global. Focus and hover never preview, only a
 //! click or Enter selects.
 
-use gpui::{AnyElement, App, FontWeight, Rgba, SharedString, div, prelude::*, px};
+use std::cell::Cell;
+use std::rc::Rc;
+
+use gpui::{AnyElement, App, Context, FontWeight, Rgba, SharedString, canvas, div, prelude::*, px};
 use lib_colour_theme::{ColourAppearance, ColourVariant, ResolvedColours};
 use lib_core::configuration::ConfigKey;
 use lib_settings::presenter::display::appearance_label;
@@ -45,19 +48,51 @@ pub fn system_hint(system: Option<ColourVariant>) -> String {
     }
 }
 
-/// How many cards fit on one grid row in a Settings body `body_width` wide, for `j`/`k`.
-pub fn grid_columns(body_width: f32) -> usize {
-    // The body's 28px side padding and its 2px focus border.
-    let inner = body_width - 58.0;
-    let fits = ((inner + CARD_GAP) / (CARD_WIDTH + CARD_GAP)).floor();
+/// How many cards fit on one row of a grid `grid_width` wide, for `j`/`k`: each card but the last
+/// takes a gap after it.
+pub fn grid_columns(grid_width: f32) -> usize {
+    let fits = ((grid_width + CARD_GAP) / (CARD_WIDTH + CARD_GAP)).floor();
     if fits >= 1.0 { fits as usize } else { 1 }
+}
+
+/// The grid's own measure of how many cards fit a row: the count the page last told the Presenter,
+/// so a draw at an unchanged width tells it nothing. It is the page's widget state, so a page
+/// entered afresh measures again, and the Presenter declines a count it holds.
+#[derive(Debug, Clone, Default)]
+pub struct GridColumns(Rc<Cell<Option<usize>>>);
+
+impl GridColumns {
+    /// An invisible overlay on the grid that measures it as it paints. When the count its width
+    /// fits changes, the page is told it once the draw is done, outside any input, and redraws
+    /// with it, so the columns are the ones on screen before the next key (#1222).
+    fn measure(&self, cx: &Context<'_, DisplayPage>) -> impl IntoElement {
+        let told = self.0.clone();
+        let page = cx.weak_entity();
+        canvas(
+            move |bounds, _window, cx| {
+                let columns = grid_columns(f32::from(bounds.size.width));
+                if told.replace(Some(columns)) != Some(columns) {
+                    cx.defer(move |cx| {
+                        // A page that has gone has no grid to lay out.
+                        let _ = page.update(cx, |page, cx| {
+                            page.told(DisplayEvent::SetGridColumns(columns), cx);
+                        });
+                    });
+                }
+            },
+            |_bounds, _state, _window, _cx| {},
+        )
+        .absolute()
+        .size_full()
+    }
 }
 
 pub fn render(
     view: &ColourThemeView,
     appearance: &FieldView,
     clicks: &PageClicks<DisplayPage>,
-    cx: &App,
+    grid: &GridColumns,
+    cx: &Context<'_, DisplayPage>,
 ) -> AnyElement {
     let state = colours::colours(cx);
     div()
@@ -90,12 +125,18 @@ pub fn render(
             cx,
         ))
         .child(
-            div().flex().flex_wrap().gap(px(CARD_GAP)).children(
-                view.cards
-                    .iter()
-                    .enumerate()
-                    .map(|(index, view)| card(index, view, clicks, cx)),
-            ),
+            div()
+                .relative()
+                .flex()
+                .flex_wrap()
+                .gap(px(CARD_GAP))
+                .children(
+                    view.cards
+                        .iter()
+                        .enumerate()
+                        .map(|(index, view)| card(index, view, clicks, cx)),
+                )
+                .child(grid.measure(cx)),
         )
         .children(override_note(cx))
         .children(state.failures().iter().map(|failure| {
@@ -250,8 +291,9 @@ mod tests {
 
     #[test]
     fn grid_columns_fits_cards_and_never_drops_below_one() {
-        assert_eq!(grid_columns(58.0 + 160.0), 1);
-        assert_eq!(grid_columns(58.0 + 3.0 * 160.0 + 2.0 * 12.0), 3);
+        assert_eq!(grid_columns(160.0), 1);
+        assert_eq!(grid_columns(3.0 * 160.0 + 2.0 * 12.0), 3);
+        assert_eq!(grid_columns(3.0 * 160.0 + 2.0 * 12.0 - 1.0), 2);
         assert_eq!(grid_columns(100.0), 1);
     }
 

@@ -196,9 +196,10 @@ fn grid_focus(ui: &mut Harness<'_>) -> Option<usize> {
     ui.settings::<SettingsDisplaySnapshot>().colour_theme_focus
 }
 
-/// The grid's columns follow the body the page is drawn in, as a Window Size change leaves it. A
-/// draw frames the page with the body the draw before measured, so this holds only because the
-/// Settings View frames the page again before each key (#1129).
+/// The grid's columns follow the width the page is drawn at, as a Window Size change leaves it. The
+/// grid measures itself as it paints and the page redraws with the count straight after, so the
+/// first key after a resize steps by the columns on screen, with nothing framing the page per key
+/// (#1222).
 #[gpui::test]
 fn j_in_the_grid_steps_a_row_of_the_columns_the_window_size_leaves(app: &mut TestAppContext) {
     let mut ui = in_display(app);

@@ -52,9 +52,9 @@ impl PageView for UnitsPagePresenter {
     /// X-Large docks the detail pane, which the Presenter takes only as a change.
     fn cued(cue: PageCue) -> Option<UnitsPageEvent> {
         match cue {
-            PageCue::Framed(frame) => Some(UnitsPageEvent::SetDocked(
-                frame.window_size == WindowSize::XLarge,
-            )),
+            PageCue::Framed(window_size) => {
+                Some(UnitsPageEvent::SetDocked(window_size == WindowSize::XLarge))
+            }
             _ => None,
         }
     }

@@ -11,7 +11,9 @@
 //! Settings View answers none it would only stub. Both hosts keep their typed Entities
 //! for what one page hands another (a reveal, a month turning): only dispatch is erased. A
 //! `[keybindings]` rebind and a Display change reach every page through it too (#1167), so a new
-//! page can't be left out of either.
+//! page can't be left out of either. A page's frame, `cue(PageCue::Framed(..))`, is the Window Size
+//! alone: `Root` tells its active page it on every draw, the Settings View its pages as each is
+//! built and as the size changes, and no host frames a page before a key (#1222).
 
 use std::rc::Rc;
 

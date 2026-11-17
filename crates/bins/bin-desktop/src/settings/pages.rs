@@ -1,10 +1,11 @@
-//! The Settings pages: [`SettingsPages`], every page's Entity, and [`PageFrame`], the space they are
-//! drawn in. Every page is a [`ModulePage`](crate::shell::view::module_page::ModulePage) (#1100), and
+//! The Settings pages: [`SettingsPages`], every page's Entity. Every page is a
+//! [`ModulePage`](crate::shell::view::module_page::ModulePage) (#1100), and
 //! [`SettingsPageHandle`], the one hosting trait `Root` reaches the active View through (#1101)
 //! with the Settings body's own verbs on top (#1129), is its surface over the `Entity`, so
 //! [`SettingsPages::get`] hands the Settings View the open page as one `dyn` handle and `get` is the
-//! only match on the page. Each page is framed as it is built, on every draw, and before a key or
-//! palette Command reaches it.
+//! only match on the page. Each page is framed in the Window Size as it is built and as the Window
+//! Size changes, and nothing else: the Window Size is the whole frame, and Display measures its own
+//! Colour Theme grid as it paints (#1222).
 
 use gpui::{App, AppContext as _, Context, Entity, Subscription};
 
@@ -70,16 +71,6 @@ pub struct SettingsSetup {
     pub tags: Built<TagsPagePresenter>,
     pub inventory: Built<InventoryPagePresenter>,
     pub ledger: lib_settings::SettingsLedger,
-}
-
-/// What the Settings View tells its pages about the space they are drawn in: as each is built, on
-/// every draw or Window Size change, and before a key or palette Command reaches one.
-#[derive(Debug, Clone, Copy)]
-pub struct PageFrame {
-    /// The Window Size the View was last drawn at.
-    pub window_size: WindowSize,
-    /// The page body's width, which sets the Display page's Colour Theme grid columns.
-    pub body_width: f32,
 }
 
 /// The Entity of every Settings page. Settings builds them and `Root` reaches them only through
@@ -196,11 +187,11 @@ impl LedgerPages {
 
 impl SettingsPages {
     /// The This device pages, with no Ledger open, General and Display on `device`, each reading
-    /// it once, their keys built from `config`, each framed in `frame`.
+    /// it once, their keys built from `config`, each framed in `window_size`.
     pub fn new(
         device: Rc<dyn DeviceConfiguration>,
         config: &KeyBindingConfig,
-        frame: PageFrame,
+        window_size: WindowSize,
         cx: &mut Context<'_, SettingsView>,
     ) -> Self {
         let log_feed = cx.new(|_| LogFeed);
@@ -223,22 +214,21 @@ impl SettingsPages {
             about: cx.new(|cx| about_page(env!("CARGO_PKG_VERSION"), config, cx)),
             ledger: None,
         };
-        pages.frame(frame, cx);
+        pages.frame(window_size, cx);
         pages
     }
 
     /// Adds the This Ledger pages built on an Open Ledger, in place of any built before, each
-    /// framed in `frame`, so a palette Command reaching one before its first draw sees the frame.
-    pub fn open_ledger(&mut self, pages: LedgerPages, frame: PageFrame, cx: &mut App) {
+    /// framed in `window_size`, so a palette Command reaching one before its first draw sees it.
+    pub fn open_ledger(&mut self, pages: LedgerPages, window_size: WindowSize, cx: &mut App) {
         self.ledger = Some(pages);
-        self.frame(frame, cx);
+        self.frame(window_size, cx);
     }
 
-    /// Tells every page built the space it is drawn in, so a page acts on the layout on screen, not
-    /// the one it last saw.
-    pub fn frame(&self, frame: PageFrame, cx: &mut App) {
+    /// Tells every page built the Window Size it is drawn at.
+    pub fn frame(&self, window_size: WindowSize, cx: &mut App) {
         for page in self.all() {
-            page.cue(PageCue::Framed(frame), cx);
+            page.cue(PageCue::Framed(window_size), cx);
         }
     }
 

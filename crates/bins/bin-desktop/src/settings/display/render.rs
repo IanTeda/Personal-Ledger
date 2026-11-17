@@ -5,7 +5,7 @@
 //! form's `FieldView`, read by its `DisplayField`; every click is a Presenter event through
 //! [`PageClicks`].
 
-use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, SharedString, div, prelude::*, px};
 use lib_settings::presenter::display::DATE_STYLE_CHOICES;
 use lib_settings::presenter::{FieldView, PreviewView};
 use lib_settings::{DisplayEvent, DisplayField, DisplayViewModel};
@@ -46,7 +46,8 @@ pub fn preview_row_padding_y(density: RowDensity) -> f32 {
 pub(super) fn page(
     model: &DisplayViewModel,
     clicks: &PageClicks<DisplayPage>,
-    cx: &App,
+    grid: &colour_theme::GridColumns,
+    cx: &Context<'_, DisplayPage>,
 ) -> AnyElement {
     let field = |field| model.fields.view(field);
     let columns =
@@ -96,11 +97,9 @@ pub(super) fn page(
         .flex()
         .flex_col()
         .child(columns)
-        .children(
-            field(DisplayField::Appearance).map(|appearance| {
-                colour_theme::render(&model.colour_theme, appearance, clicks, cx)
-            }),
-        )
+        .children(field(DisplayField::Appearance).map(|appearance| {
+            colour_theme::render(&model.colour_theme, appearance, clicks, grid, cx)
+        }))
         .into_any_element()
 }
 
