@@ -77,9 +77,6 @@ pub struct OpenLedger {
     /// The Ledger's ports, reloaded here when a write to them fails, and which a new month's Bill
     /// Schedule is generated through.
     pub(super) ports: lib_database::LedgerPorts,
-    /// The Units ports the Units page and the General page share, reloaded here when a write to
-    /// them fails.
-    pub(super) units: lib_units::SharedPorts,
     /// The Announcer's count when the rail's counts were last read, so the Shell reads them afresh
     /// only after a change rather than after every input.
     pub(super) rail_counted_at: std::cell::Cell<usize>,
@@ -215,7 +212,6 @@ impl OpenLedger {
         let dashboard_reads = ports.dashboard_reads();
         let rail_reads = ports.shell_rail();
         let budgets_ports = ports.budgets();
-        let units_ports = settings_setup.units.1.ports.clone();
         // The pages repaint when a domain they read is announced.
         let categories_subscription = notify_on(&announcer, lib_database::Domain::Categories, cx);
         let units_subscription = notify_on(&announcer, lib_database::Domain::Units, cx);
@@ -300,7 +296,6 @@ impl OpenLedger {
         Self {
             announcer,
             ports,
-            units: units_ports,
             // No count read yet, so the first refresh after the Ledger opens reads its counts.
             rail_counted_at: std::cell::Cell::new(usize::MAX),
             rail_reads,

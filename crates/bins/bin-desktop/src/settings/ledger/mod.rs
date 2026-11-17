@@ -39,17 +39,15 @@ pub struct LedgerPageSetup {
 }
 
 impl LedgerPageSetup {
-    /// The index pane's counts.
-    pub fn summaries(&self) -> Rc<dyn LedgerSummaries> {
-        self.ledger.summaries.clone()
-    }
-}
-
-impl LedgerPageSetup {
     pub fn new(ports: &LedgerPorts) -> Self {
         Self {
             ledger: ports.settings_ledger(),
         }
+    }
+
+    /// The index pane's counts.
+    pub fn summaries(&self) -> Rc<dyn LedgerSummaries> {
+        self.ledger.summaries.clone()
     }
 }
 
