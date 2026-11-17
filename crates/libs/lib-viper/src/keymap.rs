@@ -27,7 +27,9 @@ pub struct Binding<E> {
     pub command: &'static str,
     pub chord: &'static str,
     pub event: E,
-    pub argument_event: Option<fn(&'static str, String) -> E>,
+    /// Private so every `Binding` comes from `hidden`, `listed` or `listed_with_argument`, which
+    /// set this and `Palette::Listed::takes_argument` together: ADR-0037's "can't disagree".
+    pub(crate) argument_event: Option<fn(&'static str, String) -> E>,
     pub palette: Palette,
 }
 
@@ -132,49 +134,34 @@ pub struct Keymap<E> {
     bindings: Vec<Bound<E>>,
 }
 
-#[derive(Debug, Clone)]
+/// A binding's Argument constructor is an `Arc` so [`Keymap::map`] can wrap it in a closure, which
+/// a `fn` pointer can't hold.
+#[derive(Clone)]
 struct Bound<E> {
     chord: String,
     command: &'static str,
     event: E,
-    argument_event: Option<ArgumentEvent<E>>,
+    argument_event: Option<Arc<dyn Fn(&'static str, String) -> E + Send + Sync>>,
     palette: Palette,
 }
 
-/// A binding's Argument constructor as a keymap holds it: the binding's `fn`, or one
-/// [`Keymap::map`] wrapped, which a `fn` pointer can't hold.
-enum ArgumentEvent<E> {
-    Plain(fn(&'static str, String) -> E),
-    Mapped(Arc<dyn Fn(&'static str, String) -> E + Send + Sync>),
-}
-
-impl<E> ArgumentEvent<E> {
-    fn build(&self, name: &'static str, argument: String) -> E {
-        match self {
-            Self::Plain(build) => build(name, argument),
-            Self::Mapped(build) => build(name, argument),
-        }
-    }
-}
-
-impl<E> Clone for ArgumentEvent<E> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Plain(build) => Self::Plain(*build),
-            Self::Mapped(build) => Self::Mapped(Arc::clone(build)),
-        }
-    }
-}
-
-impl<E> fmt::Debug for ArgumentEvent<E> {
+impl<E> fmt::Debug for Bound<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("ArgumentEvent")
+        f.debug_struct("Bound")
+            .field("chord", &self.chord)
+            .field("command", &self.command)
+            .field("has_argument_event", &self.argument_event.is_some())
+            .field("palette", &self.palette)
+            .finish_non_exhaustive()
     }
 }
 
 impl<E: Clone> Keymap<E> {
     /// `defaults`, each chord replaced by the one `config` binds its command to.
-    pub fn new(defaults: &[Binding<E>], config: &KeyBindingConfig) -> Self {
+    pub fn new(defaults: &[Binding<E>], config: &KeyBindingConfig) -> Self
+    where
+        E: 'static,
+    {
         let bindings = defaults
             .iter()
             .map(|binding| {
@@ -183,12 +170,19 @@ impl<E: Clone> Keymap<E> {
                     chord: chord.to_string(),
                     command: binding.command,
                     event: binding.event.clone(),
-                    argument_event: binding.argument_event.map(ArgumentEvent::Plain),
+                    argument_event: binding.argument_event.map(|build| {
+                        Arc::new(build) as Arc<dyn Fn(&'static str, String) -> E + Send + Sync>
+                    }),
                     palette: binding.palette,
                 }
             })
             .collect();
         Self { bindings }
+    }
+
+    /// The first binding of `command`, the one its event and Argument constructor come from.
+    fn find(&self, command: &str) -> Option<&Bound<E>> {
+        self.bindings.iter().find(|bound| bound.command == command)
     }
 
     /// This keymap with each event wrapped by `wrap`, chords, palette entries and Argument
@@ -212,9 +206,8 @@ impl<E: Clone> Keymap<E> {
                     event: wrap(bound.event),
                     argument_event: bound.argument_event.map(|build| {
                         let wrap = wrap.clone();
-                        ArgumentEvent::Mapped(Arc::new(move |name, argument| {
-                            wrap(build.build(name, argument))
-                        }))
+                        Arc::new(move |name, argument| wrap(build(name, argument)))
+                            as Arc<dyn Fn(&'static str, String) -> F + Send + Sync>
                     }),
                     palette: bound.palette,
                 })
@@ -236,23 +229,17 @@ impl<E: Clone> Keymap<E> {
     /// The event `command` sends, whatever its chord: the palette runs a Command by name, so it
     /// reaches the same event its key does, bound or not.
     pub fn event_for(&self, command: &str) -> Option<E> {
-        self.bindings
-            .iter()
-            .find(|bound| bound.command == command)
-            .map(|bound| bound.event.clone())
+        self.find(command).map(|bound| bound.event.clone())
     }
 
     /// The event the palette sends for `command` with `argument` typed after its name: the
     /// binding's Argument constructor's, given its listed name and the trimmed Argument, even an
     /// empty one; else the plain event, the Argument dropped.
     pub fn palette_event(&self, command: &str, argument: &str) -> Option<E> {
-        let bound = self
-            .bindings
-            .iter()
-            .find(|bound| bound.command == command)?;
+        let bound = self.find(command)?;
         match (&bound.argument_event, bound.palette) {
             (Some(build), Palette::Listed { name, .. }) => {
-                Some(build.build(name, argument.trim().to_string()))
+                Some(build(name, argument.trim().to_string()))
             }
             _ => Some(bound.event.clone()),
         }
@@ -717,6 +704,36 @@ mod tests {
                 argument: "x".to_string()
             }))
         );
+    }
+
+    #[test]
+    fn takes_argument_is_set_exactly_where_the_palette_builds_the_argument_event() {
+        const EVERY_KIND: &[Binding<Typed>] = &[
+            Binding::hidden("rows.hidden", "h", Typed::Key),
+            Binding::listed(DELETE, "d", Typed::Key, "rows delete", delete_description),
+            Binding::listed_with_argument(
+                EDIT,
+                "e",
+                Typed::Key,
+                typed,
+                "rows edit",
+                delete_description,
+            ),
+        ];
+        let keymap = Keymap::new(EVERY_KIND, &KeyBindingConfig::default());
+
+        for bound in keymap.bindings() {
+            let takes_argument = takes_argument(bound.palette).unwrap_or(false);
+            let builds_argument = matches!(
+                keymap.palette_event(bound.command, "x"),
+                Some(Typed::Command { .. })
+            );
+            assert_eq!(
+                takes_argument, builds_argument,
+                "{} disagrees between its flag and its constructor",
+                bound.command
+            );
+        }
     }
 
     #[test]

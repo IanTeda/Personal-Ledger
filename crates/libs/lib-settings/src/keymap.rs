@@ -99,7 +99,7 @@ pub(crate) struct PlainPageKeys<E> {
     pub(crate) legend: Vec<Hint>,
 }
 
-impl<E: Clone> PlainPageKeys<E> {
+impl<E: Clone + 'static> PlainPageKeys<E> {
     pub(crate) fn new(config: &KeyBindingConfig) -> Self {
         Self {
             keymap: Keymap::new(&[], &KeyBindingConfig::default()),
