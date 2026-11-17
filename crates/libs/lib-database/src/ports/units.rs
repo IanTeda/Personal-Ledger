@@ -80,7 +80,7 @@ impl BaseUnitRepository for BaseUnit {
 /// [`lib_units::UnitsPorts`] over the shared Units store, and the usage and holdings read from the
 /// stores of the domains that name a Unit. A write is lent the same reads as its usage, so no write
 /// passes a stand-in usage to reach the store.
-pub struct StoredUnitsPorts {
+pub(crate) struct StoredUnitsPorts {
     units: Units,
     price_sources: PriceSources,
     base_unit: BaseUnit,

@@ -9,7 +9,7 @@
 //! cascade).
 //!
 //! Usage is other domains' rows, so `lib-payees`' `PayeeUsage` is answered by
-//! [`StoredPayeeReads`](crate::StoredPayeeReads) from the Transactions and Bills stores (#992),
+//! [`StoredPayeeReads`](crate::adapter::store::StoredPayeeReads) from the Transactions and Bills stores (#992),
 //! counted by each of their stores. A Payee those tables name can't be deleted (their foreign
 //! keys), which backstops the delete refusal.
 
@@ -260,10 +260,11 @@ mod tests {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
+    use crate::adapter::store::StoredPayeeReads;
     use crate::commit::Commit;
     use crate::test_support::TransactionReadsFactory;
     use crate::writer::WriteFailure;
-    use crate::{BillsAdapter, CategoriesAdapter, StoredPayeeReads, TransactionsAdapter};
+    use crate::{BillsAdapter, CategoriesAdapter, TransactionsAdapter};
 
     /// The Payees adapter with its usage read as a Client reads it: through [`StoredPayeeReads`]
     /// over the Transactions, Bills and Categories adapters on the same file.

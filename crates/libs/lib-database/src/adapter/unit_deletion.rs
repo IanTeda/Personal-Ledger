@@ -16,7 +16,7 @@ use lib_units::{UnitRow, UnitUse};
 use super::store::{SharedInstitutionsStore, SharedUnitsStore};
 
 /// The deletion port over the stores the Units and Institutions modules also hold.
-pub struct UnitDeletionAdapter {
+pub(crate) struct UnitDeletionAdapter {
     units: SharedUnitsStore,
     institutions: SharedInstitutionsStore,
 }

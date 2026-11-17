@@ -17,8 +17,12 @@
 //!
 //! A domain joining it adds its store (wrapped in its recorder by [`Stores::new`]), its
 //! `Stored<Domain>Ports` in a file of its own under `ports/`, a field here holding it as the domain
-//! crate's `SharedPorts` with a line in [`LedgerPorts::new`] building it over [`SharedStores`], and
-//! a [`Domain`] variant.
+//! crate's `SharedPorts` with a line in [`LedgerPorts::new`] building it over [`SharedStores`], a
+//! method handing it out, and a [`Domain`] variant.
+//!
+//! The fields are private and the `Stored*` types `pub(crate)` (#1212), so the compiler holds the
+//! seam: a Client names only a feature crate's ports or the bundle it declares, never a type of
+//! this crate's behind them, and reaches the raw stores only through [`LedgerPorts::reload`].
 
 mod accounts;
 mod bills;
@@ -32,17 +36,17 @@ mod tags;
 mod transactions;
 mod units;
 
-pub use accounts::StoredAccountsPorts;
-pub use bills::StoredBillsPorts;
-pub use budgets::StoredBudgetsPorts;
-pub use categories::StoredCategoriesPorts;
-pub use documents::StoredDocumentsPorts;
-pub use institutions::StoredInstitutionsPorts;
-pub use inventory::StoredInventoryPorts;
-pub use payees::StoredPayeesPorts;
-pub use tags::StoredTagsPorts;
-pub use transactions::StoredTransactionsPorts;
-pub use units::StoredUnitsPorts;
+pub(crate) use accounts::StoredAccountsPorts;
+pub(crate) use bills::StoredBillsPorts;
+pub(crate) use budgets::StoredBudgetsPorts;
+pub(crate) use categories::StoredCategoriesPorts;
+pub(crate) use documents::StoredDocumentsPorts;
+pub(crate) use institutions::StoredInstitutionsPorts;
+pub(crate) use inventory::StoredInventoryPorts;
+pub(crate) use payees::StoredPayeesPorts;
+pub(crate) use tags::StoredTagsPorts;
+pub(crate) use transactions::StoredTransactionsPorts;
+pub(crate) use units::StoredUnitsPorts;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -68,72 +72,72 @@ use crate::{
 /// handed out beside it when it is built, so a Client polls it without taking it out of here.
 pub struct LedgerPorts {
     /// Every domain's store, shared: the bottom layer the ports, reads and adapters hold.
-    pub stores: SharedStores,
+    stores: SharedStores,
     /// The Units page's, its Dialogs' and the Ledger settings page's ports ([`StoredUnitsPorts`]).
-    pub units: lib_units::SharedPorts,
+    units: lib_units::SharedPorts,
     /// Unit delete's atomic port over the Units and Institutions stores ([`UnitDeletionAdapter`]).
-    pub unit_deletion: lib_unit_deletion::SharedUnitDeletion,
+    unit_deletion: lib_unit_deletion::SharedUnitDeletion,
     /// The Institutions page's and its Dialogs' ports ([`StoredInstitutionsPorts`]).
-    pub institutions: lib_institutions::SharedPorts,
+    institutions: lib_institutions::SharedPorts,
     /// The Accounts page's and its Dialogs' ports ([`StoredAccountsPorts`]).
-    pub accounts: lib_accounts::SharedPorts,
+    accounts: lib_accounts::SharedPorts,
     /// What names an Account and the Units it may count in, over the stores: what the Delete
     /// account Dialog quotes when it opens.
-    pub account_reads: StoredAccountReads,
+    account_reads: StoredAccountReads,
     /// Account delete's atomic port over the Accounts, Transactions and Bills stores
     /// ([`AccountDeletionAdapter`]).
-    pub account_deletion: lib_account_deletion::SharedDeletion,
+    account_deletion: lib_account_deletion::SharedDeletion,
     /// The Payees page's and its Dialogs' ports ([`StoredPayeesPorts`]).
-    pub payees: lib_payees::SharedPorts,
+    payees: lib_payees::SharedPorts,
     /// The Bills page's and its Dialogs' ports ([`StoredBillsPorts`]).
-    pub bills: lib_bills::SharedPorts,
+    bills: lib_bills::SharedPorts,
     /// The Tags page's and its Add and Edit Dialogs' ports ([`StoredTagsPorts`]).
-    pub tags: lib_tags::SharedPorts,
+    tags: lib_tags::SharedPorts,
     /// Tag remove and merge's atomic port over the Tags and Transactions stores
     /// ([`TagRemovalAdapter`]).
-    pub tag_removal: lib_tag_removal::SharedTagRemoval,
+    tag_removal: lib_tag_removal::SharedTagRemoval,
     /// What the Remove tag and Merge tags Dialogs show when they open.
-    pub tag_removal_reads: StoredTagRemovalReads,
+    tag_removal_reads: StoredTagRemovalReads,
     /// The Categories page's repository ([`StoredCategoriesPorts`]).
-    pub categories: lib_categories::SharedCategories,
+    categories: lib_categories::SharedCategories,
     /// The same ports for the Add and Edit category Dialogs' save: the usage, the Monthly budget
     /// and the handover. A value of its own over the same stores, so a Presenter holding the
     /// repository above never borrows it while the Dialog writes through this.
-    pub category_save: StoredCategoriesPorts,
+    category_save: StoredCategoriesPorts,
     /// Category delete's atomic port over the Categories, Transactions, Bills, Payees and Budgets
     /// stores ([`CategoryDeletionAdapter`]).
-    pub category_deletion: lib_category_deletion::SharedCategoryDeletion,
+    category_deletion: lib_category_deletion::SharedCategoryDeletion,
     /// What the Delete category Dialog shows when it opens.
-    pub category_deletion_reads: StoredCategoryDeletionReads,
+    category_deletion_reads: StoredCategoryDeletionReads,
     /// The Transactions page's ports ([`StoredTransactionsPorts`]).
-    pub transactions: lib_transactions::SharedPorts,
+    transactions: lib_transactions::SharedPorts,
     /// The Import's atomic port over the Payees and Transactions stores, which is also its Payees
     /// read ([`TransactionImportAdapter`]).
-    pub transaction_import: Rc<RefCell<TransactionImportAdapter>>,
+    transaction_import: Rc<RefCell<TransactionImportAdapter>>,
     /// The Accounts and Categories the Import's step offers.
-    pub import_reads: Rc<StoredImportReads>,
+    import_reads: Rc<StoredImportReads>,
     /// Pay it directly's atomic port over the Transactions and Bills stores
     /// ([`BillPaymentsAdapter`]).
-    pub bill_payments: lib_bill_payments::SharedPayments,
+    bill_payments: lib_bill_payments::SharedPayments,
     /// The Budgets page's and its Dialogs' ports ([`StoredBudgetsPorts`]).
-    pub budgets: lib_budgets::SharedPorts,
+    budgets: lib_budgets::SharedPorts,
     /// The Inventory page's and its Dialogs' repository ([`StoredInventoryPorts`]).
-    pub inventory: lib_inventory::SharedInventory,
+    inventory: lib_inventory::SharedInventory,
     /// The Documents and Document Types pages' repository ([`StoredDocumentsPorts`]).
-    pub documents: lib_documents::SharedRepository,
+    documents: lib_documents::SharedRepository,
     /// What the Inventory page and its Dialogs read the Units and Documents through.
-    pub inventory_reads: StoredInventoryReads,
+    inventory_reads: StoredInventoryReads,
     /// What the Documents page reads the other domains through.
-    pub document_reads: StoredDocumentReads,
+    document_reads: StoredDocumentReads,
     /// Settings' reads ([`StoredSettingsReads`]): the Ledger page's Units and the X-Large index
     /// pane's counts.
-    pub settings_reads: Rc<StoredSettingsReads>,
+    settings_reads: Rc<StoredSettingsReads>,
     /// The Settings › Ledger page's base Unit write ([`LedgerPreferencesAdapter`]).
-    pub ledger_preferences: Rc<LedgerPreferencesAdapter>,
+    ledger_preferences: Rc<LedgerPreferencesAdapter>,
     /// The Dashboard's Bills and Budgets reads ([`StoredDashboardReads`]).
-    pub dashboard_reads: Rc<StoredDashboardReads>,
+    dashboard_reads: Rc<StoredDashboardReads>,
     /// The Shell's rail-count reads ([`StoredShellReads`]).
-    pub shell_reads: StoredShellReads,
+    shell_reads: StoredShellReads,
     /// The one commit every input ends with, returning what it wrote ([`Committed`](crate::Committed)).
     commit: Rc<dyn Commit>,
 }
@@ -331,6 +335,26 @@ impl LedgerPorts {
     #[must_use]
     pub fn units(&self) -> lib_units::SharedPorts {
         self.units.clone()
+    }
+
+    /// Unit delete's atomic port over the Units and Institutions stores, which the Delete unit
+    /// Dialog writes through.
+    #[must_use]
+    pub fn unit_deletion(&self) -> lib_unit_deletion::SharedUnitDeletion {
+        self.unit_deletion.clone()
+    }
+
+    /// Pay it directly's atomic port over the Transactions and Bills stores, which the Pay Dialog
+    /// writes through.
+    #[must_use]
+    pub fn bill_payments(&self) -> lib_bill_payments::SharedPayments {
+        self.bill_payments.clone()
+    }
+
+    /// The Dashboard's Bills and Budgets reads, as the trait object its Presenter reads.
+    #[must_use]
+    pub fn dashboard_reads(&self) -> Rc<dyn lib_dashboard::DashboardReads> {
+        self.dashboard_reads.clone()
     }
 
     /// The institutions ports, a clone of the one value every page shares.

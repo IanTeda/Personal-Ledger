@@ -16,7 +16,7 @@ use lib_core::{AccountId, TransactionId};
 use super::store::{SharedAccountsStore, SharedBillsStore, SharedTransactionsStore};
 
 /// The deletion port over the stores the Accounts, Transactions and Bills modules also hold.
-pub struct AccountDeletionAdapter {
+pub(crate) struct AccountDeletionAdapter {
     accounts: SharedAccountsStore,
     transactions: SharedTransactionsStore,
     bills: SharedBillsStore,

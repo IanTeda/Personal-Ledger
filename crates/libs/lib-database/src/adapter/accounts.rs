@@ -10,7 +10,7 @@
 //! Cash Account usually the Personal Institution (ADR-0049), so `institution_id` is never NULL.
 //!
 //! Usage is other domains' rows, so `lib-accounts`' `AccountUsage` is answered by
-//! [`StoredAccountReads`](crate::StoredAccountReads) from the Transactions and Budgets stores
+//! [`StoredAccountReads`](crate::adapter::store::StoredAccountReads) from the Transactions and Budgets stores
 //! (#993), which count in the file. The `transactions` and `bill_plans` foreign keys refuse
 //! deleting an Account they name.
 
@@ -325,12 +325,11 @@ mod tests {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
+    use crate::adapter::store::StoredAccountReads;
     use crate::commit::Commit;
     use crate::test_support::TransactionReadsFactory;
     use crate::writer::WriteFailure;
-    use crate::{
-        BillsAdapter, InstitutionsAdapter, StoredAccountReads, TransactionsAdapter, UnitsAdapter,
-    };
+    use crate::{BillsAdapter, InstitutionsAdapter, TransactionsAdapter, UnitsAdapter};
 
     /// The adapter with its usage read as a Client reads it: through [`StoredAccountReads`] over
     /// the Transactions adapter on the same file and a Budgets store kept beside it.

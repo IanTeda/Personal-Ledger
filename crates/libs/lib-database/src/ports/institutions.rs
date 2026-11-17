@@ -36,7 +36,7 @@ impl InstitutionRepository for Institutions {
 /// [`lib_institutions::InstitutionsPorts`] over the shared Institutions store, and the reads over
 /// the Accounts and Units stores. A write reaches the store's recorder, so the commit names the
 /// Institutions in what the input wrote.
-pub struct StoredInstitutionsPorts {
+pub(crate) struct StoredInstitutionsPorts {
     institutions: Institutions,
     reads: StoredInstitutionReads,
 }

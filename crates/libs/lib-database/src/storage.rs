@@ -686,12 +686,8 @@ mod committed_tests {
 
     /// Every store shared, as a Client holds them through [`crate::LedgerPorts`], and the commit.
     fn share(stores: Stores) -> (SharedStores, Rc<dyn crate::Commit>) {
-        let (ledger, _) = crate::LedgerPorts::new(
-            stores,
-            lib_core::Clock::fixed(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")),
-        );
-        let commit = ledger.commit();
-        (ledger.stores, commit)
+        let shared = stores.share();
+        (shared.stores, shared.commit)
     }
 
     /// Renames the first sample Tag, a write to the Tags alone.
@@ -750,12 +746,14 @@ mod committed_tests {
     fn a_tag_merge_reports_the_tags_and_the_transactions() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         for stores in [fakes(), file(dir.path()).0] {
-            let (ledger, _) = crate::LedgerPorts::new(
-                stores,
+            let shared = stores.share();
+            let tags = shared.stores.tags.borrow().tags().tags();
+            let (ledger, _) = crate::LedgerPorts::over(
+                shared,
                 lib_core::Clock::fixed(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")),
             );
-            let mut removal = ledger.tag_removal.borrow_mut();
-            let tags = ledger.stores.tags.borrow().tags().tags();
+            let ports = ledger.tag_removal();
+            let mut removal = ports.removal.borrow_mut();
             let source = tags
                 .iter()
                 .find(|tag| !removal.transactions_carrying(tag.id).is_empty())

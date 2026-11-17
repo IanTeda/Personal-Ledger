@@ -90,7 +90,7 @@ pub(crate) fn stored_link_records(pending: &PendingWrites) -> lib_documents::Lin
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    let reads = crate::StoredDocumentReads {
+    let reads = crate::adapter::store::StoredDocumentReads {
         transactions: Rc::new(RefCell::new(
             crate::TransactionsAdapter::load(pending.clone()).expect("the Transactions load"),
         )),
@@ -203,12 +203,14 @@ impl OneSplit {
 
 /// `lib-transactions`' read ports as the Desktop's Transactions page reads them: the Accounts,
 /// Categories, Payees, Tags and Units adapters loaded on `pending`'s file, behind
-/// [`crate::StoredTransactionReads`] (#998).
-pub(crate) fn transaction_reads(pending: PendingWrites) -> crate::StoredTransactionReads {
+/// [`crate::adapter::store::StoredTransactionReads`] (#998).
+pub(crate) fn transaction_reads(
+    pending: PendingWrites,
+) -> crate::adapter::store::StoredTransactionReads {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    crate::StoredTransactionReads {
+    crate::adapter::store::StoredTransactionReads {
         accounts: Rc::new(RefCell::new(
             crate::AccountsAdapter::load(pending.clone()).expect("the Accounts load"),
         )),

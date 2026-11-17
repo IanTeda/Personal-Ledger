@@ -22,7 +22,7 @@ use super::units;
 /// the Ledger page offers, and the counts the Settings index's detail pane quotes (#1109), which
 /// call the domains' own rules (net worth, likely duplicates, levels deep) and re-implement none.
 #[derive(Clone)]
-pub struct StoredSettingsReads {
+pub(crate) struct StoredSettingsReads {
     pub units: SharedUnitsStore,
     pub institutions: SharedInstitutionsStore,
     pub accounts: SharedAccountsStore,
@@ -124,7 +124,7 @@ impl LedgerUnits for StoredSettingsReads {
 
 /// `lib-settings`' write port over the Units store the Units module also holds. The write joins
 /// the pending batch every adapter shares, so the bin's one commit after the input sends it.
-pub struct LedgerPreferencesAdapter {
+pub(crate) struct LedgerPreferencesAdapter {
     units: SharedUnitsStore,
 }
 
@@ -169,9 +169,7 @@ mod tests {
     /// The Sample Ledger's stores in memory, with the Units store swapped for `units`.
     fn sample_stores(units: SharedUnitsStore) -> SharedStores {
         let (stores, _) = crate::Stores::fake(crate::FakeStores::sample(today()));
-        let mut shared = crate::LedgerPorts::new(stores, lib_core::Clock::fixed(today()))
-            .0
-            .stores;
+        let mut shared = stores.share().stores;
         shared.units = units;
         shared
     }
@@ -208,9 +206,7 @@ mod tests {
     #[test]
     fn the_sample_ledgers_counts_are_the_domains_own() {
         let (stores, _) = crate::Stores::fake(crate::FakeStores::sample(today()));
-        let shared = crate::LedgerPorts::new(stores, lib_core::Clock::fixed(today()))
-            .0
-            .stores;
+        let shared = stores.share().stores;
         let counts = StoredSettingsReads::over(&shared).counts();
         let accounts = shared.accounts.borrow().accounts().accounts();
         let tags = shared.tags.borrow().tags().tags();

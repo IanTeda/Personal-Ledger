@@ -36,7 +36,7 @@ impl BillScheduleRepository for Bills {
 /// [`lib_bills::BillsPorts`] over the shared Bills store, and the reads over the Payees, Accounts,
 /// Categories, Transactions and Units stores. A write reaches the store's recorder, so the commit
 /// names the Bills in what the input wrote.
-pub struct StoredBillsPorts {
+pub(crate) struct StoredBillsPorts {
     bills: Bills,
     reads: StoredBillReads,
     units: StoredBillUnits,

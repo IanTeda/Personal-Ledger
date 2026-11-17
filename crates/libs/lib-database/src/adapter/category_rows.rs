@@ -32,7 +32,7 @@ use super::transactions;
 /// The rows naming a Category in the stores the Transactions, Bills and Payees modules also hold,
 /// each borrowed for the one read or write.
 #[derive(Clone)]
-pub struct StoredCategoryRows {
+pub(crate) struct StoredCategoryRows {
     pub transactions: SharedTransactionsStore,
     pub bills: SharedBillsStore,
     pub payees: SharedPayeesStore,

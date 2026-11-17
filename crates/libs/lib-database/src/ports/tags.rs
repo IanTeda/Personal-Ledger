@@ -11,7 +11,7 @@ use crate::adapter::store::{SharedTagsStore, StoredTagReads};
 /// [`lib_tags::TagsPorts`] over the shared Tags store, borrowed for each call, and the reads over
 /// the stores of the domains that carry a Tag. A write reaches the store's recorder, so the commit
 /// names the Tags in what the input wrote.
-pub struct StoredTagsPorts {
+pub(crate) struct StoredTagsPorts {
     tags: SharedTagsStore,
     usage: StoredTagReads,
 }

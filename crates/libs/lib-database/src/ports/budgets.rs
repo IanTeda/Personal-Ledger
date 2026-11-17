@@ -11,7 +11,7 @@ use crate::adapter::store::{SharedBudgetsStore, StoredBudgetReads};
 /// The Budgets store as the repository an Interactor writes through. It forwards rather than
 /// lending the store's own: the store is shared behind a `RefCell` whose guard can't be lent out
 /// of it.
-pub struct StoredBudgetRepository {
+pub(crate) struct StoredBudgetRepository {
     rows: SharedBudgetsStore,
 }
 
@@ -31,7 +31,7 @@ impl BudgetRepository for StoredBudgetRepository {
 
 /// [`BudgetsPorts`] over the shared Budgets store, and the reads over the stores of the domains
 /// the figures count. A write reaches the store's recorder, so the commit names the Budgets.
-pub struct StoredBudgetsPorts {
+pub(crate) struct StoredBudgetsPorts {
     budgets: StoredBudgetRepository,
     reads: Rc<StoredBudgetReads>,
 }

@@ -133,7 +133,7 @@ impl OpenLedger {
         ));
         let units = crate::units::UnitsSetup::new(
             ports.units(),
-            ports.unit_deletion.clone(),
+            ports.unit_deletion(),
             dialog_keys.clone(),
             clock.clone(),
             keybindings,
@@ -150,7 +150,7 @@ impl OpenLedger {
             clock.clone(),
             keybindings,
         );
-        let payments = ports.bill_payments.clone();
+        let payments = ports.bill_payments();
         // Account delete writes the Accounts, Transactions and Bills stores together (#854).
         let account_deletion = ports.account_deletion();
         let accounts_setup = crate::accounts::AccountsSetup::new(
@@ -212,7 +212,7 @@ impl OpenLedger {
             lib_transaction_import::SeededStatement::stub(clock.today()),
         ));
         // The Dashboard and the rail's badges read through the reads `LedgerPorts` built.
-        let dashboard_reads = ports.dashboard_reads.clone();
+        let dashboard_reads = ports.dashboard_reads();
         let rail_reads = ports.shell_rail();
         let budgets_ports = ports.budgets();
         let units_ports = settings_setup.units.1.ports.clone();

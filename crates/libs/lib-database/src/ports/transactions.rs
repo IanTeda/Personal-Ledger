@@ -15,7 +15,7 @@ use crate::adapter::store::{SharedTransactionsStore, StoredTransactionReads};
 /// [`TransactionsPorts`] over the shared Transactions store, borrowed for each call, and the
 /// reads over the stores of the domains a Transaction names. The port traits are
 /// `TransactionsPorts`' supertraits, so the other domains' reads are only forwarded.
-pub struct StoredTransactionsPorts {
+pub(crate) struct StoredTransactionsPorts {
     transactions: SharedTransactionsStore,
     reads: StoredTransactionReads,
 }

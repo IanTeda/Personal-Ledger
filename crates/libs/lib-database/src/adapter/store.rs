@@ -1055,7 +1055,7 @@ impl BudgetsStore for InMemoryBudgets {
 /// read (#994): the Categories Monthly budget's save reads the tree before the six-port
 /// [`StoredBudgetReads`] is needed.
 #[derive(Clone)]
-pub struct StoredBudgetCategories {
+pub(crate) struct StoredBudgetCategories {
     pub categories: SharedCategoriesStore,
 }
 
@@ -1070,7 +1070,7 @@ impl BudgetCategories for StoredBudgetCategories {
 /// Units, each borrowed for the one read (#994). A figure only the page shows, so a Split whose
 /// Account or Unit can't be found is left out rather than refused.
 #[derive(Clone)]
-pub struct StoredTagReads {
+pub(crate) struct StoredTagReads {
     pub transactions: SharedTransactionsStore,
     pub accounts: SharedAccountsStore,
     pub units: SharedUnitsStore,
@@ -1139,7 +1139,7 @@ impl TagUsage for StoredTagReads {
 /// the Tags store and the distinct Transactions carrying each from the Transactions store, each
 /// borrowed for the one read when a Remove tag or Merge tags Dialog opens.
 #[derive(Clone)]
-pub struct StoredTagRemovalReads {
+pub(crate) struct StoredTagRemovalReads {
     pub tags: SharedTagsStore,
     pub transactions: SharedTransactionsStore,
 }
@@ -1175,7 +1175,7 @@ impl TagRemovalReads for StoredTagRemovalReads {
 /// limiting it from the Budgets store, each borrowed for the one read when the Delete category
 /// Dialog opens.
 #[derive(Clone)]
-pub struct StoredCategoryDeletionReads {
+pub(crate) struct StoredCategoryDeletionReads {
     pub categories: SharedCategoriesStore,
     pub transactions: SharedTransactionsStore,
     pub budgets: SharedBudgetsStore,
@@ -1198,7 +1198,7 @@ impl CategoryDeletionReads for StoredCategoryDeletionReads {
 /// months of the Category's Budget Amount records in the Personal spending Budget, the one the
 /// Add and Edit category Dialogs save into, borrowed for the one read.
 #[derive(Clone)]
-pub struct StoredCategoryBudgetMonths {
+pub(crate) struct StoredCategoryBudgetMonths {
     pub budgets: SharedBudgetsStore,
 }
 
@@ -1225,7 +1225,7 @@ impl CategoryBudgetMonths for StoredCategoryBudgetMonths {
 /// `lib-budgets`' six read ports answered by the shared stores of the domains Budgets reads, each
 /// borrowed for the one read (#952). The Desktop's Budgets View reads through it.
 #[derive(Clone)]
-pub struct StoredBudgetReads {
+pub(crate) struct StoredBudgetReads {
     pub categories: SharedCategoriesStore,
     pub accounts: SharedAccountsStore,
     pub transactions: SharedTransactionsStore,
@@ -1318,7 +1318,7 @@ fn default_budget_figures(
 /// answers into `lib-dashboard`'s rows; it re-implements no rule and copies nothing from the
 /// Ledger. The same struct stands over the adapters and [`Stores::fake`]'s in-memory stores.
 #[derive(Clone)]
-pub struct StoredDashboardReads {
+pub(crate) struct StoredDashboardReads {
     pub budgets: SharedBudgetsStore,
     /// The other domains' stores as the Budget figures read them. The Needs Attention rows read
     /// their Bills and Unit codes and the bars their Category names from them too, so a store the
@@ -1394,7 +1394,7 @@ impl DashboardBudgets for StoredDashboardReads {
 /// month and `lib-documents`' Inbox count, and re-implements none of them. The same struct stands
 /// over the adapters and [`Stores::fake`]'s in-memory stores.
 #[derive(Clone)]
-pub struct StoredShellReads {
+pub(crate) struct StoredShellReads {
     pub budgets: SharedBudgetsStore,
     pub documents: SharedDocumentsStore,
     /// The other domains' stores as the Budget figures read them, which the Needs Attention count
@@ -1420,7 +1420,7 @@ impl ShellRailCounts for StoredShellReads {
 /// borrowed for the one read (#994), as [`StoredBudgetReads`] answers Budgets'. The same struct
 /// stands over the adapters and [`Stores::fake`]'s in-memory stores.
 #[derive(Clone)]
-pub struct StoredBillReads {
+pub(crate) struct StoredBillReads {
     pub payees: SharedPayeesStore,
     pub accounts: SharedAccountsStore,
     pub categories: SharedCategoriesStore,
@@ -1459,7 +1459,7 @@ impl BillTransactions for StoredBillReads {
 /// names, each borrowed for the one read (#998), as [`StoredBillReads`] answers Bills'. The same
 /// struct stands over the adapters and [`Stores::fake`]'s in-memory stores.
 #[derive(Clone)]
-pub struct StoredTransactionReads {
+pub(crate) struct StoredTransactionReads {
     pub accounts: SharedAccountsStore,
     pub categories: SharedCategoriesStore,
     pub payees: SharedPayeesStore,
@@ -1501,7 +1501,7 @@ impl TransactionUnits for StoredTransactionReads {
 /// `lib-transaction-import`'s two read ports answered by the Accounts and Categories stores, each
 /// borrowed for the one read (#994).
 #[derive(Clone)]
-pub struct StoredImportReads {
+pub(crate) struct StoredImportReads {
     pub accounts: SharedAccountsStore,
     pub categories: SharedCategoriesStore,
 }
@@ -1522,7 +1522,7 @@ impl ImportCategories for StoredImportReads {
 /// Units stores, each borrowed for the one read (#994, #1052): the Accounts naming the
 /// Institution, and the Units a Usual unit may name.
 #[derive(Clone)]
-pub struct StoredInstitutionReads {
+pub(crate) struct StoredInstitutionReads {
     pub accounts: SharedAccountsStore,
     pub units: SharedUnitsStore,
 }
@@ -1553,7 +1553,7 @@ impl InstitutionUnits for StoredInstitutionReads {
 /// `lib-account-deletion`'s `DeletionReads`: the Delete account Dialog
 /// quotes the same counts and the Unit's code.
 #[derive(Clone)]
-pub struct StoredAccountReads {
+pub(crate) struct StoredAccountReads {
     pub transactions: SharedTransactionsStore,
     pub budgets: SharedBudgetsStore,
     pub units: SharedUnitsStore,
@@ -1602,7 +1602,7 @@ impl DeletionReads for StoredAccountReads {
 /// name a Unit, each borrowed for the one read (#993): the Accounts (with their Transactions
 /// counted by the Transactions store), Bill Plans, Budgets, Locations and Institutions.
 #[derive(Clone)]
-pub struct StoredUnitReads {
+pub(crate) struct StoredUnitReads {
     pub accounts: SharedAccountsStore,
     pub transactions: SharedTransactionsStore,
     pub bills: SharedBillsStore,
@@ -1645,7 +1645,7 @@ impl UnitHoldings for StoredUnitReads {
 
 /// `lib-bills`' `BillUnits` answered by the Units store, borrowed for the one read (#993).
 #[derive(Clone)]
-pub struct StoredBillUnits {
+pub(crate) struct StoredBillUnits {
     pub units: SharedUnitsStore,
 }
 
@@ -1665,7 +1665,7 @@ impl BillUnits for StoredBillUnits {
 /// a Payee's use as the app does. Each store counts its own rows naming the Payee; this maps the
 /// counts into `lib-payees`' terms.
 #[derive(Clone)]
-pub struct StoredPayeeReads {
+pub(crate) struct StoredPayeeReads {
     pub transactions: SharedTransactionsStore,
     pub bills: SharedBillsStore,
     pub categories: SharedCategoriesStore,
@@ -1776,7 +1776,7 @@ impl DocumentsStore for InMemoryDocuments {
 /// each borrowed for the one read (#963), as [`StoredBudgetReads`] answers Budgets'. The Desktop's
 /// Documents View reads through it, once per query into `LinkRecords`.
 #[derive(Clone)]
-pub struct StoredDocumentReads {
+pub(crate) struct StoredDocumentReads {
     pub transactions: SharedTransactionsStore,
     pub payees: SharedPayeesStore,
     pub accounts: SharedAccountsStore,
@@ -1822,7 +1822,7 @@ impl DocumentItems for StoredDocumentReads {
 /// borrowed for the one read (#1014): the fiat Units its Location form offers and the Documents
 /// its Remove location Dialog quotes.
 #[derive(Clone)]
-pub struct StoredInventoryReads {
+pub(crate) struct StoredInventoryReads {
     pub units: SharedUnitsStore,
     pub inventory: SharedInventoryStore,
     pub documents: SharedDocumentsStore,

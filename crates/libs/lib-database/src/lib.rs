@@ -62,40 +62,38 @@ pub use change_sets::ChangeSet;
 
 /// The per-domain adapters behind the VIPER modules' ports (ADR-0046).
 pub mod adapter;
-pub use adapter::account_deletion::AccountDeletionAdapter;
+pub(crate) use adapter::account_deletion::AccountDeletionAdapter;
 pub use adapter::accounts::{
     AccountsAdapter, holdings as account_holdings, unit_account_ids, unit_accounts,
 };
-pub use adapter::bill_payments::BillPaymentsAdapter;
+pub(crate) use adapter::bill_payments::BillPaymentsAdapter;
 pub use adapter::bills::{BillsAdapter, unit_bill_plans};
 pub use adapter::budgets::BudgetsAdapter;
 pub use adapter::categories::{CategoriesAdapter, category_refs};
-pub use adapter::category_deletion::CategoryDeletionAdapter;
-pub use adapter::category_rows::StoredCategoryRows;
+pub(crate) use adapter::category_deletion::CategoryDeletionAdapter;
+pub(crate) use adapter::category_rows::StoredCategoryRows;
 pub use adapter::documents::DocumentsAdapter;
 pub use adapter::fake_fails::FakeFails;
 pub use adapter::institutions::{InstitutionsAdapter, unit_institutions};
 pub use adapter::inventory::{InventoryAdapter, unit_locations};
+// Public, unlike the Ledger-bound adapters: it runs before any Ledger is open, so a Client's
+// composition root builds it rather than taking it from `LedgerPorts` (#1212).
 pub use adapter::ledger_creation::{LedgerCreationAdapter, remove_ledger_files};
 pub use adapter::payees::PayeesAdapter;
-pub use adapter::settings::{LedgerPreferencesAdapter, StoredSettingsReads};
+pub(crate) use adapter::settings::{LedgerPreferencesAdapter, StoredSettingsReads};
 pub use adapter::store::{
     AccountsStore, BillsStore, BudgetsStore, CategoriesStore, CountingCommit, DocumentsStore,
     FakeStores, InstitutionsStore, InventoryStore, PayeesStore, Recorded, SharedAccountsStore,
     SharedBillsStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
     SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedStores,
-    SharedTagsStore, SharedTransactionsStore, SharedUnitsStore, StoredAccountReads,
-    StoredBillReads, StoredBillUnits, StoredBudgetCategories, StoredBudgetReads,
-    StoredCategoryBudgetMonths, StoredCategoryDeletionReads, StoredDashboardReads,
-    StoredDocumentReads, StoredImportReads, StoredInstitutionReads, StoredInventoryReads,
-    StoredPayeeReads, StoredShellReads, StoredTagReads, StoredTagRemovalReads,
-    StoredTransactionReads, StoredUnitReads, TagsStore, TransactionsStore, UnitsStore,
+    SharedTagsStore, SharedTransactionsStore, SharedUnitsStore, TagsStore, TransactionsStore,
+    UnitsStore,
 };
-pub use adapter::tag_removal::TagRemovalAdapter;
+pub(crate) use adapter::tag_removal::TagRemovalAdapter;
 pub use adapter::tags::TagsAdapter;
-pub use adapter::transaction_import::TransactionImportAdapter;
+pub(crate) use adapter::transaction_import::TransactionImportAdapter;
 pub use adapter::transactions::{TaggedSplit, TransactionsAdapter};
-pub use adapter::unit_deletion::UnitDeletionAdapter;
+pub(crate) use adapter::unit_deletion::UnitDeletionAdapter;
 pub use adapter::units::UnitsAdapter;
 
 /// A Client's Ledger file, opened at start-up with its adapters and the writer, and the
@@ -110,12 +108,10 @@ pub mod ports;
 
 /// The `std::fs` adapter for `lib_shell`'s `LedgerFolders` port, shared by both Clients.
 pub mod ledger_folders;
+// Public for the same reason as `LedgerCreationAdapter`: the file explorer browses with no Ledger
+// open (#1212).
 pub use ledger_folders::FsLedgerFolders;
-pub use ports::{
-    LedgerPorts, StoredAccountsPorts, StoredBillsPorts, StoredBudgetsPorts, StoredCategoriesPorts,
-    StoredDocumentsPorts, StoredInstitutionsPorts, StoredInventoryPorts, StoredPayeesPorts,
-    StoredTagsPorts, StoredTransactionsPorts, StoredUnitsPorts,
-};
+pub use ports::LedgerPorts;
 
 /// The Sample Ledger, one fixed Ledger for development and tests, and the dev seed that writes it.
 pub mod seed;

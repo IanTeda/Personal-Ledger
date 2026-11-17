@@ -30,7 +30,7 @@ impl AccountRepository for Accounts {
 /// [`lib_accounts::AccountsPorts`] over the shared Accounts store, and the reads over the stores of
 /// the domains an Account names or is named by. A write reaches the store's recorder, so the commit
 /// names the Accounts in what the input wrote.
-pub struct StoredAccountsPorts {
+pub(crate) struct StoredAccountsPorts {
     accounts: Accounts,
     reads: StoredAccountReads,
 }

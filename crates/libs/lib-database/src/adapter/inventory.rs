@@ -538,7 +538,7 @@ mod tests {
     }
 
     /// The Units, Inventory and Documents adapters loaded on one test database, behind
-    /// [`crate::StoredInventoryReads`] (#1014). The Documents are the sample's first, one copy for
+    /// [`crate::adapter::store::StoredInventoryReads`] (#1014). The Documents are the sample's first, one copy for
     /// each list of Items, Linked to those Items alone.
     struct ReadsAdapters {
         writer: Writer,
@@ -557,13 +557,13 @@ mod tests {
     }
 
     impl ReadsFactory for ReadsAdapters {
-        type Reads = crate::StoredInventoryReads;
+        type Reads = crate::adapter::store::StoredInventoryReads;
 
         fn create(
             &mut self,
             inventory: Inventory,
             documents: Vec<Vec<ItemId>>,
-        ) -> crate::StoredInventoryReads {
+        ) -> crate::adapter::store::StoredInventoryReads {
             use std::cell::RefCell;
             use std::rc::Rc;
 
@@ -592,7 +592,7 @@ mod tests {
                 documents,
             )
             .expect("the Documents are written");
-            crate::StoredInventoryReads {
+            crate::adapter::store::StoredInventoryReads {
                 units: Rc::new(RefCell::new(
                     crate::UnitsAdapter::load(self.pending.clone()).expect("the Units load"),
                 )),

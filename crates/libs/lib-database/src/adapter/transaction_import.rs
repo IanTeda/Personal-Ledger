@@ -18,7 +18,7 @@ use lib_transaction_import::{
 use super::store::{SharedPayeesStore, SharedTransactionsStore};
 
 /// The import port over the stores the Payees and Transactions modules also hold.
-pub struct TransactionImportAdapter {
+pub(crate) struct TransactionImportAdapter {
     payees: SharedPayeesStore,
     transactions: SharedTransactionsStore,
 }

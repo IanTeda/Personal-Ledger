@@ -3,7 +3,14 @@
 //! result as it was left.
 
 use gpui::{AppContext, Entity, TestAppContext};
-use lib_database::{Commit, LedgerPorts, PayeesStore, PendingWrites, Stores};
+use lib_database::{Commit, LedgerPorts, PayeesStore, PendingWrites, SharedStores, Stores};
+
+/// An Open Ledger's ports with the stores they were built over, which a test reads the rows
+/// back through, since `LedgerPorts` hands out only ports (#1212).
+struct Opened {
+    ports: LedgerPorts,
+    stores: SharedStores,
+}
 
 /// The Desktop's start-up storage on the Ledger file in `dir`, the Sample Ledger as of `today`
 /// when there is none yet.
@@ -20,14 +27,14 @@ fn storage_in(dir: &std::path::Path, today: chrono::NaiveDate) -> lib_database::
 fn on_storage(
     cx: &mut TestAppContext,
     storage: lib_database::Storage,
-) -> (Entity<LedgerPorts>, PendingWrites) {
+) -> (Entity<Opened>, PendingWrites) {
     let on = on_storage_with_bills(cx, storage);
     (on.store, on.pending)
 }
 
 /// The stores on the Ledger file, with the ports the modules that write beside them hold.
 struct OnStorage {
-    store: Entity<LedgerPorts>,
+    store: Entity<Opened>,
     /// The Bills ports the store shares, which the Bills module writes.
     bills: lib_bills::SharedPorts,
     /// The payments port over the Transactions and Bills stores, the Bill Payments module's.
@@ -45,16 +52,21 @@ struct OnStorage {
 /// Deletion modules write.
 fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage) -> OnStorage {
     let pending = storage.pending.clone();
-    let (built, _) = LedgerPorts::new(
-        Stores::from(storage),
+    let shared = Stores::from(storage).share();
+    let stores = shared.stores.clone();
+    let (built, _) = LedgerPorts::over(
+        shared,
         lib_core::Clock::fixed(chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a date")),
     );
     let bills = built.bills();
-    let payments = built.bill_payments.clone();
-    let deletion = built.account_deletion.clone();
-    let category_deletion = built.category_deletion.clone();
+    let payments = built.bill_payments();
+    let deletion = built.account_deletion().deletion;
+    let category_deletion = built.category_deletion().deletion;
     OnStorage {
-        store: cx.new(|_| built),
+        store: cx.new(|_| Opened {
+            ports: built,
+            stores,
+        }),
         bills,
         payments,
         deletion,
@@ -170,12 +182,12 @@ fn a_deleted_categorys_rows_survive_a_restart(cx: &mut TestAppContext) {
 }
 
 /// The Categories as the Categories store holds them.
-fn categories_of(store: &LedgerPorts) -> Vec<lib_categories::Category> {
+fn categories_of(store: &Opened) -> Vec<lib_categories::Category> {
     store.stores.categories.borrow().categories().categories()
 }
 
 /// The Payees as the Payees store holds them.
-fn payees_of(store: &LedgerPorts) -> Vec<lib_payees::Payee> {
+fn payees_of(store: &Opened) -> Vec<lib_payees::Payee> {
     PayeesStore::payees(&*store.stores.payees.borrow()).payees()
 }
 
@@ -183,39 +195,40 @@ fn payees_of(store: &LedgerPorts) -> Vec<lib_payees::Payee> {
 /// and then Plan, since a port lists them in no particular order.
 fn bills_of(
     cx: &mut TestAppContext,
-    store: &Entity<LedgerPorts>,
+    store: &Entity<Opened>,
 ) -> (Vec<lib_bills::BillPlan>, Vec<lib_bills::BillScheduleEntry>) {
     store.read_with(cx, |store, _| (plans_of(store), entries_of(store)))
 }
 
 /// The Transactions as the Transactions store holds them, newest first, since a store lists
 /// them in no particular order.
-fn transactions_of(store: &LedgerPorts) -> Vec<lib_transactions::Transaction> {
+fn transactions_of(store: &Opened) -> Vec<lib_transactions::Transaction> {
     let mut transactions = store.stores.transactions.borrow().all_transactions();
     transactions.sort_by(|a, b| b.date.cmp(&a.date).then(b.id.cmp(&a.id)));
     transactions
 }
 
 /// The Accounts as the Accounts store holds them.
-fn accounts_of(store: &LedgerPorts) -> Vec<lib_accounts::Account> {
+fn accounts_of(store: &Opened) -> Vec<lib_accounts::Account> {
     store.stores.accounts.borrow().accounts().accounts()
 }
 
 /// The Bill Plans as the Bills store holds them.
-fn plans_of(store: &LedgerPorts) -> Vec<lib_bills::BillPlan> {
+fn plans_of(store: &Opened) -> Vec<lib_bills::BillPlan> {
     store.stores.bills.borrow().plans().bill_plans()
 }
 
 /// The Bill Schedule as the Bills store holds it, by due date and then Plan.
-fn entries_of(store: &LedgerPorts) -> Vec<lib_bills::BillScheduleEntry> {
+fn entries_of(store: &Opened) -> Vec<lib_bills::BillScheduleEntry> {
     let mut entries = store.stores.bills.borrow().entries().entries();
     entries.sort_by_key(|entry| (entry.due, entry.plan_id));
     entries
 }
 
 /// Every Split as the Bills ports read them from the Transactions store.
-fn splits_of(store: &LedgerPorts) -> Vec<lib_bills::BillSplit> {
+fn splits_of(store: &Opened) -> Vec<lib_bills::BillSplit> {
     store
+        .ports
         .bills()
         .borrow()
         .transactions()
@@ -223,7 +236,7 @@ fn splits_of(store: &LedgerPorts) -> Vec<lib_bills::BillSplit> {
 }
 
 /// The Budgets as the Budgets store holds them.
-fn budgets_of(store: &LedgerPorts) -> Vec<lib_budgets::Budget> {
+fn budgets_of(store: &Opened) -> Vec<lib_budgets::Budget> {
     store.stores.budgets.borrow().budgets().budgets()
 }
 
@@ -231,11 +244,11 @@ fn budgets_of(store: &LedgerPorts) -> Vec<lib_budgets::Budget> {
 /// again a day later, so a re-seed would show as shifted dates.
 fn restart(
     cx: &mut TestAppContext,
-    (store, pending): (Entity<LedgerPorts>, PendingWrites),
+    (store, pending): (Entity<Opened>, PendingWrites),
     writer: lib_database::Writer,
     dir: &std::path::Path,
     today: chrono::NaiveDate,
-) -> Entity<LedgerPorts> {
+) -> Entity<Opened> {
     pending.commit();
     crate::quit(&writer);
     drop(store);
@@ -390,7 +403,7 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
             })
             .expect("the sample pays an entry")
     });
-    let resolution = |cx: &mut TestAppContext, store: &Entity<LedgerPorts>| {
+    let resolution = |cx: &mut TestAppContext, store: &Entity<Opened>| {
         store.read_with(cx, |store, _| {
             lib_bills::entry(&entries_of(store), entry).map(|entry| entry.resolution.clone())
         })

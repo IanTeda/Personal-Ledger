@@ -1,5 +1,5 @@
 //! `lib-inventory`'s repository answered over the Inventory store (#866, #867, #1001, #1083). What
-//! the module reads of other domains is [`StoredInventoryReads`](crate::StoredInventoryReads).
+//! the module reads of other domains is [`StoredInventoryReads`](crate::adapter::store::StoredInventoryReads).
 
 use lib_core::{ItemId, LocationId};
 use lib_inventory::{InventoryRepository, Item, Location};
@@ -9,7 +9,7 @@ use crate::adapter::store::SharedInventoryStore;
 /// [`InventoryRepository`] over the shared Inventory store, borrowed for each call: the store is
 /// shared behind a `RefCell` whose guard can't be lent out of it. A write reaches the store's
 /// recorder, so the commit names the Inventory.
-pub struct StoredInventoryPorts {
+pub(crate) struct StoredInventoryPorts {
     store: SharedInventoryStore,
 }
 

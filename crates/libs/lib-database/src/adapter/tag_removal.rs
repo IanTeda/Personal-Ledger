@@ -15,7 +15,7 @@ use lib_transactions::Transaction;
 use super::store::{SharedTagsStore, SharedTransactionsStore};
 
 /// The removal port over the stores the Tags and Transactions modules also hold.
-pub struct TagRemovalAdapter {
+pub(crate) struct TagRemovalAdapter {
     tags: SharedTagsStore,
     transactions: SharedTransactionsStore,
 }
@@ -64,12 +64,10 @@ mod tests {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
+    use crate::adapter::store::StoredTagRemovalReads;
     use crate::commit::Commit;
     use crate::writer::WriteFailure;
-    use crate::{
-        AccountsAdapter, PendingWrites, StoredTagRemovalReads, TagsAdapter, TransactionsAdapter,
-        Writer,
-    };
+    use crate::{AccountsAdapter, PendingWrites, TagsAdapter, TransactionsAdapter, Writer};
 
     /// The two adapters on one test database and one pending batch, as start-up opens them. The
     /// sample's Units, Institutions, Categories and Accounts are stored first, which the world's

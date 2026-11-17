@@ -14,7 +14,7 @@ use lib_transactions::Transaction;
 use super::store::{SharedBillsStore, SharedTransactionsStore};
 
 /// The payments port over the stores the Transactions and Bills modules also hold.
-pub struct BillPaymentsAdapter {
+pub(crate) struct BillPaymentsAdapter {
     transactions: SharedTransactionsStore,
     bills: SharedBillsStore,
 }

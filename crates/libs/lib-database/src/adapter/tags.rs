@@ -227,10 +227,11 @@ mod tests {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
+    use crate::adapter::store::StoredTagReads;
     use crate::commit::Commit;
     use crate::test_support::TransactionReadsFactory;
     use crate::writer::WriteFailure;
-    use crate::{AccountsAdapter, StoredTagReads, TransactionsAdapter, UnitsAdapter};
+    use crate::{AccountsAdapter, TransactionsAdapter, UnitsAdapter};
 
     /// The adapter with the reads that count what carries its Tags, over the other stores loaded
     /// on the same file, as a Client holds them (#994).

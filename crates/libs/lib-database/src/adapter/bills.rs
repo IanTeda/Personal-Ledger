@@ -517,12 +517,12 @@ mod tests {
 
         /// Bills' reads as a Client has them: the adapters beside Bills loaded on the file, behind
         /// [`StoredBillReads`] (#998).
-        fn bill_reads(&self) -> crate::StoredBillReads {
+        fn bill_reads(&self) -> crate::adapter::store::StoredBillReads {
             use std::cell::RefCell;
             use std::rc::Rc;
 
             let pending = &self.pending;
-            crate::StoredBillReads {
+            crate::adapter::store::StoredBillReads {
                 payees: Rc::new(RefCell::new(
                     PayeesAdapter::load(pending.clone()).expect("the Payees load"),
                 )),
@@ -584,7 +584,7 @@ mod tests {
 
     impl PortsFactory for AdapterFactory {
         type Ports = BillsAdapter;
-        type Reads = crate::StoredBillReads;
+        type Reads = crate::adapter::store::StoredBillReads;
 
         fn create(&mut self, seed: InMemoryBills, splits: Vec<BillSplit>) -> BillsAdapter {
             TransactionsAdapter::seed(&self.writer, transactions_of(splits))
@@ -594,7 +594,7 @@ mod tests {
             BillsAdapter::load(self.pending.clone()).expect("the seed loads")
         }
 
-        fn reads(&mut self) -> crate::StoredBillReads {
+        fn reads(&mut self) -> crate::adapter::store::StoredBillReads {
             self.bill_reads()
         }
 

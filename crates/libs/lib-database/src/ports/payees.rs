@@ -28,7 +28,7 @@ impl PayeeRepository for Payees {
 /// [`lib_payees::PayeesPorts`] over the shared Payees store, and the reads over the Transactions,
 /// Bills and Categories stores. A write reaches the store's recorder, so the commit names the
 /// Payees in what the input wrote.
-pub struct StoredPayeesPorts {
+pub(crate) struct StoredPayeesPorts {
     payees: Payees,
     reads: StoredPayeeReads,
 }

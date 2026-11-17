@@ -15,9 +15,10 @@ pub mod router;
 pub mod view;
 
 use std::rc::Rc;
+use std::sync::mpsc;
 
 use lib_config::KeyBindingConfig;
-use lib_database::{Commit, FakeStores, LedgerPorts, SharedStores, Stores};
+use lib_database::{Commit, FakeStores, LedgerPorts, SharedStores, Stores, WriteFailure};
 use lib_shell::DialogCommand;
 use lib_viper::keymap::Keymap;
 
@@ -40,25 +41,32 @@ pub struct UnitsSetup {
 }
 
 impl UnitsSetup {
-    /// The Units `ledger` holds, under `config`'s key bindings.
-    pub fn on(ledger: &LedgerPorts, config: &KeyBindingConfig) -> Self {
-        Self {
+    /// The Units of the Ledger `stores` hold, dated by `clock`, under `config`'s key bindings,
+    /// with the writer's failed writes. The stores are shared out here so a clone of them stays
+    /// beside the ports, which `LedgerPorts` keeps to itself (#1212).
+    pub fn on(
+        stores: Stores,
+        clock: lib_core::Clock,
+        config: &KeyBindingConfig,
+    ) -> (Self, mpsc::Receiver<WriteFailure>) {
+        let shared = stores.share();
+        let stores = shared.stores.clone();
+        let (ledger, failures) = LedgerPorts::over(shared, clock);
+        let setup = Self {
             ports: ledger.units(),
-            stores: ledger.stores.clone(),
+            stores,
             commit: ledger.commit(),
             config: config.clone(),
             dialog_keymap: lib_shell::dialog_keymap(config),
-        }
+        };
+        (setup, failures)
     }
 
     /// The sample seed in memory, for a `Shell` built without storage.
     pub fn sample(config: &KeyBindingConfig) -> Self {
         let today = chrono::Local::now().date_naive();
         let (stores, _) = Stores::fake(FakeStores::sample(today));
-        Self::on(
-            &LedgerPorts::new(stores, lib_core::Clock::fixed(today)).0,
-            config,
-        )
+        Self::on(stores, lib_core::Clock::fixed(today), config).0
     }
 
     /// Ends the input just handled, if it wrote anything, as one transaction.

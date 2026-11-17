@@ -27,7 +27,7 @@ use super::store::{
 /// The deletion port over the stores the Categories, Transactions, Bills, Payees and Budgets
 /// modules also hold. The rows naming the Category are read through [`StoredCategoryRows`], the
 /// one selection the Categories handover and its counts read too (#1034).
-pub struct CategoryDeletionAdapter {
+pub(crate) struct CategoryDeletionAdapter {
     categories: SharedCategoriesStore,
     rows: StoredCategoryRows,
     budgets: SharedBudgetsStore,
@@ -134,11 +134,12 @@ mod tests {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
+    use crate::adapter::store::StoredCategoryDeletionReads;
     use crate::commit::Commit;
     use crate::writer::WriteFailure;
     use crate::{
         AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, PayeesAdapter,
-        PendingWrites, StoredCategoryDeletionReads, TransactionsAdapter, Writer,
+        PendingWrites, TransactionsAdapter, Writer,
     };
 
     /// The five stores, shared, as the adapter and the reads take them.

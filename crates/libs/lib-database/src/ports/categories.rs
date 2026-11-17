@@ -25,7 +25,7 @@ use crate::{StoredCategoryRows, category_refs};
 /// It is `Clone` so a Client can hold the repository the page shares and the save ports a Dialog
 /// writes through as two values over the same stores, whose borrows never meet.
 #[derive(Clone)]
-pub struct StoredCategoriesPorts {
+pub(crate) struct StoredCategoriesPorts {
     categories: SharedCategoriesStore,
     budgets: SharedBudgetsStore,
     rows: StoredCategoryRows,

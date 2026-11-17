@@ -13,7 +13,7 @@ use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_colour_theme::ColourAppearance;
 use lib_config::{ConfigValue, ConfigWriter, KeyBindingConfig};
-use lib_database::{Domain, LedgerPorts, Stores, WriteFailure, Writer};
+use lib_database::{Domain, Stores, WriteFailure, Writer};
 use lib_locale::format::upper;
 use lib_shell::WindowSize;
 use lib_shell::window_size::{MIN_COLUMNS, MIN_ROWS};
@@ -375,11 +375,14 @@ impl Shell {
     /// The Open Ledger on `LedgerPorts` over `stores`, its Units under the key bindings already
     /// set.
     fn open_ledger_on(&self, path: PathBuf, stores: Stores, writer: Option<Writer>) -> OpenLedger {
-        let (ledger, failures) =
-            LedgerPorts::new(stores, lib_core::Clock::new(|| Local::now().date_naive()));
+        let (units, failures) = UnitsSetup::on(
+            stores,
+            lib_core::Clock::new(|| Local::now().date_naive()),
+            &self.keybindings,
+        );
         OpenLedger {
             path,
-            units: UnitsSetup::on(&ledger, &self.keybindings),
+            units,
             failures: Some(failures),
             writer,
         }

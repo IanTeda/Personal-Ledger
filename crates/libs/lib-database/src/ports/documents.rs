@@ -1,6 +1,6 @@
 //! `lib-documents`' repository answered over the Documents store, for the Documents page and the
 //! Document Types page alike (#966, #1083). The read ports a Link names are
-//! [`StoredDocumentReads`](crate::StoredDocumentReads).
+//! [`StoredDocumentReads`](crate::adapter::store::StoredDocumentReads).
 
 use lib_core::{DocumentId, DocumentTypeId};
 use lib_documents::types::DocumentTypeRow;
@@ -12,7 +12,7 @@ use crate::adapter::store::SharedDocumentsStore;
 /// shared behind a `RefCell` whose guard can't be lent out of it. A write reaches the store's
 /// recorder, which names the Documents or the Document Types by the write, so the Document Types
 /// page hears only its own.
-pub struct StoredDocumentsPorts {
+pub(crate) struct StoredDocumentsPorts {
     store: SharedDocumentsStore,
 }
 
