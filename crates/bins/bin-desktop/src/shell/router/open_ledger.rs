@@ -177,7 +177,7 @@ impl OpenLedger {
             ports.categories.clone(),
             ports.category_save.clone(),
             ports.stores.budgets.clone(),
-            crate::category_deletion::DeletionStores::of(&ports),
+            ports.category_deletion(),
             dialog_keys.clone(),
             keybindings,
         );

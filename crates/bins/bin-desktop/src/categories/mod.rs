@@ -22,7 +22,6 @@ pub use router::categories_page;
 use lib_categories::presenter::CategoriesPagePresenter;
 use lib_core::{CategoryId, CategoryTypes};
 
-use crate::category_deletion::DeletionStores;
 use crate::shell::view::module_page::ModulePage;
 
 /// The Categories Settings page: the page Presenter in the generic page Entity.
@@ -54,7 +53,7 @@ pub struct CategoriesSetup {
     /// The Budgets store, which the page's snapshot reads the selected Category's records from.
     pub budgets: lib_database::SharedBudgetsStore,
     /// Category delete's port and reads, over the Categories store and the stores it re-points.
-    pub deletion: DeletionStores,
+    pub deletion: lib_category_deletion::CategoryDeletionPorts,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
@@ -65,7 +64,7 @@ impl CategoriesSetup {
         categories: lib_categories::SharedCategories,
         save: lib_database::StoredCategoriesPorts,
         budgets: lib_database::SharedBudgetsStore,
-        deletion: DeletionStores,
+        deletion: lib_category_deletion::CategoryDeletionPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> (CategoriesPagePresenter, Self) {
@@ -89,7 +88,7 @@ impl CategoriesSetup {
             ports.categories.clone(),
             ports.category_save.clone(),
             ports.stores.budgets.clone(),
-            DeletionStores::of(ports),
+            ports.category_deletion(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

@@ -341,6 +341,32 @@ mod tests {
         on_a_file(contract::the_writes_wait_for_the_one_commit);
     }
 
+    #[test]
+    fn the_category_deletion_bundle_quotes_and_deletes_over_the_same_stores_on_either() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for ledger in [fakes(), file(dir.path())] {
+            let lib_category_deletion::CategoryDeletionPorts { deletion, reads } =
+                ledger.category_deletion();
+            let all = ledger.categories.borrow().categories();
+            let leaf = all
+                .iter()
+                .find(|c| {
+                    all.iter().all(|other| other.parent != Some(c.id))
+                        && reads.category_in_use(c.id).is_some_and(|u| u.splits == 0)
+                })
+                .expect("a leaf Category with no Splits")
+                .id;
+
+            lib_category_deletion::interactor::DeleteCategory { id: leaf }
+                .run(&mut *deletion.borrow_mut())
+                .expect("an unused leaf deletes");
+
+            let wrote = ledger.commit().commit().wrote;
+            assert!(wrote.contains(&Domain::Categories), "{wrote:?}");
+            assert!(reads.category_in_use(leaf).is_none());
+        }
+    }
+
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
     }

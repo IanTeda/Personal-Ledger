@@ -34,6 +34,6 @@ pub mod protocols;
 
 pub use error::{Error, Result};
 pub use protocols::{
-    CategoryDeleted, CategoryDeletion, CategoryDeletionReads, CategoryInUse, CategoryRemoval,
-    SharedCategoryDeletion,
+    CategoryDeleted, CategoryDeletion, CategoryDeletionPorts, CategoryDeletionReads, CategoryInUse,
+    CategoryRemoval, SharedCategoryDeletion,
 };

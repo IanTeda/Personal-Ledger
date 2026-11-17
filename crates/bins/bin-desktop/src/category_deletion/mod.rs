@@ -7,7 +7,7 @@
 //!   (ADR-0056).
 //! - `router.rs` is the module's entry point ([`router::open_delete`]).
 //!
-//! Delete writes through [`DeletionStores`]' port, `lib-database`'s adapter over the Categories,
+//! Delete writes through `lib-category-deletion`'s `CategoryDeletionPorts` port, `lib-database`'s adapter over the Categories,
 //! Transactions, Bills, Payees and Budgets stores, so the Uncategorised it may
 //! make, the re-pointed rows and the Category's delete join the one pending batch and land in the
 //! one commit of the confirm's input. Nothing here reads the `Announcer`: the Categories page hears
@@ -15,24 +15,3 @@
 
 pub mod router;
 pub(crate) mod view;
-
-use lib_category_deletion::SharedCategoryDeletion;
-use lib_database::StoredCategoryDeletionReads;
-
-/// What the Delete category Dialog writes and reads through: the deletion port and the reads it
-/// shows when it opens, which `lib-database`'s `LedgerPorts` builds over the shared stores.
-#[derive(Clone)]
-pub struct DeletionStores {
-    pub deletion: SharedCategoryDeletion,
-    pub reads: StoredCategoryDeletionReads,
-}
-
-impl DeletionStores {
-    /// The port and reads `ports` built.
-    pub fn of(ports: &lib_database::LedgerPorts) -> Self {
-        Self {
-            deletion: ports.category_deletion.clone(),
-            reads: ports.category_deletion_reads.clone(),
-        }
-    }
-}

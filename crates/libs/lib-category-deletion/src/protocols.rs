@@ -129,6 +129,15 @@ pub trait CategoryDeletionReads {
     fn category_in_use(&self, id: CategoryId) -> Option<CategoryInUse>;
 }
 
+/// Everything the Delete category Dialog reads and writes through, as the Client's Ledger hands it
+/// out in one value: the deletion port and the reads it shows when it opens. This crate declares it
+/// so a Client names only trait objects, and the persistence layer fills it over its stores.
+#[derive(Clone)]
+pub struct CategoryDeletionPorts {
+    pub deletion: SharedCategoryDeletion,
+    pub reads: Rc<dyn CategoryDeletionReads>,
+}
+
 /// What a delete did, for its Toast and the page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CategoryDeleted {

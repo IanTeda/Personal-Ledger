@@ -378,6 +378,16 @@ impl LedgerPorts {
         }
     }
 
+    /// What the Delete category Dialog reads and writes through, as `lib-category-deletion`'s own
+    /// bundle: the deletion port and the reads it shows.
+    #[must_use]
+    pub fn category_deletion(&self) -> lib_category_deletion::CategoryDeletionPorts {
+        lib_category_deletion::CategoryDeletionPorts {
+            deletion: self.category_deletion.clone(),
+            reads: Rc::new(self.category_deletion_reads.clone()),
+        }
+    }
+
     /// The tags ports, a clone of the one value every page shares.
     #[must_use]
     pub fn tags(&self) -> lib_tags::SharedPorts {
