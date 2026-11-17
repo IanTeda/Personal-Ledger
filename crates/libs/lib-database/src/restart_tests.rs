@@ -11,8 +11,8 @@ struct Opened {
     stores: SharedStores,
 }
 
-/// The Desktop's start-up storage on the Ledger file in `dir`, the Sample Ledger as of `today`
-/// when there is none yet.
+/// Opens the storage on the Ledger file in `dir`, the Sample Ledger as of `today` when there is
+/// none yet.
 fn storage_in(dir: &std::path::Path, today: chrono::NaiveDate) -> crate::Storage {
     let path = dir.join("ledger.pldb");
     if !path.exists() {
@@ -22,7 +22,7 @@ fn storage_in(dir: &std::path::Path, today: chrono::NaiveDate) -> crate::Storage
 }
 
 /// The stores on `storage`, as the plain `Opened` a test reads them through, with the pending
-/// writes the test commits, as an input's `send` would.
+/// writes the test commits, as a Client commits an input's writes.
 fn on_storage(storage: crate::Storage) -> (Opened, PendingWrites) {
     let on = on_storage_with_bills(storage);
     (on.store, on.pending)
@@ -96,13 +96,8 @@ fn a_deleted_accounts_transactions_survive_a_restart() {
     delete_account(&on, wallet).expect("nothing pays from the Wallet");
     on.pending.commit();
     let before = transactions_of(&on.store);
-    // Stands for the writes a quit commits: the writer thread dies with the process.
-    writer.flush().expect("the writer is running");
-    drop(on);
-    drop(writer);
-
-    // The next day, so a re-seed would show as shifted dates.
-    let (reopened, _) = on_storage(storage_in(dir.path(), today.succ_opt().expect("a date")));
+    let OnStorage { store, pending, .. } = on;
+    let reopened = restart((store, pending), writer, dir.path(), today);
     let after = transactions_of(&reopened);
 
     assert_eq!(after, before);
@@ -129,15 +124,14 @@ fn a_deleted_categorys_rows_survive_a_restart() {
         ..
     } = on_storage_with_bills(storage);
     let gone = {
-        let store = &store;
-        let payees = payees_of(store);
-        categories_of(store)
+        let payees = payees_of(&store);
+        categories_of(&store)
             .iter()
             .map(|category| category.id)
             .find(|&id| {
-                plans_of(store).iter().any(|plan| plan.category_id == id)
+                plans_of(&store).iter().any(|plan| plan.category_id == id)
                     && payees.iter().any(|p| p.default_category == Some(id))
-                    && transactions_of(store)
+                    && transactions_of(&store)
                         .iter()
                         .any(|t| t.splits.iter().any(|s| s.category_id == id))
             })
@@ -153,21 +147,20 @@ fn a_deleted_categorys_rows_survive_a_restart() {
     assert!(deleted.payee_defaults_cleared > 0);
     let reopened = restart((store, pending), writer, dir.path(), today);
 
-    let store = &reopened;
-    let categories = categories_of(store);
+    let categories = categories_of(&reopened);
     assert!(categories.iter().all(|c| c.id != gone));
     let home = lib_categories::find_by_name(&categories, "Uncategorised")
         .expect("the delete's Uncategorised is stored");
-    let transactions = transactions_of(store);
+    let transactions = transactions_of(&reopened);
     let splits = transactions.iter().flat_map(|t| &t.splits);
     assert!(splits.clone().all(|s| s.category_id != gone));
     assert_eq!(
         splits.filter(|s| s.category_id == home).count(),
         deleted.splits_moved
     );
-    assert!(plans_of(store).iter().all(|p| p.category_id != gone));
+    assert!(plans_of(&reopened).iter().all(|p| p.category_id != gone));
     assert!(
-        payees_of(store)
+        payees_of(&reopened)
             .iter()
             .all(|p| p.default_category != Some(gone))
     );
@@ -229,8 +222,8 @@ fn budgets_of(store: &Opened) -> Vec<lib_budgets::Budget> {
     store.stores.budgets.borrow().budgets().budgets()
 }
 
-/// Commits what was written, as the input's `send` would, then opens the Ledger in `dir`
-/// again a day later, so a re-seed would show as shifted dates.
+/// Commits what was written, as a Client commits an input's writes, then opens the Ledger in
+/// `dir` again a day later, so a re-seed would show as shifted dates.
 fn restart(
     (store, pending): (Opened, PendingWrites),
     writer: crate::Writer,
@@ -266,15 +259,14 @@ fn paying_matching_skipping_and_editing_a_plan_survive_a_restart() {
     let bill_accounts = bills.borrow().accounts().bill_accounts();
     let bill_categories = bills.borrow().categories().bill_categories();
     let (matched, split) = {
-        let store = &store;
         entries
             .iter()
             .filter(|entry| entry.is_open())
             .find_map(|entry| {
                 lib_bills::match_candidates(
-                    &plans_of(store),
-                    &entries_of(store),
-                    &splits_of(store),
+                    &plans_of(&store),
+                    &entries_of(&store),
+                    &splits_of(&store),
                     &bill_accounts,
                     &bill_categories,
                     entry.id(),
@@ -376,19 +368,16 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
     let storage = storage_in(dir.path(), today);
     let writer = storage.writer.clone();
     let on = on_storage_with_bills(storage);
-    let (entry, account) = {
-        let store = &on.store;
-        entries_of(store)
-            .iter()
-            .find_map(|entry| match entry.resolution {
-                Resolution::Paid(split) => transactions_of(store)
-                    .iter()
-                    .find(|t| t.id == split.transaction_id)
-                    .map(|t| (entry.id(), t.account_id)),
-                _ => None,
-            })
-            .expect("the sample pays an entry")
-    };
+    let (entry, account) = entries_of(&on.store)
+        .iter()
+        .find_map(|entry| match entry.resolution {
+            Resolution::Paid(split) => transactions_of(&on.store)
+                .iter()
+                .find(|t| t.id == split.transaction_id)
+                .map(|t| (entry.id(), t.account_id)),
+            _ => None,
+        })
+        .expect("the sample pays an entry");
     let resolution = |store: &Opened| {
         lib_bills::entry(&entries_of(store), entry).map(|entry| entry.resolution.clone())
     };
@@ -417,29 +406,25 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
 
     delete_account(&on, account).expect("no Plan pays from it now");
     assert_eq!(resolution(&on.store), Some(Resolution::Unresolved));
-    {
-        let store = &on.store;
-        assert!(accounts_of(store).iter().all(|a| a.id != account));
-        assert!(
-            transactions_of(store)
-                .iter()
-                .all(|t| t.account_id != account)
-        );
-        assert_eq!(
-            budgets_of(store),
-            budgets,
-            "the Budgets store keeps the id in memory until it reloads; a write skips it"
-        );
-    }
+    assert!(accounts_of(&on.store).iter().all(|a| a.id != account));
+    assert!(
+        transactions_of(&on.store)
+            .iter()
+            .all(|t| t.account_id != account)
+    );
+    assert_eq!(
+        budgets_of(&on.store),
+        budgets,
+        "the Budgets store keeps the id in memory until it reloads; a write skips it"
+    );
 
     let OnStorage { store, pending, .. } = on;
     let reopened = restart((store, pending), writer, dir.path(), today);
 
     assert_eq!(resolution(&reopened), Some(Resolution::Unresolved));
-    let store = &reopened;
-    assert!(accounts_of(store).iter().all(|a| a.id != account));
+    assert!(accounts_of(&reopened).iter().all(|a| a.id != account));
     assert!(
-        budgets_of(store)
+        budgets_of(&reopened)
             .iter()
             .all(|b| !b.account_ids.contains(&account)),
         "the file dropped the Account from every Budget"
@@ -456,13 +441,12 @@ fn deleting_an_account_a_bill_plan_pays_from_is_refused_whole() {
     let writer = storage.writer.clone();
     let on = on_storage_with_bills(storage);
     let (account, plans, booked) = {
-        let store = &on.store;
-        let account = plans_of(store)[0].account_id;
-        let plans = plans_of(store)
+        let account = plans_of(&on.store)[0].account_id;
+        let plans = plans_of(&on.store)
             .iter()
             .filter(|plan| plan.account_id == account)
             .count();
-        let booked = transactions_of(store)
+        let booked = transactions_of(&on.store)
             .iter()
             .filter(|t| t.account_id == account)
             .count();
@@ -477,10 +461,9 @@ fn deleting_an_account_a_bill_plan_pays_from_is_refused_whole() {
 
     let OnStorage { store, pending, .. } = on;
     let reopened = restart((store, pending), writer, dir.path(), today);
-    let store = &reopened;
-    assert!(accounts_of(store).iter().any(|a| a.id == account));
+    assert!(accounts_of(&reopened).iter().any(|a| a.id == account));
     assert_eq!(
-        transactions_of(store)
+        transactions_of(&reopened)
             .iter()
             .filter(|t| t.account_id == account)
             .count(),
