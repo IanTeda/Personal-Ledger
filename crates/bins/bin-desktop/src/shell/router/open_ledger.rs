@@ -183,7 +183,7 @@ impl OpenLedger {
         );
         let inventory_setup = crate::inventory::InventorySetup::new(
             ports.inventory(),
-            ports.inventory_reads.clone(),
+            ports.inventory_reads(),
             dialog_keys.clone(),
             keybindings,
         );
@@ -266,7 +266,7 @@ impl OpenLedger {
         let documents_view = crate::documents::router::documents_page(
             &ports.documents(),
             Rc::new(crate::documents::files::DiskFiles),
-            ports.document_reads.clone(),
+            ports.document_reads(),
             announcer.clone(),
             keybindings,
             clock.clone(),

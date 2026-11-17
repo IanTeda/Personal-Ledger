@@ -429,6 +429,20 @@ impl LedgerPorts {
         }
     }
 
+    /// What the Inventory page and its Dialogs read the Units and Documents through, as
+    /// `lib-inventory`'s own read traits.
+    #[must_use]
+    pub fn inventory_reads(&self) -> lib_inventory::SharedReads {
+        Rc::new(self.inventory_reads.clone())
+    }
+
+    /// What the Documents page reads the other domains through, as `lib-documents`' own read
+    /// traits.
+    #[must_use]
+    pub fn document_reads(&self) -> lib_documents::SharedReads {
+        Rc::new(self.document_reads.clone())
+    }
+
     /// The tags ports, a clone of the one value every page shares.
     #[must_use]
     pub fn tags(&self) -> lib_tags::SharedPorts {

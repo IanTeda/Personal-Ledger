@@ -84,6 +84,15 @@ pub trait LocationUsage {
     fn location_usage(&self, id: LocationId) -> LocationUse;
 }
 
+/// Every Inventory read port, as the one value a Client reads the other domains through.
+pub trait InventoryReads: InventoryUnits + LocationUsage {}
+
+impl<T> InventoryReads for T where T: InventoryUnits + LocationUsage + ?Sized {}
+
+/// The other domains as the Inventory page and its Dialogs read them, shared with the Client that
+/// answers them.
+pub type SharedReads = Rc<dyn InventoryReads>;
+
 /// A row of the page: a Location, or an Area of an open Location.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InventoryRow {

@@ -16,11 +16,11 @@ use crate::shell::view::page_router::PageRouter;
 
 impl InventoryRouter for PageRouter<'_, '_, InventoryPagePresenter> {
     /// Builds `dialog`'s Presenter on the shared Inventory, its Units and Documents read through
-    /// `StoredInventoryReads`, handed the Dialog keys, and hosts it as a `ModuleDialog`; its
+    /// `lib_inventory::SharedReads`, handed the Dialog keys, and hosts it as a `ModuleDialog`; its
     /// confirmed outcome comes back to the page through [`ModulePage::landing`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let setup = self.setup;
-        let (inventory, reads, keys) = (&setup.inventory, &setup.reads, setup.dialog_keys.get());
+        let (inventory, reads, keys) = (&setup.inventory, &*setup.reads, setup.dialog_keys.get());
         match dialog {
             Which::AddLocation { unit } => {
                 self.open(LocationFormPresenter::add(inventory, reads, unit, keys));

@@ -12,7 +12,7 @@
 //! - `router.rs` is the Router and the module's entry point ([`inventory_page`]).
 //!
 //! The Inventory repository is `lib-database`'s `StoredInventoryPorts`; the Units and Documents its
-//! Dialogs quote are read through `StoredInventoryReads` (#867, #1001, #1083).
+//! Dialogs quote are read through `lib_inventory::SharedReads` (#867, #1001, #1083).
 //!
 //! The Inventory destination (`Noun::Inventory`) is a placeholder that shares nothing with the
 //! page. Where the Inventory is kept, the SQLite adapter opened at start or memory, is
@@ -24,6 +24,7 @@ mod view;
 pub use lib_inventory::*;
 pub use router::inventory_page;
 
+use lib_inventory::SharedReads;
 use lib_inventory::presenter::InventoryPagePresenter;
 
 use crate::shell::view::module_page::ModulePage;
@@ -53,7 +54,7 @@ pub struct SettingsInventorySnapshot {
 /// keys every Inventory Dialog's hints read.
 pub struct InventorySetup {
     pub inventory: SharedInventory,
-    pub reads: lib_database::StoredInventoryReads,
+    pub reads: SharedReads,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
@@ -61,7 +62,7 @@ impl InventorySetup {
     /// The page's Presenter, which owns the Inventory keymap under `[keybindings]`, and its Setup.
     pub fn new(
         inventory: SharedInventory,
-        reads: lib_database::StoredInventoryReads,
+        reads: SharedReads,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> (InventoryPagePresenter, Self) {
@@ -80,7 +81,7 @@ impl InventorySetup {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             ports.inventory(),
-            ports.inventory_reads.clone(),
+            ports.inventory_reads(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

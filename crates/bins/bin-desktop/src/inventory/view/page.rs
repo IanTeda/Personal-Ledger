@@ -11,7 +11,7 @@ use lib_database::Domain;
 use lib_inventory::presenter::{
     InventoryPageEvent, InventoryPagePresenter, InventoryPageViewModel, MenuAction,
 };
-use lib_inventory::{Inventory, InventoryRow, InventoryUnits as _};
+use lib_inventory::{Inventory, InventoryRow};
 
 use crate::inventory::{InventoryPage, InventorySetup, SettingsInventorySnapshot};
 use crate::settings::SettingsPage;

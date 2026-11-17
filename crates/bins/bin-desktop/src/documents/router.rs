@@ -6,8 +6,6 @@
 
 use std::path::Path;
 
-use std::rc::Rc;
-
 use gpui::{App, AppContext as _, Entity};
 use lib_core::Clock;
 use lib_documents::presenter::{DialogPorts, DocumentsPagePresenter};
@@ -74,7 +72,7 @@ impl DocumentsRouter for DocumentsPageRouter<'_, '_> {
 pub fn documents_page(
     documents: &SharedRepository,
     files: SharedFiles,
-    reads: lib_database::StoredDocumentReads,
+    reads: lib_documents::SharedReads,
     announcer: Entity<Announcer>,
     config: &lib_config::KeyBindingConfig,
     clock: Clock,
@@ -82,7 +80,6 @@ pub fn documents_page(
     cx: &mut App,
 ) -> Entity<DocumentsPage> {
     let documents = documents.clone();
-    let reads = Rc::new(reads);
     let presenter = DocumentsPagePresenter::new(
         documents,
         reads,
