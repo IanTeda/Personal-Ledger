@@ -11,17 +11,6 @@ struct Opened {
     stores: SharedStores,
 }
 
-/// Reads `opened` through `f`.
-fn read<R>(opened: &Opened, f: impl FnOnce(&Opened) -> R) -> R {
-    f(opened)
-}
-
-/// The Desktop's quit: commits the writes still queued, since the writer thread dies with the
-/// process.
-fn quit(writer: &crate::Writer) {
-    writer.flush().expect("the queued writes are saved");
-}
-
 /// The Desktop's start-up storage on the Ledger file in `dir`, the Sample Ledger as of `today`
 /// when there is none yet.
 fn storage_in(dir: &std::path::Path, today: chrono::NaiveDate) -> crate::Storage {
@@ -32,8 +21,8 @@ fn storage_in(dir: &std::path::Path, today: chrono::NaiveDate) -> crate::Storage
     crate::open_storage(&path).expect("the Ledger opens")
 }
 
-/// The stores on `storage`, as an Entity a test reads them through, with the pending writes
-/// the test commits, as an input's `send` would.
+/// The stores on `storage`, as the plain `Opened` a test reads them through, with the pending
+/// writes the test commits, as an input's `send` would.
 fn on_storage(storage: crate::Storage) -> (Opened, PendingWrites) {
     let on = on_storage_with_bills(storage);
     (on.store, on.pending)
@@ -106,14 +95,15 @@ fn a_deleted_accounts_transactions_survive_a_restart() {
 
     delete_account(&on, wallet).expect("nothing pays from the Wallet");
     on.pending.commit();
-    let before = read(&on.store, transactions_of);
-    quit(&writer);
+    let before = transactions_of(&on.store);
+    // Stands for the writes a quit commits: the writer thread dies with the process.
+    writer.flush().expect("the writer is running");
     drop(on);
     drop(writer);
 
     // The next day, so a re-seed would show as shifted dates.
     let (reopened, _) = on_storage(storage_in(dir.path(), today.succ_opt().expect("a date")));
-    let after = read(&reopened, transactions_of);
+    let after = transactions_of(&reopened);
 
     assert_eq!(after, before);
     assert!(
@@ -138,7 +128,8 @@ fn a_deleted_categorys_rows_survive_a_restart() {
         pending,
         ..
     } = on_storage_with_bills(storage);
-    let gone = read(&store, |store| {
+    let gone = {
+        let store = &store;
         let payees = payees_of(store);
         categories_of(store)
             .iter()
@@ -151,7 +142,7 @@ fn a_deleted_categorys_rows_survive_a_restart() {
                         .any(|t| t.splits.iter().any(|s| s.category_id == id))
             })
             .expect("a sample Category with Splits, a Bill Plan and a Payee default")
-    });
+    };
 
     let deleted = lib_category_deletion::interactor::DeleteCategory { id: gone }
         .run(&mut *category_deletion.borrow_mut())
@@ -162,25 +153,24 @@ fn a_deleted_categorys_rows_survive_a_restart() {
     assert!(deleted.payee_defaults_cleared > 0);
     let reopened = restart((store, pending), writer, dir.path(), today);
 
-    read(&reopened, |store| {
-        let categories = categories_of(store);
-        assert!(categories.iter().all(|c| c.id != gone));
-        let home = lib_categories::find_by_name(&categories, "Uncategorised")
-            .expect("the delete's Uncategorised is stored");
-        let transactions = transactions_of(store);
-        let splits = transactions.iter().flat_map(|t| &t.splits);
-        assert!(splits.clone().all(|s| s.category_id != gone));
-        assert_eq!(
-            splits.filter(|s| s.category_id == home).count(),
-            deleted.splits_moved
-        );
-        assert!(plans_of(store).iter().all(|p| p.category_id != gone));
-        assert!(
-            payees_of(store)
-                .iter()
-                .all(|p| p.default_category != Some(gone))
-        );
-    });
+    let store = &reopened;
+    let categories = categories_of(store);
+    assert!(categories.iter().all(|c| c.id != gone));
+    let home = lib_categories::find_by_name(&categories, "Uncategorised")
+        .expect("the delete's Uncategorised is stored");
+    let transactions = transactions_of(store);
+    let splits = transactions.iter().flat_map(|t| &t.splits);
+    assert!(splits.clone().all(|s| s.category_id != gone));
+    assert_eq!(
+        splits.filter(|s| s.category_id == home).count(),
+        deleted.splits_moved
+    );
+    assert!(plans_of(store).iter().all(|p| p.category_id != gone));
+    assert!(
+        payees_of(store)
+            .iter()
+            .all(|p| p.default_category != Some(gone))
+    );
 }
 
 /// The Categories as the Categories store holds them.
@@ -196,7 +186,7 @@ fn payees_of(store: &Opened) -> Vec<lib_payees::Payee> {
 /// The Bill Plans and the Bill Schedule as the Bills store holds them, the entries by due date
 /// and then Plan, since a port lists them in no particular order.
 fn bills_of(store: &Opened) -> (Vec<lib_bills::BillPlan>, Vec<lib_bills::BillScheduleEntry>) {
-    read(store, |store| (plans_of(store), entries_of(store)))
+    (plans_of(store), entries_of(store))
 }
 
 /// The Transactions as the Transactions store holds them, newest first, since a store lists
@@ -248,7 +238,8 @@ fn restart(
     today: chrono::NaiveDate,
 ) -> Opened {
     pending.commit();
-    quit(&writer);
+    // Stands for the writes a quit commits: the writer thread dies with the process.
+    writer.flush().expect("the writer is running");
     drop(store);
     drop(writer);
     on_storage(storage_in(dir, today.succ_opt().expect("a date"))).0
@@ -274,7 +265,8 @@ fn paying_matching_skipping_and_editing_a_plan_survive_a_restart() {
     let (plans, entries) = bills_of(&store);
     let bill_accounts = bills.borrow().accounts().bill_accounts();
     let bill_categories = bills.borrow().categories().bill_categories();
-    let (matched, split) = read(&store, |store| {
+    let (matched, split) = {
+        let store = &store;
         entries
             .iter()
             .filter(|entry| entry.is_open())
@@ -291,7 +283,7 @@ fn paying_matching_skipping_and_editing_a_plan_survive_a_restart() {
                 .map(|split| (entry.id(), *split))
             })
             .expect("the sample leaves an entry with a Match candidate")
-    });
+    };
     let mut open = entries
         .iter()
         .filter(|entry| entry.is_open() && entry.id() != matched)
@@ -350,7 +342,7 @@ fn paying_matching_skipping_and_editing_a_plan_survive_a_restart() {
         .expect("the plan is edited");
     }
     let before = bills_of(&store);
-    let transactions = read(&store, transactions_of);
+    let transactions = transactions_of(&store);
 
     let reopened = restart((store, pending), writer, dir.path(), today);
 
@@ -366,12 +358,12 @@ fn paying_matching_skipping_and_editing_a_plan_survive_a_restart() {
         panic!("the paid entry stays Paid");
     };
     assert!(
-        read(&reopened, |store| transactions_of(store)
+        transactions_of(&reopened)
             .iter()
-            .any(|t| t.id == payment.transaction_id)),
+            .any(|t| t.id == payment.transaction_id),
         "Pay's Transaction is stored with it"
     );
-    assert_eq!(read(&reopened, transactions_of), transactions);
+    assert_eq!(transactions_of(&reopened), transactions);
     assert_eq!(before.0[0].name, "Renamed plan");
 }
 
@@ -384,7 +376,8 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
     let storage = storage_in(dir.path(), today);
     let writer = storage.writer.clone();
     let on = on_storage_with_bills(storage);
-    let (entry, account) = read(&on.store, |store| {
+    let (entry, account) = {
+        let store = &on.store;
         entries_of(store)
             .iter()
             .find_map(|entry| match entry.resolution {
@@ -395,22 +388,18 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
                 _ => None,
             })
             .expect("the sample pays an entry")
-    });
+    };
     let resolution = |store: &Opened| {
-        read(store, |store| {
-            lib_bills::entry(&entries_of(store), entry).map(|entry| entry.resolution.clone())
-        })
+        lib_bills::entry(&entries_of(store), entry).map(|entry| entry.resolution.clone())
     };
 
     // An Account a Bill Plan pays from can't be deleted, so its Plans move to another Account
     // first: what's tested is the Unmatch.
-    let other = read(&on.store, |store| {
-        accounts_of(store)
-            .iter()
-            .find(|a| a.id != account)
-            .expect("a second Account")
-            .id
-    });
+    let other = accounts_of(&on.store)
+        .iter()
+        .find(|a| a.id != account)
+        .expect("a second Account")
+        .id;
     {
         let mut ports = on.bills.borrow_mut();
         let plans = ports.bills().bill_plans();
@@ -420,7 +409,7 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
         }
     }
     on.pending.commit();
-    let budgets = read(&on.store, budgets_of);
+    let budgets = budgets_of(&on.store);
     assert!(
         budgets.iter().any(|b| b.account_ids.contains(&account)),
         "a sample Budget counts the Account"
@@ -428,7 +417,8 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
 
     delete_account(&on, account).expect("no Plan pays from it now");
     assert_eq!(resolution(&on.store), Some(Resolution::Unresolved));
-    read(&on.store, |store| {
+    {
+        let store = &on.store;
         assert!(accounts_of(store).iter().all(|a| a.id != account));
         assert!(
             transactions_of(store)
@@ -440,21 +430,20 @@ fn deleting_an_account_leaves_the_entries_its_transactions_paid_unmatched_after_
             budgets,
             "the Budgets store keeps the id in memory until it reloads; a write skips it"
         );
-    });
+    }
 
     let OnStorage { store, pending, .. } = on;
     let reopened = restart((store, pending), writer, dir.path(), today);
 
     assert_eq!(resolution(&reopened), Some(Resolution::Unresolved));
-    read(&reopened, |store| {
-        assert!(accounts_of(store).iter().all(|a| a.id != account));
-        assert!(
-            budgets_of(store)
-                .iter()
-                .all(|b| !b.account_ids.contains(&account)),
-            "the file dropped the Account from every Budget"
-        );
-    });
+    let store = &reopened;
+    assert!(accounts_of(store).iter().all(|a| a.id != account));
+    assert!(
+        budgets_of(store)
+            .iter()
+            .all(|b| !b.account_ids.contains(&account)),
+        "the file dropped the Account from every Budget"
+    );
 }
 
 /// An Account a Bill Plan pays from is refused by `lib-account-deletion` before anything is
@@ -466,7 +455,8 @@ fn deleting_an_account_a_bill_plan_pays_from_is_refused_whole() {
     let storage = storage_in(dir.path(), today);
     let writer = storage.writer.clone();
     let on = on_storage_with_bills(storage);
-    let (account, plans, booked) = read(&on.store, |store| {
+    let (account, plans, booked) = {
+        let store = &on.store;
         let account = plans_of(store)[0].account_id;
         let plans = plans_of(store)
             .iter()
@@ -477,7 +467,7 @@ fn deleting_an_account_a_bill_plan_pays_from_is_refused_whole() {
             .filter(|t| t.account_id == account)
             .count();
         (account, plans, booked)
-    });
+    };
     assert!(booked > 0, "the sample books to a Bill Plan's Account");
 
     assert_eq!(
@@ -487,14 +477,13 @@ fn deleting_an_account_a_bill_plan_pays_from_is_refused_whole() {
 
     let OnStorage { store, pending, .. } = on;
     let reopened = restart((store, pending), writer, dir.path(), today);
-    read(&reopened, |store| {
-        assert!(accounts_of(store).iter().any(|a| a.id == account));
-        assert_eq!(
-            transactions_of(store)
-                .iter()
-                .filter(|t| t.account_id == account)
-                .count(),
-            booked
-        );
-    });
+    let store = &reopened;
+    assert!(accounts_of(store).iter().any(|a| a.id == account));
+    assert_eq!(
+        transactions_of(store)
+            .iter()
+            .filter(|t| t.account_id == account)
+            .count(),
+        booked
+    );
 }
