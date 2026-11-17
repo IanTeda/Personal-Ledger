@@ -65,6 +65,16 @@ pub fn carrying(transactions: Vec<Transaction>, id: TagId) -> Vec<Transaction> {
 /// commits its writes. Single-threaded, as both Clients' UI threads are.
 pub type SharedTagRemoval = Rc<RefCell<dyn TagRemoval>>;
 
+/// Everything the Remove tag and Merge tags Dialogs write and read through, as the Client's Ledger
+/// hands it out in one value: the removal port and the reads they show when they open. This crate
+/// declares it so a Client names only trait objects, and the persistence layer fills it over its
+/// stores.
+#[derive(Clone)]
+pub struct TagRemovalPorts {
+    pub removal: SharedTagRemoval,
+    pub reads: Rc<dyn TagRemovalReads>,
+}
+
 /// A Tag as the Dialogs offer it, with the distinct Transactions carrying it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagCount {

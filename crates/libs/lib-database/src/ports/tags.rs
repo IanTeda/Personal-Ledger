@@ -114,4 +114,21 @@ mod tests {
 
         assert!(ledger.commit.commit().is_empty());
     }
+
+    #[test]
+    fn the_tag_removal_bundle_reads_and_removes_over_the_same_stores_on_either() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for ledger in [fakes(), file(dir.path())] {
+            let lib_tag_removal::TagRemovalPorts { removal, reads } = ledger.tag_removal();
+            let tag = reads.tags_by_usage().pop().expect("a sample Tag").tag.id;
+
+            lib_tag_removal::interactor::RemoveTag { id: tag }
+                .run(&mut *removal.borrow_mut())
+                .expect("a sample Tag removes");
+
+            let wrote = ledger.commit().commit().wrote;
+            assert!(wrote.contains(&Domain::Tags), "{wrote:?}");
+            assert!(reads.tag_count(tag).is_none());
+        }
+    }
 }

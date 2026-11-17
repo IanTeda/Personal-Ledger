@@ -145,7 +145,7 @@ impl OpenLedger {
         );
         let tags_setup = crate::tags::TagsSetup::new(
             ports.tags(),
-            crate::tag_removal::RemovalStores::of(&ports),
+            ports.tag_removal(),
             dialog_keys.clone(),
             clock.clone(),
             keybindings,

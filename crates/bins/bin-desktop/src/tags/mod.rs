@@ -24,7 +24,6 @@ use lib_tags::SharedPorts;
 use lib_tags::presenter::TagsPagePresenter;
 
 use crate::shell::view::module_page::ModulePage;
-use crate::tag_removal::RemovalStores;
 
 /// The Tags Settings page: the page Presenter in the generic page Entity.
 pub type TagsPage = ModulePage<TagsPagePresenter>;
@@ -44,7 +43,7 @@ pub struct SettingsTagsSnapshot {
 /// every Tags Dialog's hints read, and the Clock its Transactions hand-off dates its filter by.
 pub struct TagsSetup {
     pub ports: SharedPorts,
-    pub removal: RemovalStores,
+    pub removal: lib_tag_removal::TagRemovalPorts,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
     pub clock: lib_core::Clock,
 }
@@ -53,7 +52,7 @@ impl TagsSetup {
     /// The page's Presenter, which owns the Tags keymap under `[keybindings]`, and its Setup.
     pub fn new(
         ports: SharedPorts,
-        removal: RemovalStores,
+        removal: lib_tag_removal::TagRemovalPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         clock: lib_core::Clock,
         config: &lib_config::KeyBindingConfig,
@@ -78,7 +77,7 @@ impl TagsSetup {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             ports.tags(),
-            RemovalStores::of(ports),
+            ports.tag_removal(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

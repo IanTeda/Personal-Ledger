@@ -33,5 +33,6 @@ pub mod protocols;
 
 pub use error::{Error, Result};
 pub use protocols::{
-    SharedTagRemoval, TagCount, TagMerged, TagRemoval, TagRemovalReads, TagRemoved, TagRewrite,
+    SharedTagRemoval, TagCount, TagMerged, TagRemoval, TagRemovalPorts, TagRemovalReads,
+    TagRemoved, TagRewrite,
 };

@@ -368,6 +368,16 @@ impl LedgerPorts {
         }
     }
 
+    /// What the Remove tag and Merge tags Dialogs write and read through, as `lib-tag-removal`'s
+    /// own bundle: the removal port and the reads they show when they open.
+    #[must_use]
+    pub fn tag_removal(&self) -> lib_tag_removal::TagRemovalPorts {
+        lib_tag_removal::TagRemovalPorts {
+            removal: self.tag_removal.clone(),
+            reads: Rc::new(self.tag_removal_reads.clone()),
+        }
+    }
+
     /// The tags ports, a clone of the one value every page shares.
     #[must_use]
     pub fn tags(&self) -> lib_tags::SharedPorts {
