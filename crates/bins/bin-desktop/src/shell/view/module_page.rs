@@ -343,12 +343,18 @@ impl<P: PageView> ModulePage<P> {
         }
     }
 
-    /// A palette Command, by its keymap `command` name: the event its key sends.
+    /// A palette Command, by its keymap `command` name: the event its key sends, or the one its
+    /// binding builds from `argument` when it takes an Argument ([`Keymap::palette_event`]).
     /// The tab or mode it belongs to is shown first ([`PagePresenter::shows`]), in the same input.
     /// Whether the page took the Command's own event: one it refuses once shown is reported
     /// refused, even though its tab or mode now shows.
-    pub fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.presenter.keymap().event_for(command) else {
+    pub fn module_command(
+        &mut self,
+        command: &str,
+        argument: &str,
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
+        let Some(event) = self.presenter.keymap().palette_event(command, argument) else {
             return false;
         };
         let Some(shown) = self.presenter.shows(&event) else {
@@ -418,7 +424,7 @@ impl<P: PageView> ModulePage<P> {
     /// `/`: the keymap's `search` command, reporting whether the page is now in its Search. A
     /// page without one leaves `/` inert.
     pub fn start_search(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        self.module_command(SEARCH, cx) && self.presenter.mode() == Some(PageMode::Search)
+        self.module_command(SEARCH, "", cx) && self.presenter.mode() == Some(PageMode::Search)
     }
 
     /// A key while the page is in a mode of its own: offered to the keymap by its chord, then to

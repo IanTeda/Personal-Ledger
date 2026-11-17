@@ -15,14 +15,19 @@
 /// `lib-config` itself, which `lib-settings` may not.
 pub use lib_config::KeyBindingConfig;
 
+use std::fmt;
+use std::sync::Arc;
+
 /// One command: its name in `[keybindings]`, its chord when nothing overrides it, its event, and
 /// whether the command palette lists it. An empty chord leaves the command unbound until
-/// `[keybindings]` sets one.
+/// `[keybindings]` sets one. `argument_event`, when set, builds the event the palette sends from
+/// the binding's listed name and the typed Argument; the key always sends `event`.
 #[derive(Debug, Clone)]
 pub struct Binding<E> {
     pub command: &'static str,
     pub chord: &'static str,
     pub event: E,
+    pub argument_event: Option<fn(&'static str, String) -> E>,
     pub palette: Palette,
 }
 
@@ -33,6 +38,7 @@ impl<E> Binding<E> {
             command,
             chord,
             event,
+            argument_event: None,
             palette: Palette::Hidden,
         }
     }
@@ -49,7 +55,37 @@ impl<E> Binding<E> {
             command,
             chord,
             event,
-            palette: Palette::Listed { name, description },
+            argument_event: None,
+            palette: Palette::Listed {
+                name,
+                description,
+                takes_argument: false,
+            },
+        }
+    }
+
+    /// A binding the palette lists as `name` and that takes an Argument (`accounts delete Home
+    /// Loan`): the palette sends `argument_event`'s event, given `name` and the trimmed Argument
+    /// (empty when none was typed), and the key sends `event`. A `const fn` rather than a builder
+    /// on [`Self::listed`]: a `const` method taking `self` over a generic `E` can't drop it.
+    pub const fn listed_with_argument(
+        command: &'static str,
+        chord: &'static str,
+        event: E,
+        argument_event: fn(&'static str, String) -> E,
+        name: &'static str,
+        description: fn() -> String,
+    ) -> Self {
+        Self {
+            command,
+            chord,
+            event,
+            argument_event: Some(argument_event),
+            palette: Palette::Listed {
+                name,
+                description,
+                takes_argument: true,
+            },
         }
     }
 }
@@ -59,9 +95,12 @@ impl<E> Binding<E> {
 pub enum Palette {
     /// Listed under `name`, as typed: `<domain> <verb>` in kebab case (`units set-base`), a stable
     /// English id, never a Message. `description` is the module's Message for it.
+    /// `takes_argument` says text typed after the name is the Command's Argument rather than more
+    /// of the query ([`Binding::listed_with_argument`]).
     Listed {
         name: &'static str,
         description: fn() -> String,
+        takes_argument: bool,
     },
     /// Not listed: list movement, `select`, and keys that mean something only on the row they
     /// act on. A Dialog's bindings are all hidden.
@@ -98,7 +137,39 @@ struct Bound<E> {
     chord: String,
     command: &'static str,
     event: E,
+    argument_event: Option<ArgumentEvent<E>>,
     palette: Palette,
+}
+
+/// A binding's Argument constructor as a keymap holds it: the binding's `fn`, or one
+/// [`Keymap::map`] wrapped, which a `fn` pointer can't hold.
+enum ArgumentEvent<E> {
+    Plain(fn(&'static str, String) -> E),
+    Mapped(Arc<dyn Fn(&'static str, String) -> E + Send + Sync>),
+}
+
+impl<E> ArgumentEvent<E> {
+    fn build(&self, name: &'static str, argument: String) -> E {
+        match self {
+            Self::Plain(build) => build(name, argument),
+            Self::Mapped(build) => build(name, argument),
+        }
+    }
+}
+
+impl<E> Clone for ArgumentEvent<E> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Plain(build) => Self::Plain(*build),
+            Self::Mapped(build) => Self::Mapped(Arc::clone(build)),
+        }
+    }
+}
+
+impl<E> fmt::Debug for ArgumentEvent<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ArgumentEvent")
+    }
 }
 
 impl<E: Clone> Keymap<E> {
@@ -112,11 +183,43 @@ impl<E: Clone> Keymap<E> {
                     chord: chord.to_string(),
                     command: binding.command,
                     event: binding.event.clone(),
+                    argument_event: binding.argument_event.map(ArgumentEvent::Plain),
                     palette: binding.palette,
                 }
             })
             .collect();
         Self { bindings }
+    }
+
+    /// This keymap with each event wrapped by `wrap`, chords, palette entries and Argument
+    /// constructors kept: a page Presenter that holds a view of its own (Units' prices view) takes
+    /// that view's keys as page events.
+    pub fn map<F: 'static>(
+        &self,
+        wrap: impl Fn(E) -> F + Clone + Send + Sync + 'static,
+    ) -> Keymap<F>
+    where
+        E: 'static,
+    {
+        Keymap {
+            bindings: self
+                .bindings
+                .iter()
+                .cloned()
+                .map(|bound| Bound {
+                    chord: bound.chord,
+                    command: bound.command,
+                    event: wrap(bound.event),
+                    argument_event: bound.argument_event.map(|build| {
+                        let wrap = wrap.clone();
+                        ArgumentEvent::Mapped(Arc::new(move |name, argument| {
+                            wrap(build.build(name, argument))
+                        }))
+                    }),
+                    palette: bound.palette,
+                })
+                .collect(),
+        }
     }
 
     /// The event `chord` sends, if it is bound.
@@ -137,6 +240,22 @@ impl<E: Clone> Keymap<E> {
             .iter()
             .find(|bound| bound.command == command)
             .map(|bound| bound.event.clone())
+    }
+
+    /// The event the palette sends for `command` with `argument` typed after its name: the
+    /// binding's Argument constructor's, given its listed name and the trimmed Argument, even an
+    /// empty one; else the plain event, the Argument dropped.
+    pub fn palette_event(&self, command: &str, argument: &str) -> Option<E> {
+        let bound = self
+            .bindings
+            .iter()
+            .find(|bound| bound.command == command)?;
+        match (&bound.argument_event, bound.palette) {
+            (Some(build), Palette::Listed { name, .. }) => {
+                Some(build.build(name, argument.trim().to_string()))
+            }
+            _ => Some(bound.event.clone()),
+        }
     }
 
     /// Every event `chord` sends, in binding order: a module whose tabs each bind one chord to an
@@ -197,7 +316,9 @@ impl<E: Clone> Keymap<E> {
         self.bindings
             .iter()
             .filter_map(|bound| match bound.palette {
-                Palette::Listed { name, description } => Some(Listed {
+                Palette::Listed {
+                    name, description, ..
+                } => Some(Listed {
                     command: bound.command,
                     name,
                     description,
@@ -235,25 +356,6 @@ impl<E: Clone> Keymap<E> {
                     chord: String::new(),
                     ..bound
                 }))
-                .collect(),
-        }
-    }
-
-    /// This keymap with each event wrapped by `wrap`, chords and palette entries kept: a page
-    /// Presenter that holds a view of its own (Units' prices view) takes that view's keys as page
-    /// events.
-    pub fn map<F>(&self, wrap: impl Fn(E) -> F) -> Keymap<F> {
-        Keymap {
-            bindings: self
-                .bindings
-                .iter()
-                .cloned()
-                .map(|bound| Bound {
-                    chord: bound.chord,
-                    command: bound.command,
-                    event: wrap(bound.event),
-                    palette: bound.palette,
-                })
                 .collect(),
         }
     }
@@ -359,7 +461,9 @@ mod tests {
             .bindings()
             .map(|bound| {
                 let listed = match bound.palette {
-                    Palette::Listed { name, description } => Some((name, description())),
+                    Palette::Listed {
+                        name, description, ..
+                    } => Some((name, description())),
                     Palette::Hidden => None,
                 };
                 (bound.command, bound.chord, listed)
@@ -528,6 +632,90 @@ mod tests {
             chained.event("x"),
             Some(None),
             "the second keymap's chords still bind"
+        );
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum Typed {
+        Key,
+        Command {
+            name: &'static str,
+            argument: String,
+        },
+    }
+
+    fn typed(name: &'static str, argument: String) -> Typed {
+        Typed::Command { name, argument }
+    }
+
+    const TYPED: &[Binding<Typed>] = &[
+        Binding::listed_with_argument(
+            EDIT,
+            "e",
+            Typed::Key,
+            typed,
+            "rows edit",
+            delete_description,
+        ),
+        Binding::listed(DELETE, "d", Typed::Key, "rows delete", delete_description),
+    ];
+
+    fn takes_argument(palette: Palette) -> Option<bool> {
+        match palette {
+            Palette::Listed { takes_argument, .. } => Some(takes_argument),
+            Palette::Hidden => None,
+        }
+    }
+
+    #[test]
+    fn a_binding_listed_with_an_argument_says_so_and_a_plain_listed_one_does_not() {
+        let keymap = Keymap::new(TYPED, &KeyBindingConfig::default());
+
+        let flags: Vec<_> = keymap
+            .bindings()
+            .map(|bound| (bound.command, takes_argument(bound.palette)))
+            .collect();
+        assert_eq!(flags, [(EDIT, Some(true)), (DELETE, Some(false))]);
+    }
+
+    #[test]
+    fn the_palette_event_is_the_constructors_given_the_listed_name_and_trimmed_argument() {
+        let keymap = Keymap::new(TYPED, &KeyBindingConfig::default());
+
+        assert_eq!(
+            keymap.palette_event(EDIT, "  Home Loan "),
+            Some(Typed::Command {
+                name: "rows edit",
+                argument: "Home Loan".to_string()
+            })
+        );
+        assert_eq!(
+            keymap.palette_event(EDIT, ""),
+            Some(Typed::Command {
+                name: "rows edit",
+                argument: String::new()
+            }),
+            "an empty Argument still goes through the constructor"
+        );
+        assert_eq!(keymap.event("e"), Some(Typed::Key), "a key never does");
+        assert_eq!(
+            keymap.palette_event(DELETE, "ignored"),
+            Some(Typed::Key),
+            "a binding with no constructor sends its plain event"
+        );
+        assert_eq!(keymap.palette_event("unbound", ""), None);
+    }
+
+    #[test]
+    fn a_mapped_keymap_wraps_the_constructors_event_too() {
+        let keymap = Keymap::new(TYPED, &KeyBindingConfig::default()).map(Some);
+
+        assert_eq!(
+            keymap.palette_event(EDIT, "x"),
+            Some(Some(Typed::Command {
+                name: "rows edit",
+                argument: "x".to_string()
+            }))
         );
     }
 

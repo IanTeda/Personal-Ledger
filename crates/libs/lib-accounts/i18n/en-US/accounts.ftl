@@ -33,6 +33,13 @@ accounts-status-none = { $command } — no accounts
 accounts-status-not-found = { $command } — no account named "{ $name }"
 accounts-status-ambiguous = { $command } — "{ $name }" matches { $matches }
 
+## The command palette's descriptions of the Commands the keymap lists, in lower case as the
+## palette shows them. `$command` is the Command's name, a stable English id.
+
+accounts-command-new = add an account: { $command } <account name>
+accounts-command-edit = edit an account by name, or the selected row
+accounts-command-delete = delete an account by name, or the selected row
+
 ## The Add and Edit account Dialogs.
 
 accounts-add-title = Add account

@@ -6,16 +6,13 @@
 
 use gpui::{AppContext as _, Entity};
 use lib_account_deletion::AccountDeleted;
-use lib_accounts::presenter::{
-    AccountFormPresenter, AccountsCommand, AccountsPageEvent, AccountsPagePresenter,
-};
+use lib_accounts::presenter::{AccountFormPresenter, AccountsPageEvent, AccountsPagePresenter};
 use lib_accounts::{AccountsDialog as Which, AccountsRouter};
 use lib_core::AccountId;
 use lib_transactions::query::TransactionFilters;
 
 use super::{AccountsPage, AccountsSetup};
 use crate::announcer::Announcer;
-use crate::navigation::command::AccountsVerb;
 use crate::shell::view::module_page::ModulePage;
 use crate::shell::view::page_router::PageRouter;
 
@@ -75,32 +72,4 @@ pub fn accounts_page(
     cx: &mut gpui::App,
 ) -> Entity<AccountsPage> {
     cx.new(|cx| ModulePage::new(presenter, setup, &announcer, cx))
-}
-
-/// `accounts new|edit|delete [<account name>]` on the Accounts page, once `Root` has opened it: the
-/// palette's way into the page, so `Root` reaches the page through this module rather than its
-/// methods. The same Dialog the page's `n`/`e`/`d` and buttons open; a name that fits nothing or
-/// several Accounts puts a status-line message naming the problem.
-pub fn run_command(
-    page: &Entity<AccountsPage>,
-    command_name: &str,
-    verb: AccountsVerb,
-    argument: &str,
-    cx: &mut gpui::App,
-) {
-    let command = match verb {
-        AccountsVerb::New => AccountsCommand::New,
-        AccountsVerb::Edit => AccountsCommand::Edit,
-        AccountsVerb::Delete => AccountsCommand::Delete,
-    };
-    page.update(cx, |page, cx| {
-        page.send(
-            AccountsPageEvent::Command {
-                command: command_name.to_string(),
-                verb: command,
-                argument: argument.to_string(),
-            },
-            cx,
-        );
-    });
 }

@@ -11,9 +11,6 @@ desktop-command-domain-navigation = Navigation
 ## Command descriptions, written in lower case as the palette shows them.
 
 desktop-command-accounts-description = open Settings, Accounts
-desktop-command-accounts-new-description = add an account: { $command } <account name>
-desktop-command-accounts-edit-description = edit an account by name, or the selected row
-desktop-command-accounts-delete-description = delete an account by name, or the selected row
 desktop-command-categories-description = open Settings, Categories
 desktop-command-open-description = open a ledger file
 desktop-command-new-description = start a new ledger

@@ -24,7 +24,7 @@ use crate::documents::{DocumentsMode, LibraryScope, LibrarySort};
 use crate::navigation::active_view::ActiveView;
 use crate::navigation::command::CommandEffect;
 use crate::navigation::nav::Noun;
-use crate::settings::{SettingsPage, state::SettingsView};
+use crate::settings::state::SettingsView;
 use crate::shell::state::ShellState;
 use crate::shell::view::dialog_entity::{DialogHandle, ModuleDialog};
 use crate::shell::view::module_page::PageCue;
@@ -217,15 +217,6 @@ impl ShellRouter for RootRouter<'_, '_> {
                 self.settings
                     .update(cx, |view, cx| view.open_page(section, cx));
             }
-            CommandEffect::Accounts(verb) => {
-                self.settings
-                    .update(cx, |view, cx| view.open_page(SettingsPage::Accounts, cx));
-                let page = self
-                    .settings
-                    .read(cx)
-                    .page::<lib_accounts::presenter::AccountsPagePresenter>();
-                crate::accounts::router::run_command(&page, run.name, verb, &run.argument, cx);
-            }
             CommandEffect::Colour(colour) => {
                 self.settings
                     .update(cx, |view, cx| view.choose_colour(colour, cx));
@@ -246,7 +237,7 @@ impl ShellRouter for RootRouter<'_, '_> {
                 });
             }
             CommandEffect::Module { page, command } => {
-                if !self.run_module_command(page, command) {
+                if !self.run_module_command(page, command, &run.argument) {
                     self.notify(Notice::Status(crate::msg::desktop_status_command_refused(
                         run.name,
                     )));
@@ -441,9 +432,15 @@ impl RootRouter<'_, '_> {
 
     /// A module Command on its page, which the Shell has shown (Settings' page, opened here with
     /// focus in it): the page's Router takes the event its keymap binds `command` to, inside the
-    /// input, as the key's is. Whether the page took it: a This Ledger page Settings refused to
+    /// input, as the key's is, or the one it builds from `argument` when the binding takes an
+    /// Argument. Whether the page took it: a This Ledger page Settings refused to
     /// open with no Ledger open takes nothing.
-    fn run_module_command(&mut self, page: ActiveView, command: &'static str) -> bool {
+    fn run_module_command(
+        &mut self,
+        page: ActiveView,
+        command: &'static str,
+        argument: &str,
+    ) -> bool {
         let cx = &mut *self.cx;
         if let ActiveView::Settings(section) = page
             && !self
@@ -454,7 +451,7 @@ impl RootRouter<'_, '_> {
         }
         let views = self.open.as_ref().map(|open| &open.views);
         active::page(page, views, self.settings)
-            .is_some_and(|handle| handle.module_command(command, cx))
+            .is_some_and(|handle| handle.module_command(command, argument, cx))
     }
 }
 

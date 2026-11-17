@@ -127,8 +127,9 @@ pub trait PageHandle {
     /// A key the page's module keymap takes, by `chord`. Whether it took the key, and whether the
     /// key stops there.
     fn module_key(&self, chord: &str, cx: &mut App) -> PageKey;
-    /// A palette Command, by its keymap `command` name. Whether the page took it.
-    fn module_command(&self, command: &str, cx: &mut App) -> bool;
+    /// A palette Command, by its keymap `command` name, with the `argument` typed after it (empty
+    /// for none, and dropped by a binding that takes no Argument). Whether the page took it.
+    fn module_command(&self, command: &str, argument: &str, cx: &mut App) -> bool;
     /// A key while the page is in a mode it entered for something of its own (its Search, a
     /// filter popover, an edit in place, Settings' page picker). In Normal mode it takes nothing.
     fn mode_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool;
@@ -166,8 +167,8 @@ impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
         self.update(cx, |page, cx| page.module_key(chord, cx))
     }
 
-    fn module_command(&self, command: &str, cx: &mut App) -> bool {
-        self.update(cx, |page, cx| page.module_command(command, cx))
+    fn module_command(&self, command: &str, argument: &str, cx: &mut App) -> bool {
+        self.update(cx, |page, cx| page.module_command(command, argument, cx))
     }
 
     fn mode_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {

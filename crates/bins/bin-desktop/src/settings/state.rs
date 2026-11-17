@@ -384,18 +384,20 @@ impl SettingsView {
         page_key
     }
 
-    /// A palette Command on `section`'s page, by its keymap `command` name. Whether the page has it.
+    /// A palette Command on `section`'s page, by its keymap `command` name, with the `argument`
+    /// typed after it. Whether the page has it.
     pub fn module_command(
         &mut self,
         section: SettingsPage,
         command: &str,
+        argument: &str,
         cx: &mut Context<'_, Self>,
     ) -> bool {
         // Framed for the same reason as a key: the draw's frame is a draw behind (#1129).
         let frame = self.frame_space();
         let taken = self.pages.get(section).is_some_and(|page| {
             page.cue(PageCue::Framed(frame), cx);
-            page.module_command(command, cx)
+            page.module_command(command, argument, cx)
         });
         if taken {
             cx.notify();
@@ -670,10 +672,10 @@ impl PageHandle for Entity<SettingsView> {
     }
 
     /// On the open page.
-    fn module_command(&self, command: &str, cx: &mut App) -> bool {
+    fn module_command(&self, command: &str, argument: &str, cx: &mut App) -> bool {
         self.update(cx, |view, cx| {
             let section = view.selected_section();
-            view.module_command(section, command, cx)
+            view.module_command(section, command, argument, cx)
         })
     }
 

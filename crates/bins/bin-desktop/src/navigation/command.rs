@@ -30,8 +30,10 @@
 //! hosts, each page's keys as it holds them now (`PageHandle::keys`, #1169), so a new page is listed
 //! without a line here, and only while it is hosted: a This Ledger page's Commands with a Ledger
 //! open. Running one goes back through its keymap by name ([`CommandEffect::Shell`],
-//! [`CommandEffect::Module`]), so the palette and the key can't drift. [`COMMANDS`] keeps only the
-//! Commands no keymap has.
+//! [`CommandEffect::Module`]), so the palette and the key can't drift. A binding that takes an
+//! Argument (`accounts delete Home Loan`) says so in its listing, and the palette runs it through
+//! the binding's own constructor of the event (ADR-0037's 2026-11-18 amendment). [`COMMANDS`] keeps
+//! only the Commands no keymap has.
 
 use crate::navigation::nav::NounLabel;
 use lib_colour_theme::ColourAppearance;
@@ -58,9 +60,6 @@ pub enum CommandEffect {
     OpenDialog(ExplorerMode),
     /// `:close`: returns to the "1a" empty state, same as cold start.
     CloseLedger,
-    /// An `accounts <verb> [<account name>]` command: `Root::run_command` jumps to the Accounts
-    /// page and opens the matching dialog, resolving the typed name the palette split off.
-    Accounts(AccountsVerb),
     /// Sets the `colour_theme` or `colour_appearance` Preference, the same as picking it in
     /// Settings' Colour Theme group.
     Colour(ColourChoice),
@@ -75,7 +74,8 @@ pub enum CommandEffect {
     /// A Command the Shell's global keymap lists: runs as its key does.
     Shell(ShellCommand),
     /// A Command a module's keymap lists: opens `page`, whose module Router sends the event its
-    /// keymap binds `command` to, as the key would, on whatever row the page last had selected.
+    /// keymap binds `command` to, as the key would, on whatever row the page last had selected. A
+    /// binding that takes an Argument builds its event from the typed Argument instead.
     Module {
         page: ActiveView,
         command: &'static str,
@@ -99,11 +99,7 @@ impl CommandEffect {
                 ..
             } => section.needs_ledger(),
             Self::Shell(ShellCommand::Jump(noun)) => crate::navigation::nav::needs_ledger(*noun),
-            Self::CloseLedger
-            | Self::Accounts(_)
-            | Self::Import
-            | Self::Module { .. }
-            | Self::NotYetBuilt => true,
+            Self::CloseLedger | Self::Import | Self::Module { .. } | Self::NotYetBuilt => true,
             Self::OpenDialog(_)
             | Self::Colour(_)
             | Self::DismissToast
@@ -123,7 +119,6 @@ impl CommandEffect {
             Self::DismissToast => return PaletteEffect::DismissNewestToast,
             Self::CloseLedger => return PaletteEffect::CloseLedger,
             Self::OpenSettingsPage(section) => Some(Destination::Settings(section)),
-            Self::Accounts(_) => Some(Destination::Settings(SettingsPage::Accounts)),
             Self::Import => Some(ActiveView::Import.destination()),
             Self::Module { page, .. } => Some(page.destination()),
             Self::Colour(_) | Self::SetToasts(_) | Self::TestToasts | Self::NotYetBuilt => None,
@@ -134,26 +129,6 @@ impl CommandEffect {
             effect: self,
         }
     }
-
-    /// Whether text typed after the command name is an argument (`accounts delete Home Loan`)
-    /// rather than more of the query, which the palette's Presenter reads from each entry. A
-    /// keymap event can't carry an argument, so only the Accounts verbs do.
-    pub fn takes_argument(&self) -> bool {
-        matches!(self, Self::Accounts(_))
-    }
-}
-
-/// The Accounts verbs the palette understands -- the same three the page's `n`/`e`/`d` keys and
-/// buttons reach, through the same dialog-opening handlers. The TUI's `account off`/`on`/`check`
-/// have no desktop counterpart: the desktop design has no active flag and no balance checks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccountsVerb {
-    /// `accounts new [<account name>]`: the Add dialog, with Name pre-filled when given.
-    New,
-    /// `accounts edit [<account name>]`: the Edit dialog for the named (or selected) account.
-    Edit,
-    /// `accounts delete [<account name>]`: the Delete dialog for the named (or selected) account.
-    Delete,
 }
 
 /// The palette's resting-state group a command sits under: one per noun or module, plus `Ledger`
@@ -235,17 +210,9 @@ pub struct Command {
     pub effect: CommandEffect,
 }
 
-impl Command {
-    /// Whether text typed after the command name is an argument (`accounts delete Home Loan`)
-    /// rather than more of the query.
-    pub fn takes_argument(&self) -> bool {
-        self.effect.takes_argument()
-    }
-}
-
 /// The Commands no keymap has, which the palette lists beside the keymaps' ([`entries`]): the
-/// noun aliases with no `g` jump (`accounts`, `categories`, `payees`, `tags`), the three `accounts
-/// <verb>` commands, which take a typed account name a keymap event can't carry, the file-level `open`/`new`/`close` trio, each `settings <page>`, the Colour Themes, and the Toast
+/// noun aliases with no `g` jump (`accounts`, `categories`, `payees`, `tags`), the file-level
+/// `open`/`new`/`close` trio, each `settings <page>`, the Colour Themes, and the Toast
 /// commands `dismiss`, `toasts on|off|test` and `messages` (an alias of the `toasts` binding). A
 /// Command a keymap lists has no row here (`no_commands_row_is_a_command_a_keymap_lists`).
 pub const COMMANDS: &[Command] = &[
@@ -255,27 +222,6 @@ pub const COMMANDS: &[Command] = &[
         description: crate::msg::desktop_command_accounts_description,
         binding: None,
         effect: CommandEffect::OpenSettingsPage(SettingsPage::Accounts),
-    },
-    Command {
-        name: "accounts new",
-        group: CommandGroup::Accounts,
-        description: accounts_new_description,
-        binding: None,
-        effect: CommandEffect::Accounts(AccountsVerb::New),
-    },
-    Command {
-        name: "accounts edit",
-        group: CommandGroup::Accounts,
-        description: crate::msg::desktop_command_accounts_edit_description,
-        binding: None,
-        effect: CommandEffect::Accounts(AccountsVerb::Edit),
-    },
-    Command {
-        name: "accounts delete",
-        group: CommandGroup::Accounts,
-        description: crate::msg::desktop_command_accounts_delete_description,
-        binding: None,
-        effect: CommandEffect::Accounts(AccountsVerb::Delete),
     },
     Command {
         name: "categories",
@@ -469,10 +415,6 @@ fn colour_appearance_description(appearance: String) -> String {
     crate::msg::desktop_command_colour_appearance_description(&appearance)
 }
 
-fn accounts_new_description() -> String {
-    crate::msg::desktop_command_accounts_new_description("accounts new")
-}
-
 /// One palette row: a [`COMMANDS`] row or a Command a keymap lists, with the key it is bound to
 /// under `[keybindings]`.
 #[derive(Debug, Clone)]
@@ -485,43 +427,22 @@ pub struct Entry {
     /// The key, `None` while unbound (drawn as an em dash).
     pub key: Option<String>,
     pub effect: CommandEffect,
+    /// The listing's flag ([`Palette::Listed`]): never set on a [`COMMANDS`] row.
+    takes_argument: bool,
 }
 
 impl Entry {
-    /// Whether text typed after the command name is an argument. Only a [`COMMANDS`] row takes
-    /// one: a keymap event can't carry it.
+    /// Whether text typed after the command name is an argument (`accounts delete Home Loan`)
+    /// rather than more of the query: what the binding's listing says, so only a module's Command
+    /// listed with an Argument takes one.
     pub fn takes_argument(&self) -> bool {
-        self.effect.takes_argument()
+        self.takes_argument
     }
 
-    /// `command` as a row, its key read live where a keymap binds the same event: the Accounts
-    /// verbs share the Accounts page's `new`, `edit` and `delete`, and `messages` the global
-    /// keymap's `toast_history`.
-    fn from_command(
-        command: &Command,
-        config: &KeyBindingConfig,
-        pages: &[(ActiveView, Vec<PageBinding>)],
-    ) -> Self {
+    /// `command` as a row, its key read live where a keymap binds the same event: `messages` the
+    /// global keymap's `toast_history`.
+    fn from_command(command: &Command, config: &KeyBindingConfig) -> Self {
         let live = match command.effect {
-            CommandEffect::Accounts(verb) => {
-                let name = match verb {
-                    AccountsVerb::New => lib_viper::keymap::NEW,
-                    AccountsVerb::Edit => lib_viper::keymap::EDIT,
-                    AccountsVerb::Delete => lib_viper::keymap::DELETE,
-                };
-                // The hosted Accounts page's own key. With no Accounts page hosted the row has no
-                // key: the verbs need a Ledger, and no Accounts page exists to bind them.
-                match pages
-                    .iter()
-                    .find(|(view, _)| *view == ActiveView::Settings(SettingsPage::Accounts))
-                {
-                    Some((_, keys)) => keys
-                        .iter()
-                        .find(|binding| binding.command == name)
-                        .and_then(|binding| key(&binding.chord)),
-                    None => None,
-                }
-            }
             CommandEffect::Shell(ShellCommand::ToastHistory) => lib_shell::global_keymap(config)
                 .chord(lib_shell::keymap::TOAST_HISTORY)
                 .and_then(key),
@@ -533,6 +454,7 @@ impl Entry {
             description: command.description,
             key: live,
             effect: command.effect,
+            takes_argument: false,
         }
     }
 }
@@ -545,12 +467,11 @@ pub fn entries(
     config: &KeyBindingConfig,
     pages: impl IntoIterator<Item = (ActiveView, Vec<PageBinding>)>,
 ) -> Vec<Entry> {
-    let pages: Vec<_> = pages.into_iter().collect();
     let mut entries = global_entries(config);
     entries.extend(
         COMMANDS
             .iter()
-            .map(|command| Entry::from_command(command, config, &pages)),
+            .map(|command| Entry::from_command(command, config)),
     );
     entries.extend(module_entries(pages));
     entries.sort_by_key(|entry| entry.group);
@@ -589,6 +510,7 @@ fn global_entries(config: &KeyBindingConfig) -> Vec<Entry> {
                 description: listed.description,
                 key: key(listed.chord),
                 effect: CommandEffect::Shell(command),
+                takes_argument: false,
             })
         })
         .collect()
@@ -661,7 +583,12 @@ fn module_entries(pages: impl IntoIterator<Item = (ActiveView, Vec<PageBinding>)
     for (page, keys) in pages {
         let mut listed: HashSet<&'static str> = HashSet::new();
         for binding in keys {
-            let Palette::Listed { name, description } = binding.palette else {
+            let Palette::Listed {
+                name,
+                description,
+                takes_argument,
+            } = binding.palette
+            else {
                 continue;
             };
             if !listed.insert(name) {
@@ -676,6 +603,7 @@ fn module_entries(pages: impl IntoIterator<Item = (ActiveView, Vec<PageBinding>)
                     page,
                     command: binding.command,
                 },
+                takes_argument,
             });
         }
     }
@@ -725,7 +653,11 @@ mod tests {
             vec![PageBinding {
                 command: lib_viper::keymap::NEW,
                 chord: "ctrl+shift+n".to_string(),
-                palette: Palette::Hidden,
+                palette: Palette::Listed {
+                    name: "accounts new",
+                    description: || "add an account".to_string(),
+                    takes_argument: true,
+                },
             }],
         )];
         let row = entries(&config, pages)
@@ -736,13 +668,14 @@ mod tests {
     }
 
     #[test]
-    fn an_accounts_verb_row_has_no_key_while_no_accounts_page_is_hosted() {
+    fn an_accounts_verb_row_is_not_listed_while_no_accounts_page_is_hosted() {
         let config = KeyBindingConfig::default();
-        let row = entries(&config, [])
-            .into_iter()
-            .find(|entry| entry.name == "accounts new")
-            .expect("the accounts new row");
-        assert_eq!(row.key, None);
+        assert!(
+            entries(&config, [])
+                .iter()
+                .all(|entry| !entry.name.starts_with("accounts ")),
+            "the Accounts verbs are listed with no Accounts page"
+        );
     }
 
     #[test]
@@ -870,14 +803,9 @@ mod tests {
             lib_inventory::keymap::COLLAPSE,
         ];
         for entry in module_entries(hosted_pages(&KeyBindingConfig::default())) {
-            let CommandEffect::Module { page, command } = entry.effect else {
+            let CommandEffect::Module { command, .. } = entry.effect else {
                 panic!("{} is a module's but runs no module Command", entry.name);
             };
-            assert_ne!(
-                page,
-                ActiveView::Settings(SettingsPage::Accounts),
-                "Accounts' verbs take a name, so only COMMANDS lists them"
-            );
             assert!(!hidden.contains(&command), "{command}");
         }
     }
@@ -918,6 +846,7 @@ mod tests {
             palette: Palette::Listed {
                 name: "shared verb",
                 description: || "Shared verb".to_string(),
+                takes_argument: false,
             },
         };
 
@@ -1096,16 +1025,30 @@ mod tests {
 
     #[test]
     fn the_accounts_verbs_carry_their_effects_and_take_an_argument() {
-        for (name, verb) in [
-            ("accounts new", AccountsVerb::New),
-            ("accounts edit", AccountsVerb::Edit),
-            ("accounts delete", AccountsVerb::Delete),
+        let entries = defaults();
+        let entry = |name: &str| {
+            entries
+                .iter()
+                .find(|entry| entry.name == name)
+                .unwrap_or_else(|| panic!("{name} is listed"))
+        };
+        for (name, command) in [
+            ("accounts new", lib_viper::keymap::NEW),
+            ("accounts edit", lib_viper::keymap::EDIT),
+            ("accounts delete", lib_viper::keymap::DELETE),
         ] {
-            let command = COMMANDS.iter().find(|c| c.name == name).unwrap();
-            assert_eq!(command.effect, CommandEffect::Accounts(verb));
-            assert!(command.takes_argument());
+            let row = entry(name);
+            assert_eq!(
+                row.effect,
+                CommandEffect::Module {
+                    page: ActiveView::Settings(SettingsPage::Accounts),
+                    command,
+                },
+                "{name}"
+            );
+            assert!(row.takes_argument(), "{name}");
         }
-        let accounts = COMMANDS.iter().find(|c| c.name == "accounts").unwrap();
+        let accounts = entry("accounts");
         assert!(!accounts.takes_argument(), "the bare noun jump takes none");
     }
 
