@@ -57,8 +57,8 @@ use lib_budgets::{
     BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories, BudgetPayees,
     BudgetRepository, BudgetSplit, BudgetSplits, BudgetUnits, Budgets,
 };
-use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
+use lib_categories::{CategoryBudgetMonths, CategoryRepository};
 use lib_category_deletion::{CategoryDeletionReads, CategoryInUse};
 use lib_core::{
     AccountId, CategoryId, InstitutionId, LocationId, PayeeId, TagId, Total, TransactionId, UnitId,
@@ -1191,6 +1191,34 @@ impl CategoryDeletionReads for StoredCategoryDeletionReads {
             ),
             budgets: self.budgets.borrow().category_budgets(id),
         })
+    }
+}
+
+/// `lib-categories`' [`CategoryBudgetMonths`] answered from the shared Budgets store (#1207): the
+/// months of the Category's Budget Amount records in the Personal spending Budget, the one the
+/// Add and Edit category Dialogs save into, borrowed for the one read.
+#[derive(Clone)]
+pub struct StoredCategoryBudgetMonths {
+    pub budgets: SharedBudgetsStore,
+}
+
+impl CategoryBudgetMonths for StoredCategoryBudgetMonths {
+    fn budget_months(&self, category: CategoryId) -> Vec<lib_core::Period> {
+        let personal = self
+            .budgets
+            .borrow()
+            .budgets()
+            .budget(lib_budgets::PERSONAL_SPENDING_ID);
+        let mut months: Vec<lib_core::Period> = personal
+            .and_then(|budget| {
+                budget
+                    .limits
+                    .get(&category)
+                    .map(|records| records.iter().map(|record| record.month).collect())
+            })
+            .unwrap_or_default();
+        months.sort_unstable();
+        months
     }
 }
 

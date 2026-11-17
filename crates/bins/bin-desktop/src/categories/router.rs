@@ -4,12 +4,9 @@
 //! to drain. The Delete category Dialog is the Category Deletion module's
 //! (`crate::category_deletion`, #1005), opened through its entry point.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use gpui::{AppContext as _, Entity};
 use lib_categories::presenter::{CategoriesPagePresenter, CategoryFormPresenter};
-use lib_categories::{CategoriesDialog as Which, CategoriesRouter, SharedSavePorts};
+use lib_categories::{CategoriesDialog as Which, CategoriesRouter};
 
 use super::{CategoriesPage, CategoriesSetup};
 use crate::announcer::Announcer;
@@ -17,14 +14,14 @@ use crate::shell::view::module_page::ModulePage;
 use crate::shell::view::page_router::PageRouter;
 
 impl CategoriesRouter for PageRouter<'_, '_, CategoriesPagePresenter> {
-    /// Builds `dialog`'s Presenter and hosts it: Add and Edit on the shared Categories and a clone
-    /// of the Ledger's save ports, which the form holds from open, Delete on the Category Deletion
+    /// Builds `dialog`'s Presenter and hosts it: Add and Edit on the shared Categories and the
+    /// Ledger's save ports, which the form holds from open, Delete on the Category Deletion
     /// module's port. Its confirmed outcome comes back to the page through
     /// [`ModulePage::landing`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let setup = self.setup;
         let keys = setup.dialog_keys.get();
-        let save: SharedSavePorts = Rc::new(RefCell::new(setup.save.clone()));
+        let save = setup.save.clone();
         let categories = setup.categories.clone();
         match dialog {
             Which::AddCategory { parent } => {

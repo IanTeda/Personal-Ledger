@@ -52,9 +52,10 @@ use lib_core::Clock;
 
 use crate::adapter::store::{
     SharedStores, StoredAccountReads, StoredBillReads, StoredBillUnits, StoredBudgetReads,
-    StoredCategoryDeletionReads, StoredDashboardReads, StoredDocumentReads, StoredImportReads,
-    StoredInstitutionReads, StoredInventoryReads, StoredPayeeReads, StoredShellReads,
-    StoredTagReads, StoredTagRemovalReads, StoredTransactionReads, StoredUnitReads,
+    StoredCategoryBudgetMonths, StoredCategoryDeletionReads, StoredDashboardReads,
+    StoredDocumentReads, StoredImportReads, StoredInstitutionReads, StoredInventoryReads,
+    StoredPayeeReads, StoredShellReads, StoredTagReads, StoredTagRemovalReads,
+    StoredTransactionReads, StoredUnitReads,
 };
 use crate::{
     AccountDeletionAdapter, BillPaymentsAdapter, CategoryDeletionAdapter, Commit, Domain,
@@ -376,6 +377,29 @@ impl LedgerPorts {
             removal: self.tag_removal.clone(),
             reads: Rc::new(self.tag_removal_reads.clone()),
         }
+    }
+
+    /// The Categories page's repository, a clone of the one value the page and its Dialogs share.
+    #[must_use]
+    pub fn categories(&self) -> lib_categories::SharedCategories {
+        self.categories.clone()
+    }
+
+    /// The Add and Edit category Dialogs' save ports: the usage, the Monthly budget and the
+    /// handover. A new value over the same stores on each call, so a Presenter holding the
+    /// repository from [`Self::categories`] never borrows it while a Dialog writes through these.
+    #[must_use]
+    pub fn category_save(&self) -> lib_categories::SharedSavePorts {
+        Rc::new(RefCell::new(self.category_save.clone()))
+    }
+
+    /// The months the Categories' Monthly budgets have a record in, over the Budgets store
+    /// ([`StoredCategoryBudgetMonths`]).
+    #[must_use]
+    pub fn category_budget_months(&self) -> lib_categories::SharedBudgetMonths {
+        Rc::new(StoredCategoryBudgetMonths {
+            budgets: self.stores.budgets.clone(),
+        })
     }
 
     /// What the Delete category Dialog reads and writes through, as `lib-category-deletion`'s own

@@ -174,9 +174,9 @@ impl OpenLedger {
         // Category delete writes the Categories, Transactions, Bills, Payees and Budgets stores
         // together (#1005).
         let categories_setup = crate::categories::CategoriesSetup::new(
-            ports.categories.clone(),
-            ports.category_save.clone(),
-            ports.stores.budgets.clone(),
+            ports.categories(),
+            ports.category_save(),
+            ports.category_budget_months(),
             ports.category_deletion(),
             dialog_keys.clone(),
             keybindings,

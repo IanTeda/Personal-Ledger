@@ -60,22 +60,11 @@ impl PageSnapshot for SettingsCategoriesSnapshot {
         let categories = page.setup().categories.borrow().categories();
         let selected = page.view_model().selected;
         let selected_budget_months = selected
-            .and_then(|id| {
-                let budget = page
-                    .setup()
-                    .budgets
-                    .borrow()
-                    .budgets()
-                    .budget(crate::budgets::PERSONAL_SPENDING_ID)?;
-                let records = budget.limits.get(&id)?;
-                Some(
-                    records
-                        .iter()
-                        .map(|record| (record.month.year, record.month.month))
-                        .collect(),
-                )
-            })
-            .unwrap_or_default();
+            .map(|id| page.setup().budget_months.budget_months(id))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|month| (month.year, month.month))
+            .collect();
         SettingsCategoriesSnapshot {
             selected_budget_months,
             selected_category: categories

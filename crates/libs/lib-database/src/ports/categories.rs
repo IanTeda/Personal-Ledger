@@ -367,6 +367,45 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_budget_months_list_the_records_on_either() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for ledger in [fakes(), file(dir.path())] {
+            let save = ledger.category_save();
+            contract::budget_months_list_the_records_oldest_first(
+                &*ledger.category_budget_months(),
+                &mut *save.borrow_mut(),
+                lib_core::Period::of(today()),
+            );
+
+            assert_eq!(ledger.commit().commit().wrote, [Domain::Budgets]);
+        }
+    }
+
+    #[test]
+    fn each_category_save_is_a_new_value_over_the_same_stores() {
+        let ledger = fakes();
+        let (first, second) = (ledger.category_save(), ledger.category_save());
+        assert!(!Rc::ptr_eq(&first, &second), "a new value each call");
+        let repository = ledger.categories();
+        let categories = repository.borrow();
+        let amount: Money = "612".parse().expect("an amount");
+
+        first
+            .borrow_mut()
+            .set_monthly_budget(groceries(), Some(amount.clone()))
+            .expect("a leaf Expense");
+
+        assert_eq!(
+            second
+                .borrow()
+                .monthly_budget(&categories.categories(), Some(groceries()))
+                .amount,
+            Some(amount),
+            "written while the repository is borrowed, and read through the other value"
+        );
+    }
+
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
     }

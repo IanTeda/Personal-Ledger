@@ -86,10 +86,10 @@ pub use adapter::store::{
     SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedStores,
     SharedTagsStore, SharedTransactionsStore, SharedUnitsStore, StoredAccountReads,
     StoredBillReads, StoredBillUnits, StoredBudgetCategories, StoredBudgetReads,
-    StoredCategoryDeletionReads, StoredDashboardReads, StoredDocumentReads, StoredImportReads,
-    StoredInstitutionReads, StoredInventoryReads, StoredPayeeReads, StoredShellReads,
-    StoredTagReads, StoredTagRemovalReads, StoredTransactionReads, StoredUnitReads, TagsStore,
-    TransactionsStore, UnitsStore,
+    StoredCategoryBudgetMonths, StoredCategoryDeletionReads, StoredDashboardReads,
+    StoredDocumentReads, StoredImportReads, StoredInstitutionReads, StoredInventoryReads,
+    StoredPayeeReads, StoredShellReads, StoredTagReads, StoredTagRemovalReads,
+    StoredTransactionReads, StoredUnitReads, TagsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::tag_removal::TagRemovalAdapter;
 pub use adapter::tags::TagsAdapter;

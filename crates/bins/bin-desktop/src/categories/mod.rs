@@ -11,8 +11,9 @@
 //!   Delete category Dialog through the Category Deletion module (`crate::category_deletion`,
 //!   #1005).
 //!
-//! The ports are `lib-database`'s `StoredCategoriesPorts`, which `LedgerPorts` hands the page and
-//! its Dialogs: the repository, the usage, the Monthly budget and the handover (#859, #1083).
+//! The ports are `lib-categories`' own, which `LedgerPorts` hands the page and its Dialogs: the
+//! repository, the save ports (the usage, the Monthly budget and the handover) and the months a
+//! Monthly budget has a record in, which the page's snapshot reads (#859, #1083, #1207).
 
 mod router;
 mod view;
@@ -43,15 +44,17 @@ pub struct SettingsCategoriesSnapshot {
     pub selected_budget_months: Vec<(i32, u32)>,
 }
 
-/// What the Categories page's Router is built from for each call (its `PageView::Setup`):
-/// `lib-database`'s Categories ports as the save ports each form holds from open, the Budgets store
-/// the page's snapshot reads, Category delete's port and reads, and the Dialog keys every
-/// Categories Dialog's hints read.
+/// What the Categories page's Router is built from for each call (its `PageView::Setup`): the
+/// shared Categories, the save ports each form holds from open, the Budget months the page's
+/// snapshot reads, Category delete's port and reads, and the Dialog keys every Categories Dialog's
+/// hints read.
 pub struct CategoriesSetup {
     pub categories: lib_categories::SharedCategories,
-    pub save: lib_database::StoredCategoriesPorts,
-    /// The Budgets store, which the page's snapshot reads the selected Category's records from.
-    pub budgets: lib_database::SharedBudgetsStore,
+    /// A value of its own over the stores, so a form writing through it never meets a borrow of
+    /// `categories` the page holds.
+    pub save: lib_categories::SharedSavePorts,
+    /// The months the selected Category has a Budget Amount record in, for the page's snapshot.
+    pub budget_months: lib_categories::SharedBudgetMonths,
     /// Category delete's port and reads, over the Categories store and the stores it re-points.
     pub deletion: lib_category_deletion::CategoryDeletionPorts,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
@@ -62,8 +65,8 @@ impl CategoriesSetup {
     /// Setup.
     pub fn new(
         categories: lib_categories::SharedCategories,
-        save: lib_database::StoredCategoriesPorts,
-        budgets: lib_database::SharedBudgetsStore,
+        save: lib_categories::SharedSavePorts,
+        budget_months: lib_categories::SharedBudgetMonths,
         deletion: lib_category_deletion::CategoryDeletionPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
@@ -72,7 +75,7 @@ impl CategoriesSetup {
         let setup = Self {
             categories,
             save,
-            budgets,
+            budget_months,
             deletion,
             dialog_keys,
         };
@@ -85,9 +88,9 @@ impl CategoriesSetup {
     pub fn sample(ports: &lib_database::LedgerPorts) -> (CategoriesPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            ports.categories.clone(),
-            ports.category_save.clone(),
-            ports.stores.budgets.clone(),
+            ports.categories(),
+            ports.category_save(),
+            ports.category_budget_months(),
             ports.category_deletion(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),

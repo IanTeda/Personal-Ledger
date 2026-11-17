@@ -15,7 +15,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_core::{CategoryId, Money};
+use lib_core::{CategoryId, Money, Period};
 use lib_toast::Notify;
 
 use crate::Category;
@@ -189,6 +189,20 @@ impl<T: CategoryBudget + CategoryHandover + CategoryUsage + ?Sized> CategorySave
 /// The save ports a Category form holds from the moment it opens (ADR-0056): the Client hands it a
 /// clone of the Ledger's ports, which share the stores the confirm writes to.
 pub type SharedSavePorts = Rc<RefCell<dyn CategorySavePorts>>;
+
+/// The months a Category's Monthly budget has a Budget Amount record in, in the one Budget the
+/// Add and Edit Dialogs save into (the Desktop's Personal spending Budget): a read port onto the
+/// Budgets domain, so a Client reads which month a save started in without reaching the Budgets
+/// store (#1207). Read as the Budgets hold it when called, so a save shows as soon as it is
+/// written.
+pub trait CategoryBudgetMonths {
+    /// The months `category` has a record in, oldest first; none for a Category budgeted in no
+    /// month, or one the Ledger doesn't hold.
+    fn budget_months(&self, category: CategoryId) -> Vec<Period>;
+}
+
+/// The Budget-months read as a Client holds it. Read-only, so shared without a `RefCell`.
+pub type SharedBudgetMonths = Rc<dyn CategoryBudgetMonths>;
 
 /// A Categories Dialog, as the page asks the Router to open it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

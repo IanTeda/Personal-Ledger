@@ -9,13 +9,13 @@
 
 use std::collections::BTreeMap;
 
-use lib_core::{CategoryId, CategoryTypes, Money};
+use lib_core::{CategoryId, CategoryTypes, Money, Period};
 
 use crate::fake::{InMemoryCategories, InMemoryCategoryBudget};
 use crate::interactor::{AddCategory, BudgetChange, MoveCategory, RenameCategory};
 use crate::{
-    Category, CategoryError, CategoryRepository, CategorySavePorts, CategoryUse, Holdings,
-    sample_categories,
+    Category, CategoryBudgetMonths, CategoryError, CategoryRepository, CategorySavePorts,
+    CategoryUse, Holdings, sample_categories,
 };
 
 /// A stored Categories port.
@@ -649,6 +649,40 @@ pub fn the_writes_wait_for_the_one_commit<F: SaveFactory>(factory: &mut F) {
     // Groceries is stopped as a parent, so its amount is now its one child's.
     assert_eq!(factory.stored_amount(GROCERIES), Some(amount("75")));
     assert_eq!(factory.stored_categories().len(), tree.len() + 1);
+}
+
+/// [`CategoryBudgetMonths`] over a Ledger seeded as [`SaveFactory::create`] describes, read
+/// beside `save`, the save ports over the same Budgets: a budgeted Category's months oldest first,
+/// none for a Category the Ledger doesn't hold, and a Monthly budget saved in `this_month` listed
+/// as soon as it is written, the months before it untouched.
+pub fn budget_months_list_the_records_oldest_first(
+    reads: &dyn CategoryBudgetMonths,
+    save: &mut dyn CategorySavePorts,
+    this_month: Period,
+) {
+    let groceries = reads.budget_months(GROCERIES);
+    assert!(!groceries.is_empty(), "Groceries is budgeted");
+    assert!(groceries.is_sorted(), "oldest first: {groceries:?}");
+    assert!(reads.budget_months(CategoryId::new()).is_empty());
+
+    let before: Vec<Period> = reads
+        .budget_months(DINING)
+        .into_iter()
+        .filter(|month| *month < this_month)
+        .collect();
+    save.set_monthly_budget(DINING, Some(amount("613.27")))
+        .expect("Dining is a leaf Expense");
+
+    let after = reads.budget_months(DINING);
+    assert!(
+        after.contains(&this_month),
+        "the save starts a record: {after:?}"
+    );
+    let earlier: Vec<Period> = after
+        .into_iter()
+        .filter(|month| *month < this_month)
+        .collect();
+    assert_eq!(earlier, before, "the months before are untouched");
 }
 
 #[cfg(test)]
