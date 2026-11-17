@@ -3,7 +3,7 @@
 //! write never fails here; a failed save is the adapter's to report. `fake` implements them in
 //! memory.
 //!
-//! `lib-database`'s `StoredAccountReads` answers [`AccountUsage`], counting the Transactions and the
+//! The Client answers [`AccountUsage`] through `LedgerPorts`, counting the Transactions and the
 //! Budgets from their stores. The Presenters reach every port together, through [`AccountsPorts`], and
 //! ask for navigation through [`AccountsRouter`], which each Client implements (#855).
 
