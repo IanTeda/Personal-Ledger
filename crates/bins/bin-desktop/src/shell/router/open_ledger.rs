@@ -25,28 +25,42 @@ use crate::announcer::{Announcer, notify_on};
 use crate::settings::state::SettingsView;
 use crate::view::active::ViewEntities;
 
-/// What an Open Ledger is built on: the stores, shared out so the caller can keep a clone of them
-/// (#1117), and the file they read and its writer when they are a Ledger file's rather than a test's
-/// in-memory ports.
+/// What an Open Ledger is built on: the stores, and the file they read and its writer when they are
+/// a Ledger file's rather than a test's in-memory ports. The stores are private, so the Desktop's
+/// own code never holds a domain's store: [`OpenLedger::build`] builds the ports on them (#1221).
 pub struct LedgerFile {
-    pub stores: SharedLedger,
+    stores: LedgerStores,
     /// The file the stores read, which the status line shows and the state file remembers at quit.
     pub path: Option<PathBuf>,
     /// The writer the stores save through, flushed when the Ledger is swapped out or the app quits.
     pub writer: Option<Writer>,
 }
 
+/// The stores a [`LedgerFile`] holds: unshared for a file the Desktop opened, which only its
+/// `LedgerPorts` ever shares out, or shared out already by a caller keeping its own clone of them
+/// (a test, #1117).
+enum LedgerStores {
+    /// A Ledger file's stores, which `LedgerPorts`' `new` shares out and builds on.
+    Unshared(Stores),
+    /// Stores a caller shared out itself and keeps a handle on, which `LedgerPorts`' `over` builds on.
+    Shared(SharedLedger),
+}
+
 impl LedgerFile {
     /// The Ledger file at `path`, as `crate::open_ledger_file` opened it.
     pub fn opened(path: PathBuf, storage: Storage) -> Self {
-        Self::on(path, storage.writer.clone(), Stores::from(storage))
+        Self {
+            path: Some(path),
+            writer: Some(storage.writer.clone()),
+            stores: LedgerStores::Unshared(Stores::from(storage)),
+        }
     }
 
-    /// `stores` read from the Ledger file at `path` and saved through `writer`, for a caller that
-    /// wraps the stores first.
-    pub fn on(path: PathBuf, writer: Writer, stores: Stores) -> Self {
+    /// `stores` read from the Ledger file at `path` and saved through `writer`, shared out by a
+    /// caller that wraps them first and keeps a clone of them: the UI tests' file-backed Shell.
+    pub fn on(path: PathBuf, writer: Writer, stores: SharedLedger) -> Self {
         Self {
-            stores: stores.share(),
+            stores: LedgerStores::Shared(stores),
             path: Some(path),
             writer: Some(writer),
         }
@@ -56,7 +70,7 @@ impl LedgerFile {
     /// a clone.
     pub fn in_memory(stores: SharedLedger) -> Self {
         Self {
-            stores,
+            stores: LedgerStores::Shared(stores),
             path: None,
             writer: None,
         }
@@ -112,7 +126,10 @@ impl OpenLedger {
             path,
             writer,
         } = file;
-        let (ports, failures) = lib_database::LedgerPorts::over(stores, clock.clone());
+        let (ports, failures) = match stores {
+            LedgerStores::Unshared(stores) => lib_database::LedgerPorts::new(stores, clock.clone()),
+            LedgerStores::Shared(shared) => lib_database::LedgerPorts::over(shared, clock.clone()),
+        };
         // The stores are the truth: the input door announces what each input wrote through the
         // Announcer, which holds no rows (#1028, #1057, #1081).
         let announcer = cx.new(|_| Announcer::default());

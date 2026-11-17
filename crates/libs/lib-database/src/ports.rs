@@ -23,6 +23,11 @@
 //! The fields are private and the `Stored*` types `pub(crate)` (#1212), so the compiler holds the
 //! seam: a Client names only a feature crate's ports or the bundle it declares, never a type of
 //! this crate's behind them, and reaches the raw stores only through [`LedgerPorts::reload`].
+//!
+//! A Client opening a Ledger file builds on its [`Stores`] with [`LedgerPorts::new`], which shares
+//! them out itself, so the Client never holds a domain's store: the Desktop opens a file this way
+//! (#1221). [`LedgerPorts::over`] is for a caller keeping its own handle on the stores, which it
+//! shared out first: a test reading rows back, or the TUI until its redesign (#805).
 
 mod accounts;
 mod bills;
@@ -153,7 +158,8 @@ impl LedgerPorts {
     }
 
     /// Builds every domain's ports and the cross-domain adapters over `shared`, the stores a
-    /// Client shared out itself so it keeps a handle on them (the Desktop's UI tests, #1117).
+    /// caller shared out itself so it keeps a handle on them: a test reading rows back (#1117), or
+    /// the TUI until #805. A Client opening a Ledger file builds with [`LedgerPorts::new`] instead.
     /// Returns them with the writer's failed writes, for the Client to reload and announce.
     pub fn over(shared: SharedLedger, clock: Clock) -> (Self, mpsc::Receiver<WriteFailure>) {
         let SharedLedger {

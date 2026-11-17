@@ -59,6 +59,13 @@ pub fn config_for(path: &std::path::Path) -> lib_config::Config {
     config
 }
 
+/// `stores` with no file behind them, shared out here so the harness keeps a clone of them.
+fn in_memory(stores: Stores) -> (router::LedgerFile, SharedStores) {
+    let shared = stores.share();
+    let kept = shared.stores.clone();
+    (router::LedgerFile::in_memory(shared), kept)
+}
+
 /// `stores` with its commit counted, so a test asserts one per input.
 fn counted(mut stores: Stores) -> (Stores, Rc<Cell<usize>>) {
     let commit = CountingCommit::new(stores.commit);
@@ -331,7 +338,7 @@ impl<'a> Harness<'a> {
             app,
             logs,
             configured_level,
-            (Some(router::LedgerFile::in_memory(stores.share())), commits),
+            (Some(in_memory(stores)), commits),
             keybindings,
             PersistedState::default(),
             Device::default(),
@@ -345,7 +352,7 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            (Some(router::LedgerFile::in_memory(stores.share())), commits),
+            (Some(in_memory(stores)), commits),
             lib_config::KeyBindingConfig::default(),
             PersistedState::default(),
             device,
@@ -435,7 +442,12 @@ impl<'a> Harness<'a> {
             bin_desktop::Started::Opened { path, storage } => {
                 let writer = storage.writer.clone();
                 let (stores, commits) = counted(Stores::from(*storage));
-                (Some(router::LedgerFile::on(path, writer, stores)), commits)
+                let shared = stores.share();
+                let kept = shared.stores.clone();
+                (
+                    Some((router::LedgerFile::on(path, writer, shared), kept)),
+                    commits,
+                )
             }
             _ => (None, Rc::new(Cell::new(0))),
         };
@@ -461,7 +473,7 @@ impl<'a> Harness<'a> {
         app: &'a mut TestAppContext,
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
-        (stores, commits): (Option<router::LedgerFile>, Rc<Cell<usize>>),
+        (ledger, commits): (Option<(router::LedgerFile, SharedStores)>, Rc<Cell<usize>>),
         keybindings: lib_config::KeyBindingConfig,
         persisted: PersistedState,
         device: Device<'_>,
@@ -493,7 +505,7 @@ impl<'a> Harness<'a> {
             theme::colours::set_device_colours(&config, cx);
         });
         let (clock, date) = lib_core::Clock::settable(today());
-        let shared = stores.as_ref().map(|ledger| ledger.stores.stores.clone());
+        let (stores, shared) = ledger.unzip();
         let (shell, cx) = app.add_window_view(|window, cx| {
             let focus_handle = cx.focus_handle();
             window.focus(&focus_handle);
