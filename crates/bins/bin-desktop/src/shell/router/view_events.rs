@@ -92,22 +92,15 @@ impl Root {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext, EventEmitter, TestAppContext};
+    use gpui::{AppContext, Entity, EventEmitter, TestAppContext};
     use lib_toast::ToastKind;
 
     use super::*;
     use crate::navigation::nav::{NavState, Noun};
 
-    /// A stand-in for a View Entity: it emits whatever the test hands it and holds no `Root`.
-    struct StandInView;
-
-    impl EventEmitter<ViewEvent> for StandInView {}
-
-    #[gpui::test]
-    fn each_view_event_reaches_shell(cx: &mut TestAppContext) {
-        crate::locale::init_for_tests();
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
-        let shell = cx.new(|cx| {
+    /// A `Root` on the in-memory fakes with the Sample Ledger open, so both tests start from one setup.
+    fn sample_root(today: chrono::NaiveDate, cx: &mut TestAppContext) -> Entity<Root> {
+        cx.new(|cx| {
             crate::input::install(cx.weak_entity(), cx);
             let mut shell = Root::with_clock(
                 NavState::new(),
@@ -127,7 +120,19 @@ mod tests {
                 cx,
             );
             shell
-        });
+        })
+    }
+
+    /// A stand-in for a View Entity: it emits whatever the test hands it and holds no `Root`.
+    struct StandInView;
+
+    impl EventEmitter<ViewEvent> for StandInView {}
+
+    #[gpui::test]
+    fn each_view_event_reaches_shell(cx: &mut TestAppContext) {
+        crate::locale::init_for_tests();
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
+        let shell = sample_root(today, cx);
         let view = cx.new(|_| StandInView);
         // A Toast or status arrives as one input, which drains into the Shell through the door.
         let _subscriptions = shell.update(cx, |_, cx| Root::page_signals(cx).follow(&view, cx));
@@ -166,27 +171,7 @@ mod tests {
     fn a_reveal_makes_its_destination_active_and_shows_the_record(cx: &mut TestAppContext) {
         crate::locale::init_for_tests();
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
-        let shell = cx.new(|cx| {
-            crate::input::install(cx.weak_entity(), cx);
-            let mut shell = Root::with_clock(
-                NavState::new(),
-                cx.focus_handle(),
-                lib_core::Clock::fixed(today),
-                std::rc::Rc::new(lib_settings::fake::InMemoryDeviceConfiguration::default()),
-                &lib_config::KeyBindingConfig::default(),
-                std::rc::Rc::new(std::cell::RefCell::new(
-                    lib_ledger_creation::fake::InMemoryLedgerCreation::default(),
-                )),
-                std::rc::Rc::new(lib_shell::fake::FakeLedgerFolders::default()),
-                cx,
-            );
-            let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::sample(today));
-            shell.open_ledger(
-                crate::shell::router::LedgerFile::in_memory(stores.share()),
-                cx,
-            );
-            shell
-        });
+        let shell = sample_root(today, cx);
         let view = cx.new(|_| StandInView);
         // A Toast or status arrives as one input, which drains into the Shell through the door.
         let _subscriptions = shell.update(cx, |_, cx| Root::page_signals(cx).follow(&view, cx));
