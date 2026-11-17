@@ -525,7 +525,10 @@ impl Root {
         let pages: Vec<(ActiveView, Vec<PageBinding>)> = views
             .into_iter()
             .flatten()
-            .chain(settings.map(|(page, handle)| (ActiveView::Settings(page), handle)))
+            .chain(
+                settings
+                    .map(|(page, handle)| (ActiveView::Settings(page), handle as &dyn PageHandle)),
+            )
             .map(|(view, handle)| (view, handle.keys(cx)))
             .collect();
         self.presenter

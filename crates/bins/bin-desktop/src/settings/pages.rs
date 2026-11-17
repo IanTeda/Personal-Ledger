@@ -1,10 +1,12 @@
 //! The Settings pages: [`SettingsPages`], every page's Entity, and [`PageFrame`], the space they are
-//! drawn in. Every page is a [`ModulePage`](crate::shell::view::module_page::ModulePage) (#1100), and [`PageHandle`], the one hosting trait
-//! `Root` reaches the active View through too (#1101), is its surface over the `Entity`, so
+//! drawn in. Every page is a [`ModulePage`](crate::shell::view::module_page::ModulePage) (#1100), and
+//! [`SettingsPageHandle`], the one hosting trait `Root` reaches the active View through (#1101)
+//! with the Settings body's own verbs on top (#1129), is its surface over the `Entity`, so
 //! [`SettingsPages::get`] hands the Settings View the open page as one `dyn` handle and `get` is the
-//! only match on the page.
+//! only match on the page. Each page is framed as it is built, on every draw, and before a key or
+//! palette Command reaches it.
 
-use gpui::{AppContext as _, Context, Entity, Subscription};
+use gpui::{App, AppContext as _, Context, Entity, Subscription};
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -35,7 +37,10 @@ use crate::{
             tracing_page,
         },
     },
-    shell::view::{page_handle::PageHandle, page_router::Built, window_size::WindowSize},
+    shell::view::{
+        module_page::PageCue, page_handle::SettingsPageHandle, page_router::Built,
+        window_size::WindowSize,
+    },
     tags::{TagsPage, tags_page},
     units::{UnitsPage, units_page},
 };
@@ -67,8 +72,8 @@ pub struct SettingsSetup {
     pub ledger: lib_settings::SettingsLedger,
 }
 
-/// What the Settings View tells the open page about the space it is drawn in, before its keys and
-/// its draw.
+/// What the Settings View tells its pages about the space they are drawn in: as each is built, on
+/// every draw or Window Size change, and before a key or palette Command reaches one.
 #[derive(Debug, Clone, Copy)]
 pub struct PageFrame {
     /// The Window Size the View was last drawn at.
@@ -191,14 +196,15 @@ impl LedgerPages {
 
 impl SettingsPages {
     /// The This device pages, with no Ledger open, General and Display on `device`, each reading
-    /// it once, their keys built from `config`.
+    /// it once, their keys built from `config`, each framed in `frame`.
     pub fn new(
         device: Rc<dyn DeviceConfiguration>,
         config: &KeyBindingConfig,
+        frame: PageFrame,
         cx: &mut Context<'_, SettingsView>,
     ) -> Self {
         let log_feed = cx.new(|_| LogFeed);
-        Self {
+        let pages = Self {
             general: cx.new(|cx| general_page(device.clone(), config, cx)),
             display: cx.new(|cx| display_page(device, config, cx)),
             // A private, empty capture until `set_log_capture` hands over the real one.
@@ -216,43 +222,72 @@ impl SettingsPages {
             log_feed,
             about: cx.new(|cx| about_page(env!("CARGO_PKG_VERSION"), config, cx)),
             ledger: None,
+        };
+        pages.frame(frame, cx);
+        pages
+    }
+
+    /// Adds the This Ledger pages built on an Open Ledger, in place of any built before, each
+    /// framed in `frame`, so a palette Command reaching one before its first draw sees the frame.
+    pub fn open_ledger(&mut self, pages: LedgerPages, frame: PageFrame, cx: &mut App) {
+        self.ledger = Some(pages);
+        self.frame(frame, cx);
+    }
+
+    /// Tells every page built the space it is drawn in, so a page acts on the layout on screen, not
+    /// the one it last saw.
+    pub fn frame(&self, frame: PageFrame, cx: &mut App) {
+        for page in self.all() {
+            page.cue(PageCue::Framed(frame), cx);
         }
     }
 
     /// The page's handle, `None` for a This Ledger page with no Ledger open. The one match on the
     /// page: a new page fails to compile here.
-    pub fn get(&self, page: SettingsPage) -> Option<&dyn PageHandle> {
+    pub fn get(&self, page: SettingsPage) -> Option<&dyn SettingsPageHandle> {
         let ledger = self.ledger.as_ref();
         match page {
             SettingsPage::General => Some(&self.general),
             SettingsPage::Display => Some(&self.display),
             SettingsPage::Tracing => Some(&self.tracing),
             SettingsPage::About => Some(&self.about),
-            SettingsPage::Ledger => ledger.map(|pages| &pages.ledger as &dyn PageHandle),
-            SettingsPage::Units => ledger.map(|pages| &pages.units as &dyn PageHandle),
+            SettingsPage::Ledger => ledger.map(|pages| &pages.ledger as &dyn SettingsPageHandle),
+            SettingsPage::Units => ledger.map(|pages| &pages.units as &dyn SettingsPageHandle),
             SettingsPage::Institutions => {
-                ledger.map(|pages| &pages.institutions as &dyn PageHandle)
+                ledger.map(|pages| &pages.institutions as &dyn SettingsPageHandle)
             }
-            SettingsPage::Accounts => ledger.map(|pages| &pages.accounts as &dyn PageHandle),
-            SettingsPage::Categories => ledger.map(|pages| &pages.categories as &dyn PageHandle),
-            SettingsPage::Tags => ledger.map(|pages| &pages.tags as &dyn PageHandle),
-            SettingsPage::Payees => ledger.map(|pages| &pages.payees as &dyn PageHandle),
-            SettingsPage::Documents => ledger.map(|pages| &pages.documents as &dyn PageHandle),
-            SettingsPage::Inventory => ledger.map(|pages| &pages.inventory as &dyn PageHandle),
-            SettingsPage::SyncServer => ledger.map(|pages| &pages.sync_server as &dyn PageHandle),
-            SettingsPage::DataBackup => ledger.map(|pages| &pages.data_backup as &dyn PageHandle),
+            SettingsPage::Accounts => {
+                ledger.map(|pages| &pages.accounts as &dyn SettingsPageHandle)
+            }
+            SettingsPage::Categories => {
+                ledger.map(|pages| &pages.categories as &dyn SettingsPageHandle)
+            }
+            SettingsPage::Tags => ledger.map(|pages| &pages.tags as &dyn SettingsPageHandle),
+            SettingsPage::Payees => ledger.map(|pages| &pages.payees as &dyn SettingsPageHandle),
+            SettingsPage::Documents => {
+                ledger.map(|pages| &pages.documents as &dyn SettingsPageHandle)
+            }
+            SettingsPage::Inventory => {
+                ledger.map(|pages| &pages.inventory as &dyn SettingsPageHandle)
+            }
+            SettingsPage::SyncServer => {
+                ledger.map(|pages| &pages.sync_server as &dyn SettingsPageHandle)
+            }
+            SettingsPage::DataBackup => {
+                ledger.map(|pages| &pages.data_backup as &dyn SettingsPageHandle)
+            }
         }
     }
 
     /// Every page built, with which page it is, in index order.
-    pub fn each(&self) -> impl Iterator<Item = (SettingsPage, &dyn PageHandle)> {
+    pub fn each(&self) -> impl Iterator<Item = (SettingsPage, &dyn SettingsPageHandle)> {
         SettingsPage::ALL
             .into_iter()
             .filter_map(|page| self.get(page).map(|handle| (page, handle)))
     }
 
     /// Every page built, in index order.
-    pub fn all(&self) -> impl Iterator<Item = &dyn PageHandle> {
+    pub fn all(&self) -> impl Iterator<Item = &dyn SettingsPageHandle> {
         self.each().map(|(_, handle)| handle)
     }
 }

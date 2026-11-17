@@ -191,6 +191,51 @@ fn the_grid_moves_with_l_and_h_and_enter_chooses_the_card(app: &mut TestAppConte
     );
 }
 
+/// Where the Colour Theme grid's focus is, `None` outside the grid.
+fn grid_focus(ui: &mut Harness<'_>) -> Option<usize> {
+    ui.settings::<SettingsDisplaySnapshot>().colour_theme_focus
+}
+
+/// The grid's columns follow the body the page is drawn in, as a Window Size change leaves it. A
+/// draw frames the page with the body the draw before measured, so this holds only because the
+/// Settings View frames the page again before each key (#1129).
+#[gpui::test]
+fn j_in_the_grid_steps_a_row_of_the_columns_the_window_size_leaves(app: &mut TestAppContext) {
+    let mut ui = in_display(app);
+    ui.press("j j j j");
+    assert_eq!(
+        grid_focus(&mut ui),
+        Some(0),
+        "the grid opens on the chosen card"
+    );
+    ui.press("j");
+    assert_eq!(
+        grid_focus(&mut ui),
+        Some(0),
+        "every card fits one row of the X-Large body, so there is no row below"
+    );
+
+    // Medium's 720px floor, whose body fits fewer cards a row than there are themes.
+    ui.resize(gpui::size(gpui::px(720.0), gpui::px(480.0)));
+    assert_eq!(
+        grid_focus(&mut ui),
+        Some(0),
+        "a resize leaves the grid's focus"
+    );
+    ui.press("j");
+    let row = grid_focus(&mut ui).unwrap_or_default();
+    assert!(
+        (1..ColourTheme::built_in().len()).contains(&row),
+        "j steps one row of the narrower grid, {row} cards on"
+    );
+    ui.press("k");
+    assert_eq!(
+        grid_focus(&mut ui),
+        Some(0),
+        "k climbs back to the card it left"
+    );
+}
+
 #[gpui::test]
 fn escape_in_the_grid_climbs_to_the_last_control_then_back_to_the_index(app: &mut TestAppContext) {
     let mut ui = in_display(app);

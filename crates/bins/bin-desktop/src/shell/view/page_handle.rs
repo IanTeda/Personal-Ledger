@@ -5,7 +5,10 @@
 //! (`settings::pages::SettingsPages::get`).
 //!
 //! It is implemented for every [`ModulePage<P>`] and for the Settings View, a composite host that
-//! offers each key to its open page through this same trait. Both hosts keep their typed Entities
+//! offers each key to its open page through this same trait. What only the Settings body asks of
+//! its page (the heading's meta and a side pane) is [`SettingsPageHandle`], a subtrait implemented
+//! only for a `ModulePage<P>` (#1129), so `Root` never sees a verb it has no use for and the
+//! Settings View answers none it would only stub. Both hosts keep their typed Entities
 //! for what one page hands another (a reveal, a month turning): only dispatch is erased. A
 //! `[keybindings]` rebind and a Display change reach every page through it too (#1167), so a new
 //! page can't be left out of either.
@@ -148,10 +151,6 @@ pub trait PageHandle {
     fn page_status(&self, cx: &App) -> Option<PageStatus>;
     /// The page's group of keys for the `?` Help Dialog, `None` for a page that adds none.
     fn help_group(&self, cx: &App) -> Option<HelpGroup>;
-    /// A Settings page heading's right-aligned meta; `None` draws the page's scope note.
-    fn heading_meta(&self, cx: &App) -> Option<AnyElement>;
-    /// A pane drawn at the View's right edge, beside the page.
-    fn side_pane(&self, cx: &App) -> Option<AnyElement>;
     /// How the host lays the page out.
     fn layout(&self) -> PageLayout;
     /// The page's Entity, to draw.
@@ -222,14 +221,6 @@ impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
         self.read(cx).help_group()
     }
 
-    fn heading_meta(&self, cx: &App) -> Option<AnyElement> {
-        self.read(cx).heading_meta(cx)
-    }
-
-    fn side_pane(&self, cx: &App) -> Option<AnyElement> {
-        self.read(cx).side_pane(self, cx)
-    }
-
     fn layout(&self) -> PageLayout {
         P::layout()
     }
@@ -245,6 +236,25 @@ impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
             row_clicked(cx);
         }));
         subscriptions
+    }
+}
+
+/// A page the Settings View hosts: what its body asks of the open page beyond [`PageHandle`]. Only
+/// the Settings body draws a page's heading and docks a pane beside it, so these are not `Root`'s.
+pub trait SettingsPageHandle: PageHandle {
+    /// The page heading's right-aligned meta; `None` draws the page's scope note.
+    fn heading_meta(&self, cx: &App) -> Option<AnyElement>;
+    /// A pane drawn at the View's right edge, beside the page.
+    fn side_pane(&self, cx: &App) -> Option<AnyElement>;
+}
+
+impl<P: PageView> SettingsPageHandle for Entity<ModulePage<P>> {
+    fn heading_meta(&self, cx: &App) -> Option<AnyElement> {
+        self.read(cx).heading_meta(cx)
+    }
+
+    fn side_pane(&self, cx: &App) -> Option<AnyElement> {
+        self.read(cx).side_pane(self, cx)
     }
 }
 

@@ -22,16 +22,14 @@ use crate::{
     shell::view::{
         module_page::{ModulePage, PageCue, PageLayout, SettingsPageView},
         page_clicks::PresenterPage,
-        page_handle::{PageBinding, PageHandle, PageKey, PageSignals},
+        page_handle::{PageBinding, PageHandle, PageKey, PageSignals, SettingsPageHandle},
         statusline::{PageStatus, StatusRight},
         window_size::WindowSize,
     },
     view::event::{Reveal, ViewEvent},
     view::help::HelpGroup,
 };
-use gpui::{
-    AnyElement, AnyView, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription,
-};
+use gpui::{AnyView, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_list_cursor::Step;
 use lib_settings::{
     ColourChoice, DataFolderOutcome, DeviceConfiguration, DisplayEvent, DisplayOutput,
@@ -80,7 +78,17 @@ impl SettingsView {
         config: &KeyBindingConfig,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let pages = SettingsPages::new(device, config, cx);
+        // Not yet drawn: a body of no width at the Window Size the View starts at.
+        let window_size = WindowSize::Large;
+        let pages = SettingsPages::new(
+            device,
+            config,
+            PageFrame {
+                window_size,
+                body_width: 0.0,
+            },
+            cx,
+        );
         let _page_subscriptions = subscribe_pages(&pages, cx);
         let frame = SettingsFramePresenter::new(
             SettingsFrameSetup {
@@ -97,7 +105,7 @@ impl SettingsView {
             scroll_handle: ScrollHandle::new(),
             index_scroll: ScrollHandle::new(),
             zone_focused: false,
-            window_size: WindowSize::Large,
+            window_size,
             _page_subscriptions,
         }
     }
@@ -143,11 +151,11 @@ impl SettingsView {
         cx: &mut Context<'_, Self>,
     ) {
         let pages = LedgerPages::new(announcer, config, setup, cx);
-        self.pages.ledger = Some(pages);
+        let frame = self.frame_space();
+        self.pages.open_ledger(pages, frame, cx);
         // Subscribed afresh, so a swapped-out Ledger's pages leave no subscription behind.
         self._page_subscriptions = subscribe_pages(&self.pages, cx);
         self.handle(SettingsFrameEvent::LedgerOpened, cx);
-        self.sync_frame(cx);
     }
 
     /// A write landed in the Open Ledger: the index pane's counts are recounted on its next draw.
@@ -164,7 +172,6 @@ impl SettingsView {
         self.pages.ledger = None;
         self._page_subscriptions = subscribe_pages(&self.pages, cx);
         self.handle(SettingsFrameEvent::LedgerClosed, cx);
-        self.sync_frame(cx);
     }
 
     /// Whether a Ledger is open, so the This Ledger pages are built.
@@ -185,7 +192,7 @@ impl SettingsView {
         clippy::expect_used,
         reason = "the frame shows a This Ledger page only once told a Ledger opened, after its pages are built, and falls back to General as one closes"
     )]
-    pub(super) fn selected_page(&self) -> &dyn PageHandle {
+    pub(super) fn selected_page(&self) -> &dyn SettingsPageHandle {
         self.pages
             .get(self.frame.selected())
             .expect("the selected Settings page is one that is built")
@@ -270,7 +277,7 @@ impl SettingsView {
     /// The open page, while it has focus: the page, rather than the frame, then takes its keys,
     /// movement and status. `None` while the keyboard is on the index, on show or docked.
     fn focused_page(&self) -> Option<&dyn PageHandle> {
-        (self.frame.focus() == SettingsFocus::Page).then(|| self.selected_page())
+        (self.frame.focus() == SettingsFocus::Page).then(|| self.selected_page() as &dyn PageHandle)
     }
 
     /// The space the pages are drawn in, as the pages are told it.
@@ -282,11 +289,12 @@ impl SettingsView {
     }
 
     /// Tells every page the frame, so a page acts on the layout on screen, not the one it last saw.
+    /// Called on every draw and Window Size change. It reads the body the last draw measured, so
+    /// a draw frames its pages one draw behind; the page a key or palette Command reaches is
+    /// framed again first (#1129). The pages were framed as they were built, so one not yet drawn
+    /// sees a frame too.
     pub(super) fn sync_frame(&self, cx: &mut App) {
-        let frame = self.frame_space();
-        for page in self.pages.all() {
-            page.cue(PageCue::Framed(frame), cx);
-        }
+        self.pages.frame(self.frame_space(), cx);
     }
 
     pub fn set_zone_focused(&mut self, focused: bool) {
@@ -359,7 +367,8 @@ impl SettingsView {
         }
         let page_key = match self.focused_page() {
             Some(page) => {
-                // Only the page offered the key need act on the layout on screen.
+                // The draw framed the page with the body the draw before measured, so after a
+                // resize only this frame has the width on screen (#1129).
                 page.cue(PageCue::Framed(self.frame_space()), cx);
                 page.module_key(chord, cx)
             }
@@ -382,6 +391,7 @@ impl SettingsView {
         command: &str,
         cx: &mut Context<'_, Self>,
     ) -> bool {
+        // Framed for the same reason as a key: the draw's frame is a draw behind (#1129).
         let frame = self.frame_space();
         let taken = self.pages.get(section).is_some_and(|page| {
             page.cue(PageCue::Framed(frame), cx);
@@ -680,9 +690,10 @@ impl PageHandle for Entity<SettingsView> {
     }
 
     /// Entering lands on the index; a reveal opens the page that owns the record; the focus is
-    /// the View zone's; the frame tells only the Window Size, since the View measures its own
-    /// body, which it tells its pages. A Ledger change reaches each page through its own
-    /// subscription, so the frame has nothing to do on one.
+    /// the View zone's. Of `Framed`, the composite host reads only the Window Size, the part of
+    /// `Root`'s frame it needs: it measures its own body and frames its pages itself
+    /// ([`SettingsView::sync_frame`]), so the body width `Root` measured is not its pages'. A Ledger
+    /// change reaches each page through its own subscription, so the frame has nothing to do on one.
     fn cue(&self, cue: PageCue, cx: &mut App) {
         self.update(cx, |view, cx| match cue {
             PageCue::Entered => view.on_enter(cx),
@@ -725,16 +736,8 @@ impl PageHandle for Entity<SettingsView> {
         self.read(cx).help_group(cx)
     }
 
-    /// Settings draws its pages' headings itself.
-    fn heading_meta(&self, _cx: &App) -> Option<AnyElement> {
-        None
-    }
-
-    /// Settings docks its own panes.
-    fn side_pane(&self, _cx: &App) -> Option<AnyElement> {
-        None
-    }
-
+    /// The frame laid out as any View is: its own body lays out each page by that page's
+    /// [`PageHandle::layout`], so the default is its honest answer, not a stub.
     fn layout(&self) -> PageLayout {
         PageLayout::default()
     }
