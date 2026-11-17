@@ -108,6 +108,10 @@ _Avoid_: modal (as a noun), popup, window.
 A named action the user can run. Every Command is reachable by its typed name in the command palette, and it can also be bound to a key, which the user can change.
 _Avoid_: action, shortcut (a shortcut is the key, not the Command).
 
+**Argument**:
+Text typed after a Command's name in the command palette that names the record the Command acts on, as in `accounts delete Home Loan`. A Command that takes none reads that text as more of its search. Run with no Argument, a Command that takes one does what its key does.
+_Avoid_: parameter, query.
+
 **Refusal**:
 The Ledger declining a request because a rule forbids it, such as deleting the only Unit or deactivating the base Unit, or the Shell declining one that needs an Open Ledger while none is open, such as choosing a This Ledger Settings page. The person is told why, in the Dialog or on the status line, and nothing changes. Distinct from a failure the person didn't cause, such as a write that didn't save, which always raises an Error Toast.
 _Avoid_: validation error, rejection.
