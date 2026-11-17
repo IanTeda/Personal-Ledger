@@ -7,10 +7,11 @@
 //!   (ADR-0056).
 //! - `router.rs` is the module's entry point ([`router::open_delete`]).
 //!
-//! Delete writes through `lib-category-deletion`'s `CategoryDeletionPorts` port, `lib-database`'s adapter over the Categories,
-//! Transactions, Bills, Payees and Budgets stores, so the Uncategorised it may
-//! make, the re-pointed rows and the Category's delete join the one pending batch and land in the
-//! one commit of the confirm's input. Nothing here reads the `Announcer`: the Categories page hears
+//! Delete writes through `lib-category-deletion`'s `CategoryDeletionPorts` bundle
+//! (`LedgerPorts::category_deletion()`), whose atomic port `lib-database` answers over the
+//! Categories, Transactions, Bills, Payees and Budgets stores, so the Uncategorised it may make,
+//! the re-pointed rows and the Category's delete join the one pending batch and land in the one
+//! commit of the confirm's input. Nothing here reads the `Announcer`: the Categories page hears
 //! of a confirm through its `landed` callback and brings what else reads those domains in line.
 
 pub mod router;

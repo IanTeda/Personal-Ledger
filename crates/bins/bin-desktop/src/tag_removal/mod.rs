@@ -7,12 +7,11 @@
 //!   Dialog host (ADR-0056).
 //! - `router.rs` is the module's entry point ([`router::open_remove`], [`router::open_merge`]).
 //!
-//! Remove and merge write through `lib-tag-removal`'s `TagRemovalPorts`, which the open Ledger hands out whole
-//! (#1205): its port writes the Tags and Transactions stores together (#1082), so the
-//! rewritten Splits and the Tag's delete join the one pending batch and land in the one commit of
-//! the confirm's input.
-//! Nothing here reads the `Announcer`: the Tags page hears of a confirm through its `landed`
-//! callback and brings what else reads the two domains in line.
+//! Remove and merge write through `lib-tag-removal`'s `TagRemovalPorts`, which the open Ledger
+//! hands out whole (#1205): its port writes the Tags and Transactions stores together (#1082), so
+//! the rewritten Splits and the Tag's delete join the one pending batch and land in the one commit
+//! of the confirm's input. Nothing here reads the `Announcer`: the Tags page hears of a confirm
+//! through its `landed` callback and brings what else reads the two domains in line.
 
 pub mod router;
 pub(crate) mod view;

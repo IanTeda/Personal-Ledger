@@ -10,9 +10,9 @@
 //! - `router.rs` is the Router and the module's entry point ([`tags_page`]); it opens the Remove
 //!   tag and Merge tags Dialogs through the Tag Removal module (`crate::tag_removal`, #1003).
 //!
-//! The ports are `lib-database`'s: the page and its Dialogs share `StoredTagsPorts` as
-//! `lib_tags::SharedPorts`, and Tag remove and merge write through the `TagRemovalAdapter` built
-//! beside it, both handed out by `LedgerPorts` (#1082). Nothing here adapts the Tags store.
+//! The ports come from `LedgerPorts`: the page and its Dialogs share `LedgerPorts::tags()`
+//! (`lib_tags::SharedPorts`), and Tag remove and merge write through `LedgerPorts::tag_removal()`
+//! (`lib_tag_removal::TagRemovalPorts`) (#1082). Nothing here adapts the Tags store.
 
 mod router;
 mod view;

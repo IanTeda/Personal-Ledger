@@ -9,7 +9,7 @@
 //!   `ModuleDialog`.
 //! - `router.rs` is the Router and the module's entry point ([`payees_page`]).
 //!
-//! The ports are `lib-database`'s `StoredPayeesPorts`, which `LedgerPorts` hands the page and its
+//! The ports are `lib_payees::SharedPorts`, which `LedgerPorts::payees()` hands the page and its
 //! Dialogs (#1084).
 
 mod router;

@@ -11,8 +11,9 @@
 //!   generic `ModuleDialog` (ADR-0056).
 //! - `router.rs` is the Router and the module's entry point ([`inventory_page`]).
 //!
-//! The Inventory repository is `lib-database`'s `StoredInventoryPorts`; the Units and Documents its
-//! Dialogs quote are read through `lib_inventory::SharedReads` (#867, #1001, #1083).
+//! The Inventory repository is `lib_inventory::SharedInventory` (`LedgerPorts::inventory()`); the
+//! Units and Documents its Dialogs quote are read through `lib_inventory::SharedReads` (#867,
+//! #1001, #1083).
 //!
 //! The Inventory destination (`Noun::Inventory`) is a placeholder that shares nothing with the
 //! page. Where the Inventory is kept, the SQLite adapter opened at start or memory, is

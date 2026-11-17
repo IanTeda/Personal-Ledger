@@ -10,7 +10,7 @@
 //!   generic `ModuleDialog` (ADR-0056).
 //! - `router.rs` is the Router and the module's entry point ([`units_page`]).
 //!
-//! The ports are `lib-database`'s `StoredUnitsPorts`, which `LedgerPorts` hands the page and its
+//! The ports are `lib_units::SharedPorts`, which `LedgerPorts::units()` hands the page and its
 //! Dialogs with usage and holdings read from the other domains' stores (#1052, #1084).
 
 mod router;

@@ -8,7 +8,7 @@
 //! - `view/dialog.rs` hosts each Dialog's Presenter and draws it as a floating window.
 //! - `router.rs` is the Router, which collects what a Presenter asked for.
 //!
-//! The ports are `lib-database`'s `StoredUnitsPorts`, which `LedgerPorts` hands the Units with
+//! The ports are `lib_units::SharedPorts`, which `LedgerPorts::units()` hands the Units with
 //! usage and holdings read from the stores beside them (#887, #1084).
 
 pub mod router;

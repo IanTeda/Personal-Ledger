@@ -10,7 +10,7 @@
 //! - `router.rs` is the Router and the module's entry point ([`bills_page`]). It opens the Pay
 //!   Dialog through the Bill Payments module's entry point (`crate::bill_payments`).
 //!
-//! The ports are `lib-database`'s `StoredBillsPorts`, which `LedgerPorts` hands the page and its
+//! The ports are `lib_bills::SharedPorts`, which `LedgerPorts::bills()` hands the page and its
 //! Dialogs (#1084); what stays here is when the Bill Schedule is generated ([`generate`],
 //! [`new_month`]).
 

@@ -238,7 +238,7 @@ pub struct SettingsLedger {
 }
 
 /// What Settings › Ledger reads of the Units: the Client answers it over the Units store
-/// (`lib-database`'s `StoredSettingsReads`), so the page never holds a copy.
+/// (through `LedgerPorts::settings_ledger()`), so the page never holds a copy.
 pub trait LedgerUnits {
     /// The Units the Base unit select offers: the active ones, by code.
     fn choices(&self) -> Vec<UnitRef>;
@@ -305,7 +305,7 @@ pub struct LedgerCounts {
 }
 
 /// What the Settings index's detail pane counts of the domains Settings doesn't own (#1109): the
-/// Client answers it over the stores (`lib-database`'s `StoredSettingsReads`), so the index never
+/// Client answers it over the stores (through `LedgerPorts::settings_ledger()`), so the index never
 /// builds a domain's Presenter. Read only for the pane's page, and not at all with no Ledger open.
 pub trait LedgerSummaries {
     fn counts(&self) -> LedgerCounts;

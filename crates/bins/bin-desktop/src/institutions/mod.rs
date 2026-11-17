@@ -9,8 +9,8 @@
 //!   `ModuleDialog`.
 //! - `router.rs` is the Router and the module's entry point ([`institutions_page`]).
 //!
-//! The ports are `lib-database`'s `StoredInstitutionsPorts`, which `LedgerPorts` hands the page and
-//! its Dialogs (#1084).
+//! The ports are `lib_institutions::SharedPorts`, which `LedgerPorts::institutions()` hands the
+//! page and its Dialogs (#1084).
 
 mod router;
 mod view;

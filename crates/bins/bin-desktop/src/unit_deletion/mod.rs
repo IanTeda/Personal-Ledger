@@ -8,9 +8,10 @@
 //! - `router.rs` is the module's entry point ([`router::open_delete`]), which the Units page's
 //!   Router calls.
 //!
-//! Unit delete writes through `lib-database`'s `UnitDeletionAdapter`, which `LedgerPorts` builds
-//! over the Units and Institutions stores (#1084), so the Unit's removal, the base's move and the
-//! Institutions' new Usual units join the one pending batch and land in one commit.
+//! Unit delete writes through `lib_unit_deletion::SharedUnitDeletion`
+//! (`LedgerPorts::unit_deletion()`), which `lib-database` answers over the Units and Institutions
+//! stores (#1084), so the Unit's removal, the base's move and the Institutions' new Usual units
+//! join the one pending batch and land in one commit.
 
 pub mod router;
 pub(crate) mod view;

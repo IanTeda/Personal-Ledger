@@ -10,8 +10,8 @@
 //! - `router.rs` is the Router and the module's entry point ([`accounts_page`]). It opens
 //!   `lib-account-deletion`'s Delete Dialog through that module's entry point.
 //!
-//! The ports are `lib-database`'s `StoredAccountsPorts`, which `LedgerPorts` hands the page and its
-//! Dialogs (#1084).
+//! The ports are `lib_accounts::SharedPorts`, which `LedgerPorts::accounts()` hands the page and
+//! its Dialogs (#1084).
 
 pub(crate) mod router;
 mod view;
