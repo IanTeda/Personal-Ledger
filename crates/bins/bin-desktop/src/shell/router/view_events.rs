@@ -97,6 +97,48 @@ mod tests {
 
     use super::*;
     use crate::navigation::nav::{NavState, Noun};
+    use crate::shell::view::page_handle::{PageBinding, test_support::hosted_pages};
+    use lib_viper::keymap::Palette;
+
+    /// The palette-listed Command names of `keys`, sorted, so two lists compare by content.
+    fn listed_names(keys: &[PageBinding]) -> Vec<&'static str> {
+        let mut names: Vec<&'static str> = keys
+            .iter()
+            .filter_map(|binding| match binding.palette {
+                Palette::Listed { name, .. } => Some(name),
+                _ => None,
+            })
+            .collect();
+        names.sort_unstable();
+        names
+    }
+
+    #[gpui::test]
+    fn every_hosted_page_with_listed_commands_is_in_the_palette_fixture(cx: &mut TestAppContext) {
+        crate::locale::init_for_tests();
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
+        let shell = sample_root(today, cx);
+        let fixture = hosted_pages(&lib_config::KeyBindingConfig::default());
+        let hosted = shell.read_with(cx, |shell, cx| shell.hosted_page_keys(cx));
+        for (view, keys) in hosted {
+            let names = listed_names(&keys);
+            if names.is_empty() {
+                continue;
+            }
+            let Some((_, fixture_keys)) = fixture.iter().find(|(fixture, _)| *fixture == view)
+            else {
+                panic!(
+                    "{view:?} lists palette Commands {names:?}, but test_support::hosted_pages \
+                     does not host it, so the palette tests would not see them"
+                );
+            };
+            assert_eq!(
+                listed_names(fixture_keys),
+                names,
+                "test_support::hosted_pages lists different palette Commands for {view:?}"
+            );
+        }
+    }
 
     /// A `Root` on the in-memory fakes with the Sample Ledger open, so both tests start from one setup.
     fn sample_root(today: chrono::NaiveDate, cx: &mut TestAppContext) -> Entity<Root> {

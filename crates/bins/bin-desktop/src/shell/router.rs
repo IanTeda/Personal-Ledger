@@ -520,9 +520,17 @@ impl Root {
     /// now with the keys each holds: on start-up, after a rebind and as a Ledger opens or closes.
     pub(crate) fn refresh_palette_entries(&mut self, cx: &App) {
         self.refreshes += 1;
+        let pages = self.hosted_page_keys(cx);
+        self.presenter
+            .set_palette_entries(command::palette_entries(&self.keybindings, pages));
+    }
+
+    /// Each page `Root` hosts now (the Open Ledger's Views, then the Settings pages) with the keys
+    /// it holds, which the palette's Commands are built from.
+    pub(crate) fn hosted_page_keys(&self, cx: &App) -> Vec<(ActiveView, Vec<PageBinding>)> {
         let views = self.open.as_ref().map(|open| open.views.each());
         let settings = self.settings.read(cx).pages().each();
-        let pages: Vec<(ActiveView, Vec<PageBinding>)> = views
+        views
             .into_iter()
             .flatten()
             .chain(
@@ -530,9 +538,7 @@ impl Root {
                     .map(|(page, handle)| (ActiveView::Settings(page), handle as &dyn PageHandle)),
             )
             .map(|(view, handle)| (view, handle.keys(cx)))
-            .collect();
-        self.presenter
-            .set_palette_entries(command::palette_entries(&self.keybindings, pages));
+            .collect()
     }
 
     /// The status line's flash message (e.g. "not yet built"), if one is showing.
