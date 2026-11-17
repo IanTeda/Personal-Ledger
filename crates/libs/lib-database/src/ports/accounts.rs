@@ -124,4 +124,36 @@ mod tests {
             assert!(accounts.borrow().accounts().account(wallet).is_none());
         }
     }
+
+    #[test]
+    fn the_account_deletion_bundle_quotes_and_deletes_over_the_same_stores_on_either() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for ledger in [fakes(), file(dir.path())] {
+            let lib_account_deletion::DeletionPorts {
+                deletion,
+                accounts,
+                reads,
+                ..
+            } = ledger.account_deletion();
+            let wallet = accounts
+                .borrow()
+                .accounts()
+                .accounts()
+                .into_iter()
+                .find(|account| account.name == "Wallet")
+                .expect("a sample Account");
+            assert!(
+                reads.unit_code(wallet.unit).is_some(),
+                "the Wallet's Unit is quoted"
+            );
+
+            DeleteAccount { id: wallet.id }
+                .run(&mut *deletion.borrow_mut())
+                .expect("nothing pays from the Wallet");
+
+            let wrote = ledger.commit().commit().wrote;
+            assert!(wrote.contains(&Domain::Accounts), "{wrote:?}");
+            assert!(accounts.borrow().accounts().account(wallet.id).is_none());
+        }
+    }
 }

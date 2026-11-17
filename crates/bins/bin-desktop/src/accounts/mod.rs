@@ -48,7 +48,7 @@ pub struct SettingsAccountsSnapshot {
 /// read, and the Clock an Added Account's opening date and the Transactions hand-off read.
 pub struct AccountsSetup {
     pub ports: lib_accounts::SharedPorts,
-    pub deletion: crate::account_deletion::DeletionStores,
+    pub deletion: lib_account_deletion::DeletionPorts,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
     pub clock: lib_core::Clock,
 }
@@ -57,7 +57,7 @@ impl AccountsSetup {
     /// The page's Presenter, which owns the Accounts keymap under `[keybindings]`, and its Setup.
     pub fn new(
         ports: lib_accounts::SharedPorts,
-        deletion: crate::account_deletion::DeletionStores,
+        deletion: lib_account_deletion::DeletionPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         clock: lib_core::Clock,
         config: &lib_config::KeyBindingConfig,
@@ -82,7 +82,7 @@ impl AccountsSetup {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             ports.accounts(),
-            crate::account_deletion::DeletionStores::of(ports),
+            ports.account_deletion(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

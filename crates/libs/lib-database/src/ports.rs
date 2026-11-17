@@ -356,6 +356,18 @@ impl LedgerPorts {
         self.bills.clone()
     }
 
+    /// What the Delete account Dialog reads and writes through, as `lib-account-deletion`'s own
+    /// bundle: the deletion port, the Accounts and Bills ports and the reads it quotes.
+    #[must_use]
+    pub fn account_deletion(&self) -> lib_account_deletion::DeletionPorts {
+        lib_account_deletion::DeletionPorts {
+            deletion: self.account_deletion.clone(),
+            accounts: self.accounts(),
+            bills: self.bills(),
+            reads: Rc::new(self.account_reads.clone()),
+        }
+    }
+
     /// The tags ports, a clone of the one value every page shares.
     #[must_use]
     pub fn tags(&self) -> lib_tags::SharedPorts {

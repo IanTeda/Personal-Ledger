@@ -152,7 +152,7 @@ impl OpenLedger {
         );
         let payments = ports.bill_payments.clone();
         // Account delete writes the Accounts, Transactions and Bills stores together (#854).
-        let account_deletion = crate::account_deletion::DeletionStores::of(&ports);
+        let account_deletion = ports.account_deletion();
         let accounts_setup = crate::accounts::AccountsSetup::new(
             ports.accounts(),
             account_deletion,

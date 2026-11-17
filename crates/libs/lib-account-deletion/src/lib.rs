@@ -32,5 +32,5 @@ pub mod protocols;
 
 pub use error::{Error, Result};
 pub use protocols::{
-    AccountDeleted, AccountDeletion, AccountRemoval, DeletionReads, SharedDeletion,
+    AccountDeleted, AccountDeletion, AccountRemoval, DeletionPorts, DeletionReads, SharedDeletion,
 };
