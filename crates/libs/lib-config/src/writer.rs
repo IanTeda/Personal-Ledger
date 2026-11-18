@@ -56,23 +56,26 @@ impl ConfigWriter {
         key_value(&text, key)
     }
 
-    /// The value the target file itself sets `key` to, read by the parser from that file alone,
-    /// with nothing above it and no environment, as a restart with only that file would read it;
-    /// `None` when the file doesn't set the key in its section, the parser refuses its value, or
-    /// the file doesn't exist. One key at a time: [`Self::stored_all`] reads the file once.
-    pub fn stored(&self, key: ConfigKey) -> Option<ConfigValue> {
-        self.stored_all()
-            .into_iter()
-            .find_map(|(read, value)| (read == key).then_some(value))
-    }
-
-    /// Every key the target file itself sets, with its value as [`Self::stored`] reads it, from
-    /// one read of the file. A key whose value the parser refuses is left out, the others kept.
+    /// Every key the target file itself sets, each value read by the parser from that file alone,
+    /// with nothing above it and no environment, as a restart with only that file would read it,
+    /// from one read of the file. A key whose value the parser refuses is left out, the others
+    /// kept. Empty when there is no target or no file yet; a file that can't be read or isn't INI
+    /// is logged at `warn` and reads as empty, so every Settings field shows its default.
     pub fn stored_all(&self) -> Vec<(ConfigKey, ConfigValue)> {
-        self.target
-            .as_deref()
-            .and_then(|path| crate::Config::stored_in_file(path).ok())
-            .unwrap_or_default()
+        let Some(path) = self.target.as_deref() else {
+            return Vec::new();
+        };
+        if !path.exists() {
+            return Vec::new();
+        }
+        crate::Config::stored_in_file(path).unwrap_or_else(|error| {
+            tracing::warn!(
+                path = %path.display(),
+                %error,
+                "Could not read the configuration file; Settings shows the defaults"
+            );
+            Vec::new()
+        })
     }
 
     /// Writes `value` under its key in its section of the target file, spelt as the parser reads
@@ -316,6 +319,14 @@ mod tests {
     use std::collections::HashMap;
     use tempfile::TempDir;
 
+    /// The value `writer`'s target file stores for `key`, from [`ConfigWriter::stored_all`].
+    fn stored_value(writer: &ConfigWriter, key: ConfigKey) -> Option<ConfigValue> {
+        writer
+            .stored_all()
+            .into_iter()
+            .find_map(|(read, value)| (read == key).then_some(value))
+    }
+
     const WRITTEN: &str = "\
 # The person's own notes, kept.
 [General]
@@ -542,7 +553,7 @@ back = \"esc\"
                 "read back through the parser"
             );
             assert_eq!(
-                writer.stored(value.key()),
+                stored_value(&writer, value.key()),
                 Some(value),
                 "read back as stored"
             );
@@ -571,17 +582,30 @@ back = \"esc\"
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("personal-ledger.conf");
         let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
-        assert_eq!(writer.stored(ConfigKey::Toasts), None, "no file yet");
+        assert_eq!(
+            stored_value(&writer, ConfigKey::Toasts),
+            None,
+            "no file yet"
+        );
         std::fs::write(
             &path,
             "[Display]\ntoasts = false\n[General]\non_start = none\n",
         )
         .unwrap();
-        assert_eq!(writer.stored(ConfigKey::Toasts), None);
+        assert_eq!(stored_value(&writer, ConfigKey::Toasts), None);
         assert_eq!(
-            writer.stored(ConfigKey::OnStart),
+            stored_value(&writer, ConfigKey::OnStart),
             Some(ConfigValue::OnStart(lib_core::OnStart::NoLedger))
         );
+    }
+
+    #[test]
+    fn a_target_that_cannot_be_read_as_a_file_stores_nothing() {
+        let dir = TempDir::new().unwrap();
+        let writer = ConfigWriter::new(Some(dir.path().to_path_buf()), Overrides::default());
+        assert!(dir.path().is_dir());
+        assert_eq!(writer.stored_all(), []);
+        assert_eq!(stored_value(&writer, ConfigKey::Toasts), None);
     }
 
     #[test]
@@ -602,7 +626,7 @@ back = \"esc\"
                 (ConfigKey::Data, ConfigValue::Data("/ledgers".into())),
             ]
         );
-        assert_eq!(writer.stored(ConfigKey::Log), None);
+        assert_eq!(stored_value(&writer, ConfigKey::Log), None);
     }
 
     #[test]

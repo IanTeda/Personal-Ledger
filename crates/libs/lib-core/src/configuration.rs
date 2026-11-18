@@ -19,7 +19,7 @@ pub enum Section {
     General,
     /// `[Display]`: Settings › Display.
     Display,
-    /// `[Logs]`: Settings › Logs.
+    /// `[Logs]`: Settings › Tracing.
     Logs,
 }
 

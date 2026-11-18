@@ -34,7 +34,7 @@ use super::form::{
 };
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
-use crate::protocols::{ColourChoice, DeviceConfiguration, DeviceRouter, DeviceSnapshot};
+use crate::protocols::{ColourChoice, DeviceConfiguration, DeviceRouter};
 use crate::summary::SummaryRow;
 
 /// The Date format control's choices: `None` is "Locale default", the Locale picking the form.
@@ -157,24 +157,6 @@ pub struct DisplaySettings {
 }
 
 impl DisplaySettings {
-    /// What each field shows of `snapshot` ([`DeviceSnapshot::shown`]): the value in force, or
-    /// the default.
-    pub fn read(snapshot: &DeviceSnapshot) -> Self {
-        let mut settings = Self::default();
-        for key in [
-            ConfigKey::DateStyle,
-            ConfigKey::RowDensity,
-            ConfigKey::StatusGlyphs,
-            ConfigKey::ColourTheme,
-            ConfigKey::ColourAppearance,
-        ] {
-            if let Some(value) = snapshot.shown(key) {
-                settings.take(value);
-            }
-        }
-        settings
-    }
-
     /// Takes `value`, as start-up read it or a write saved it.
     fn take(&mut self, value: &ConfigValue) {
         match value {
@@ -289,7 +271,10 @@ impl DisplayPresenter {
             ),
             keymap,
             back_chord,
-            colour_theme: DisplaySettings::read(&snapshot).colour_theme,
+            colour_theme: match snapshot.shown(ConfigKey::ColourTheme) {
+                Some(ConfigValue::ColourTheme(id)) => Some(id.clone()),
+                _ => None,
+            },
             grid: None,
             columns: 1,
             page_focused: false,
