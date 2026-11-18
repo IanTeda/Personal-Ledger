@@ -22,35 +22,15 @@ pub enum FilingError {
     NoSuchTransaction,
 }
 
-/// What one filed Document looked like before, so [`undo`] can restore it.
+/// What one filing wrote to one Document: its Document Type, date and the Links the filing added,
+/// as it was before. Filing is undone through the Shell's History (the Ledger's change journal),
+/// so nothing here is read back to reverse it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FiledEntry {
     pub id: DocumentId,
     pub previous_type: DocumentType,
     pub previous_date: NaiveDate,
     pub added_links: Vec<DocumentLink>,
-}
-
-/// The one-level undo: the most recent filing action as a unit (a single Accept or File…, or a
-/// whole Accept-all batch). A new filing action replaces it. Session-only.
-#[derive(Debug, Clone, PartialEq)]
-pub struct FilingUndo {
-    pub entries: Vec<FiledEntry>,
-    /// The Document focused when the action began, restored on undo.
-    pub focus: Option<DocumentId>,
-}
-
-impl FilingUndo {
-    /// The Undo once Document `id` is deleted: it leaves the entries, and an Undo left with none is
-    /// gone, so `u` never reports undoing a Document that no longer exists. The focus it would
-    /// restore is dropped when it is that Document.
-    pub fn without(mut self, id: DocumentId) -> Option<Self> {
-        self.entries.retain(|entry| entry.id != id);
-        if self.focus == Some(id) {
-            self.focus = None;
-        }
-        (!self.entries.is_empty()).then_some(self)
-    }
 }
 
 fn file_one(
@@ -127,17 +107,15 @@ pub fn file_by_hand(
     file_one(documents, id, doc_type, date, link)
 }
 
-/// Accept all strong matches: accepts every Unfiled Document whose Suggested Link is Strong, as
-/// one undoable batch, in the Inbox's order (the `skipped` last). Returns `None` when there were
-/// none.
+/// Accept all strong matches: accepts every Unfiled Document whose Suggested Link is Strong, in
+/// the Inbox's order (the `skipped` last). Returns what each one wrote; empty when none was Strong.
 pub fn accept_all_strong(
     types: &[DocumentTypeRow],
     documents: &mut [Document],
     skipped: &HashSet<DocumentId>,
     transactions: &[DocumentTransaction],
     payees: &[PayeeRef],
-    focus: Option<DocumentId>,
-) -> Option<FilingUndo> {
+) -> Vec<FiledEntry> {
     let strong: Vec<(DocumentId, TransactionId)> = inbox_rows(documents, skipped)
         .into_iter()
         .filter_map(|document| {
@@ -152,13 +130,12 @@ pub fn accept_all_strong(
                 .flatten()
         })
         .collect();
-    let entries: Vec<FiledEntry> = strong
+    strong
         .into_iter()
         .filter_map(|(id, transaction_id)| {
             accept(types, documents, transactions, id, transaction_id).ok()
         })
-        .collect();
-    (!entries.is_empty()).then_some(FilingUndo { entries, focus })
+        .collect()
 }
 
 /// How many Unfiled Documents have a Strong Suggested Link: the button's and confirm's count.
@@ -172,22 +149,6 @@ pub fn strong_count(
         .filter(|document| document.is_unfiled())
         .filter(|document| suggestion(document, documents, transactions, payees).is_strong())
         .count()
-}
-
-/// Reverses a filing action: each Document returns to Unfiled with its earlier Document Type and
-/// date, and the Links the action added are removed. Returns the focus to restore.
-pub fn undo(documents: &mut [Document], record: FilingUndo) -> Option<DocumentId> {
-    for entry in record.entries {
-        if let Some(document) = get_mut(documents, entry.id) {
-            document
-                .links
-                .retain(|link| !entry.added_links.contains(link));
-            document.doc_type = entry.previous_type;
-            document.date = entry.previous_date;
-            document.filing = Filing::Unfiled;
-        }
-    }
-    record.focus
 }
 
 /// Skip: sets an Unfiled Document aside to the bottom of the Inbox for the session, by adding it

@@ -7,7 +7,7 @@ use crate::protocols::{DocumentRepository, DocumentTransactions};
 use crate::{FiledEntry, FilingError, accept};
 
 /// Accept: files Unfiled Document `id` under Transaction `transaction_id`, with the extracted
-/// Document Type and date. Returns what [`UndoFiling`] needs to reverse it.
+/// Document Type and date. Returns what the filing wrote, as it was before.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Accept {
     pub id: DocumentId,

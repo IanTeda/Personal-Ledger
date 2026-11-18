@@ -15,8 +15,8 @@
 //! - The Suggested Link is derived on every call ([`suggestion`]) and never stored: only
 //!   Transactions within [`CANDIDATE_WINDOW_DAYS`] of the Document's date are candidates, each must
 //!   agree on amount or payee, and the date Signal allows [`DATE_SIGNAL_DAYS`].
-//! - Skip is session-only, held by the Client as a set of ids and never written, and undo is one
-//!   level: [`undo`] reverses the last [`FilingUndo`] whole.
+//! - Skip is session-only, held by the Client as a set of ids and never written. Filing is undone
+//!   through the Client's History like any other Ledger change, not here.
 
 #[cfg(feature = "contract-tests")]
 #[expect(

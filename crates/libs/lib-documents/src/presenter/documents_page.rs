@@ -24,9 +24,7 @@ use lib_viper::view::{Hint, count};
 
 use super::inbox::{self, InboxDetailView, InboxRowView};
 use super::library::{self, DetailView, Lookups, RailRow, RowView, link_name, size_text};
-use crate::interactor::{
-    Accept, AcceptAllStrong, FileByHand, ImportDocuments, ToggleLink, UndoFiling,
-};
+use crate::interactor::{Accept, AcceptAllStrong, FileByHand, ImportDocuments, ToggleLink};
 use crate::keymap::{
     ACCEPT, ACCEPT_ALL, ADD, FOLLOW, IMPORT, LINK, SHOW_IN_FOLDER, SKIP, SORT, TOGGLE_MODE,
     documents_page_keymap,
@@ -36,10 +34,10 @@ use crate::protocols::{
 };
 use crate::types::{self, DocumentTypeRow};
 use crate::{
-    Document, DocumentLink, DocumentType, DocumentsMode, FiledEntry, FilingUndo, ImportOutcome,
-    LibraryScope, LibrarySort, LinkRecords, RailEntry, Source, focus_after_filing, inbox_count,
-    inbox_rows, library_rows, msg, need_review_count, rail_entries, scope_count, strong_count,
-    suggestion, total_bytes, year_facets,
+    Document, DocumentLink, DocumentType, DocumentsMode, ImportOutcome, LibraryScope, LibrarySort,
+    LinkRecords, RailEntry, Source, focus_after_filing, inbox_count, inbox_rows, library_rows, msg,
+    need_review_count, rail_entries, scope_count, strong_count, suggestion, total_bytes,
+    year_facets,
 };
 
 /// Whether keyboard focus is on the index rail or the list, while the page has it.
@@ -90,8 +88,6 @@ pub enum DocumentsPageEvent {
     AcceptAll,
     /// The focused Inbox row set aside for the session.
     Skip,
-    /// The last filing reversed.
-    Undo,
     /// `+ Link to…`, `Link elsewhere…` and `File…`: the link picker, whatever has focus.
     OpenPicker,
     /// A click on a rail row.
@@ -140,7 +136,7 @@ impl DocumentsPageEvent {
     pub fn mode(&self) -> Option<DocumentsMode> {
         match self {
             Self::Add | Self::Sort => Some(DocumentsMode::Library),
-            Self::Accept | Self::AcceptAll | Self::Skip | Self::Undo => Some(DocumentsMode::Inbox),
+            Self::Accept | Self::AcceptAll | Self::Skip => Some(DocumentsMode::Inbox),
             _ => None,
         }
     }
@@ -291,7 +287,6 @@ pub struct DocumentsPagePresenter {
     selected: usize,
     inbox_selected: usize,
     skipped: HashSet<DocumentId>,
-    undo: Option<FilingUndo>,
 }
 
 impl DocumentsPagePresenter {
@@ -325,7 +320,6 @@ impl DocumentsPagePresenter {
             selected: 0,
             inbox_selected: 0,
             skipped: HashSet::new(),
-            undo: None,
         }
     }
 
@@ -618,12 +612,10 @@ impl DocumentsPagePresenter {
         router.open_dialog(DocumentsDialog::Delete(document.id));
     }
 
-    /// Document `id` has been deleted: it leaves the pending Undo (which is cleared when that
-    /// leaves it empty) and the skipped set, and the selection, which stays at its position in the
-    /// list, now rests on the next row, or the previous one when `id` was the last. The Library's
-    /// scope and Search are kept, even when they are left empty.
+    /// Document `id` has been deleted: it leaves the skipped set, and the selection, which stays at
+    /// its position in the list, now rests on the next row, or the previous one when `id` was the
+    /// last. The Library's scope and Search are kept, even when they are left empty.
     fn deleted(&mut self, id: DocumentId) {
-        self.undo = self.undo.take().and_then(|undo| undo.without(id));
         self.skipped.remove(&id);
         self.selected = self.selected.min(self.library_count().saturating_sub(1));
         self.inbox_selected = self
@@ -724,8 +716,8 @@ impl DocumentsPagePresenter {
         let before = self.before_filing(id);
         let filed =
             Accept { id, transaction_id }.run(&*self.reads, &mut *self.documents.borrow_mut());
-        if let Ok(entry) = filed {
-            self.after_filing(id, before, entry, router);
+        if filed.is_ok() {
+            self.after_filing(before, router);
         }
     }
 
@@ -738,8 +730,8 @@ impl DocumentsPagePresenter {
     ) {
         let before = self.before_filing(id);
         let filed = FileByHand { id, doc_type, link }.run(&mut *self.documents.borrow_mut());
-        if let Ok(entry) = filed {
-            self.after_filing(id, before, entry, router);
+        if filed.is_ok() {
+            self.after_filing(before, router);
         }
     }
 
@@ -757,19 +749,12 @@ impl DocumentsPagePresenter {
         )
     }
 
-    /// What every filing does: remembers it as the one undoable action, moves focus to the next
-    /// row and raises the Toast.
+    /// What every filing does: moves focus to the next row and raises the Toast.
     fn after_filing(
         &mut self,
-        id: DocumentId,
         (at, len, title): (Option<usize>, usize, String),
-        entry: FiledEntry,
         router: &mut dyn DocumentsRouter,
     ) {
-        self.undo = Some(FilingUndo {
-            entries: vec![entry],
-            focus: Some(id),
-        });
         if let Some(at) = at {
             self.inbox_selected = focus_after_filing(at, len).unwrap_or(0);
         }
@@ -786,24 +771,6 @@ impl DocumentsPagePresenter {
         if let Some(document) = self.selected_document() {
             let _ = crate::skip(&self.all_documents(), &mut self.skipped, document.id);
         }
-    }
-
-    /// `u`: reverses the last filing as a unit and puts focus back on its Document, in the Inbox.
-    fn undo_last(&mut self, router: &mut dyn DocumentsRouter) {
-        let Some(record) = self.undo.take() else {
-            router.notify(Notice::Status(msg::documents_status_nothing_to_undo()));
-            return;
-        };
-        let undone = record.entries.len();
-        let focus = UndoFiling(record).run(&mut *self.documents.borrow_mut());
-        self.set_mode(DocumentsMode::Inbox);
-        if let Some(at) = focus.and_then(|id| self.inbox_position(id)) {
-            self.inbox_selected = at;
-        }
-        router.notify(Notice::Toast(
-            ToastKind::Info,
-            msg::documents_toast_undone(count(undone)),
-        ));
     }
 
     /// Accept all asks first, with the count; with none Strong it says so instead.
@@ -825,15 +792,13 @@ impl DocumentsPagePresenter {
     /// last; nothing happens when none is Strong any more.
     fn accept_all(&mut self, router: &mut dyn DocumentsRouter) {
         let batch = AcceptAllStrong {
-            focus: self.selected_document().map(|document| document.id),
             skipped: self.skipped.clone(),
         }
         .run(&*self.reads, &mut *self.documents.borrow_mut());
-        let Some(batch) = batch else {
+        if batch.is_empty() {
             return;
-        };
-        let filed = batch.entries.len();
-        self.undo = Some(batch);
+        }
+        let filed = batch.len();
         self.inbox_selected = 0;
         router.notify(Notice::Changed(msg::documents_changed_filed_many(
             &filed.to_string(),
@@ -1063,7 +1028,6 @@ impl Presenter for DocumentsPagePresenter {
             DocumentsPageEvent::Accept => self.accept_focused(router),
             DocumentsPageEvent::AcceptAll => self.ask_accept_all(router),
             DocumentsPageEvent::Skip => self.skip_focused(),
-            DocumentsPageEvent::Undo => self.undo_last(router),
             DocumentsPageEvent::OpenPicker => self.open_picker(router),
             DocumentsPageEvent::ClickRail(entry) => {
                 self.select_entry(entry);
@@ -1230,7 +1194,7 @@ impl Presenter for DocumentsPagePresenter {
         match event {
             DocumentsPageEvent::Sort => !inbox,
             DocumentsPageEvent::Accept | DocumentsPageEvent::Skip => inbox && list,
-            DocumentsPageEvent::AcceptAll | DocumentsPageEvent::Undo => inbox,
+            DocumentsPageEvent::AcceptAll => inbox,
             DocumentsPageEvent::FocusList => !list,
             DocumentsPageEvent::FocusIndex
             | DocumentsPageEvent::Follow
@@ -1550,7 +1514,6 @@ mod tests {
     fn a_key_the_zone_or_mode_has_no_use_for_is_left_to_the_shell() {
         let mut page = page();
         assert!(!page.presenter.takes(&DocumentsPageEvent::Accept));
-        assert!(!page.presenter.takes(&DocumentsPageEvent::Undo));
         assert!(!page.presenter.takes(&DocumentsPageEvent::FocusList));
         assert!(page.presenter.takes(&DocumentsPageEvent::Sort));
 
@@ -1616,7 +1579,7 @@ mod tests {
     }
 
     #[test]
-    fn accept_files_the_strong_row_and_undo_puts_it_back_as_one_unit() {
+    fn accept_files_the_strong_row_with_its_toast() {
         let mut page = page();
         page.send(DocumentsPageEvent::ShowInbox);
         page.select(STRONG);
@@ -1638,25 +1601,6 @@ mod tests {
                 ToastKind::Success,
                 "Filed \"IMG_4471\" · u undo".to_string()
             )]
-        );
-
-        page.send(DocumentsPageEvent::Undo);
-
-        assert_eq!(page.inbox_rows().len(), before);
-        assert!(page.stored(STRONG).is_unfiled());
-        assert!(page.stored(STRONG).links.is_empty());
-        assert_eq!(page.selected_file().as_deref(), Some(STRONG));
-        assert_eq!(
-            page.toasts(),
-            [(ToastKind::Info, "Put 1 back in the Inbox.".to_string())]
-        );
-        page.send(DocumentsPageEvent::Undo);
-        assert_eq!(
-            page.router.take(),
-            [DocumentsCall::Notice(Notice::Status(
-                "Nothing to undo.".to_string()
-            ))],
-            "undo is one level"
         );
     }
 
@@ -1683,11 +1627,6 @@ mod tests {
         let filed = page.stored("scan0012.pdf");
         assert!(filed.is_filed());
         assert_eq!(filed.doc_type, DocumentType::TAX);
-        page.send(DocumentsPageEvent::Undo);
-        assert!(
-            page.stored("scan0012.pdf").is_unfiled(),
-            "a filing by hand is undone too"
-        );
     }
 
     #[test]
@@ -1740,7 +1679,7 @@ mod tests {
     }
 
     #[test]
-    fn accept_all_asks_with_the_count_and_its_batch_is_one_undo() {
+    fn accept_all_asks_with_the_count_and_files_the_strong_matches() {
         let mut page = page();
         page.send(DocumentsPageEvent::ShowInbox);
 
@@ -1765,8 +1704,7 @@ mod tests {
             ))]
         );
 
-        page.send(DocumentsPageEvent::Undo);
-        assert!(page.stored(STRONG).is_unfiled());
+        assert!(page.stored(STRONG).is_filed());
     }
 
     #[test]
@@ -1873,40 +1811,6 @@ mod tests {
         assert_eq!(page.presenter.scope(), scope);
         assert!(page.library().rows.is_empty());
         assert_eq!(page.presenter.selected(), 0);
-    }
-
-    #[test]
-    fn deleting_the_document_a_filing_undo_names_clears_the_undo() {
-        let mut page = page();
-        page.send(DocumentsPageEvent::ShowInbox);
-        page.select(STRONG);
-        page.send(DocumentsPageEvent::Accept);
-        page.router.take();
-
-        delete(&mut page, STRONG);
-        page.send(DocumentsPageEvent::Undo);
-
-        assert_eq!(
-            page.router.take(),
-            [DocumentsCall::Notice(Notice::Status(
-                "Nothing to undo.".to_string()
-            ))],
-            "`u` never reports undoing a Document that is gone"
-        );
-    }
-
-    #[test]
-    fn deleting_an_unrelated_document_leaves_the_undo_alone() {
-        let mut page = page();
-        page.send(DocumentsPageEvent::ShowInbox);
-        page.select(STRONG);
-        page.send(DocumentsPageEvent::Accept);
-        page.router.take();
-
-        delete(&mut page, "scan0012.pdf");
-        page.send(DocumentsPageEvent::Undo);
-
-        assert!(page.stored(STRONG).is_unfiled());
     }
 
     #[test]

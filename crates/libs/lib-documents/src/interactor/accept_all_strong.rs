@@ -1,4 +1,4 @@
-//! Accept all strong matches, as one undoable batch.
+//! Accept all strong matches, as one batch.
 
 use std::collections::HashSet;
 use std::convert::Infallible;
@@ -7,14 +7,13 @@ use lib_core::DocumentId;
 
 use super::support::write_documents;
 use crate::protocols::{DocumentReads, DocumentRepository};
-use crate::{FilingUndo, accept_all_strong};
+use crate::{FiledEntry, accept_all_strong};
 
 /// Accept all strong matches: accepts every Unfiled Document whose Suggested Link is Strong, as
-/// one undoable batch, in the Inbox's order with the `skipped` last. `focus` is the Inbox row the
-/// Client keeps in view. Returns `None` when none was Strong.
+/// one batch, in the Inbox's order with the `skipped` last. Returns what each one wrote; empty
+/// when none was Strong.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcceptAllStrong {
-    pub focus: Option<DocumentId>,
     pub skipped: HashSet<DocumentId>,
 }
 
@@ -23,7 +22,7 @@ impl AcceptAllStrong {
         self,
         reads: &dyn DocumentReads,
         repo: &mut dyn DocumentRepository,
-    ) -> Option<FilingUndo> {
+    ) -> Vec<FiledEntry> {
         let transactions = reads.document_transactions();
         let payees = reads.document_payees();
         let Ok(batch) = write_documents::<_, Infallible>(repo, |types, documents| {
@@ -33,11 +32,9 @@ impl AcceptAllStrong {
                 &self.skipped,
                 &transactions,
                 &payees,
-                self.focus,
             ))
         });
-        let accepted = batch.as_ref().map_or(0, |batch| batch.entries.len());
-        tracing::info!(accepted, "Accepted every Strong match");
+        tracing::info!(accepted = batch.len(), "Accepted every Strong match");
         batch
     }
 }
@@ -53,19 +50,16 @@ mod tests {
         let mut ports = ports();
 
         let batch = AcceptAllStrong {
-            focus: Some(UNMATCHED),
             skipped: HashSet::from([WOOLWORTHS_RECEIPT]),
         }
-        .run(&records(), &mut ports)
-        .expect("two Strong matches");
+        .run(&records(), &mut ports);
 
-        let filed: Vec<DocumentId> = batch.entries.iter().map(|entry| entry.id).collect();
+        let filed: Vec<DocumentId> = batch.iter().map(|entry| entry.id).collect();
         assert_eq!(
             filed,
             [COLES_RECEIPT, WOOLWORTHS_RECEIPT],
             "the skipped last"
         );
-        assert_eq!(batch.focus, Some(UNMATCHED));
         assert_eq!(
             ports.writes,
             [
@@ -86,12 +80,11 @@ mod tests {
         let before = ports.repo.clone();
 
         let batch = AcceptAllStrong {
-            focus: None,
             skipped: HashSet::new(),
         }
         .run(&LinkRecords::default(), &mut ports);
 
-        assert_eq!(batch, None);
+        assert!(batch.is_empty());
         assert_eq!(ports.repo, before);
         assert!(ports.writes.is_empty());
     }

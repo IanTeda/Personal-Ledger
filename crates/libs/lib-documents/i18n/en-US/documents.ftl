@@ -282,15 +282,10 @@ documents-other-none = { $days ->
    *[other] Other candidates: none within { $days } days
 }
 
-## Filing, undoing, opening a file and importing. `$title` is the Document's Title, `$count`, `$imported` and `$skipped` text counts, `$name` a file name and `$path` where it should be.
+## Filing, opening a file and importing. `$title` is the Document's Title, `$count`, `$imported` and `$skipped` text counts, `$name` a file name and `$path` where it should be.
 
 documents-toast-filed = Filed "{ $title }" · u undo
 documents-toast-filed-many = Filed { $count } · u undo
-documents-toast-undone = { $count ->
-    [one] Put { $count } back in the Inbox.
-   *[other] Put { $count } back in the Inbox.
-}
-documents-status-nothing-to-undo = Nothing to undo.
 documents-status-no-strong = No strong matches to accept.
 documents-status-opened = Opened { $name }.
 documents-status-shown = Showing { $name } in its folder.

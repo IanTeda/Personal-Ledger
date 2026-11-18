@@ -24,7 +24,6 @@ mod support;
 #[cfg(test)]
 mod test_support;
 mod toggle_link;
-mod undo_filing;
 
 pub use accept::Accept;
 pub use accept_all_strong::AcceptAllStrong;
@@ -39,4 +38,3 @@ pub use move_document_type::MoveDocumentType;
 pub use remove_document_type::RemoveDocumentType;
 pub use set_facts::SetFacts;
 pub use toggle_link::ToggleLink;
-pub use undo_filing::UndoFiling;

@@ -67,7 +67,7 @@ fn world_on(today: NaiveDate) -> World {
 }
 
 #[test]
-fn accept_all_takes_strong_rows_only_and_undoes_as_one_batch() {
+fn accept_all_takes_strong_rows_only_as_one_batch() {
     let World {
         records:
             LinkRecords {
@@ -80,20 +80,17 @@ fn accept_all_takes_strong_rows_only_and_undoes_as_one_batch() {
     } = world();
     let before = documents.clone();
     assert_eq!(strong_count(&documents, &transactions, &payees), 2);
-    let record = accept_all_strong(
+    let filed = accept_all_strong(
         &types(),
         &mut documents,
         &std::collections::HashSet::new(),
         &transactions,
         &payees,
-        Some(DocumentId::seed(42)),
-    )
-    .unwrap();
-    assert_eq!(record.entries.len(), 2);
+    );
+    assert_eq!(filed.len(), 2);
     assert_eq!(inbox_count(&documents), 5);
     assert_eq!(strong_count(&documents, &transactions, &payees), 0);
-    assert_eq!(undo(&mut documents, record), Some(DocumentId::seed(42)));
-    assert_eq!(documents, before);
+    assert_ne!(documents, before);
 }
 
 // Seed
