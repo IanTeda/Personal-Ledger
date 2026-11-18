@@ -1,12 +1,12 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n               id             AS \"id!: AccountId\",\n               name,\n               institution_id AS \"institution_id!: InstitutionId\",\n               account_type   AS \"account_type!: AccountType\",\n               unit_id        AS \"unit_id!: UnitId\",\n               balance        AS \"balance!: Money\",\n               opened_at      AS \"opened_at!: NaiveDate\",\n               account_number\n           FROM accounts\n           ORDER BY rowid",
+  "query": "SELECT\n               id             AS \"id!: AccountId\",\n               name,\n               institution_id AS \"institution_id!: InstitutionId\",\n               account_type   AS \"account_type!: AccountType\",\n               unit_id        AS \"unit_id!: UnitId\",\n               balance        AS \"balance!: Money\",\n               opened_at      AS \"opened_at!: NaiveDate\",\n               account_number\n           FROM accounts\n           ORDER BY position",
   "describe": {
     "columns": [
       {
         "name": "id!: AccountId",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Null"
       },
       {
         "name": "name",
@@ -16,7 +16,7 @@
       {
         "name": "institution_id!: InstitutionId",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Null"
       },
       {
         "name": "account_type!: AccountType",
@@ -26,7 +26,7 @@
       {
         "name": "unit_id!: UnitId",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Null"
       },
       {
         "name": "balance!: Money",
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "aba3cbc56eff30326ea1bddc7420f376bf1dca4fec24ee3270ab454b0937a5fd"
+  "hash": "cc92fdf7b7fdefe47ed08ce1283e855c4f69e3e37c6b5a75acd22c9843c2ba3b"
 }

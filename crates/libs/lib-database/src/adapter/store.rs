@@ -173,9 +173,22 @@ impl<S: InstitutionsStore + ?Sized> InstitutionRepository for Journaled<S> {
 
     fn delete_institution(&mut self, id: InstitutionId) {
         if let Some(before) = self.store.institutions().institution(id) {
-            self.written
-                .journal()
-                .record(RowImage::Institution(Some(before), None));
+            let journal = self.written.journal();
+            // The order first, so Undo, which goes newest first, restores the row before its place.
+            let before_order: Vec<_> = self
+                .store
+                .institutions()
+                .institutions()
+                .iter()
+                .map(|held| held.id)
+                .collect();
+            let order = before_order
+                .iter()
+                .copied()
+                .filter(|held| *held != id)
+                .collect();
+            journal.record(RowImage::InstitutionOrder(before_order, order));
+            journal.record(RowImage::Institution(Some(before), None));
         }
         self.store.institutions_mut().delete_institution(id);
     }
@@ -292,6 +305,20 @@ impl<S: AccountsStore + ?Sized> AccountRepository for Journaled<S> {
         let journal = self.written.journal();
         journal.unlink_account(id);
         if let Some(before) = self.store.accounts().account(id) {
+            // The order first, so Undo, which goes newest first, restores the row before its place.
+            let before_order: Vec<_> = self
+                .store
+                .accounts()
+                .accounts()
+                .iter()
+                .map(|held| held.id)
+                .collect();
+            let order = before_order
+                .iter()
+                .copied()
+                .filter(|held| *held != id)
+                .collect();
+            journal.record(RowImage::AccountOrder(before_order, order));
             journal.record(RowImage::Account(Some(before), None));
         }
         self.store.accounts_mut().delete_account(id);
@@ -704,6 +731,10 @@ pub trait InstitutionsStore {
 
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository;
 
+    /// Puts the held Institutions in `order`, those it doesn't name after the rest: Undo and Redo
+    /// of a delete restoring a row's place (#1262).
+    fn place_institutions(&mut self, order: &[InstitutionId]);
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -720,6 +751,10 @@ impl InstitutionsStore for InstitutionsAdapter {
         self
     }
 
+    fn place_institutions(&mut self, order: &[InstitutionId]) {
+        self.place(order);
+    }
+
     fn reload(&mut self) -> Result<()> {
         InstitutionsAdapter::reload(self)
     }
@@ -733,6 +768,15 @@ impl InstitutionsStore for InMemoryInstitutions {
 
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
         self
+    }
+
+    fn place_institutions(&mut self, order: &[InstitutionId]) {
+        self.institutions.sort_by_key(|row| {
+            order
+                .iter()
+                .position(|held| *held == row.id)
+                .unwrap_or(usize::MAX)
+        });
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -914,6 +958,11 @@ impl<S: InstitutionsStore + ?Sized> InstitutionsStore for Recorded<S> {
         &mut self.store
     }
 
+    fn place_institutions(&mut self, order: &[InstitutionId]) {
+        self.store.written.note(self.domain);
+        self.store.store.place_institutions(order);
+    }
+
     fn reload(&mut self) -> Result<()> {
         self.store.store.reload()
     }
@@ -931,6 +980,10 @@ pub trait AccountsStore {
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository;
 
+    /// Puts the held Accounts in `order`, those it doesn't name after the rest: Undo and Redo of a
+    /// delete restoring a row's place (#1262).
+    fn place_accounts(&mut self, order: &[AccountId]);
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -945,6 +998,10 @@ impl AccountsStore for AccountsAdapter {
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         AccountsAdapter::accounts_mut(self)
+    }
+
+    fn place_accounts(&mut self, order: &[AccountId]) {
+        self.place(order);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -964,6 +1021,11 @@ impl<S: AccountsStore + ?Sized> AccountsStore for Recorded<S> {
         &mut self.store
     }
 
+    fn place_accounts(&mut self, order: &[AccountId]) {
+        self.store.written.note(self.domain);
+        self.store.store.place_accounts(order);
+    }
+
     fn reload(&mut self) -> Result<()> {
         self.store.reload()
     }
@@ -979,6 +1041,15 @@ impl AccountsStore for lib_accounts::fake::InMemoryPorts {
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         &mut self.accounts
+    }
+
+    fn place_accounts(&mut self, order: &[AccountId]) {
+        self.accounts.accounts.sort_by_key(|row| {
+            order
+                .iter()
+                .position(|held| *held == row.id)
+                .unwrap_or(usize::MAX)
+        });
     }
 
     fn reload(&mut self) -> Result<()> {

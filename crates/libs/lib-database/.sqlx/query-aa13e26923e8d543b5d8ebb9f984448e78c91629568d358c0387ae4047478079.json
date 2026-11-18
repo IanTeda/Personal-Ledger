@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO institutions (id, name, products, usual_unit_id, position)\n         VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM institutions))\n         ON CONFLICT (id) DO UPDATE SET\n             name = excluded.name,\n             products = excluded.products,\n             usual_unit_id = excluded.usual_unit_id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "aa13e26923e8d543b5d8ebb9f984448e78c91629568d358c0387ae4047478079"
+}

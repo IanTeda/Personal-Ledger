@@ -133,7 +133,8 @@ pub(crate) async fn insert_category(
 pub(crate) async fn insert_account(pool: &SqlitePool, unit_id: lib_core::RowID) -> lib_core::RowID {
     let institution = lib_core::InstitutionId::SEED_PERSONAL;
     sqlx::query(
-        "INSERT OR IGNORE INTO institutions (id, name, products) VALUES (?, 'Personal', 'cash')",
+        "INSERT OR IGNORE INTO institutions (id, name, products, position)
+         VALUES (?, 'Personal', 'cash', 0)",
     )
     .bind(institution)
     .execute(pool)
@@ -141,8 +142,8 @@ pub(crate) async fn insert_account(pool: &SqlitePool, unit_id: lib_core::RowID) 
     .expect("the Institution is written");
     let id = lib_core::RowID::new();
     sqlx::query(
-        "INSERT INTO accounts (id, name, institution_id, account_type, unit_id, balance, opened_at)
-         VALUES (?, 'Test account', ?, 'bank', ?, '0', '2026-01-01')",
+        "INSERT INTO accounts (id, name, institution_id, account_type, unit_id, balance, opened_at, position)
+         VALUES (?, 'Test account', ?, 'bank', ?, '0', '2026-01-01', 0)",
     )
     .bind(id)
     .bind(institution)

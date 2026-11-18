@@ -83,7 +83,7 @@ For the full set of keys, see [Getting around](getting-around.md).
 
 Intended features for Institutions. Ticked means built in at least one app; the tag says which.
 
-- [x] INS-001 (desktop): List institutions in the order they were added, with their products
+- [x] INS-001 (desktop): List institutions in the order they were added, with their products. An institution that Undo restores returns to its place in that order
 - [x] INS-002 (desktop): Add an institution with a name and products, refusing a blank or taken name
 - [x] INS-003 (desktop): Keep institutions after the app closes
 - [x] INS-004 (desktop): Choose an institution when creating an account

@@ -32,6 +32,8 @@ use crate::writer::{BoxFuture, Change, Domain, Writer};
 enum AccountsChange {
     Upsert(Account),
     Delete(AccountId),
+    /// Every Account's place, as Undo writes it back (#1262).
+    Place(Vec<AccountId>),
 }
 
 /// The Accounts domain, held in memory and saved through the shared writer.
@@ -102,6 +104,16 @@ impl AccountsAdapter {
         self.accounts.rows = fresh.accounts.rows;
         self.accounts.pending.discard(Domain::Accounts);
         Ok(())
+    }
+
+    /// Puts the held Accounts in `order`, any not named after those that are, and saves each
+    /// one's place. For Undo and Redo of a delete, which put a row back where it was (#1262).
+    pub fn place(&mut self, order: &[AccountId]) {
+        let rows = &mut self.accounts.rows;
+        let rank = |id: AccountId| order.iter().position(|held| *held == id);
+        rows.sort_by_key(|row| rank(row.id).unwrap_or(usize::MAX));
+        let placed = rows.iter().map(|row| row.id).collect();
+        self.accounts.pending.push(AccountsChange::Place(placed));
     }
 
     pub fn accounts(&self) -> &dyn AccountRepository {
@@ -223,7 +235,7 @@ impl Change for AccountsChange {
     fn cascades_to(&self) -> &'static [Domain] {
         match self {
             Self::Delete(_) => &[Domain::Documents, Domain::Budgets],
-            Self::Upsert(_) => &[],
+            Self::Upsert(_) | Self::Place(_) => &[],
         }
     }
 
@@ -232,6 +244,17 @@ impl Change for AccountsChange {
             match *self {
                 Self::Upsert(account) => upsert(conn, &account).await,
                 Self::Delete(id) => delete(conn, id).await,
+                Self::Place(order) => {
+                    for (place, id) in order.into_iter().enumerate() {
+                        let place = i64::try_from(place).unwrap_or(i64::MAX);
+                        sqlx::query("UPDATE accounts SET position = ? WHERE id = ?")
+                            .bind(place)
+                            .bind(id)
+                            .execute(&mut *conn)
+                            .await?;
+                    }
+                    Ok(())
+                }
             }
         })
     }
@@ -240,8 +263,9 @@ impl Change for AccountsChange {
 async fn upsert(conn: &mut SqliteConnection, account: &Account) -> Result<()> {
     sqlx::query!(
         "INSERT INTO accounts
-             (id, name, institution_id, account_type, unit_id, balance, opened_at, account_number)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             (id, name, institution_id, account_type, unit_id, balance, opened_at, account_number,
+              position)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position) + 1, 0) FROM accounts))
          ON CONFLICT (id) DO UPDATE SET
              name = excluded.name,
              institution_id = excluded.institution_id,
@@ -283,7 +307,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Account>> {
                opened_at      AS "opened_at!: NaiveDate",
                account_number
            FROM accounts
-           ORDER BY rowid"#
+           ORDER BY position"#
     )
     .fetch_all(&mut *conn)
     .await?
@@ -610,8 +634,8 @@ mod tests {
 
         let refused = factory.writer.run(|pool| async move {
             sqlx::query(
-                "INSERT INTO accounts (id, name, institution_id, account_type, unit_id, balance, opened_at)
-                 VALUES (?, 'Tin', NULL, 'cash', ?, '0', '2026-01-01')",
+                "INSERT INTO accounts (id, name, institution_id, account_type, unit_id, balance, opened_at, position)
+                 VALUES (?, 'Tin', NULL, 'cash', ?, '0', '2026-01-01', 0)",
             )
             .bind(AccountId::new())
             .bind(UnitId::SEED_AUD)

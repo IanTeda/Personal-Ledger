@@ -815,8 +815,8 @@ mod tests {
             self.writer
                 .run(move |pool| async move {
                     sqlx::query(
-                        "INSERT INTO accounts (id, name, institution_id, account_type, unit_id, balance, opened_at)
-                         VALUES (?, 'Spare account', ?, 'bank', ?, '0', '2026-01-01')",
+                        "INSERT INTO accounts (id, name, institution_id, account_type, unit_id, balance, opened_at, position)
+                         VALUES (?, 'Spare account', ?, 'bank', ?, '0', '2026-01-01', 0)",
                     )
                     .bind(account)
                     .bind(lib_core::InstitutionId::SEED_PERSONAL)

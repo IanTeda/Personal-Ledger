@@ -597,3 +597,37 @@ fn u_undoes_an_added_account_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
         added
     );
 }
+
+/// An Account deleted from the middle of the list and undone is back in its place, not at the end
+/// (#1262).
+#[gpui::test]
+fn u_undoes_a_deleted_account_back_into_its_place(app: &mut TestAppContext) {
+    let mut ui = in_accounts(app);
+    // Two new Accounts, which no Budget counts, so the first sits before the second.
+    for name in ["r a i n y", "s u n n y"] {
+        ui.press("n");
+        ui.press(name);
+        ui.press("enter");
+    }
+    ui.press("k");
+    let before = ui.settings::<SettingsAccountsSnapshot>().account_names;
+    ui.press("d");
+    type_text(&mut ui, "rainy");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings::<SettingsAccountsSnapshot>()
+            .account_names
+            .len()
+            + 1,
+        before.len()
+    );
+
+    ui.press("u");
+
+    assert_eq!(
+        ui.settings::<SettingsAccountsSnapshot>().account_names,
+        before,
+        "rainy is back before sunny"
+    );
+}

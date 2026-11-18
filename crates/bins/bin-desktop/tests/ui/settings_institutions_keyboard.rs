@@ -612,3 +612,35 @@ fn u_undoes_an_added_institution_and_ctrl_r_redoes_it(app: &mut TestAppContext) 
         added
     );
 }
+
+/// An Institution deleted from the middle of the list and undone is back in its place, not at the
+/// end (#1262).
+#[gpui::test]
+fn u_undoes_a_deleted_institution_back_into_its_place(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+    for name in ["alpha", "beta"] {
+        ui.press("n");
+        type_name(&mut ui, name);
+        ui.press("enter");
+    }
+    ui.press("k");
+    let before = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
+    ui.press("d");
+    type_name(&mut ui, "alpha");
+    ui.press("enter");
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>()
+            .institutions
+            .len()
+            + 1,
+        before.len()
+    );
+
+    ui.press("u");
+
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions,
+        before,
+        "alpha is back before beta"
+    );
+}

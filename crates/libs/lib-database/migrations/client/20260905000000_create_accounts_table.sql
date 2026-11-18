@@ -9,7 +9,9 @@
 -- Institution every new Ledger is written with (ADR-0049).
 -- balance is the opening balance as a decimal string in the Unit's precision, so no precision is
 -- lost to a float; opened_at is a calendar date. account_number is the form's optional field.
--- Rows read back in rowid order, the order they were added in. Enforced by SQLite's foreign_keys
+-- position is the Account's place across the whole Ledger: a new row takes the highest plus one, a
+-- delete leaves a gap, and Undo of a delete writes the places back (#1262). Rows read back in
+-- position order, the order they were added in. Enforced by SQLite's foreign_keys
 -- pragma, turned on for every connection.
 
 CREATE TABLE IF NOT EXISTS accounts (
@@ -22,6 +24,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     balance TEXT NOT NULL,
     opened_at TEXT NOT NULL,
     account_number TEXT,
+    position INTEGER NOT NULL,
     updated_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 

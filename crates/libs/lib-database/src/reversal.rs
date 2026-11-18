@@ -82,6 +82,10 @@ pub enum RowImage {
     Item(Option<Item>, Option<Item>),
     /// Every Document Type's place, before and after one was added, moved or removed.
     DocumentTypeOrder(Vec<DocumentTypeId>, Vec<DocumentTypeId>),
+    /// Every Institution's place, before and after one was removed.
+    InstitutionOrder(Vec<InstitutionId>, Vec<InstitutionId>),
+    /// Every Account's place, before and after one was removed.
+    AccountOrder(Vec<AccountId>, Vec<AccountId>),
 }
 
 /// Which row an image is of, so a second write to it merges into the first.
@@ -98,6 +102,8 @@ enum RowKey {
     Document(DocumentId),
     DocumentType(DocumentTypeId),
     DocumentTypeOrder,
+    InstitutionOrder,
+    AccountOrder,
     Account(AccountId),
     Category(CategoryId),
     Tag(TagId),
@@ -134,6 +140,8 @@ impl RowImage {
                 RowKey::DocumentType(before.as_ref().or(after.as_ref())?.id)
             }
             Self::DocumentTypeOrder(..) => RowKey::DocumentTypeOrder,
+            Self::InstitutionOrder(..) => RowKey::InstitutionOrder,
+            Self::AccountOrder(..) => RowKey::AccountOrder,
             Self::Account(before, after) => RowKey::Account(before.as_ref().or(after.as_ref())?.id),
             Self::Category(before, after) => {
                 RowKey::Category(before.as_ref().or(after.as_ref())?.id)
@@ -162,13 +170,13 @@ impl RowImage {
     pub fn domain(&self) -> Domain {
         match self {
             Self::Unit(..) | Self::PriceSource(..) | Self::BaseUnit(..) => Domain::Units,
-            Self::Institution(..) => Domain::Institutions,
+            Self::Institution(..) | Self::InstitutionOrder(..) => Domain::Institutions,
             Self::Transaction(..) => Domain::Transactions,
             Self::BillPlan(..) | Self::BillEntry(..) => Domain::Bills,
             Self::Budget(..) => Domain::Budgets,
             Self::Document(..) => Domain::Documents,
             Self::DocumentType(..) | Self::DocumentTypeOrder(..) => Domain::DocumentTypes,
-            Self::Account(..) => Domain::Accounts,
+            Self::Account(..) | Self::AccountOrder(..) => Domain::Accounts,
             Self::Category(..) => Domain::Categories,
             Self::Tag(..) => Domain::Tags,
             Self::Payee(..) => Domain::Payees,
@@ -190,6 +198,8 @@ impl RowImage {
             Self::Document(before, after) => before == after,
             Self::DocumentType(before, after) => before == after,
             Self::DocumentTypeOrder(before, after) => before == after,
+            Self::InstitutionOrder(before, after) => before == after,
+            Self::AccountOrder(before, after) => before == after,
             Self::Account(before, after) => before == after,
             Self::Category(before, after) => before == after,
             Self::Tag(before, after) => before == after,
@@ -215,6 +225,8 @@ impl RowImage {
             (Self::DocumentTypeOrder(_, after), Self::DocumentTypeOrder(_, later)) => {
                 *after = later
             }
+            (Self::InstitutionOrder(_, after), Self::InstitutionOrder(_, later)) => *after = later,
+            (Self::AccountOrder(_, after), Self::AccountOrder(_, later)) => *after = later,
             (Self::Account(_, after), Self::Account(_, later)) => *after = later,
             (Self::Category(_, after), Self::Category(_, later)) => *after = later,
             (Self::Tag(_, after), Self::Tag(_, later)) => *after = later,
@@ -521,6 +533,20 @@ fn write(image: &RowImage, step: Step, stores: &SharedStores) {
                 Some(item) => inventory.upsert_item(item),
                 None => inventory.delete_item(id),
             }
+        }
+        RowImage::InstitutionOrder(before, after) => {
+            let (_, target) = sides(&Some(before.clone()), &Some(after.clone()), step);
+            stores
+                .institutions
+                .borrow_mut()
+                .place_institutions(&target.unwrap_or_default());
+        }
+        RowImage::AccountOrder(before, after) => {
+            let (_, target) = sides(&Some(before.clone()), &Some(after.clone()), step);
+            stores
+                .accounts
+                .borrow_mut()
+                .place_accounts(&target.unwrap_or_default());
         }
         RowImage::DocumentTypeOrder(before, after) => {
             let (_, target) = sides(&Some(before.clone()), &Some(after.clone()), step);
@@ -1679,5 +1705,109 @@ mod tests {
         ports.reload(Domain::Units).expect("the Units read back");
 
         assert!(units(&ports).contains(&nzd), "redone under its own id");
+    }
+
+    /// Adds three rows with `add`, deletes the middle one with `delete`, and checks Undo puts it
+    /// back at its index, in the memory and in the file read afresh, and Redo removes it again.
+    fn a_delete_undone_and_redone_through_the_file<T: PartialEq + std::fmt::Debug + Copy>(
+        domain: Domain,
+        ids: impl Fn(&crate::LedgerPorts) -> Vec<T>,
+        add: impl Fn(&crate::LedgerPorts) -> [T; 3],
+        delete: impl Fn(&crate::LedgerPorts, T),
+    ) {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let ports = crate::ports::test_support::file(dir.path());
+        let [_, middle, _] = add(&ports);
+        ports.commit().commit();
+        let _ = ports.take_reversal();
+        let with = ids(&ports);
+        let index = with.iter().position(|id| *id == middle).expect("held");
+
+        delete(&ports, middle);
+        ports.commit().commit();
+        let reversal = ports.take_reversal().expect("the delete was recorded");
+        let without = ids(&ports);
+        assert_eq!(without.len() + 1, with.len());
+
+        ports.reverse(&reversal);
+        ports.commit().commit();
+        assert_eq!(ids(&ports).iter().position(|id| *id == middle), Some(index));
+        ports.reload(domain).expect("the rows read back");
+        assert_eq!(ids(&ports), with, "in its place after reloading the file");
+
+        ports.replay(&reversal);
+        ports.commit().commit();
+        ports.reload(domain).expect("the rows read back");
+        assert_eq!(ids(&ports), without, "removed again");
+    }
+
+    #[test]
+    fn an_institution_delete_is_undone_to_its_place_and_redone() {
+        a_delete_undone_and_redone_through_the_file(
+            Domain::Institutions,
+            |ports| institutions(ports).iter().map(|row| row.id).collect(),
+            |ports| {
+                let ids = [
+                    InstitutionId::new(),
+                    InstitutionId::new(),
+                    InstitutionId::new(),
+                ];
+                let mut row = institutions(ports)[0].clone();
+                for (n, id) in ids.iter().enumerate() {
+                    row.id = *id;
+                    row.name = format!("Placed {n}");
+                    row.usual_unit = None;
+                    ports
+                        .stores()
+                        .institutions
+                        .borrow_mut()
+                        .institutions_mut()
+                        .upsert_institution(row.clone());
+                }
+                ids
+            },
+            |ports, id| {
+                ports
+                    .stores()
+                    .institutions
+                    .borrow_mut()
+                    .institutions_mut()
+                    .delete_institution(id);
+            },
+        );
+    }
+
+    #[test]
+    fn an_account_delete_is_undone_to_its_place_and_redone() {
+        a_delete_undone_and_redone_through_the_file(
+            Domain::Accounts,
+            |ports| {
+                let accounts = ports.stores().accounts.borrow().accounts().accounts();
+                accounts.iter().map(|row| row.id).collect()
+            },
+            |ports| {
+                let ids = [AccountId::new(), AccountId::new(), AccountId::new()];
+                let mut row = ports.stores().accounts.borrow().accounts().accounts()[0].clone();
+                for (n, id) in ids.iter().enumerate() {
+                    row.id = *id;
+                    row.name = format!("Placed {n}");
+                    ports
+                        .stores()
+                        .accounts
+                        .borrow_mut()
+                        .accounts_mut()
+                        .upsert_account(row.clone());
+                }
+                ids
+            },
+            |ports, id| {
+                ports
+                    .stores()
+                    .accounts
+                    .borrow_mut()
+                    .accounts_mut()
+                    .delete_account(id);
+            },
+        );
     }
 }

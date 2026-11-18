@@ -5,7 +5,9 @@
 -- name is stored trimmed and unique ignoring case, as lib-institutions' add rule refuses a taken
 -- name before any write reaches this table; NOCASE folds ASCII only, which the rule's own folding
 -- covers. products is the Products label (GLOSSARY.md) the Add institution dialog joins, stored as
--- given. Rows read back in rowid order, the order they were added in.
+-- given. position is the Institution's place in the list: a new row takes the highest plus one, a
+-- delete leaves a gap, and Undo of a delete writes the places back (#1262). Rows read back in
+-- position order, the order they were added in.
 --
 -- usual_unit_id is the Usual unit (GLOSSARY.md): the Unit the Institution's Accounts are normally
 -- held in, optional, a prefill hint only. The foreign key has no cascade, so deleting a Unit an
@@ -16,6 +18,7 @@ CREATE TABLE IF NOT EXISTS institutions (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE,
     products TEXT NOT NULL,
+    position INTEGER NOT NULL,
     usual_unit_id UUID REFERENCES units(id),
     created_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))

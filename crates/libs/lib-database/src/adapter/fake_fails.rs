@@ -13,7 +13,7 @@ use lib_accounts::AccountRepository;
 use lib_bills::{BillPlanRepository, BillScheduleRepository};
 use lib_budgets::BudgetRepository;
 use lib_categories::CategoryRepository;
-use lib_core::{AccountId, CategoryId, PayeeId, TagId, UnitId};
+use lib_core::{AccountId, CategoryId, InstitutionId, PayeeId, TagId, UnitId};
 use lib_documents::DocumentRepository;
 use lib_institutions::InstitutionRepository;
 use lib_inventory::InventoryRepository;
@@ -196,6 +196,10 @@ impl<T: InstitutionsStore + Clone> InstitutionsStore for Switched<T> {
         self.live_mut().institutions_mut()
     }
 
+    fn place_institutions(&mut self, order: &[InstitutionId]) {
+        self.live_mut().place_institutions(order);
+    }
+
     fn reload(&mut self) -> Result<()> {
         self.reload_snapshot()
     }
@@ -208,6 +212,10 @@ impl<T: AccountsStore + Clone> AccountsStore for Switched<T> {
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         self.live_mut().accounts_mut()
+    }
+
+    fn place_accounts(&mut self, order: &[AccountId]) {
+        self.live_mut().place_accounts(order);
     }
 
     fn reload(&mut self) -> Result<()> {

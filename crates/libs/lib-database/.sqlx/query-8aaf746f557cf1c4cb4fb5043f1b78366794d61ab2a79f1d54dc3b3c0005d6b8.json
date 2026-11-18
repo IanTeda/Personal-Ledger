@@ -1,12 +1,12 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id AS \"id!: InstitutionId\", name, products,\n                  usual_unit_id AS \"usual_unit_id: UnitId\"\n           FROM institutions\n           ORDER BY rowid",
+  "query": "SELECT id AS \"id!: InstitutionId\", name, products,\n                  usual_unit_id AS \"usual_unit_id: UnitId\"\n           FROM institutions\n           ORDER BY position",
   "describe": {
     "columns": [
       {
         "name": "id!: InstitutionId",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Null"
       },
       {
         "name": "name",
@@ -34,5 +34,5 @@
       true
     ]
   },
-  "hash": "a536caf8295da6898907714dfcfbcd9a9f31085d1700b613a322c7b10e7b98a4"
+  "hash": "8aaf746f557cf1c4cb4fb5043f1b78366794d61ab2a79f1d54dc3b3c0005d6b8"
 }

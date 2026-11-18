@@ -134,6 +134,7 @@ Intended features for Accounts. Ticked means built in at least one app; the tag 
 - [ ] ACC-013: Dedicated investment account screens and views
 - [x] ACC-014 (desktop): Keep accounts after the app closes
 - [x] ACC-015 (desktop): Delete an account with its transactions and balance checks, all or nothing, refusing an account bills are paid from
+- [x] ACC-016 (desktop): List accounts grouped by type, in the order added within each type, and return an account that Undo restores to its place
 
 ## For developers
 

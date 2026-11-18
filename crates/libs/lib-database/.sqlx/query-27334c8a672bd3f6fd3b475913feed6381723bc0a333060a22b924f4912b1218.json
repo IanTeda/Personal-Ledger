@@ -6,7 +6,7 @@
       {
         "name": "id!: TransactionId",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Null"
       },
       {
         "name": "date!: NaiveDate",
@@ -16,7 +16,7 @@
       {
         "name": "account_id!: AccountId",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Null"
       },
       {
         "name": "description",
