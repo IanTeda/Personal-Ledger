@@ -12,15 +12,26 @@ use crate::shell::view::dialog_entity::ModuleDialog;
 use lib_shell::ToastHistoryPresenter;
 
 impl Root {
-    /// Shows every Notice the Routers queued since the last drain (`crate::notices`) on the Shell's
-    /// Presenter, stamped with the local time for the Toast history. Each input's `send` runs it
-    /// once the input is handled and committed (`crate::input`). An open Toast history card reads
-    /// them too, since it hides the Toast stack.
+    /// Closes what the input recorded into one History entry, labelled by its `Notice::Changed`s,
+    /// and shows every other Notice the Routers queued since the last drain (`crate::notices`) on
+    /// the Shell's Presenter, stamped with the local time for the Toast history. Each input's
+    /// `send` runs it once the input is handled and committed (`crate::input`). An open Toast
+    /// history card reads them too, since it hides the Toast stack.
     pub(crate) fn drain_notices(&mut self, cx: &mut App) {
         let mut shown = false;
+        let mut changed = Vec::new();
         for notice in crate::notices::drain() {
-            self.presenter.show(notice, Local::now());
-            shown = true;
+            match notice {
+                Notice::Changed(label) => changed.push(label),
+                notice => {
+                    self.presenter.show(notice, Local::now());
+                    shown = true;
+                }
+            }
+        }
+        // The input's recorded changes become its one History entry, named by its Presenters.
+        if let Some(entry) = crate::reversal::close(changed) {
+            self.presenter.record(entry);
         }
         if !shown {
             return;

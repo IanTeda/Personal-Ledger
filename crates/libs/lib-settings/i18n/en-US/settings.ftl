@@ -173,3 +173,6 @@ settings-display-preview = Preview
 settings-display-note = These belong to this device and never sync: each is saved to personal-ledger.conf, except Start Sidebar minimised, which the app remembers itself. What travels with the Ledger is under Ledger.
 settings-display-colour-theme = Colour theme
 settings-display-colour-appearance = Appearance
+
+## What History calls a change a This device page saved, for Undo and Redo to name it (#1244).
+settings-changed = { $field }: { $value }

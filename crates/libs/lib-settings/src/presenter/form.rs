@@ -352,6 +352,26 @@ impl<F: Copy + Eq> DeviceForm<F> {
         }
     }
 
+    /// Shows what `snapshot` reads after Undo or Redo put a key back (#1244): an open list closes,
+    /// and each field's value, note and whether the file holds it are read again. A key nothing
+    /// outranks shows the file's value, since a restore changed the file and not start-up's read.
+    pub fn reload(&mut self, snapshot: &DeviceSnapshot) {
+        self.close_list();
+        for entry in &mut self.fields {
+            let Some(key) = entry.decl.key else {
+                continue;
+            };
+            let state = snapshot.get(key);
+            let read = match (&state.shadow, &state.stored) {
+                (None, Some(stored)) => Some(stored),
+                _ => snapshot.shown(key),
+            };
+            entry.value = read.map_or_else(|| entry.decl.when_unset.clone(), entry.decl.read);
+            entry.shadow.clone_from(&state.shadow);
+            entry.in_file = state.stored.is_some();
+        }
+    }
+
     /// The field the keyboard is on, `None` while the page doesn't have it.
     pub fn focused(&self) -> Option<F> {
         self.focus

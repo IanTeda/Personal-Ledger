@@ -50,6 +50,8 @@ impl EventEmitter<PageChanged> for SettingsView {}
 /// The Settings View's own state. The index's cursor is the last page visited, so it survives
 /// leaving and re-entering Settings, which lands on the index.
 pub struct SettingsView {
+    /// The configuration file the This device pages write, which Undo and Redo put keys back in.
+    device: Rc<dyn DeviceConfiguration>,
     pages: SettingsPages,
     frame: SettingsFramePresenter,
     /// The page body's scroll.
@@ -81,7 +83,7 @@ impl SettingsView {
     ) -> Self {
         // Not yet drawn: the Window Size the View starts at, until `Root` tells it the window's.
         let window_size = WindowSize::Large;
-        let pages = SettingsPages::new(device, snapshot, config, window_size, cx);
+        let pages = SettingsPages::new(Rc::clone(&device), snapshot, config, window_size, cx);
         let _page_subscriptions = subscribe_pages(&pages, cx);
         let frame = SettingsFramePresenter::new(
             SettingsFrameSetup {
@@ -93,6 +95,7 @@ impl SettingsView {
             config,
         );
         Self {
+            device,
             pages,
             frame,
             scroll_handle: ScrollHandle::new(),
@@ -586,6 +589,45 @@ impl SettingsView {
             .update(cx, |page, cx| page.send(GeneralEvent::SetToasts(on), cx));
     }
 
+    /// Undo or Redo of a Settings › General change (#1244): puts each key back in the file, in
+    /// order, then hands General what the file now reads, whichever page shows. Whether every key
+    /// went back; the first that didn't, shadowed or refused, says why on the status line and stops
+    /// the rest. With none back, the page is left as it was.
+    pub fn restore_device(
+        &mut self,
+        changes: &[(lib_core::configuration::ConfigKey, Option<String>)],
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
+        let mut restored = 0;
+        for (key, value) in changes {
+            if let Some(why) = refused(self.device.restore(*key, value.as_deref()), *key) {
+                lib_toast::Notify::notify(
+                    &mut crate::notices::Queue,
+                    lib_toast::Notice::Status(why),
+                );
+                break;
+            }
+            restored += 1;
+        }
+        if restored > 0 {
+            let snapshot = self.device.read();
+            self.pages.general.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| presenter.reload(snapshot));
+            });
+        }
+        restored == changes.len()
+    }
+
+    /// Whether non-Error Toasts show and the Data folder in effect, as Settings › General holds
+    /// them: what a restore applies at once, as a write would.
+    pub fn general_in_effect(&self, cx: &App) -> (bool, PathBuf) {
+        let general = self.pages.general.read(cx).presenter();
+        (
+            general.settings().toasts_on,
+            general.data_folder().to_path_buf(),
+        )
+    }
+
     /// The folder the Data folder picker picked, written by General's Presenter, the one place
     /// the Data folder is written, which answers how that went.
     pub fn set_data_folder(
@@ -598,6 +640,24 @@ impl SettingsView {
                 presenter.set_data_folder(folder.to_path_buf(), router)
             })
         })
+    }
+}
+
+/// Why a restore of `key` didn't go to the file, in the words a write's refusal uses, or `None`
+/// once saved.
+fn refused(
+    answer: lib_settings::DeviceAnswer<()>,
+    key: lib_core::configuration::ConfigKey,
+) -> Option<String> {
+    use lib_settings::{DeviceAnswer, DeviceRefusal, msg};
+    let name = key.name();
+    match answer {
+        DeviceAnswer::Saved { .. } => None,
+        DeviceAnswer::Shadowed { source } => Some(msg::settings_device_shadowed(name, &source)),
+        DeviceAnswer::Refused(DeviceRefusal::NoFile) => Some(msg::settings_device_no_file(name)),
+        DeviceAnswer::Refused(DeviceRefusal::WriteFailed) => {
+            Some(msg::settings_device_write_failed(name))
+        }
     }
 }
 

@@ -33,6 +33,7 @@ pub mod notices;
 mod payees;
 mod period;
 pub mod persistence;
+mod reversal;
 mod settings;
 pub mod shell;
 mod start_view;

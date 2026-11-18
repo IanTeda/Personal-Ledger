@@ -72,8 +72,10 @@ use std::time::Duration;
 
 use crate::persistence::PersistedState;
 
-/// The Shell's Presenter over the Desktop's Settings pages.
-type ShellPresenter = lib_shell::ShellPresenter<SettingsPage, command::CommandEffect>;
+/// The Shell's Presenter over the Desktop's Settings pages, its History reversing the Desktop's
+/// recorded changes.
+type ShellPresenter =
+    lib_shell::ShellPresenter<SettingsPage, command::CommandEffect, crate::reversal::Reversal>;
 
 use gpui::{
     App, AppContext as _, Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task,

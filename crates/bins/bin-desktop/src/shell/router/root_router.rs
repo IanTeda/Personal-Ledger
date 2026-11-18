@@ -32,7 +32,10 @@ use crate::shell::view::page_handle::PageHandle;
 use crate::shell::view::rail as rail_view;
 use crate::shell::view::window_size::WindowSize;
 use crate::view::active;
+use lib_core::configuration::ConfigKey;
 use lib_settings::DisplayOutput;
+
+use crate::reversal::Reversal;
 
 /// The Documents mode, Library scope and sort a Ledger's Documents page opens on.
 type DocumentsState = (DocumentsMode, LibraryScope, LibrarySort);
@@ -58,6 +61,9 @@ pub(super) struct RootRouter<'a, 'b> {
     clock: Clock,
     /// The Window Size the window is drawn at, which the rail toggle flips the rail for.
     window_size: WindowSize,
+    /// The Configuration keys Undo or Redo put back during the call, which `with_router` applies
+    /// once the Shell's Presenter is its own again, as a write would apply them.
+    restored: &'a mut Vec<ConfigKey>,
     pub(super) cx: &'a mut Context<'b, Root>,
 }
 
@@ -71,8 +77,7 @@ impl Notify for RootRouter<'_, '_> {
 impl ShellRouter for RootRouter<'_, '_> {
     type Failure = WriteFailure;
     type Effect = CommandEffect;
-    /// Nothing records onto the History yet, so an entry has nothing to reverse.
-    type Reversal = ();
+    type Reversal = Reversal;
 
     /// Generates the new month's Bill Schedule, committed as the day poll's one write. The Dashboard
     /// keeps its view model by the day, so it rebuilds on its own. The Budgets page moves a month on
@@ -106,14 +111,25 @@ impl ShellRouter for RootRouter<'_, '_> {
         }
     }
 
-    /// Nothing records onto the History yet, so there is nothing to put back.
-    fn reverse(&mut self, _reversal: &()) -> bool {
-        true
+    /// Puts back each key's raw value from before the change, the last written first.
+    fn reverse(&mut self, reversal: &Reversal) -> bool {
+        let changes: Vec<_> = reversal
+            .configuration
+            .iter()
+            .rev()
+            .map(|(key, before, _)| (*key, before.clone()))
+            .collect();
+        self.restore(&changes)
     }
 
-    /// Nothing records onto the History yet, so there is nothing to make again.
-    fn replay(&mut self, _reversal: &()) -> bool {
-        true
+    /// Writes each key's raw value from after the change again, in the order first written.
+    fn replay(&mut self, reversal: &Reversal) -> bool {
+        let changes: Vec<_> = reversal
+            .configuration
+            .iter()
+            .map(|(key, _, after)| (*key, after.clone()))
+            .collect();
+        self.restore(&changes)
     }
 
     /// The handoff: "`g` + an unbound key is a no-op: clear the pending prefix and flash the hint
@@ -335,6 +351,16 @@ impl ShellRouter for RootRouter<'_, '_> {
 }
 
 impl RootRouter<'_, '_> {
+    /// Puts `changes` back in the configuration file through Settings, which repaints General from
+    /// what the file then reads. Whether they all went back.
+    fn restore(&mut self, changes: &[(ConfigKey, Option<String>)]) -> bool {
+        let restored = self
+            .settings
+            .update(self.cx, |view, cx| view.restore_device(changes, cx));
+        self.restored.extend(changes.iter().map(|(key, _)| *key));
+        restored
+    }
+
     /// Opens the Ledger file the Create ledger Dialog has just written, in place of the Open
     /// Ledger, if any, as [`ShellRouter::open_ledger`] does, but saying it was created. The Open
     /// Ledger's writes land first. Whether it opened; one that didn't says why and is removed, so
@@ -600,6 +626,7 @@ impl Root {
     ) -> T {
         let palette_was_open = self.presenter.palette_open();
         let mut ledger_swapped = false;
+        let mut restored = Vec::new();
         let Root {
             presenter,
             open,
@@ -626,9 +653,13 @@ impl Root {
             folders,
             clock: presenter.clock().clone(),
             window_size,
+            restored: &mut restored,
             cx,
         };
         let acted = act(presenter, &mut router);
+        if !restored.is_empty() {
+            self.apply_restored(&restored, cx);
+        }
         // The pages a module Command runs on come and go with the Ledger.
         if ledger_swapped {
             self.refresh_palette_entries(cx);
@@ -638,6 +669,20 @@ impl Root {
         }
         self.keep_explorer_scroll();
         acted
+    }
+
+    /// Applies the Configuration keys Undo or Redo put back that take effect at once, as a write
+    /// would: Toasts on the Shell, and the Data folder where `:open` and `:new` start. The rest
+    /// apply at the next start.
+    fn apply_restored(&mut self, restored: &[ConfigKey], cx: &mut Context<'_, Self>) {
+        let (toasts_on, data_folder) = self.settings.read(cx).general_in_effect(cx);
+        if restored.contains(&ConfigKey::Toasts) {
+            self.push_toasts_on(toasts_on);
+        }
+        if restored.contains(&ConfigKey::Data) {
+            self.presenter
+                .set_explorer_start(Some(data_folder), dirs::home_dir());
+        }
     }
 
     /// [`Self::with_router`] as one input, committed once with its Notices drained.

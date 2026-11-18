@@ -108,6 +108,24 @@ impl ConfigWriter {
         edit(self.target_file()?, |text| remove_key(text, key))
     }
 
+    /// Puts `key`'s line back as [`Self::value`] read it before a change, or takes it out for
+    /// `None`: Undo and Redo (#1244). The value is written as it was read, not spelt or checked as
+    /// [`Self::set`] does, so one the parser refuses or no page lists survives the round trip.
+    ///
+    /// # Errors
+    /// As [`Self::set`], less the Locale's check.
+    pub fn restore(&self, key: ConfigKey, value: Option<&str>) -> crate::Result<()> {
+        match value {
+            Some(raw) => {
+                let escaped = escape(raw);
+                edit(self.target_file()?, |text| {
+                    Some(set_key(text, key, &escaped))
+                })
+            }
+            None => self.remove(key),
+        }
+    }
+
     /// The file a write goes to, or why there is none.
     fn target_file(&self) -> crate::Result<&Path> {
         self.target.as_deref().ok_or_else(|| {
@@ -728,6 +746,62 @@ back = \"esc\"
                     "  on_start = reopen\nstart_view = last\n"
                 )
         );
+    }
+
+    #[test]
+    fn restore_puts_a_value_the_parser_refuses_back_byte_for_byte() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        let before = "# mine\n[General]\n  start_view = cash\ntoasts = false\n";
+        std::fs::write(&path, before).unwrap();
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
+        let raw = writer.value(ConfigKey::StartView);
+
+        writer
+            .set(ConfigValue::StartView(lib_core::StartView::Dashboard))
+            .unwrap();
+        writer
+            .restore(ConfigKey::StartView, raw.as_deref())
+            .unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn restore_of_none_takes_the_key_out_and_of_a_value_adds_it_back() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
+        writer.set(ConfigValue::Toasts(false)).unwrap();
+
+        writer.restore(ConfigKey::Toasts, None).unwrap();
+        assert_eq!(writer.value(ConfigKey::Toasts), None);
+
+        writer.restore(ConfigKey::Toasts, Some("false")).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[General]\ntoasts = false\n"
+        );
+    }
+
+    #[test]
+    fn restore_keeps_a_windows_folder_as_the_parser_reads_it() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
+        let folder = r"C:\Users\me\new";
+
+        writer.restore(ConfigKey::Data, Some(folder)).unwrap();
+
+        assert_eq!(writer.value(ConfigKey::Data).as_deref(), Some(folder));
+    }
+
+    #[test]
+    fn with_no_target_a_restore_is_refused() {
+        assert!(matches!(
+            ConfigWriter::default().restore(ConfigKey::Toasts, Some("true")),
+            Err(crate::Error::Validation(_))
+        ));
     }
 
     #[test]

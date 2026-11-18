@@ -29,7 +29,7 @@ use crate::explorer::{
     ExplorerViewModel, LedgerFolders,
 };
 use crate::help::HelpPresenter;
-use crate::history::{History, Stepped};
+use crate::history::{Entry, History, Stepped};
 use crate::keymap::{HELP, OPEN_COMMAND_POPUP, SEARCH, ShellCommand, TOGGLE_RAIL, global_keymap};
 use crate::nav::{ContextSelection, FocusZone, InputMode, NavState};
 use crate::navigation::{Movement, Noun};
@@ -562,6 +562,12 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
         &self.nav
     }
 
+    /// Records one input's change onto the History, the newest for `undo`: the Client closes each
+    /// input that recorded a change into one entry (#1244).
+    pub fn record(&mut self, entry: Entry<H>) {
+        self.history.push(entry);
+    }
+
     /// Drops the Back and Forward history (`NavState::forget_history`), as `:close` does.
     pub fn forget_history(&mut self) {
         self.nav.forget_history();
@@ -632,6 +638,8 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
                 self.toasts.raise(kind, text, at);
             }
             Notice::Status(text) => self.status = Some(text),
+            // A History entry's label, which the Client pairs with what the input recorded.
+            Notice::Changed(_) => {}
         }
     }
 
@@ -803,16 +811,17 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
                 self.host(ShellDialog::ToastHistory(history), router);
             }
             // Undo and Redo never navigate: the View the change came from repaints itself.
-            ShellCommand::Undo => {
-                if self.history.undo(|reversal| router.reverse(reversal)) == Stepped::Nothing {
-                    router.notify(Notice::Status(msg::status_nothing_to_undo()));
-                }
-            }
-            ShellCommand::Redo => {
-                if self.history.redo(|reversal| router.replay(reversal)) == Stepped::Nothing {
-                    router.notify(Notice::Status(msg::status_nothing_to_redo()));
-                }
-            }
+            // A failed step says why itself, through the Router.
+            ShellCommand::Undo => match self.history.undo(|reversal| router.reverse(reversal)) {
+                Stepped::Nothing => router.notify(Notice::Status(msg::status_nothing_to_undo())),
+                Stepped::Done(label) => router.notify(Notice::Status(msg::status_undid(&label))),
+                Stepped::Failed(_) => {}
+            },
+            ShellCommand::Redo => match self.history.redo(|reversal| router.replay(reversal)) {
+                Stepped::Nothing => router.notify(Notice::Status(msg::status_nothing_to_redo())),
+                Stepped::Done(label) => router.notify(Notice::Status(msg::status_redid(&label))),
+                Stepped::Failed(_) => {}
+            },
             ShellCommand::Jump(noun) => self.jump(noun, true, router),
             ShellCommand::ChangeDataFolder => {
                 self.palette.close();
@@ -976,7 +985,6 @@ mod tests {
 
     use super::*;
     use crate::fake::{FakeRailCounts, RecordingRouter, Routed};
-    use crate::history::Entry;
     use crate::keymap::GLOBAL_BINDINGS;
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -1449,7 +1457,7 @@ mod tests {
     fn undo_reverses_the_newest_entry_and_redo_replays_it_without_navigating() {
         let mut shell = shell();
         shell.navigate(NavInput::Show(Noun::Bills));
-        shell.history.push(Entry {
+        shell.record(Entry {
             label: "Set Locale".to_string(),
             reversal: "locale",
         });
@@ -1457,15 +1465,27 @@ mod tests {
         let (_, undone) = press(&mut shell, &["u"]);
         let (_, redone) = press(&mut shell, &["ctrl+r"]);
 
-        assert_eq!(undone, [Routed::Reversed("locale")]);
-        assert_eq!(redone, [Routed::Replayed("locale")]);
+        assert_eq!(
+            undone,
+            [
+                Routed::Reversed("locale"),
+                Routed::Notice(status("Undid Set Locale"))
+            ]
+        );
+        assert_eq!(
+            redone,
+            [
+                Routed::Replayed("locale"),
+                Routed::Notice(status("Redid Set Locale"))
+            ]
+        );
         assert_eq!(shell.nav().noun(), Noun::Bills);
     }
 
     #[test]
     fn a_failed_undo_keeps_the_entry_to_undo_again() {
         let mut shell = shell();
-        shell.history.push(Entry {
+        shell.record(Entry {
             label: "Set Locale".to_string(),
             reversal: "locale",
         });
@@ -1480,7 +1500,11 @@ mod tests {
 
         assert_eq!(
             router.routed,
-            [Routed::Reversed("locale"), Routed::Reversed("locale")]
+            [
+                Routed::Reversed("locale"),
+                Routed::Reversed("locale"),
+                Routed::Notice(status("Undid Set Locale"))
+            ]
         );
         assert!(shell.history.can_redo());
     }

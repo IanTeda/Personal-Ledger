@@ -366,6 +366,25 @@ impl GeneralPresenter {
         ]
     }
 
+    /// Shows what `snapshot` reads after Undo or Redo put a General key back (#1244), whichever
+    /// page shows: an open list closes, and the fields' values, notes and in-file flags are read
+    /// again. The Data folder in effect follows the file's unless a source above it sets it; the
+    /// Client applies it, and Toasts, as a write would. Nothing is written, and nothing raised.
+    pub fn reload(&mut self, snapshot: DeviceSnapshot) {
+        self.form.reload(&snapshot);
+        let data = snapshot.get(ConfigKey::Data);
+        if data.shadow.is_none() {
+            self.data_folder = match &data.stored {
+                Some(ConfigValue::Data(folder)) => folder.clone(),
+                _ => snapshot
+                    .data_folder()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_default(),
+            };
+        }
+        self.snapshot = snapshot;
+    }
+
     /// The folder the picker picked, from **Change…** or `:data`, written as the Data folder: the
     /// one place it is written. The folder the page shows already writes nothing. Without an
     /// override it applies at once, with a Success Toast in place of the status line; with one it
@@ -403,6 +422,12 @@ impl GeneralPresenter {
             Some(FormAnswer::Saved(_, FieldValue::Set(ConfigValue::Data(saved)))) => Some(saved),
             _ => None,
         };
+        if let Some(saved) = &saved {
+            router.notify(Notice::Changed(self.change_label(
+                GeneralField::DataFolder,
+                &FieldValue::Set(ConfigValue::Data(saved.clone())),
+            )));
+        }
         match saved {
             Some(saved) if !shadowed => {
                 router.notify(Notice::Toast(
@@ -560,6 +585,9 @@ impl GeneralPresenter {
         answer: Option<FormAnswer<GeneralField>>,
         router: &mut dyn DeviceRouter,
     ) {
+        if let Some(FormAnswer::Saved(field, value)) = &answer {
+            router.notify(Notice::Changed(self.change_label(*field, value)));
+        }
         match answer {
             // Start view, the Locale and On start take effect at the next start, which reads them
             // from the file, so only Toasts reach the Shell now.
@@ -576,6 +604,30 @@ impl GeneralPresenter {
             )
             | None => {}
         }
+    }
+
+    /// What History calls a saved change of `field` to `value`: the field's name and the value's,
+    /// as the page shows them ("Toasts: Off").
+    fn change_label(&self, field: GeneralField, value: &FieldValue) -> String {
+        let view = self.form.view(field);
+        let name = view
+            .as_ref()
+            .map(|view| view.label.clone())
+            .unwrap_or_default();
+        let value = match (field, value) {
+            (GeneralField::Locale, FieldValue::Set(ConfigValue::Locale(tag))) => {
+                locale_label(Locale::choice(tag))
+            }
+            (GeneralField::Locale, _) => locale_label(None),
+            (_, FieldValue::Set(ConfigValue::Data(folder))) => folder.display().to_string(),
+            (_, FieldValue::Set(ConfigValue::StartView(start_view))) => view
+                .and_then(|view| view.chosen.and_then(|at| view.options.get(at).cloned()))
+                .unwrap_or_else(|| start_view.key().to_string()),
+            _ => view
+                .and_then(|view| view.chosen.and_then(|at| view.options.get(at).cloned()))
+                .unwrap_or_default(),
+        };
+        msg::settings_changed(&name, &value)
     }
 
     /// The Data folder the field shows: the file's, else the one in effect.
@@ -1215,10 +1267,13 @@ mod tests {
         assert_eq!(general.view_model().data_folder.value, "/home/me/finance");
         assert_eq!(
             router.routed,
-            [Routed::Notice(Notice::Toast(
-                ToastKind::Success,
-                "Data folder is now /home/me/finance".to_string()
-            ))]
+            [
+                Routed::Notice(Notice::Changed("Data folder: /home/me/finance".to_string())),
+                Routed::Notice(Notice::Toast(
+                    ToastKind::Success,
+                    "Data folder is now /home/me/finance".to_string()
+                ))
+            ]
         );
     }
 
@@ -1337,6 +1392,174 @@ mod tests {
                     "/home/me/.config/personal-ledger.conf".to_string()
                 ),
             ]
+        );
+    }
+
+    /// The History labels `router` was told, in order.
+    fn changes(router: &RecordingRouter) -> Vec<String> {
+        router
+            .routed
+            .iter()
+            .filter_map(|routed| match routed {
+                Routed::Notice(Notice::Changed(label)) => Some(label.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn each_saved_change_is_named_for_history_by_its_field_and_new_value() {
+        let (_, mut general) = writable();
+
+        let router = send(
+            &mut general,
+            [
+                GeneralEvent::SetToasts(false),
+                choose_locale(2),
+                choose_locale(0),
+                GeneralEvent::Choose {
+                    field: GeneralField::OnStart,
+                    index: 1,
+                },
+                GeneralEvent::Choose {
+                    field: GeneralField::StartView,
+                    index: 3,
+                },
+            ],
+        );
+        let (_, picked) = pick(&mut general, "/home/me/finance");
+
+        assert_eq!(
+            changes(&router),
+            [
+                "Toasts: Off",
+                "Language and region: English (United Kingdom)",
+                "Language and region: System",
+                "On start: Start with no Ledger open",
+                "Start view: bills",
+            ]
+        );
+        assert_eq!(changes(&picked), ["Data folder: /home/me/finance"]);
+    }
+
+    #[test]
+    fn a_refused_write_names_no_change() {
+        let mut general = general_on(Rc::new(InMemoryDeviceConfiguration::default()));
+
+        let router = send(&mut general, [GeneralEvent::SetToasts(false)]);
+        let (_, picked) = pick(&mut general, "/home/me/finance");
+
+        assert!(changes(&router).is_empty());
+        assert!(changes(&picked).is_empty());
+    }
+
+    #[test]
+    fn reload_shows_the_files_values_again_and_closes_an_open_list() {
+        let device =
+            Rc::new(InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(true)]));
+        let mut general = general_on(device.clone());
+        send(
+            &mut general,
+            [
+                GeneralEvent::SetToasts(false),
+                GeneralEvent::Press(GeneralField::StartView),
+            ],
+        );
+        assert!(general.view_model().fields.list_open());
+        {
+            let mut stored = device.stored.borrow_mut();
+            stored.0.remove(&ConfigKey::Toasts);
+            stored.0.insert(
+                ConfigKey::StartView,
+                ConfigValue::StartView(StartView::Noun("cash".into())),
+            );
+        }
+
+        general.reload(device.read());
+
+        let view = general.view_model();
+        assert!(!view.fields.list_open());
+        assert!(
+            general.settings().toasts_on,
+            "start-up's value, the file holding none"
+        );
+        assert_eq!(
+            general.settings().start_view,
+            StartView::Noun("cash".into())
+        );
+        assert!(
+            view.start_view_unlisted
+                .is_some_and(|line| line.contains("cash"))
+        );
+    }
+
+    #[test]
+    fn reload_shows_the_files_value_over_start_ups_for_a_key_nothing_outranks() {
+        let device =
+            Rc::new(InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(true)]));
+        let mut general = general_on(device.clone());
+        device
+            .stored
+            .borrow_mut()
+            .0
+            .insert(ConfigKey::Toasts, ConfigValue::Toasts(false));
+
+        general.reload(device.read());
+
+        assert!(!general.settings().toasts_on);
+    }
+
+    #[test]
+    fn reload_moves_the_data_folder_in_effect_unless_a_source_above_sets_it() {
+        let device = with_data_folder(InMemoryDeviceConfiguration::writable());
+        let mut general = general_on(device.clone());
+        pick(&mut general, "/home/me/finance");
+        device.stored.borrow_mut().0.remove(&ConfigKey::Data);
+
+        general.reload(device.read());
+
+        assert_eq!(general.data_folder(), Path::new("/home/me/ledgers"));
+        assert_eq!(general.view_model().data_folder.value, "/home/me/ledgers");
+
+        let shadowed = with_data_folder(InMemoryDeviceConfiguration::shadowing(
+            ConfigKey::Data,
+            "--data",
+        ));
+        let mut general = general_on(shadowed.clone());
+        shadowed.stored.borrow_mut().0.insert(
+            ConfigKey::Data,
+            ConfigValue::Data(PathBuf::from("/home/me/finance")),
+        );
+
+        general.reload(shadowed.read());
+
+        assert_eq!(general.data_folder(), Path::new("/home/me/ledgers"));
+        assert_eq!(general.view_model().data_folder.value, "/home/me/finance");
+    }
+
+    #[test]
+    fn reload_recomputes_a_shadowed_locales_note_from_the_file() {
+        let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
+            ConfigKey::Locale,
+            "--locale en-US",
+        ));
+        let mut general = general_reading(device.clone(), Locale::EnUs);
+        device
+            .stored
+            .borrow_mut()
+            .0
+            .insert(ConfigKey::Locale, ConfigValue::Locale("en-GB".to_string()));
+
+        general.reload(device.read());
+
+        assert_eq!(general.settings().locale, Some(Locale::EnGb));
+        assert!(
+            general
+                .view_model()
+                .fields
+                .view(GeneralField::Locale)
+                .and_then(|view| view.own_note().map(str::to_string))
+                .is_some_and(|note| note.contains("--locale en-US"))
         );
     }
 }

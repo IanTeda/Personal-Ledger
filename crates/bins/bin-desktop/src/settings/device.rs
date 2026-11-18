@@ -34,6 +34,22 @@ impl DeviceConfigFile {
         }
     }
 
+    /// [`Self::change`], recording the key's raw value in the file just before and just after for
+    /// the input's History entry (#1244), even under an override.
+    fn recorded<T>(
+        &self,
+        key: ConfigKey,
+        value: T,
+        edit: impl FnOnce(&ConfigWriter) -> Result<(), lib_config::Error>,
+    ) -> DeviceAnswer<T> {
+        let before = self.writer.value(key);
+        let answer = self.change(key, value, edit);
+        if matches!(answer, DeviceAnswer::Saved { .. }) {
+            crate::reversal::record(key, before, self.writer.value(key));
+        }
+        answer
+    }
+
     /// Changes `key` in the file with `edit`, answering `value` once saved, unless a source above
     /// sets a key that refuses then.
     fn change<T>(
@@ -85,12 +101,17 @@ impl DeviceConfiguration for DeviceConfigFile {
 
     fn write(&self, value: ConfigValue) -> DeviceAnswer<ConfigValue> {
         let written = value.clone();
-        self.change(value.key(), value, |writer| writer.set(written))
+        self.recorded(value.key(), value, |writer| writer.set(written))
     }
 
     /// The sources below the file, the operating system's Locale last, decide at the next start.
     fn remove(&self, key: ConfigKey) -> DeviceAnswer<()> {
-        self.change(key, (), |writer| writer.remove(key))
+        self.recorded(key, (), |writer| writer.remove(key))
+    }
+
+    /// Undo and Redo's write, which records nothing, so stepping through History makes no entry.
+    fn restore(&self, key: ConfigKey, value: Option<&str>) -> DeviceAnswer<()> {
+        self.change(key, (), |writer| writer.restore(key, value))
     }
 }
 
@@ -213,5 +234,63 @@ mod tests {
              [Display]\ncolour_theme = nord\ncolour_appearance = light\ndate_style = default\n\
              row_density = compact\nstatus_glyphs = ascii\n"
         );
+    }
+
+    #[test]
+    fn a_write_records_the_files_raw_values_before_and_after_and_a_restore_records_nothing() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("personal-ledger.conf");
+        std::fs::write(&path, "[General]\nstart_view = cash\n").expect("the file written");
+        let device = writing_to(&path, &[]);
+        crate::reversal::close(Vec::new());
+
+        device.write(ConfigValue::StartView(StartView::Dashboard));
+        device.write(ConfigValue::StartView(StartView::Dashboard));
+        device.remove(ConfigKey::Locale);
+
+        let entry = crate::reversal::close(Vec::new()).expect("one change recorded");
+        assert_eq!(
+            entry.reversal.configuration,
+            [(
+                ConfigKey::StartView,
+                Some("cash".to_string()),
+                Some("dashboard".to_string())
+            )],
+            "a repeat and a removal of nothing change nothing"
+        );
+
+        assert!(matches!(
+            device.restore(ConfigKey::StartView, Some("cash")),
+            DeviceAnswer::Saved { .. }
+        ));
+        assert_eq!(crate::reversal::close(Vec::new()), None);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap_or_default(),
+            "[General]\nstart_view = cash\n"
+        );
+    }
+
+    #[test]
+    fn a_shadowed_locale_restores_and_a_shadowed_toasts_is_refused() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("personal-ledger.conf");
+        let env = [
+            (lib_config::env_var(ConfigKey::Locale), "en-US".to_string()),
+            (lib_config::env_var(ConfigKey::Toasts), "false".to_string()),
+        ];
+        let device = writing_to(&path, &env);
+
+        assert!(matches!(
+            device.restore(ConfigKey::Locale, Some("en-GB")),
+            DeviceAnswer::Saved { .. }
+        ));
+        assert!(matches!(
+            device.restore(ConfigKey::Toasts, Some("true")),
+            DeviceAnswer::Shadowed { .. }
+        ));
+        assert!(matches!(
+            DeviceConfigFile::default().restore(ConfigKey::Toasts, None),
+            DeviceAnswer::Refused(DeviceRefusal::NoFile)
+        ));
     }
 }

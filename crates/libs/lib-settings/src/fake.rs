@@ -307,6 +307,9 @@ pub struct InMemoryDeviceConfiguration {
     /// Makes every write fail, as a file that can't be written does.
     pub fail_writes: bool,
     pub stored: RefCell<StoredDevice>,
+    /// Each restore that went to the file, in order: the fake can't parse a raw value, so a
+    /// restored value is noted here and only a restored `None` changes [`Self::stored`].
+    pub restored: RefCell<Vec<(ConfigKey, Option<String>)>>,
 }
 
 impl InMemoryDeviceConfiguration {
@@ -401,6 +404,20 @@ impl DeviceConfiguration for InMemoryDeviceConfiguration {
         self.change(key, (), |stored| {
             stored.0.remove(&key);
         })
+    }
+
+    fn restore(&self, key: ConfigKey, value: Option<&str>) -> DeviceAnswer<()> {
+        let answer = self.change(key, (), |stored| {
+            if value.is_none() {
+                stored.0.remove(&key);
+            }
+        });
+        if matches!(answer, DeviceAnswer::Saved { .. }) {
+            self.restored
+                .borrow_mut()
+                .push((key, value.map(str::to_string)));
+        }
+        answer
     }
 }
 

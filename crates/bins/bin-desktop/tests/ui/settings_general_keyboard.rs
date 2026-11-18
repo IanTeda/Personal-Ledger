@@ -6,6 +6,7 @@
 //! (ADR-0053) and Toasts reach the Shell's Toasts; `t` on Toasts raises the Toasts test; a key an
 //! environment variable sets is shown as such and left alone, but for the Locale, which is written
 //! all the same (DESKTOP-186). A chosen Locale applies at the next start, so a note says so.
+//! `u` undoes each change and `ctrl-r` redoes it, putting the file's raw line back (#1244).
 //! State is read back from `Root` and the conf file.
 
 use super::common;
@@ -566,5 +567,191 @@ fn a_data_folder_an_environment_variable_sets_is_still_written_and_the_override_
         ui.explorer().map(|explorer| explorer.folder),
         Some(dir.path().to_path_buf()),
         ":open still starts where the override says"
+    );
+}
+
+/// The status line's message.
+fn status_message(ui: &mut Harness<'_>) -> Option<String> {
+    ui.read(bin_desktop::shell::router::Root::status_message)
+}
+
+#[gpui::test]
+fn u_undoes_a_general_change_and_ctrl_r_redoes_it_saying_so(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+
+    ui.press("l");
+    assert_eq!(ui.conf(), "[General]\non_start = none\n");
+
+    ui.press("u");
+    assert_eq!(
+        ui.conf(),
+        "[General]\n",
+        "the key the file didn't hold is taken out"
+    );
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().on_start,
+        OnStart::ReopenLastLedger
+    );
+    assert_eq!(
+        status_message(&mut ui).as_deref(),
+        Some("Undid On start: Start with no Ledger open")
+    );
+
+    ui.press("ctrl-r");
+    assert_eq!(ui.conf(), "[General]\non_start = none\n");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().on_start,
+        OnStart::NoLedger
+    );
+    assert_eq!(
+        status_message(&mut ui).as_deref(),
+        Some("Redid On start: Start with no Ledger open")
+    );
+}
+
+#[gpui::test]
+fn start_view_and_the_locale_are_undone_and_redone_in_turn(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+
+    ui.press("j l j j l");
+    assert_eq!(ui.conf(), "[General]\nstart_view = last\nlocale = en-AU\n");
+
+    ui.press("u");
+    assert_eq!(ui.conf(), "[General]\nstart_view = last\n");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().locale, None);
+    ui.press("u");
+    assert_eq!(ui.conf(), "[General]\n");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view,
+        "dashboard"
+    );
+
+    ui.press("ctrl-r ctrl-r");
+    assert_eq!(ui.conf(), "[General]\nstart_view = last\nlocale = en-AU\n");
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.start_view, "last");
+    assert_eq!(general.locale.as_deref(), Some("en-AU"));
+}
+
+#[gpui::test]
+fn undoing_toasts_turns_the_shells_toasts_back_as_a_write_would(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+
+    ui.press(": t o a s t s space o f f enter");
+    assert!(!ui.toasts().on);
+
+    ui.press("u");
+    assert!(ui.toasts().on);
+    assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
+    assert_eq!(ui.conf(), "[General]\n");
+
+    ui.press("ctrl-r");
+    assert!(!ui.toasts().on);
+    assert!(!ui.settings::<SettingsGeneralSnapshot>().toasts_on);
+}
+
+#[gpui::test]
+fn repeating_the_value_the_file_holds_makes_nothing_to_undo(app: &mut TestAppContext) {
+    let mut ui = Harness::with_conf_file(app, "[General]\ntoasts = true\n");
+    ui.press("g s l");
+
+    ui.press(": t o a s t s space o n enter");
+    ui.press("u");
+
+    assert_eq!(status_message(&mut ui).as_deref(), Some("Nothing to undo"));
+}
+
+#[gpui::test]
+fn a_hand_written_start_view_survives_a_change_and_its_undo_byte_for_byte(
+    app: &mut TestAppContext,
+) {
+    let written = "# mine\n[General]\n  start_view = cash\n";
+    let mut ui = Harness::with_conf_file(app, written);
+    ui.press("g s l j l");
+    assert_ne!(ui.conf(), written);
+
+    ui.press("u");
+
+    assert_eq!(ui.conf(), written);
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "cash");
+}
+
+#[gpui::test]
+fn a_shadowed_locale_is_still_undone_and_its_note_recomputed(app: &mut TestAppContext) {
+    let var = "PERSONAL_LEDGER_GENERAL__LOCALE";
+    let mut ui =
+        Harness::with_configuration(app, &lib_config::Config::default(), &[(var, "en-GB")]);
+    ui.press("g s l j j j l");
+    assert_eq!(ui.conf(), "[General]\nlocale = en-AU\n");
+
+    ui.press("u");
+
+    assert_eq!(ui.conf(), "[General]\n");
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.locale, None);
+    assert!(
+        general
+            .locale_note
+            .is_some_and(|note| note.starts_with(&format!("{var} overrides this for this run")))
+    );
+}
+
+#[gpui::test]
+fn a_refused_undo_says_why_and_stays_to_undo_again(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+    ui.press("l");
+    let conf = ui.conf_path();
+    std::fs::remove_file(&conf).expect("the conf file removed");
+    std::fs::create_dir(&conf).expect("a folder in the conf file's place");
+
+    ui.press("u");
+
+    assert!(status_message(&mut ui).is_some_and(|text| text.starts_with("Couldn't save on_start")));
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().on_start,
+        OnStart::NoLedger
+    );
+
+    std::fs::remove_dir(&conf).expect("the folder removed");
+    std::fs::write(&conf, "[General]\non_start = none\n").expect("the conf file back");
+    ui.press("u");
+    assert_eq!(ui.conf(), "[General]\n");
+    assert_eq!(
+        status_message(&mut ui).as_deref(),
+        Some("Undid On start: Start with no Ledger open")
+    );
+}
+
+#[gpui::test]
+fn undoing_a_data_folder_puts_back_where_open_starts_with_no_toast(app: &mut TestAppContext) {
+    let dir = common::data_folder();
+    let mut ui = on_the_data_folder(app, dir.path());
+    ui.press("enter j l ctrl-enter");
+    let finance = dir.path().join("finance");
+    assert_eq!(
+        ui.conf(),
+        format!("[General]\ndata = {}\n", finance.display())
+    );
+    let toasts = ui.toasts().history.len();
+
+    ui.press("u");
+
+    assert_eq!(ui.conf(), "[General]\n");
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.data_folder, dir.path().display().to_string());
+    assert_eq!(general.data_folder_shown, dir.path().display().to_string());
+    assert_eq!(ui.toasts().history.len(), toasts, "no Toast on Undo");
+    assert_eq!(
+        status_message(&mut ui),
+        Some(format!("Undid Data folder: {}", finance.display()))
+    );
+
+    ui.press("ctrl-r");
+    assert_eq!(ui.toasts().history.len(), toasts, "no Toast on Redo");
+    ui.press(": o p e n enter");
+    assert_eq!(
+        ui.explorer().map(|explorer| explorer.folder),
+        Some(finance),
+        ":open starts in the redone folder"
     );
 }

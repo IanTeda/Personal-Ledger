@@ -446,6 +446,8 @@ impl Shell {
             match notice {
                 Notice::Toast(kind, text) => self.raise_toast(kind, text),
                 Notice::Status(text) => self.status_message = Some(text),
+                // The TUI keeps no History.
+                Notice::Changed(_) => {}
             }
         }
         if created.is_err() {

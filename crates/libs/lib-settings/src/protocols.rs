@@ -198,6 +198,12 @@ pub trait DeviceConfiguration {
     /// Takes `key` out of the file, so the sources below it decide at the next start: the
     /// Locale's **System**. Shadowed as [`Self::write`] is.
     fn remove(&self, key: ConfigKey) -> DeviceAnswer<()>;
+
+    /// Puts `key` back as the file held it, `value` being its raw text as read before or after a
+    /// change, or `None` for a key the file didn't hold: Undo and Redo (#1244). Whatever the file
+    /// holds now is overwritten, and a value the parser refuses goes back as it was. Shadowed as
+    /// [`Self::write`] is, and never recorded as a change of its own.
+    fn restore(&self, key: ConfigKey, value: Option<&str>) -> DeviceAnswer<()>;
 }
 
 /// What only the Shell does for Settings › Tracing: the log box's list is the Client's, and Clear

@@ -1,12 +1,16 @@
 use crate::ToastKind;
 
-/// What a module asks the Shell to tell the person: a Toast, or a message on the status line.
-/// The text is already a resolved Message. A status-line message is only ever set: the Shell
+/// What a module asks the Shell to tell the person: a Toast, or a message on the status line;
+/// or what the Shell's History calls the change the input made. The text is already a resolved
+/// Message. A status-line message is only ever set: the Shell
 /// clears it on the next keypress, so no module sends a clear (ADR-0048).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Notice {
     Toast(ToastKind, String),
     Status(String),
+    /// The change this input made, named as Undo and Redo will name it ("Toasts: Off"): the label
+    /// of the History entry the input's recorded changes become (#1244). Shown nowhere by itself.
+    Changed(String),
 }
 
 /// Where a module's Presenter sends its [`Notice`]s: every module Router declares it as a

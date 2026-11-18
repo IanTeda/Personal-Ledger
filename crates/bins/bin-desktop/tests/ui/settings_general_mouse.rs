@@ -1,4 +1,4 @@
-//! Settings › General driven by the mouse: the On start and Toasts options and the Start view and Locale dropdowns (#1156), each saved to the conf file (ADR-0053), the Locale even under an override (DESKTOP-186), Toasts' Test raising the four test Toasts, the Data folder's **Change…** opening the folder picker, whose **Use <folder>** writes it (DESKTOP-187, DESKTOP-188), and the THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
+//! Settings › General driven by the mouse: the On start and Toasts options and the Start view and Locale dropdowns (#1156), each saved to the conf file (ADR-0053), the Locale even under an override (DESKTOP-186), Toasts' Test raising the four test Toasts, the Data folder's **Change…** opening the folder picker, whose **Use <folder>** writes it (DESKTOP-187, DESKTOP-188), and the THIS DEVICE box drawn beside them, and a clicked change undone with `u` and redone with `ctrl-r` (#1244). State is read back from `Root` and the conf file.
 
 use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
@@ -266,4 +266,45 @@ fn change_opens_the_folder_picker_and_use_writes_the_data_folder(app: &mut TestA
         ui.toasts().visible.pop().map(|toast| toast.text),
         Some(format!("Data folder is now {}", finance.display()))
     );
+}
+
+#[gpui::test]
+fn a_clicked_change_is_undone_and_redone_closing_an_open_dropdown(app: &mut TestAppContext) {
+    let mut ui = on_general(app);
+    ui.click("general-start-view");
+    ui.click("general-start-view-option-4");
+    assert_eq!(ui.conf(), "[General]\nstart_view = documents\n");
+    ui.click("general-locale-select");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().locale_list,
+        Some(0)
+    );
+
+    ui.press("u");
+
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.start_view, "dashboard");
+    assert_eq!(general.locale_list, None, "the reload closes the open list");
+    assert_eq!(ui.conf(), "[General]\n");
+
+    ui.press("ctrl-r");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view,
+        "documents"
+    );
+    assert_eq!(ui.conf(), "[General]\nstart_view = documents\n");
+}
+
+#[gpui::test]
+fn a_clicked_toasts_change_is_undone_on_the_shell_too(app: &mut TestAppContext) {
+    let mut ui = on_general(app);
+    ui.click("general-toasts-1");
+    assert!(!ui.toasts().on);
+
+    ui.press("u");
+
+    assert!(ui.toasts().on);
+    assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
+    ui.press("ctrl-r");
+    assert!(!ui.toasts().on);
 }

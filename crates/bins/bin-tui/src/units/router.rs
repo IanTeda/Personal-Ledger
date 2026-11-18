@@ -63,6 +63,8 @@ impl Notify for Router<'_> {
         self.toasts.push(match notice {
             Notice::Toast(kind, text) => (kind, text),
             Notice::Status(text) => (ToastKind::Info, text),
+            // The TUI keeps no History.
+            Notice::Changed(_) => return,
         });
     }
 }
