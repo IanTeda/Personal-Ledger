@@ -139,3 +139,11 @@ inventory-command-new = add a Location
 inventory-command-edit = edit the selected row
 inventory-command-remove = remove the selected row
 inventory-command-add-area = add an Area to the selected Location
+
+## What History calls each Inventory change, for Undo, Redo and the header's list (#1249).
+inventory-changed-location-added = Add location { $location }
+inventory-changed-location-edited = Edit location { $location }
+inventory-changed-location-removed = Remove location { $location }
+inventory-changed-area-added = Add area { $area }
+inventory-changed-area-edited = Edit area { $area }
+inventory-changed-area-removed = Remove area { $area }

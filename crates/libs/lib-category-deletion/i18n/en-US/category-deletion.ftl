@@ -23,3 +23,6 @@ categories-delete-confirm-label = Type { $name } to confirm
 categories-delete-refusal-gone = This category has since been deleted.
 categories-refusal-has-children = Delete or move its subcategories first.
 categories-refusal-uncategorised-in-use = Uncategorised can't be deleted while transactions or bills use it.
+
+## What History calls the change, for Undo, Redo and the header's list (#1249).
+categories-changed-deleted = Delete category { $category }

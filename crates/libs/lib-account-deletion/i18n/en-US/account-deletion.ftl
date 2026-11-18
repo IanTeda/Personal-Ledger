@@ -30,3 +30,6 @@ account-deletion-bill-plans = { $plans ->
 }
 
 account-deletion-error-gone = This account has since been deleted.
+
+## What History calls the change, for Undo, Redo and the header's list (#1249).
+account-deletion-changed = Delete account { $account }

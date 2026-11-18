@@ -238,6 +238,11 @@ impl AreaFormPresenter {
         };
         match saved {
             Ok((area, change, toast)) => {
+                router.notify(Notice::Changed(if change == InventoryChange::AreaSaved {
+                    msg::inventory_changed_area_edited(&name)
+                } else {
+                    msg::inventory_changed_area_added(&name)
+                }));
                 router.notify(Notice::Toast(ToastKind::Success, toast));
                 router.close(Some(InventoryOutcome {
                     change,
@@ -385,6 +390,7 @@ mod tests {
         assert_eq!(
             calls,
             vec![
+                RouterCall::Notice(Notice::Changed("Add area Attic".into())),
                 RouterCall::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Added area \"Attic\"".into()
@@ -422,6 +428,12 @@ mod tests {
         ));
         assert_eq!(
             calls.first(),
+            Some(&RouterCall::Notice(Notice::Changed(
+                "Edit area Lounge".into()
+            )))
+        );
+        assert_eq!(
+            calls.get(1),
             Some(&RouterCall::Notice(Notice::Toast(
                 ToastKind::Success,
                 "Saved area \"Lounge\"".into()
@@ -480,7 +492,7 @@ mod tests {
 
         assert!(matches!(
             calls.as_slice(),
-            [_toast, RouterCall::CloseDialog(Some(_))]
+            [_changed, _toast, RouterCall::CloseDialog(Some(_))]
         ));
     }
 }

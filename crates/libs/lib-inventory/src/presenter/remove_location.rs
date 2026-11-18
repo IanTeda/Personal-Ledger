@@ -196,6 +196,9 @@ impl RemoveLocationPresenter {
         let removed = RemoveLocation(self.id).run(&mut *self.inventory.borrow_mut());
         match removed {
             Ok(_) => {
+                router.notify(Notice::Changed(msg::inventory_changed_location_removed(
+                    &self.name,
+                )));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     msg::inventory_toast_location_removed(&self.name),
@@ -341,6 +344,7 @@ mod tests {
         assert_eq!(
             calls,
             vec![
+                RouterCall::Notice(Notice::Changed("Remove location 12 Elm St contents".into())),
                 RouterCall::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Removed location \"12 Elm St contents\"".into()

@@ -41,3 +41,7 @@ tags-merge-submit-empty = Merge
 
 tags-remove-refusal-gone = This tag has since been removed.
 tags-refusal-merge-into-itself = A tag can't be merged into itself.
+
+## What History calls each change, for Undo, Redo and the header's list (#1249).
+tags-changed-removed = Remove tag { $tag }
+tags-changed-merged = Merge tag { $source } into { $target }

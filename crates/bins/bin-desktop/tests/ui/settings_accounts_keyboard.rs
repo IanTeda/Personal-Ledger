@@ -570,3 +570,30 @@ fn the_accounts_new_command_prefills_the_name(app: &mut TestAppContext) {
     assert_eq!(ui.dialog(), Some("AddAccount"));
     assert_eq!(ui.dialog_value("name").as_deref(), Some("Rainy Day"));
 }
+
+/// A saved add is undone by the Shell's `u` and redone by `ctrl+r`, the row back under its own id
+/// (#1249).
+#[gpui::test]
+fn u_undoes_an_added_account_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
+    let mut ui = in_accounts(app);
+    let before = ui.settings::<SettingsAccountsSnapshot>().account_names;
+    ui.press("n");
+    ui.press("r a i n y");
+    ui.press("enter");
+    let added = ui.settings::<SettingsAccountsSnapshot>().account_names;
+    assert_ne!(added, before, "the add changed the page");
+
+    ui.press("u");
+    assert_eq!(
+        ui.settings::<SettingsAccountsSnapshot>().account_names,
+        before
+    );
+    let status = ui.read(|shell| shell.status_message());
+    assert_eq!(status.as_deref(), Some("Undid Add account rainy"));
+
+    ui.press("ctrl-r");
+    assert_eq!(
+        ui.settings::<SettingsAccountsSnapshot>().account_names,
+        added
+    );
+}

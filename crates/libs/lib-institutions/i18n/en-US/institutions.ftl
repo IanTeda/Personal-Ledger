@@ -83,3 +83,8 @@ institutions-delete-close = Close
 institutions-command-new = add an Institution
 institutions-command-edit = edit the selected Institution
 institutions-command-delete = delete the selected Institution
+
+## What History calls each Institutions change, for Undo, Redo and the header's list (#1249).
+institutions-changed-added = Add institution { $institution }
+institutions-changed-edited = Edit institution { $institution }
+institutions-changed-deleted = Delete institution { $institution }

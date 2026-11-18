@@ -15,9 +15,9 @@
 //! nothing. History is linear, so the rows always hold what the entry left them as: there is no
 //! conflict check, only a `debug_assert!`.
 //!
-//! The Units, the Institutions (whose rows Unit delete reassigns), the Transactions, Bills,
-//! Budgets and Documents record (#1248), with the Document Types beside the Documents; the other
-//! stores join with #1249.
+//! Every store records: the Units, the Institutions (whose rows Unit delete reassigns), the
+//! Transactions, Bills, Budgets and Documents (#1248), with the Document Types beside the
+//! Documents, and the Accounts, Categories, Tags, Payees and Inventory (#1249).
 //!
 //! Where a delete's SQL cascade removes rows in another store (the Document Links to a deleted
 //! Transaction, Account, Payee or Item, and an Account's place in the Budgets that count it), the
@@ -34,15 +34,20 @@
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
+use lib_accounts::Account;
 use lib_bills::{BillPlan, BillScheduleEntry, EntryId};
 use lib_budgets::Budget;
+use lib_categories::Category;
 use lib_core::{
-    AccountId, BillPlanId, BudgetId, DocumentId, DocumentTypeId, InstitutionId, PriceSourceId,
-    TransactionId, UnitId,
+    AccountId, BillPlanId, BudgetId, CategoryId, DocumentId, DocumentTypeId, InstitutionId, ItemId,
+    LocationId, PayeeId, PriceSourceId, TagId, TransactionId, UnitId,
 };
 use lib_documents::types::DocumentTypeRow;
 use lib_documents::{Document, DocumentLink};
 use lib_institutions::Institution;
+use lib_inventory::{Item, Location};
+use lib_payees::Payee;
+use lib_tags::Tag;
 use lib_transactions::Transaction;
 use lib_units::{PriceSourceRecord, UnitRow, UnitUse};
 
@@ -68,6 +73,13 @@ pub enum RowImage {
     /// A whole Document with its Intake and Links.
     Document(Option<Document>, Option<Document>),
     DocumentType(Option<DocumentTypeRow>, Option<DocumentTypeRow>),
+    Account(Option<Account>, Option<Account>),
+    Category(Option<Category>, Option<Category>),
+    Tag(Option<Tag>, Option<Tag>),
+    Payee(Option<Payee>, Option<Payee>),
+    /// A whole Location with its cover and Areas.
+    Location(Option<Location>, Option<Location>),
+    Item(Option<Item>, Option<Item>),
     /// Every Document Type's place, before and after one was added, moved or removed.
     DocumentTypeOrder(Vec<DocumentTypeId>, Vec<DocumentTypeId>),
 }
@@ -86,6 +98,12 @@ enum RowKey {
     Document(DocumentId),
     DocumentType(DocumentTypeId),
     DocumentTypeOrder,
+    Account(AccountId),
+    Category(CategoryId),
+    Tag(TagId),
+    Payee(PayeeId),
+    Location(LocationId),
+    Item(ItemId),
 }
 
 impl RowImage {
@@ -116,6 +134,16 @@ impl RowImage {
                 RowKey::DocumentType(before.as_ref().or(after.as_ref())?.id)
             }
             Self::DocumentTypeOrder(..) => RowKey::DocumentTypeOrder,
+            Self::Account(before, after) => RowKey::Account(before.as_ref().or(after.as_ref())?.id),
+            Self::Category(before, after) => {
+                RowKey::Category(before.as_ref().or(after.as_ref())?.id)
+            }
+            Self::Tag(before, after) => RowKey::Tag(before.as_ref().or(after.as_ref())?.id),
+            Self::Payee(before, after) => RowKey::Payee(before.as_ref().or(after.as_ref())?.id),
+            Self::Location(before, after) => {
+                RowKey::Location(before.as_ref().or(after.as_ref())?.id)
+            }
+            Self::Item(before, after) => RowKey::Item(before.as_ref().or(after.as_ref())?.id),
         })
     }
 
@@ -140,6 +168,11 @@ impl RowImage {
             Self::Budget(..) => Domain::Budgets,
             Self::Document(..) => Domain::Documents,
             Self::DocumentType(..) | Self::DocumentTypeOrder(..) => Domain::DocumentTypes,
+            Self::Account(..) => Domain::Accounts,
+            Self::Category(..) => Domain::Categories,
+            Self::Tag(..) => Domain::Tags,
+            Self::Payee(..) => Domain::Payees,
+            Self::Location(..) | Self::Item(..) => Domain::Inventory,
         }
     }
 
@@ -157,6 +190,12 @@ impl RowImage {
             Self::Document(before, after) => before == after,
             Self::DocumentType(before, after) => before == after,
             Self::DocumentTypeOrder(before, after) => before == after,
+            Self::Account(before, after) => before == after,
+            Self::Category(before, after) => before == after,
+            Self::Tag(before, after) => before == after,
+            Self::Payee(before, after) => before == after,
+            Self::Location(before, after) => before == after,
+            Self::Item(before, after) => before == after,
         }
     }
 
@@ -176,6 +215,12 @@ impl RowImage {
             (Self::DocumentTypeOrder(_, after), Self::DocumentTypeOrder(_, later)) => {
                 *after = later
             }
+            (Self::Account(_, after), Self::Account(_, later)) => *after = later,
+            (Self::Category(_, after), Self::Category(_, later)) => *after = later,
+            (Self::Tag(_, after), Self::Tag(_, later)) => *after = later,
+            (Self::Payee(_, after), Self::Payee(_, later)) => *after = later,
+            (Self::Location(_, after), Self::Location(_, later)) => *after = later,
+            (Self::Item(_, after), Self::Item(_, later)) => *after = later,
             (image, later) => debug_assert!(false, "{image:?} merged with {later:?}"),
         }
     }
@@ -405,6 +450,76 @@ fn write(image: &RowImage, step: Step, stores: &SharedStores) {
             match target {
                 Some(row) => documents.upsert_document_type(&row),
                 None => documents.delete_document_type(id),
+            }
+        }
+        RowImage::Account(before, after) => {
+            let (expected, target) = sides(before, after, step);
+            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+                return;
+            };
+            let mut store = stores.accounts.borrow_mut();
+            let accounts = store.accounts_mut();
+            match target {
+                Some(account) => accounts.upsert_account(account),
+                None => accounts.delete_account(id),
+            }
+        }
+        RowImage::Category(before, after) => {
+            let (expected, target) = sides(before, after, step);
+            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+                return;
+            };
+            let mut store = stores.categories.borrow_mut();
+            match target {
+                Some(category) => store.categories_mut().upsert_category(category),
+                None => store.delete_category(id),
+            }
+        }
+        RowImage::Tag(before, after) => {
+            let (expected, target) = sides(before, after, step);
+            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+                return;
+            };
+            let mut store = stores.tags.borrow_mut();
+            match target {
+                Some(tag) => store.tags_mut().upsert_tag(tag),
+                None => store.delete_tag(id),
+            }
+        }
+        RowImage::Payee(before, after) => {
+            let (expected, target) = sides(before, after, step);
+            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+                return;
+            };
+            let mut store = stores.payees.borrow_mut();
+            let payees = store.payees_mut();
+            match target {
+                Some(payee) => payees.upsert_payee(payee),
+                None => payees.delete_payee(id),
+            }
+        }
+        RowImage::Location(before, after) => {
+            let (expected, target) = sides(before, after, step);
+            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+                return;
+            };
+            let mut store = stores.inventory.borrow_mut();
+            let inventory = store.inventory_mut();
+            match target {
+                Some(location) => inventory.upsert_location(location),
+                None => inventory.delete_location(id),
+            }
+        }
+        RowImage::Item(before, after) => {
+            let (expected, target) = sides(before, after, step);
+            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+                return;
+            };
+            let mut store = stores.inventory.borrow_mut();
+            let inventory = store.inventory_mut();
+            match target {
+                Some(item) => inventory.upsert_item(item),
+                None => inventory.delete_item(id),
             }
         }
         RowImage::DocumentTypeOrder(before, after) => {
@@ -1156,7 +1271,7 @@ mod tests {
     }
 
     /// An Account that a Budget counts and no Bill Plan pays from, so it can be deleted.
-    fn budgeted_account(ports: &crate::LedgerPorts) -> lib_accounts::Account {
+    fn budgeted_account(ports: &crate::LedgerPorts) -> Account {
         let deletion = ports.account_deletion();
         let stores = ports.stores();
         let accounts = stores.accounts.borrow().accounts().accounts();
@@ -1207,13 +1322,6 @@ mod tests {
         let reversal = ports.take_reversal().expect("the delete was recorded");
         assert!(reversal.domains().contains(&Domain::Budgets));
 
-        // The Accounts record with #1249, so the Account is put back by hand.
-        ports
-            .stores()
-            .accounts
-            .borrow_mut()
-            .accounts_mut()
-            .upsert_account(account);
         ports.reverse(&reversal);
         ports.commit().commit();
         for domain in [
@@ -1227,6 +1335,327 @@ mod tests {
 
         assert_eq!(budgets(&ports), before);
         assert_eq!(documents(&ports), documents_before);
+    }
+
+    /// Writes through `write`, then checks Undo and Redo bring `rows` back and forward.
+    fn written_undone_and_redone<T: PartialEq + std::fmt::Debug>(
+        ports: &crate::LedgerPorts,
+        domain: Domain,
+        rows: impl Fn(&crate::LedgerPorts) -> T,
+        write: impl FnOnce(&crate::LedgerPorts),
+    ) {
+        let before = rows(ports);
+        write(ports);
+        let after = rows(ports);
+        assert_ne!(before, after, "the write changed the {domain:?}");
+        let reversal = ports.take_reversal().expect("the write was recorded");
+        // A delete also notes the Document Links it cascades into.
+        assert!(reversal.domains().contains(&domain), "{reversal:?}");
+        undone_and_redone(ports, &reversal, rows, &before, &after);
+    }
+
+    fn sorted<T, K: Ord>(mut rows: Vec<T>, key: impl Fn(&T) -> K) -> Vec<T> {
+        rows.sort_by_key(key);
+        rows
+    }
+
+    #[test]
+    fn an_account_added_edited_and_deleted_is_each_undone_and_redone() {
+        let rows = |ports: &crate::LedgerPorts| {
+            sorted(
+                ports.stores().accounts.borrow().accounts().accounts(),
+                |row| row.id,
+            )
+        };
+        let ports = ports();
+        let original = rows(&ports)[0].clone();
+        let mut added = original.clone();
+        added.id = AccountId::new();
+        let added_id = added.id;
+        let mut edited = original.clone();
+        edited.name = "Renamed".into();
+        let stores = |ports: &crate::LedgerPorts| ports.stores().accounts.clone();
+
+        written_undone_and_redone(&ports, Domain::Accounts, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .accounts_mut()
+                .upsert_account(added.clone());
+        });
+        written_undone_and_redone(&ports, Domain::Accounts, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .accounts_mut()
+                .upsert_account(edited);
+        });
+        // The added Account, which no Budget counts: the memory fakes don't cascade a delete into
+        // the Budgets, and the file-backed test below covers the Account that one counts.
+        written_undone_and_redone(&ports, Domain::Accounts, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .accounts_mut()
+                .delete_account(added_id);
+        });
+    }
+
+    #[test]
+    fn a_category_added_edited_and_deleted_is_each_undone_and_redone() {
+        let rows = |ports: &crate::LedgerPorts| {
+            sorted(
+                ports.stores().categories.borrow().categories().categories(),
+                |row| row.id,
+            )
+        };
+        let ports = ports();
+        let original = rows(&ports)[0].clone();
+        let mut added = original.clone();
+        added.id = CategoryId::new();
+        let mut edited = original.clone();
+        edited.name = "Renamed".into();
+        let stores = |ports: &crate::LedgerPorts| ports.stores().categories.clone();
+
+        written_undone_and_redone(&ports, Domain::Categories, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .categories_mut()
+                .upsert_category(added);
+        });
+        written_undone_and_redone(&ports, Domain::Categories, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .categories_mut()
+                .upsert_category(edited);
+        });
+        written_undone_and_redone(&ports, Domain::Categories, rows, |ports| {
+            stores(ports).borrow_mut().delete_category(original.id);
+        });
+    }
+
+    #[test]
+    fn a_tag_added_edited_and_deleted_is_each_undone_and_redone() {
+        let rows = |ports: &crate::LedgerPorts| {
+            sorted(ports.stores().tags.borrow().tags().tags(), |row| row.id)
+        };
+        let ports = ports();
+        let original = rows(&ports)[0].clone();
+        let mut added = original.clone();
+        added.id = TagId::new();
+        let mut edited = original.clone();
+        edited.name = "Renamed".into();
+        let stores = |ports: &crate::LedgerPorts| ports.stores().tags.clone();
+
+        written_undone_and_redone(&ports, Domain::Tags, rows, |ports| {
+            stores(ports).borrow_mut().tags_mut().upsert_tag(added);
+        });
+        written_undone_and_redone(&ports, Domain::Tags, rows, |ports| {
+            stores(ports).borrow_mut().tags_mut().upsert_tag(edited);
+        });
+        written_undone_and_redone(&ports, Domain::Tags, rows, |ports| {
+            stores(ports).borrow_mut().delete_tag(original.id);
+        });
+    }
+
+    #[test]
+    fn a_payee_added_edited_and_deleted_is_each_undone_and_redone() {
+        let rows = |ports: &crate::LedgerPorts| {
+            sorted(ports.stores().payees.borrow().payees().payees(), |row| {
+                row.id
+            })
+        };
+        let ports = ports();
+        let original = rows(&ports)[0].clone();
+        let mut added = original.clone();
+        added.id = PayeeId::new();
+        let mut edited = original.clone();
+        edited.name = "Renamed".into();
+        let stores = |ports: &crate::LedgerPorts| ports.stores().payees.clone();
+
+        written_undone_and_redone(&ports, Domain::Payees, rows, |ports| {
+            stores(ports).borrow_mut().payees_mut().upsert_payee(added);
+        });
+        written_undone_and_redone(&ports, Domain::Payees, rows, |ports| {
+            stores(ports).borrow_mut().payees_mut().upsert_payee(edited);
+        });
+        written_undone_and_redone(&ports, Domain::Payees, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .payees_mut()
+                .delete_payee(original.id);
+        });
+    }
+
+    #[test]
+    fn an_institution_added_edited_and_deleted_is_each_undone_and_redone() {
+        let rows = |ports: &crate::LedgerPorts| sorted(institutions(ports), |row| row.id);
+        let ports = ports();
+        let original = rows(&ports)[0].clone();
+        let mut added = original.clone();
+        added.id = InstitutionId::new();
+        let mut edited = original.clone();
+        edited.name = "Renamed".into();
+        let stores = |ports: &crate::LedgerPorts| ports.stores().institutions.clone();
+
+        written_undone_and_redone(&ports, Domain::Institutions, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .institutions_mut()
+                .upsert_institution(added);
+        });
+        written_undone_and_redone(&ports, Domain::Institutions, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .institutions_mut()
+                .upsert_institution(edited);
+        });
+        written_undone_and_redone(&ports, Domain::Institutions, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .institutions_mut()
+                .delete_institution(original.id);
+        });
+    }
+
+    #[test]
+    fn an_inventory_location_and_item_added_edited_and_deleted_are_undone_and_redone() {
+        let rows = |ports: &crate::LedgerPorts| {
+            let store = ports.stores().inventory.borrow();
+            let inventory = store.inventory();
+            (
+                sorted(inventory.locations(), |row| row.id),
+                sorted(inventory.items(), |row| row.id),
+            )
+        };
+        let ports = ports();
+        let location = rows(&ports).0[0].clone();
+        let item = rows(&ports)
+            .1
+            .into_iter()
+            .find(|item| item.location == location.id)
+            .expect("the first Location holds an Item");
+        let mut added = item.clone();
+        added.id = ItemId::new();
+        let mut edited = item.clone();
+        edited.name = "Renamed".into();
+        let stores = |ports: &crate::LedgerPorts| ports.stores().inventory.clone();
+
+        written_undone_and_redone(&ports, Domain::Inventory, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .inventory_mut()
+                .upsert_item(added);
+        });
+        written_undone_and_redone(&ports, Domain::Inventory, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .inventory_mut()
+                .upsert_item(edited);
+        });
+        written_undone_and_redone(&ports, Domain::Inventory, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .inventory_mut()
+                .delete_item(item.id);
+        });
+        let mut renamed = location.clone();
+        renamed.name = "Renamed".into();
+        written_undone_and_redone(&ports, Domain::Inventory, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .inventory_mut()
+                .upsert_location(renamed);
+        });
+        written_undone_and_redone(&ports, Domain::Inventory, rows, |ports| {
+            stores(ports)
+                .borrow_mut()
+                .inventory_mut()
+                .delete_location(location.id);
+        });
+    }
+
+    #[test]
+    fn undoing_a_category_delete_restores_its_splits_plans_payee_defaults_and_limits() {
+        let ports = ports();
+        let rows = |ports: &crate::LedgerPorts| {
+            let stores = ports.stores();
+            (
+                sorted(
+                    stores.categories.borrow().categories().categories(),
+                    |row| row.id,
+                ),
+                transactions(ports),
+                sorted(stores.bills.borrow().plans().bill_plans(), |row| row.id),
+                sorted(stores.payees.borrow().payees().payees(), |row| row.id),
+                budgets(ports),
+            )
+        };
+        let before = rows(&ports);
+        let ids: Vec<CategoryId> = before.0.iter().map(|category| category.id).collect();
+        let deleted = ids
+            .into_iter()
+            .find_map(|id| {
+                let outcome = lib_category_deletion::interactor::DeleteCategory { id }
+                    .run(&mut *ports.category_deletion().deletion.borrow_mut());
+                outcome
+                    .ok()
+                    .filter(|done| done.splits_moved > 0 && done.payee_defaults_cleared > 0)
+            })
+            .expect("the sample has a Category with Splits and a Payee default");
+        assert!(deleted.splits_moved > 0);
+        let after = rows(&ports);
+        let reversal = ports.take_reversal().expect("the delete was recorded");
+        assert_eq!(
+            reversal.domains().first(),
+            Some(&Domain::Categories),
+            "the home and the moved rows are written before the delete"
+        );
+
+        ports.reverse(&reversal);
+        assert_eq!(rows(&ports), before);
+        ports.replay(&reversal);
+        assert_eq!(rows(&ports), after);
+    }
+
+    #[test]
+    fn undoing_a_tag_merge_restores_both_tags_and_their_splits() {
+        let ports = ports();
+        let rows = |ports: &crate::LedgerPorts| {
+            (
+                sorted(ports.stores().tags.borrow().tags().tags(), |row| row.id),
+                transactions(ports),
+            )
+        };
+        let before = rows(&ports);
+        let ids: Vec<TagId> = before.0.iter().map(|tag| tag.id).collect();
+        let mut merged = false;
+        'pairs: for source in &ids {
+            for target in &ids {
+                if source == target {
+                    continue;
+                }
+                let outcome = lib_tag_removal::interactor::MergeTags {
+                    source: *source,
+                    target: *target,
+                }
+                .run(&mut *ports.tag_removal().removal.borrow_mut());
+                if outcome.is_ok() && rows(&ports).1 != before.1 {
+                    merged = true;
+                    break 'pairs;
+                }
+                // A merge that moved no Split is undone by hand so the next pair starts clean.
+                if let Some(reversal) = ports.take_reversal() {
+                    ports.reverse(&reversal);
+                }
+            }
+        }
+        assert!(merged, "a merge moved a Split");
+        let after = rows(&ports);
+        assert_eq!(after.0.len(), before.0.len() - 1);
+        let reversal = ports.take_reversal().expect("the merge was recorded");
+
+        ports.reverse(&reversal);
+        assert_eq!(rows(&ports), before);
+        ports.replay(&reversal);
+        assert_eq!(rows(&ports), after);
     }
 
     #[test]

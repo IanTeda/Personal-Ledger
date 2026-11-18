@@ -191,6 +191,9 @@ impl DeleteAccountPresenter {
         let landed = DeleteAccount { id: self.id }.run(&mut *self.deletion.borrow_mut());
         match landed {
             Ok(deleted) => {
+                router.notify(Notice::Changed(msg::account_deletion_changed(
+                    &deleted.name,
+                )));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     lib_locale::msg::toast_account_deleted(
@@ -334,10 +337,13 @@ mod tests {
 
         assert_eq!(
             dialog.router.notices,
-            [Notice::Toast(
-                ToastKind::Success,
-                "Deleted account Wallet \u{b7} 2 transactions deleted".into()
-            )]
+            [
+                Notice::Changed("Delete account Wallet".into()),
+                Notice::Toast(
+                    ToastKind::Success,
+                    "Deleted account Wallet \u{b7} 2 transactions deleted".into()
+                )
+            ]
         );
         assert_eq!(
             dialog.router.closed,

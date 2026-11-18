@@ -125,3 +125,10 @@ payees-delete-confirm-label = Type { $name } to confirm
 payees-command-new = add a Payee
 payees-command-edit = edit the selected Payee
 payees-command-delete = delete the selected Payee
+
+## What History calls each Payees change, for Undo, Redo and the header's list (#1249).
+payees-changed-added = Add payee { $payee }
+payees-changed-edited = Edit payee { $payee }
+payees-changed-deleted = Delete payee { $payee }
+payees-changed-deactivated = Deactivate payee { $payee }
+payees-changed-reactivated = Reactivate payee { $payee }

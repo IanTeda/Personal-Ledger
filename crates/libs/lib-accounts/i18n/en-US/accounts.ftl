@@ -62,3 +62,7 @@ accounts-edit-usage-notice = Opened { $opened } · { $count ->
 ## A refusal the Dialog shows under its fields.
 
 accounts-error-gone = This account has since been deleted.
+
+## What History calls each Accounts change, for Undo, Redo and the header's list (#1249).
+accounts-changed-added = Add account { $account }
+accounts-changed-edited = Edit account { $account }

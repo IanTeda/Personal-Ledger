@@ -253,6 +253,11 @@ impl DeletePayeePresenter {
                         lib_locale::msg::toast_payee_deleted(&name)
                     }
                 };
+                router.notify(Notice::Changed(match change {
+                    PayeeChange::Deactivated => msg::payees_changed_deactivated(&name),
+                    PayeeChange::Reactivated => msg::payees_changed_reactivated(&name),
+                    PayeeChange::Deleted | PayeeChange::Saved => msg::payees_changed_deleted(&name),
+                }));
                 router.notify(Notice::Toast(ToastKind::Success, toast));
                 router.close(Some(PayeesOutcome {
                     change,
@@ -376,6 +381,7 @@ mod tests {
         assert_eq!(
             calls,
             [
+                RouterCall::Notice(Notice::Changed("Delete payee Netflix".into())),
                 toast("Deleted payee Netflix"),
                 RouterCall::CloseDialog(Some(PayeesOutcome {
                     change: PayeeChange::Deleted,
@@ -399,7 +405,7 @@ mod tests {
             &mut deactivate,
             vec![typed("Woolworths"), DeletePayeeEvent::Confirm],
         );
-        assert_eq!(calls[0], toast("Deactivated payee Woolworths"));
+        assert_eq!(calls[1], toast("Deactivated payee Woolworths"));
         assert!(
             !ports
                 .borrow()
@@ -411,7 +417,7 @@ mod tests {
         let mut reactivate =
             DeletePayeePresenter::new(shared, WOOLWORTHS, DialogKeys::default()).expect("sample");
         let calls = send(&mut reactivate, vec![DeletePayeeEvent::Confirm]);
-        assert_eq!(calls[0], toast("Reactivated payee Woolworths"));
+        assert_eq!(calls[1], toast("Reactivated payee Woolworths"));
         assert!(
             ports
                 .borrow()
@@ -566,7 +572,7 @@ mod tests {
             Some("Netflix")
         );
         assert_eq!(
-            send(&mut dialog, vec![select])[0],
+            send(&mut dialog, vec![select])[1],
             toast("Deleted payee Netflix")
         );
         assert_eq!(ports.borrow().payees.payee(NETFLIX), None);
@@ -580,7 +586,7 @@ mod tests {
             "nothing to type into"
         );
         assert_eq!(
-            send(&mut reactivate, vec![submit])[0],
+            send(&mut reactivate, vec![submit])[1],
             toast("Reactivated payee Don Quijote")
         );
     }

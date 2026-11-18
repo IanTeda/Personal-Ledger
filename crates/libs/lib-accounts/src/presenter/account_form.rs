@@ -23,6 +23,7 @@ use chrono::{Datelike, NaiveDate};
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
 use lib_locale::Label;
 use lib_locale::format::{AmountStyle, format_amount};
+use lib_toast::Notice;
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
@@ -711,7 +712,14 @@ impl AccountFormPresenter {
             }
         };
         match saved {
-            Ok(account) => router.close(Some(AccountsOutcome { id: account.id })),
+            Ok(account) => {
+                router.notify(Notice::Changed(if self.editing.is_some() {
+                    msg::accounts_changed_edited(&account.name)
+                } else {
+                    msg::accounts_changed_added(&account.name)
+                }));
+                router.close(Some(AccountsOutcome { id: account.id }));
+            }
             Err(refusal) => self.error = Some(refusal),
         }
     }
@@ -935,7 +943,7 @@ mod tests {
         let calls = press(&mut form, &[DialogInput::Submit]);
         assert!(matches!(
             calls.as_slice(),
-            [RouterCall::CloseDialog(Some(_))]
+            [RouterCall::Notice(_), RouterCall::CloseDialog(Some(_))]
         ));
 
         let (_, shared) = sample();
@@ -944,7 +952,7 @@ mod tests {
         let calls = press(&mut form, &[DialogInput::Select]);
         assert!(matches!(
             calls.as_slice(),
-            [RouterCall::CloseDialog(Some(_))]
+            [RouterCall::Notice(_), RouterCall::CloseDialog(Some(_))]
         ));
     }
 
@@ -1240,7 +1248,11 @@ mod tests {
             ],
         );
 
-        let [RouterCall::CloseDialog(Some(outcome))] = calls.as_slice() else {
+        let [
+            RouterCall::Notice(_),
+            RouterCall::CloseDialog(Some(outcome)),
+        ] = calls.as_slice()
+        else {
             panic!("expected one close, got {calls:?}");
         };
         let added = ports.borrow().accounts.account(outcome.id).expect("added");

@@ -15,6 +15,7 @@
 //! so they follow `[keybindings]`.
 
 use lib_core::{HexColor, TagId};
+use lib_toast::Notice;
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
@@ -362,11 +363,18 @@ impl TagFormPresenter {
             }
         };
         match saved {
-            Ok(tag) => router.close(Some(TagsOutcome {
-                change: TagChange::Saved,
-                id: tag.id,
-                name: tag.name,
-            })),
+            Ok(tag) => {
+                router.notify(Notice::Changed(if self.editing.is_some() {
+                    msg::tags_changed_edited(&tag.name)
+                } else {
+                    msg::tags_changed_added(&tag.name)
+                }));
+                router.close(Some(TagsOutcome {
+                    change: TagChange::Saved,
+                    id: tag.id,
+                    name: tag.name,
+                }));
+            }
             Err(refusal) => self.refusal = Some(name_error_text(&refusal)),
         }
     }
@@ -668,7 +676,7 @@ mod tests {
 
         assert!(matches!(
             calls.as_slice(),
-            [RouterCall::CloseDialog(Some(outcome))] if outcome.name == "holiday"
+            [RouterCall::Notice(_), RouterCall::CloseDialog(Some(outcome))] if outcome.name == "holiday"
         ));
         assert!(
             ports
@@ -823,11 +831,14 @@ mod tests {
         assert_eq!(added.color, Some(swatches()[1].clone()));
         assert_eq!(
             calls,
-            [RouterCall::CloseDialog(Some(TagsOutcome {
-                change: TagChange::Saved,
-                id: added.id,
-                name: "holiday".into(),
-            }))],
+            [
+                RouterCall::Notice(Notice::Changed("Add tag holiday".into())),
+                RouterCall::CloseDialog(Some(TagsOutcome {
+                    change: TagChange::Saved,
+                    id: added.id,
+                    name: "holiday".into(),
+                }))
+            ],
             "a save raises no Toast"
         );
     }
@@ -870,11 +881,14 @@ mod tests {
         );
         assert_eq!(
             calls,
-            [RouterCall::CloseDialog(Some(TagsOutcome {
-                change: TagChange::Saved,
-                id: SHARED,
-                name: "Shared costs".into(),
-            }))]
+            [
+                RouterCall::Notice(Notice::Changed("Edit tag Shared costs".into())),
+                RouterCall::CloseDialog(Some(TagsOutcome {
+                    change: TagChange::Saved,
+                    id: SHARED,
+                    name: "Shared costs".into(),
+                }))
+            ]
         );
     }
 

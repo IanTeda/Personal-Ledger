@@ -386,3 +386,7 @@ documents-changed-deleted = Delete document { $title }
 documents-changed-added = Add document { $title }
 documents-changed-edited = Edit document { $title }
 documents-changed-facts = Edit what was read from { $title }
+documents-changed-type-added = Add document type { $kind }
+documents-changed-type-edited = Edit document type { $kind }
+documents-changed-type-removed = Remove document type { $kind }
+documents-changed-type-moved = Move document type { $kind }

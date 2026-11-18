@@ -113,10 +113,7 @@ use lib_documents::DocumentLink;
 ///
 /// Where the domain records onto History (#1247), its `*_mut()` hands out a recording wrapper
 /// around the repository, which notes each row's image before and after a write in the
-/// [`Journal`] `written` shares ([`crate::reversal`]). The Units, Institutions, Transactions,
-/// Bills, Budgets and Documents record (#1248); the Accounts, Payees and Inventory are handed a
-/// wrapper that notes only what a delete cascades into, and the other domains the plain
-/// repository.
+/// [`Journal`] `written` shares ([`crate::reversal`]). Every domain records (#1247-#1249).
 pub struct Recorded<S: ?Sized> {
     domain: Domain,
     store: Journaled<S>,
@@ -272,8 +269,8 @@ impl<S: BudgetsStore + ?Sized> BudgetRepository for Journaled<S> {
     }
 }
 
-/// The Accounts, noting only what a delete cascades into: the Account's own rows record with
-/// #1249, which notes this before the Account's image so Undo restores the Account first.
+/// The Accounts, each write recorded with the row's image before it, and a delete with what it
+/// cascades into noted first, so Undo restores the Account before what names it.
 impl<S: AccountsStore + ?Sized> AccountRepository for Journaled<S> {
     fn accounts(&self) -> Vec<lib_accounts::Account> {
         self.store.accounts().accounts()
@@ -284,16 +281,25 @@ impl<S: AccountsStore + ?Sized> AccountRepository for Journaled<S> {
     }
 
     fn upsert_account(&mut self, account: lib_accounts::Account) {
+        let before = self.store.accounts().account(account.id);
+        self.written
+            .journal()
+            .record(RowImage::Account(before, Some(account.clone())));
         self.store.accounts_mut().upsert_account(account);
     }
 
     fn delete_account(&mut self, id: AccountId) {
-        self.written.journal().unlink_account(id);
+        let journal = self.written.journal();
+        journal.unlink_account(id);
+        if let Some(before) = self.store.accounts().account(id) {
+            journal.record(RowImage::Account(Some(before), None));
+        }
         self.store.accounts_mut().delete_account(id);
     }
 }
 
-/// The Payees, noting only the Document Links a delete cascades into.
+/// The Payees, each write recorded with the row's image before it, and a delete with the Document
+/// Links it cascades into noted first.
 impl<S: PayeesStore + ?Sized> PayeeRepository for Journaled<S> {
     fn payees(&self) -> Vec<lib_payees::Payee> {
         self.store.payees().payees()
@@ -304,17 +310,25 @@ impl<S: PayeesStore + ?Sized> PayeeRepository for Journaled<S> {
     }
 
     fn upsert_payee(&mut self, payee: lib_payees::Payee) {
+        let before = self.store.payees().payee(payee.id);
+        self.written
+            .journal()
+            .record(RowImage::Payee(before, Some(payee.clone())));
         self.store.payees_mut().upsert_payee(payee);
     }
 
     fn delete_payee(&mut self, id: PayeeId) {
-        self.written.journal().unlink(DocumentLink::Payee(id));
+        let journal = self.written.journal();
+        journal.unlink(DocumentLink::Payee(id));
+        if let Some(before) = self.store.payees().payee(id) {
+            journal.record(RowImage::Payee(Some(before), None));
+        }
         self.store.payees_mut().delete_payee(id);
     }
 }
 
-/// The Inventory, noting only the Document Links a delete of an Item, or of a Location and so its
-/// Items, cascades into.
+/// The Inventory, each write recorded with the row's image before it, and a delete of an Item, or
+/// of a Location and so its Items, with the Document Links it cascades into noted first.
 impl<S: InventoryStore + ?Sized> InventoryRepository for Journaled<S> {
     fn locations(&self) -> Vec<lib_inventory::Location> {
         self.store.inventory().locations()
@@ -333,28 +347,75 @@ impl<S: InventoryStore + ?Sized> InventoryRepository for Journaled<S> {
     }
 
     fn upsert_location(&mut self, location: lib_inventory::Location) {
+        let before = self.store.inventory().location(location.id);
+        self.written
+            .journal()
+            .record(RowImage::Location(before, Some(location.clone())));
         self.store.inventory_mut().upsert_location(location);
     }
 
     fn upsert_item(&mut self, item: lib_inventory::Item) {
+        let before = self.store.inventory().item(item.id);
+        self.written
+            .journal()
+            .record(RowImage::Item(before, Some(item.clone())));
         self.store.inventory_mut().upsert_item(item);
     }
 
     fn delete_item(&mut self, id: lib_core::ItemId) {
-        self.written
-            .journal()
-            .unlink(DocumentLink::InventoryItem(id));
+        let journal = self.written.journal();
+        journal.unlink(DocumentLink::InventoryItem(id));
+        if let Some(before) = self.store.inventory().item(id) {
+            journal.record(RowImage::Item(Some(before), None));
+        }
         self.store.inventory_mut().delete_item(id);
     }
 
     fn delete_location(&mut self, id: LocationId) {
         let journal = self.written.journal();
+        let location = self.store.inventory().location(id);
+        // The Items first, each with its Links, then the Location: Undo puts the Location back
+        // before the Items that name it.
         for item in self.store.inventory().items() {
             if item.location == id {
                 journal.unlink(DocumentLink::InventoryItem(item.id));
+                journal.record(RowImage::Item(Some(item), None));
             }
         }
+        if let Some(before) = location {
+            journal.record(RowImage::Location(Some(before), None));
+        }
         self.store.inventory_mut().delete_location(id);
+    }
+}
+
+/// The Categories, each write recorded with the row's image before it.
+impl<S: CategoriesStore + ?Sized> CategoryRepository for Journaled<S> {
+    fn categories(&self) -> Vec<lib_categories::Category> {
+        self.store.categories().categories()
+    }
+
+    fn upsert_category(&mut self, category: lib_categories::Category) {
+        let before = self.store.categories().category(category.id);
+        self.written
+            .journal()
+            .record(RowImage::Category(before, Some(category.clone())));
+        self.store.categories_mut().upsert_category(category);
+    }
+}
+
+/// The Tags, each write recorded with the row's image before it.
+impl<S: TagsStore + ?Sized> TagRepository for Journaled<S> {
+    fn tags(&self) -> Vec<lib_tags::Tag> {
+        self.store.tags().tags()
+    }
+
+    fn upsert_tag(&mut self, tag: lib_tags::Tag) {
+        let before = self.store.tags().tag(tag.id);
+        self.written
+            .journal()
+            .record(RowImage::Tag(before, Some(tag.clone())));
+        self.store.tags_mut().upsert_tag(tag);
     }
 }
 
@@ -970,17 +1031,24 @@ impl CategoriesStore for CategoriesAdapter {
 /// The store, noting its domain written on every mutable access.
 impl<S: CategoriesStore + ?Sized> CategoriesStore for Recorded<S> {
     fn categories(&self) -> &dyn CategoryRepository {
-        self.store.categories()
+        self.store.store.categories()
     }
 
+    /// The recording wrapper around the repository.
     fn categories_mut(&mut self) -> &mut dyn CategoryRepository {
         self.store.written.note(self.domain);
-        self.store.categories_mut()
+        &mut self.store
     }
 
     fn delete_category(&mut self, id: CategoryId) {
         self.store.written.note(self.domain);
-        self.store.delete_category(id);
+        if let Some(before) = self.store.store.categories().category(id) {
+            self.store
+                .written
+                .journal()
+                .record(RowImage::Category(Some(before), None));
+        }
+        self.store.store.delete_category(id);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1051,17 +1119,24 @@ impl TagsStore for TagsAdapter {
 /// The store, noting its domain written on every mutable access.
 impl<S: TagsStore + ?Sized> TagsStore for Recorded<S> {
     fn tags(&self) -> &dyn TagRepository {
-        self.store.tags()
+        self.store.store.tags()
     }
 
+    /// The recording wrapper around the repository.
     fn tags_mut(&mut self) -> &mut dyn TagRepository {
         self.store.written.note(self.domain);
-        self.store.tags_mut()
+        &mut self.store
     }
 
     fn delete_tag(&mut self, id: TagId) {
         self.store.written.note(self.domain);
-        self.store.delete_tag(id);
+        if let Some(before) = self.store.store.tags().tag(id) {
+            self.store
+                .written
+                .journal()
+                .record(RowImage::Tag(Some(before), None));
+        }
+        self.store.store.delete_tag(id);
     }
 
     fn reload(&mut self) -> Result<()> {

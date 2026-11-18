@@ -12,6 +12,7 @@
 //! under it.
 
 use lib_core::DocumentTypeId;
+use lib_toast::Notice;
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
@@ -433,6 +434,7 @@ impl TypeFormPresenter {
             return;
         }
         let draft = self.draft();
+        let name = draft.name.clone();
         let mut repository = self.ports.borrow_mut();
         let saved = match &self.editing {
             Some(editing) => EditDocumentType {
@@ -445,10 +447,17 @@ impl TypeFormPresenter {
         };
         drop(repository);
         match saved {
-            Ok(id) => router.close(Some(DocumentTypesOutcome {
-                change: TypeChange::Saved,
-                select: Some(id),
-            })),
+            Ok(id) => {
+                router.notify(Notice::Changed(if self.editing.is_some() {
+                    msg::documents_changed_type_edited(&name)
+                } else {
+                    msg::documents_changed_type_added(&name)
+                }));
+                router.close(Some(DocumentTypesOutcome {
+                    change: TypeChange::Saved,
+                    select: Some(id),
+                }));
+            }
             // The type went while the Dialog was open: nothing was written and nothing is left to
             // edit, so it closes as a cancel does.
             Err(_unknown) => router.close(None),
@@ -655,7 +664,7 @@ mod tests {
 
         assert!(matches!(
             calls.as_slice(),
-            [RouterCall::CloseDialog(Some(_))]
+            [RouterCall::Notice(_), RouterCall::CloseDialog(Some(_))]
         ));
         assert!(
             documents
@@ -755,10 +764,13 @@ mod tests {
         assert_eq!(types.len(), 10);
         assert_eq!(
             calls,
-            [RouterCall::CloseDialog(Some(DocumentTypesOutcome {
-                change: TypeChange::Saved,
-                select: Some(added.id),
-            }))]
+            [
+                RouterCall::Notice(Notice::Changed("Add document type Leases".into())),
+                RouterCall::CloseDialog(Some(DocumentTypesOutcome {
+                    change: TypeChange::Saved,
+                    select: Some(added.id),
+                }))
+            ]
         );
     }
 
@@ -774,10 +786,13 @@ mod tests {
         assert_eq!(types[2].files, 31);
         assert_eq!(
             calls,
-            [RouterCall::CloseDialog(Some(DocumentTypesOutcome {
-                change: TypeChange::Saved,
-                select: Some(DocumentTypeId::seed(3)),
-            }))]
+            [
+                RouterCall::Notice(Notice::Changed("Edit document type Taxes".into())),
+                RouterCall::CloseDialog(Some(DocumentTypesOutcome {
+                    change: TypeChange::Saved,
+                    select: Some(DocumentTypeId::seed(3)),
+                }))
+            ]
         );
     }
 

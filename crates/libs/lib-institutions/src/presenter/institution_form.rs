@@ -395,6 +395,11 @@ impl InstitutionFormPresenter {
         };
         match saved {
             Ok(institution) => {
+                router.notify(Notice::Changed(if self.editing.is_some() {
+                    msg::institutions_changed_edited(&institution.name)
+                } else {
+                    msg::institutions_changed_added(&institution.name)
+                }));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     if self.editing.is_some() {
@@ -591,6 +596,7 @@ mod tests {
         assert_eq!(
             calls,
             vec![
+                RouterCall::Notice(Notice::Changed("Add institution Bank X".to_string())),
                 RouterCall::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Added Bank X".to_string()
@@ -720,6 +726,7 @@ mod tests {
         assert_eq!(
             calls,
             vec![
+                RouterCall::Notice(Notice::Changed("Edit institution Amex".to_string())),
                 RouterCall::Notice(Notice::Toast(ToastKind::Success, "Saved Amex".to_string())),
                 RouterCall::CloseDialog(Some(InstitutionsOutcome {
                     id: InstitutionId::SEED_AMEX,
@@ -736,7 +743,7 @@ mod tests {
 
         let calls = form.send(InstitutionFormEvent::Confirm);
 
-        assert_eq!(calls.len(), 2);
+        assert_eq!(calls.len(), 3);
         assert_eq!(
             form.ports.borrow().institutions.institutions[4].name,
             "Westpac Banking"
@@ -748,7 +755,7 @@ mod tests {
         let mut form = edit_form(InstitutionId::SEED_WESTPAC);
 
         form.type_name("westpac banking");
-        assert_eq!(form.send(InstitutionFormEvent::Confirm).len(), 2);
+        assert_eq!(form.send(InstitutionFormEvent::Confirm).len(), 3);
         assert_eq!(
             form.ports.borrow().institutions.institutions[4].name,
             "westpac banking"
@@ -834,7 +841,7 @@ mod tests {
 
         assert!(matches!(
             calls.as_slice(),
-            [_toast, RouterCall::CloseDialog(Some(outcome))] if outcome.name == "ANZ"
+            [_changed, _toast, RouterCall::CloseDialog(Some(outcome))] if outcome.name == "ANZ"
         ));
     }
 

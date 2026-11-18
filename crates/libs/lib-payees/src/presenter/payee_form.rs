@@ -17,6 +17,7 @@
 //! nothing changes them under it.
 
 use lib_core::{CategoryId, PayeeId};
+use lib_toast::Notice;
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
@@ -441,11 +442,18 @@ impl PayeeFormPresenter {
             }
         };
         match saved {
-            Ok(payee) => router.close(Some(PayeesOutcome {
-                change: PayeeChange::Saved,
-                id: payee.id,
-                name: payee.name,
-            })),
+            Ok(payee) => {
+                router.notify(Notice::Changed(if self.own_id().is_some() {
+                    msg::payees_changed_edited(&payee.name)
+                } else {
+                    msg::payees_changed_added(&payee.name)
+                }));
+                router.close(Some(PayeesOutcome {
+                    change: PayeeChange::Saved,
+                    id: payee.id,
+                    name: payee.name,
+                }));
+            }
             Err(refusal) => self.error = Some(refusal),
         }
     }
@@ -571,7 +579,11 @@ mod tests {
             ],
         );
 
-        let [RouterCall::CloseDialog(Some(outcome))] = calls.as_slice() else {
+        let [
+            RouterCall::Notice(_),
+            RouterCall::CloseDialog(Some(outcome)),
+        ] = calls.as_slice()
+        else {
             panic!("expected one close, got {calls:?}");
         };
         assert_eq!(outcome.change, PayeeChange::Saved);
@@ -779,7 +791,11 @@ mod tests {
         assert_eq!(form.view_model().rules, ["ZOOX"]);
 
         let calls = send(&mut form, vec![SELECT]);
-        let [RouterCall::CloseDialog(Some(outcome))] = calls.as_slice() else {
+        let [
+            RouterCall::Notice(_),
+            RouterCall::CloseDialog(Some(outcome)),
+        ] = calls.as_slice()
+        else {
             panic!("expected one close, got {calls:?}");
         };
         let payee = ports.borrow().payees.payee(outcome.id).expect("added");
@@ -802,7 +818,10 @@ mod tests {
 
             let calls = send(&mut form, vec![SUBMIT]);
             assert!(
-                matches!(calls.as_slice(), [RouterCall::CloseDialog(Some(_))]),
+                matches!(
+                    calls.as_slice(),
+                    [RouterCall::Notice(_), RouterCall::CloseDialog(Some(_))]
+                ),
                 "field {field}: {calls:?}"
             );
         }

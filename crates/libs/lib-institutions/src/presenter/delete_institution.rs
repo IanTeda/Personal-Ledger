@@ -237,6 +237,9 @@ impl DeleteInstitutionPresenter {
         let landed = DeleteInstitution { id: self.id }.run(&mut *self.ports.borrow_mut());
         match landed {
             Ok(deleted) => {
+                router.notify(Notice::Changed(msg::institutions_changed_deleted(
+                    &deleted.name,
+                )));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     msg::institutions_delete_toast(&deleted.name),
@@ -330,7 +333,7 @@ mod tests {
 
         assert!(matches!(
             calls.as_slice(),
-            [_toast, RouterCall::CloseDialog(Some(_))]
+            [_changed, _toast, RouterCall::CloseDialog(Some(_))]
         ));
     }
 
@@ -399,6 +402,9 @@ mod tests {
         assert_eq!(
             calls,
             [
+                RouterCall::Notice(Notice::Changed(
+                    "Delete institution American Express".into()
+                )),
                 RouterCall::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Deleted American Express".into()

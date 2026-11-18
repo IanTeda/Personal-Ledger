@@ -597,3 +597,36 @@ fn the_palette_lists_the_page_commands_and_runs_them(app: &mut TestAppContext) {
 
     assert_eq!(ui.dialog(), Some("AddDocumentType"));
 }
+
+/// A saved add is undone by the Shell's `u` and redone by `ctrl+r`, the row back under its own id
+/// (#1249).
+#[gpui::test]
+fn u_undoes_an_added_document_type_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+    let before = ui
+        .settings::<SettingsDocumentTypesSnapshot>()
+        .document_type_names;
+    ui.press("n");
+    ui.press("l e a s e s");
+    ui.press("enter");
+    let added = ui
+        .settings::<SettingsDocumentTypesSnapshot>()
+        .document_type_names;
+    assert_ne!(added, before, "the add changed the page");
+
+    ui.press("u");
+    assert_eq!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names,
+        before
+    );
+    let status = ui.read(|shell| shell.status_message());
+    assert_eq!(status.as_deref(), Some("Undid Add document type leases"));
+
+    ui.press("ctrl-r");
+    assert_eq!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names,
+        added
+    );
+}

@@ -126,3 +126,7 @@ categories-command-new = add a Category
 categories-command-edit = edit the selected Category
 categories-command-delete = delete the selected Category
 categories-command-new-child = add a Category under the selected one
+
+## What History calls each Categories change, for Undo, Redo and the header's list (#1249).
+categories-changed-added = Add category { $category }
+categories-changed-edited = Edit category { $category }

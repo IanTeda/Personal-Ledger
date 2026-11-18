@@ -169,6 +169,7 @@ impl RemoveTagPresenter {
         let outcome = RemoveTag { id: self.id }.run(&mut *self.removal.borrow_mut());
         match outcome {
             Ok(removed) => {
+                router.notify(Notice::Changed(msg::tags_changed_removed(&removed.name)));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     lib_locale::msg::toast_tag_deleted(&removed.name),
@@ -272,6 +273,7 @@ mod tests {
         assert_eq!(
             router.take(),
             [
+                RouterCall::Notice(Notice::Changed("Remove tag shared".into())),
                 RouterCall::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Deleted tag shared".into()

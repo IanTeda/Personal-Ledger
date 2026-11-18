@@ -417,6 +417,13 @@ impl LocationFormPresenter {
         };
         match saved {
             Ok((id, change, toast)) => {
+                router.notify(Notice::Changed(
+                    if change == InventoryChange::LocationSaved {
+                        msg::inventory_changed_location_edited(&name)
+                    } else {
+                        msg::inventory_changed_location_added(&name)
+                    },
+                ));
                 router.notify(Notice::Toast(ToastKind::Success, toast));
                 router.close(Some(InventoryOutcome {
                     change,
@@ -592,7 +599,7 @@ mod tests {
         let calls = form.press(DialogInput::Select);
         assert!(matches!(
             calls.as_slice(),
-            [_toast, RouterCall::CloseDialog(Some(_))]
+            [_changed, _toast, RouterCall::CloseDialog(Some(_))]
         ));
     }
 
@@ -735,6 +742,7 @@ mod tests {
         assert_eq!(
             calls,
             vec![
+                RouterCall::Notice(Notice::Changed("Add location Cabin".into())),
                 RouterCall::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Added location \"Cabin\"".into()
@@ -772,6 +780,12 @@ mod tests {
         );
         assert_eq!(
             calls.first(),
+            Some(&RouterCall::Notice(Notice::Changed(
+                "Edit location Elm".into()
+            )))
+        );
+        assert_eq!(
+            calls.get(1),
             Some(&RouterCall::Notice(Notice::Toast(
                 ToastKind::Success,
                 "Saved location \"Elm\"".into()

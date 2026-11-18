@@ -86,3 +86,7 @@ tags-command-new = add a Tag
 tags-command-edit = edit the selected Tag
 tags-command-remove = remove the selected Tag
 tags-command-merge = fold one Tag into another, retagging its Transactions
+
+## What History calls each Tags change, for Undo, Redo and the header's list (#1249).
+tags-changed-added = Add tag { $tag }
+tags-changed-edited = Edit tag { $tag }

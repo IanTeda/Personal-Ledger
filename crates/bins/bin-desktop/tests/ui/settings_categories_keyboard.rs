@@ -805,3 +805,30 @@ fn an_edit_confirmed_after_the_month_turns_starts_the_monthly_budget_in_the_new_
         "June's and earlier records are untouched: {after:?}"
     );
 }
+
+/// A saved add is undone by the Shell's `u` and redone by `ctrl+r`, the row back under its own id
+/// (#1249).
+#[gpui::test]
+fn u_undoes_an_added_category_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
+    let mut ui = in_categories(app);
+    let before = ui.settings::<SettingsCategoriesSnapshot>().category_names;
+    ui.press("n");
+    ui.press("p e t s");
+    ui.press("enter");
+    let added = ui.settings::<SettingsCategoriesSnapshot>().category_names;
+    assert_ne!(added, before, "the add changed the page");
+
+    ui.press("u");
+    assert_eq!(
+        ui.settings::<SettingsCategoriesSnapshot>().category_names,
+        before
+    );
+    let status = ui.read(|shell| shell.status_message());
+    assert_eq!(status.as_deref(), Some("Undid Add category pets"));
+
+    ui.press("ctrl-r");
+    assert_eq!(
+        ui.settings::<SettingsCategoriesSnapshot>().category_names,
+        added
+    );
+}

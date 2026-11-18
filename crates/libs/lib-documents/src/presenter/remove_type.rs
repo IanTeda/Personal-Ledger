@@ -6,6 +6,7 @@
 //! under it.
 
 use lib_core::DocumentTypeId;
+use lib_toast::Notice;
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::keymap::{BACK, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
@@ -237,6 +238,9 @@ impl RemoveTypePresenter {
         let mut repository = self.ports.borrow_mut();
         let types = repository.document_types();
         let place = position(&types, self.id).unwrap_or(0);
+        let name = get(&types, self.id)
+            .map(|row| row.name.clone())
+            .unwrap_or_default();
         let removed = RemoveDocumentType {
             id: self.id,
             destination: self.destination.clone(),
@@ -245,13 +249,16 @@ impl RemoveTypePresenter {
         let after = repository.document_types();
         drop(repository);
         match removed {
-            Ok(()) => router.close(Some(DocumentTypesOutcome {
-                change: TypeChange::Removed,
-                // The type now sitting where the removed one did.
-                select: after
-                    .get(place.min(after.len().saturating_sub(1)))
-                    .map(|row| row.id),
-            })),
+            Ok(()) => {
+                router.notify(Notice::Changed(msg::documents_changed_type_removed(&name)));
+                router.close(Some(DocumentTypesOutcome {
+                    change: TypeChange::Removed,
+                    // The type now sitting where the removed one did.
+                    select: after
+                        .get(place.min(after.len().saturating_sub(1)))
+                        .map(|row| row.id),
+                }));
+            }
             Err(refusal) => self.error = Some(refusal),
         }
     }
@@ -326,10 +333,13 @@ mod tests {
         assert_eq!(types.last().map(|row| row.files), Some(33));
         assert_eq!(
             router.take(),
-            [RouterCall::CloseDialog(Some(DocumentTypesOutcome {
-                change: TypeChange::Removed,
-                select: Some(types[2].id),
-            }))]
+            [
+                RouterCall::Notice(Notice::Changed("Remove document type Tax".into())),
+                RouterCall::CloseDialog(Some(DocumentTypesOutcome {
+                    change: TypeChange::Removed,
+                    select: Some(types[2].id),
+                }))
+            ]
         );
     }
 
@@ -375,10 +385,13 @@ mod tests {
         let types = documents.borrow().types.clone();
         assert_eq!(
             router.take(),
-            [RouterCall::CloseDialog(Some(DocumentTypesOutcome {
-                change: TypeChange::Removed,
-                select: types.last().map(|row| row.id),
-            }))]
+            [
+                RouterCall::Notice(Notice::Changed("Remove document type Bills".into())),
+                RouterCall::CloseDialog(Some(DocumentTypesOutcome {
+                    change: TypeChange::Removed,
+                    select: types.last().map(|row| row.id),
+                }))
+            ]
         );
     }
 
@@ -453,7 +466,7 @@ mod tests {
         let calls = press(&mut presenter, DialogInput::Select);
         assert!(matches!(
             calls.as_slice(),
-            [RouterCall::CloseDialog(Some(_))]
+            [RouterCall::Notice(_), RouterCall::CloseDialog(Some(_))]
         ));
         assert_eq!(documents.borrow().types.len(), 8);
     }

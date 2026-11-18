@@ -585,3 +585,30 @@ fn typing_on_the_usual_unit_select_does_not_reach_the_name_or_the_shell(app: &mu
     assert_eq!(ui.dialog_value("name").as_deref(), Some("bank"));
     assert_eq!(ui.dialog(), Some("AddInstitution"));
 }
+
+/// A saved add is undone by the Shell's `u` and redone by `ctrl+r`, the row back under its own id
+/// (#1249).
+#[gpui::test]
+fn u_undoes_an_added_institution_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
+    let mut ui = in_institutions(app);
+    let before = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
+    ui.press("n");
+    ui.press("b a n k");
+    ui.press("enter");
+    let added = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
+    assert_ne!(added, before, "the add changed the page");
+
+    ui.press("u");
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions,
+        before
+    );
+    let status = ui.read(|shell| shell.status_message());
+    assert_eq!(status.as_deref(), Some("Undid Add institution bank"));
+
+    ui.press("ctrl-r");
+    assert_eq!(
+        ui.settings::<SettingsInstitutionsSnapshot>().institutions,
+        added
+    );
+}

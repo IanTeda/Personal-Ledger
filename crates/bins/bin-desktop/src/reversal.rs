@@ -2,9 +2,8 @@
 //! recorded below the Presenters as they are written and closed into one entry when the input's
 //! `send` drains (`Root::drain_notices`). `DeviceConfigFile` records `[General]`'s and
 //! `[Display]`'s keys here, and the Open Ledger's stores their row images in `lib-database`'s
-//! journal, which the drain takes as the entry's Ledger part. The Units, Institutions,
-//! Transactions, Bills, Budgets and Documents record (#1247, #1248); the other domains join with
-//! #1249, and a change to them alone makes no entry yet.
+//! journal, which the drain takes as the entry's Ledger part. Every Ledger domain records
+//! (#1247, #1248, #1249).
 //!
 //! The recording is per thread rather than held by `Root`, as the Notice queue is
 //! (`crate::notices`), since the device writes from inside a page's update with no way to reach
@@ -58,8 +57,6 @@ pub(crate) fn close(
     ledger: Option<LedgerReversal>,
 ) -> Option<Entry<Reversal>> {
     let configuration = RECORDED.with_borrow_mut(std::mem::take);
-    // The halfway state (#1248): a change to the domains not recording yet (#1249) leaves no image
-    // here, so it makes no entry; one that also wrote a recording domain is undone in part.
     if configuration.is_empty() && ledger.is_none() {
         return None;
     }

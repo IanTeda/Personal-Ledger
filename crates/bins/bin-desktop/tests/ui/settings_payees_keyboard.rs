@@ -657,3 +657,24 @@ fn the_cheat_sheet_shows_a_rebound_key(app: &mut TestAppContext) {
 
     ui.assert_cheat_sheet_matches_status("Settings keys");
 }
+
+/// A saved add is undone by the Shell's `u` and redone by `ctrl+r`, the row back under its own id
+/// (#1249).
+#[gpui::test]
+fn u_undoes_an_added_payee_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+    let before = ui.settings::<SettingsPayeesSnapshot>().payee_names;
+    ui.press("n");
+    ui.press("z o o");
+    ui.press("enter");
+    let added = ui.settings::<SettingsPayeesSnapshot>().payee_names;
+    assert_ne!(added, before, "the add changed the page");
+
+    ui.press("u");
+    assert_eq!(ui.settings::<SettingsPayeesSnapshot>().payee_names, before);
+    let status = ui.read(|shell| shell.status_message());
+    assert_eq!(status.as_deref(), Some("Undid Add payee zoo"));
+
+    ui.press("ctrl-r");
+    assert_eq!(ui.settings::<SettingsPayeesSnapshot>().payee_names, added);
+}

@@ -134,8 +134,13 @@ impl Presenter for DocumentTypesPagePresenter {
             }
             DocumentTypesPageEvent::Reorder(delta) => {
                 if let Some(id) = self.selected() {
+                    let name =
+                        get(&self.ports.borrow().document_types(), id).map(|row| row.name.clone());
                     MoveDocumentType { id, delta }.run(&mut *self.ports.borrow_mut());
                     self.selected = Some(id);
+                    if let Some(name) = name {
+                        router.notify(Notice::Changed(msg::documents_changed_type_moved(&name)));
+                    }
                 }
             }
             DocumentTypesPageEvent::EditRow(id) => {

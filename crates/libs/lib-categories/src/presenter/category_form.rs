@@ -21,6 +21,7 @@ use std::collections::BTreeMap;
 
 use lib_core::{CategoryId, CategoryTypes, Money};
 use lib_locale::format::format_month;
+use lib_toast::Notice;
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
@@ -480,11 +481,18 @@ impl CategoryFormPresenter {
             }
         };
         match saved {
-            Ok(category) => router.close(Some(CategoriesOutcome {
-                change: CategoryChange::Saved,
-                id: category.id,
-                name: category.name,
-            })),
+            Ok(category) => {
+                router.notify(Notice::Changed(if self.editing.is_some() {
+                    msg::categories_changed_edited(&category.name)
+                } else {
+                    msg::categories_changed_added(&category.name)
+                }));
+                router.close(Some(CategoriesOutcome {
+                    change: CategoryChange::Saved,
+                    id: category.id,
+                    name: category.name,
+                }));
+            }
             Err(refusal) => self.refusal = Some(save_refusal_text(&refusal)),
         }
     }
@@ -852,11 +860,14 @@ mod tests {
         assert_eq!(added.parent, Some(FOOD));
         assert_eq!(
             calls,
-            [RouterCall::CloseDialog(Some(CategoriesOutcome {
-                change: CategoryChange::Saved,
-                id: added.id,
-                name: "Takeaway".into(),
-            }))]
+            [
+                RouterCall::Notice(Notice::Changed("Add category Takeaway".into())),
+                RouterCall::CloseDialog(Some(CategoriesOutcome {
+                    change: CategoryChange::Saved,
+                    id: added.id,
+                    name: "Takeaway".into(),
+                }))
+            ]
         );
     }
 
@@ -1064,7 +1075,7 @@ mod tests {
 
         assert!(matches!(
             calls.as_slice(),
-            [RouterCall::CloseDialog(Some(outcome))] if outcome.name == "Pets"
+            [RouterCall::Notice(_), RouterCall::CloseDialog(Some(outcome))] if outcome.name == "Pets"
         ));
         assert!(
             categories
@@ -1081,7 +1092,7 @@ mod tests {
         let calls = press(&mut form, &[DialogInput::Select]);
         assert!(matches!(
             calls.as_slice(),
-            [RouterCall::CloseDialog(Some(_))]
+            [RouterCall::Notice(_), RouterCall::CloseDialog(Some(_))]
         ));
     }
 
@@ -1320,7 +1331,7 @@ mod tests {
         let calls = confirm(&mut form);
         assert!(matches!(
             calls.as_slice(),
-            [RouterCall::CloseDialog(Some(_))]
+            [RouterCall::Notice(_), RouterCall::CloseDialog(Some(_))]
         ));
     }
 
@@ -1595,7 +1606,7 @@ mod tests {
         // The Monthly budget saves, and the Category stays as it was.
         send(&mut form, vec![CategoryFormEvent::Budget("25".into())]);
         let calls = confirm(&mut form);
-        assert_eq!(calls.len(), 1, "closed: {calls:?}");
+        assert_eq!(calls.len(), 2, "changed, then closed: {calls:?}");
         assert_eq!(
             budget.borrow_mut().amounts.get(&uncategorised),
             Some(&money("25"))

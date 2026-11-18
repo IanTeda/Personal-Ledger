@@ -146,6 +146,9 @@ impl DeleteCategoryPresenter {
         let outcome = DeleteCategory { id: self.id }.run(&mut *self.deletion.borrow_mut());
         match outcome {
             Ok(deleted) => {
+                router.notify(Notice::Changed(msg::categories_changed_deleted(
+                    &deleted.name,
+                )));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     lib_locale::msg::toast_category_deleted(
@@ -278,6 +281,7 @@ mod tests {
         assert_eq!(
             router.take(),
             [
+                RouterCall::Notice(Notice::Changed("Delete category Groceries".into())),
                 RouterCall::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Deleted category Groceries \u{b7} 2 splits moved to Uncategorised".into()

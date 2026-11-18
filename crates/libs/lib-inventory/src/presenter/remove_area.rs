@@ -261,6 +261,9 @@ impl RemoveAreaPresenter {
                     ),
                     _ => msg::inventory_toast_area_removed(&self.name),
                 };
+                router.notify(Notice::Changed(msg::inventory_changed_area_removed(
+                    &self.name,
+                )));
                 router.notify(Notice::Toast(ToastKind::Success, toast));
                 // The cursor lands on the Area that takes the removed row's place, else the
                 // Location.
@@ -368,12 +371,12 @@ mod tests {
         assert!(!dialog.areas().contains(&areas[1]));
         let location = dialog.inventory.borrow().locations()[0].id;
         assert!(matches!(
-            &calls[0],
+            &calls[1],
             RouterCall::Notice(Notice::Toast(ToastKind::Success, text))
                 if text.starts_with("Removed area") && text.contains("moved its")
         ));
         assert_eq!(
-            calls[1],
+            calls[2],
             RouterCall::CloseDialog(Some(InventoryOutcome {
                 change: InventoryChange::AreaRemoved,
                 location,
@@ -440,6 +443,10 @@ mod tests {
         let calls = dialog.confirm();
         assert_eq!(
             calls[0],
+            RouterCall::Notice(Notice::Changed("Remove area Attic".into()))
+        );
+        assert_eq!(
+            calls[1],
             RouterCall::Notice(Notice::Toast(
                 ToastKind::Success,
                 "Removed area \"Attic\"".into()
@@ -495,7 +502,7 @@ mod tests {
         let calls = press(&mut dialog, DialogInput::Select);
         assert!(matches!(
             calls.as_slice(),
-            [_toast, RouterCall::CloseDialog(Some(_))]
+            [_changed, _toast, RouterCall::CloseDialog(Some(_))]
         ));
         assert_eq!(dialog.items_in(areas[1]), 0);
     }

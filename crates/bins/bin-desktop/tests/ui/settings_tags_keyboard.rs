@@ -290,3 +290,24 @@ fn a_failed_write_puts_the_tags_back_with_an_error_toast(app: &mut TestAppContex
             && toast.text == "Couldn't save the change to tags, so they are back as last saved"
     }));
 }
+
+/// A saved add is undone by the Shell's `u` and redone by `ctrl+r`, the row back under its own id
+/// (#1249).
+#[gpui::test]
+fn u_undoes_an_added_tag_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
+    let mut ui = in_tags(app);
+    let before = ui.settings::<SettingsTagsSnapshot>().tag_names;
+    ui.press("n");
+    ui.press("z e b r a");
+    ui.press("enter");
+    let added = ui.settings::<SettingsTagsSnapshot>().tag_names;
+    assert_ne!(added, before, "the add changed the page");
+
+    ui.press("u");
+    assert_eq!(ui.settings::<SettingsTagsSnapshot>().tag_names, before);
+    let status = ui.read(|shell| shell.status_message());
+    assert_eq!(status.as_deref(), Some("Undid Add tag zebra"));
+
+    ui.press("ctrl-r");
+    assert_eq!(ui.settings::<SettingsTagsSnapshot>().tag_names, added);
+}

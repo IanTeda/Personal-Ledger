@@ -352,6 +352,10 @@ impl MergeTagsPresenter {
         let outcome = MergeTags { source, target }.run(&mut *self.removal.borrow_mut());
         match outcome {
             Ok(merged) => {
+                router.notify(Notice::Changed(msg::tags_changed_merged(
+                    &merged.source_name,
+                    &merged.target_name,
+                )));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     lib_locale::msg::toast_tag_merged(
@@ -680,6 +684,7 @@ mod tests {
         assert_eq!(
             router.take(),
             [
+                RouterCall::Notice(Notice::Changed("Merge tag Work Trip into work-trip".into())),
                 RouterCall::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Merged tag Work Trip into work-trip \u{b7} 2 transactions retagged".into()

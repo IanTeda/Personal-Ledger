@@ -744,3 +744,36 @@ fn a_unit_recoded_on_the_units_page_shows_by_its_new_code_on_a_location(app: &mu
 
     assert_eq!(unit(&mut ui), "aux");
 }
+
+/// A saved add is undone by the Shell's `u` and redone by `ctrl+r`, the row back under its own id
+/// (#1249).
+#[gpui::test]
+fn u_undoes_an_added_location_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
+    let mut ui = in_inventory(app);
+    let before = ui
+        .settings::<SettingsInventorySnapshot>()
+        .inventory_locations;
+    ui.press("n");
+    ui.press("c a b i n");
+    ui.press("enter");
+    let added = ui
+        .settings::<SettingsInventorySnapshot>()
+        .inventory_locations;
+    assert_ne!(added, before, "the add changed the page");
+
+    ui.press("u");
+    assert_eq!(
+        ui.settings::<SettingsInventorySnapshot>()
+            .inventory_locations,
+        before
+    );
+    let status = ui.read(|shell| shell.status_message());
+    assert_eq!(status.as_deref(), Some("Undid Add location cabin"));
+
+    ui.press("ctrl-r");
+    assert_eq!(
+        ui.settings::<SettingsInventorySnapshot>()
+            .inventory_locations,
+        added
+    );
+}
