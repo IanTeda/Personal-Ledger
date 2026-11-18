@@ -497,7 +497,7 @@ mod tests {
     use crate::presenter::ShellPresenter;
 
     /// What a test Command does: its name.
-    type Shell = ShellPresenter<(), &'static str>;
+    type Shell = ShellPresenter<(), &'static str, &'static str>;
 
     fn entry(
         name: &'static str,

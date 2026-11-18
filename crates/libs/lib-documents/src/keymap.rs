@@ -51,8 +51,6 @@ pub const ACCEPT: &str = "documents.accept";
 pub const ACCEPT_ALL: &str = "documents.accept_all";
 /// Set the focused Inbox row aside for the session.
 pub const SKIP: &str = "documents.skip";
-/// Reverse the last filing.
-pub const UNDO: &str = "documents.undo";
 
 /// The Documents page's commands, with today's keys. The moves and `select` act on the focus zone;
 /// the arrow, Home/End and Page keys move as `j`/`k`, `g g`/`G` and `ctrl+d`/`ctrl+u` do, each
@@ -143,7 +141,6 @@ pub const DOCUMENTS_PAGE_BINDINGS: &[Binding<DocumentsPageEvent>] = &[
         msg::documents_command_accept_all,
     ),
     Binding::hidden(SKIP, "x", DocumentsPageEvent::Skip),
-    Binding::hidden(UNDO, "u", DocumentsPageEvent::Undo),
 ];
 
 /// The Documents page's keymap under `config`'s overrides.

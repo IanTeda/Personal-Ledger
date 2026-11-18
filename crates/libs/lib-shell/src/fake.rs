@@ -37,10 +37,13 @@ pub enum Routed {
     OpenedLedger(PathBuf),
     CreatedLedger(PathBuf),
     SetDataFolder(PathBuf),
+    Reversed(&'static str),
+    Replayed(&'static str),
 }
 
 /// A root Router that records each call and answers as a test set it: by default a Ledger is
-/// open, every View has a Search and takes `esc`, every file opens and every Data folder applies.
+/// open, every View has a Search and takes `esc`, every file opens, every Data folder applies and
+/// every Undo and Redo applies.
 #[derive(Debug)]
 pub struct RecordingRouter {
     pub routed: Vec<Routed>,
@@ -55,6 +58,8 @@ pub struct RecordingRouter {
     /// What [`ShellRouter::set_data_folder`] answers: whether the folder picked is now in effect.
     pub data_folder_applies: bool,
     pub folders: FakeLedgerFolders,
+    /// What [`ShellRouter::reverse`] and [`ShellRouter::replay`] answer: whether the step applied.
+    pub steps_apply: bool,
 }
 
 impl Default for RecordingRouter {
@@ -70,6 +75,7 @@ impl Default for RecordingRouter {
             opens: true,
             data_folder_applies: true,
             folders: FakeLedgerFolders::default(),
+            steps_apply: true,
         }
     }
 }
@@ -85,6 +91,8 @@ impl ShellRouter for RecordingRouter {
     type Failure = String;
     /// A test's Client effect is its name.
     type Effect = &'static str;
+    /// A test's reversal is its name.
+    type Reversal = &'static str;
 
     fn month_turned(&mut self, today: NaiveDate) {
         self.routed.push(Routed::MonthTurned(today));
@@ -92,6 +100,16 @@ impl ShellRouter for RecordingRouter {
 
     fn write_failed(&mut self, failure: String) {
         self.routed.push(Routed::WriteFailed(failure));
+    }
+
+    fn reverse(&mut self, reversal: &&'static str) -> bool {
+        self.routed.push(Routed::Reversed(reversal));
+        self.steps_apply
+    }
+
+    fn replay(&mut self, reversal: &&'static str) -> bool {
+        self.routed.push(Routed::Replayed(reversal));
+        self.steps_apply
     }
 
     fn not_a_jump(&mut self, sequence: String) {

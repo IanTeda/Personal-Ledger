@@ -12,3 +12,9 @@ help-shortcut-help = This help
 help-shortcut-focus = Move focus
 help-shortcut-confirm = Open / confirm
 help-shortcut-close = Close overlay
+help-shortcut-undo = Undo
+help-shortcut-redo = Redo
+
+## The status line when `u` or `ctrl+r` finds an empty History (`lib_shell::ShellPresenter`).
+status-nothing-to-undo = Nothing to undo
+status-nothing-to-redo = Nothing to redo

@@ -19,13 +19,15 @@
 //! Client's to the Router ([`PaletteEffect`]). It holds the file explorer
 //! behind `:open` and `:new` ([`explorer`]), reading folders through [`LedgerFolders`]. A Notice from a View not
 //! yet a module and a failed write pass through it to the Router. It holds the rail's badge counts, read through [`ShellRailCounts`]
-//! after each input while a Ledger is open. No module depends on it; only the bins and the adapter
+//! after each input while a Ledger is open. It holds the [`History`] the global `undo` and `redo` step
+//! through, reaching the Client through [`ShellRouter::reverse`] and [`ShellRouter::replay`]. No module depends on it; only the bins and the adapter
 //! answering that port do.
 
 pub mod dialog;
 pub mod explorer;
 pub mod fake;
 pub mod help;
+pub mod history;
 pub mod keymap;
 pub mod nav;
 pub mod navigation;
@@ -42,6 +44,7 @@ pub use explorer::{
     ExplorerViewModel, FolderEntry, FolderUnreadable, LedgerFolders,
 };
 pub use help::{HelpEvent, HelpGroup, HelpPresenter, HelpViewModel};
+pub use history::{Entry, History, Stepped};
 pub use keymap::{ShellCommand, global_keymap};
 pub use nav::{ContextSelection, FocusZone, InputMode, NavState};
 pub use navigation::{ActiveView, Movement, Noun};

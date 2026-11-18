@@ -12,7 +12,7 @@ use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
 
-use crate::keymap::{GLOBAL_BINDINGS, HELP, OPEN_COMMAND_POPUP, ShellCommand};
+use crate::keymap::{GLOBAL_BINDINGS, HELP, OPEN_COMMAND_POPUP, REDO, ShellCommand, UNDO};
 use crate::navigation::Noun;
 
 /// A View's own keys in the Help Dialog, under the View's heading: `keys` as `(action, keys)`,
@@ -139,6 +139,8 @@ fn global_shortcuts(keymap: &Keymap<ShellCommand>) -> Vec<(String, String)> {
         ),
         (msg::help_shortcut_confirm(), key(SELECT)),
         (msg::help_shortcut_close(), key(BACK)),
+        (msg::help_shortcut_undo(), key(UNDO)),
+        (msg::help_shortcut_redo(), key(REDO)),
     ]
 }
 
@@ -263,6 +265,15 @@ mod tests {
         assert!(globals.contains(&(msg::help_shortcut_help(), "?".to_string())));
         assert!(globals.contains(&(msg::help_shortcut_close(), "esc".to_string())));
         assert!(globals.contains(&(msg::help_shortcut_confirm(), "enter".to_string())));
+    }
+
+    #[test]
+    fn the_cheat_sheet_lists_undo_and_redo_under_their_keys() {
+        let help = open(&KeyBindingConfig::default(), None);
+        let globals = &help.view_model().globals;
+
+        assert!(globals.contains(&("Undo".to_string(), "u".to_string())));
+        assert!(globals.contains(&("Redo".to_string(), "ctrl+r".to_string())));
     }
 
     #[test]

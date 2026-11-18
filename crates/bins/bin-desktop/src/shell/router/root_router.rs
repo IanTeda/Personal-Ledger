@@ -71,6 +71,8 @@ impl Notify for RootRouter<'_, '_> {
 impl ShellRouter for RootRouter<'_, '_> {
     type Failure = WriteFailure;
     type Effect = CommandEffect;
+    /// Nothing records onto the History yet, so an entry has nothing to reverse.
+    type Reversal = ();
 
     /// Generates the new month's Bill Schedule, committed as the day poll's one write. The Dashboard
     /// keeps its view model by the day, so it rebuilds on its own. The Budgets page moves a month on
@@ -102,6 +104,16 @@ impl ShellRouter for RootRouter<'_, '_> {
         for notice in super::write_failures::roll_back(&failure, open, self.cx) {
             self.notify(notice);
         }
+    }
+
+    /// Nothing records onto the History yet, so there is nothing to put back.
+    fn reverse(&mut self, _reversal: &()) -> bool {
+        true
+    }
+
+    /// Nothing records onto the History yet, so there is nothing to make again.
+    fn replay(&mut self, _reversal: &()) -> bool {
+        true
     }
 
     /// The handoff: "`g` + an unbound key is a no-op: clear the pending prefix and flash the hint

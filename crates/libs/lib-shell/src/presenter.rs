@@ -29,6 +29,7 @@ use crate::explorer::{
     ExplorerViewModel, LedgerFolders,
 };
 use crate::help::HelpPresenter;
+use crate::history::{History, Stepped};
 use crate::keymap::{HELP, OPEN_COMMAND_POPUP, SEARCH, ShellCommand, TOGGLE_RAIL, global_keymap};
 use crate::nav::{ContextSelection, FocusZone, InputMode, NavState};
 use crate::navigation::{Movement, Noun};
@@ -162,8 +163,9 @@ const HINTS: [(&str, ShellCommand, Label); 4] = [
 ];
 
 /// The Shell's Presenter. `P` is the Client's Settings page, which the Back history steps between,
-/// and `E` what one of the Client's own palette Commands does, which its Router acts on.
-pub struct ShellPresenter<P, E = ()> {
+/// `E` what one of the Client's own palette Commands does, which its Router acts on, and `H` what
+/// reverses a History entry ([`ShellRouter::Reversal`]).
+pub struct ShellPresenter<P, E = (), H = ()> {
     clock: Clock,
     /// The calendar month the Shell last saw the Clock read.
     month: Period,
@@ -195,9 +197,11 @@ pub struct ShellPresenter<P, E = ()> {
     last_tick: Option<Instant>,
     /// The rail's badge counts with the day they were read on; `None` with no Ledger open.
     rail_counts: Option<(NaiveDate, RailCounts)>,
+    /// What `undo` and `redo` step through.
+    history: History<H>,
 }
 
-impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
+impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
     /// The Shell on the month `clock` reads now, which the Client generated the Schedule for as
     /// it started, and at `nav`, where the launch restored the person to.
     pub fn new(clock: Clock, nav: NavState<P>) -> Self {
@@ -220,6 +224,7 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
             toasts_hovered: false,
             last_tick: None,
             rail_counts: None,
+            history: History::default(),
         }
     }
 
@@ -276,7 +281,7 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     /// A key while the palette is open, `chord` as `[keybindings]` writes it and `typed` the
     /// character it types, if any. Closing it leaves Command mode; a Command chosen is run
     /// ([`Self::run_palette`]). Whether it changed anything.
-    pub fn palette_key<R: ShellRouter<Effect = E> + ?Sized>(
+    pub fn palette_key<R: ShellRouter<Effect = E, Reversal = H> + ?Sized>(
         &mut self,
         chord: &str,
         typed: Option<char>,
@@ -304,7 +309,7 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     /// file explorer stays in Command mode while it is open; every other Command leaves it first,
     /// then runs: the Shell's own here, and a Client's through the Router once its destination
     /// shows, as its key would.
-    pub fn run_palette<R: ShellRouter<Effect = E> + ?Sized>(
+    pub fn run_palette<R: ShellRouter<Effect = E, Reversal = H> + ?Sized>(
         &mut self,
         run: PaletteRun<PaletteEffect<P, E>>,
         router: &mut R,
@@ -715,7 +720,11 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     /// Resolves `chord`, a key as `[keybindings]` writes it, through the global keymap. A key
     /// after a prefix finishes the sequence: a kept command runs, one the Shell falls back on is
     /// passed on whole, and an unbound one is no jump. `back` after a prefix only drops it.
-    pub fn key<R: ShellRouter + ?Sized>(&mut self, chord: &str, router: &mut R) -> ShellKey {
+    pub fn key<R: ShellRouter<Reversal = H> + ?Sized>(
+        &mut self,
+        chord: &str,
+        router: &mut R,
+    ) -> ShellKey {
         if let Some(prefix) = self.prefix.take() {
             if self.keymap.event(chord) == Some(ShellCommand::Back) {
                 return ShellKey::Taken;
@@ -735,7 +744,11 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     }
 
     /// Runs a kept command, or passes the key on with the command the Shell falls back on.
-    fn resolve<R: ShellRouter + ?Sized>(&mut self, chord: String, router: &mut R) -> ShellKey {
+    fn resolve<R: ShellRouter<Reversal = H> + ?Sized>(
+        &mut self,
+        chord: String,
+        router: &mut R,
+    ) -> ShellKey {
         match self.keymap.event(&chord) {
             Some(command) if !command.falls_back() => {
                 self.command(command, router);
@@ -749,7 +762,7 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     /// declined the key, or a click on its status-line hint. The commands that change only the
     /// Shell's own state run here; the rest reach the View or the frame through the Router's typed
     /// methods. Whether what the window draws may have changed.
-    pub fn command<R: ShellRouter + ?Sized>(
+    pub fn command<R: ShellRouter<Reversal = H> + ?Sized>(
         &mut self,
         command: ShellCommand,
         router: &mut R,
@@ -788,6 +801,17 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
             ShellCommand::ToastHistory => {
                 let history = ToastHistoryPresenter::open(self.toasts.history());
                 self.host(ShellDialog::ToastHistory(history), router);
+            }
+            // Undo and Redo never navigate: the View the change came from repaints itself.
+            ShellCommand::Undo => {
+                if self.history.undo(|reversal| router.reverse(reversal)) == Stepped::Nothing {
+                    router.notify(Notice::Status(msg::status_nothing_to_undo()));
+                }
+            }
+            ShellCommand::Redo => {
+                if self.history.redo(|reversal| router.replay(reversal)) == Stepped::Nothing {
+                    router.notify(Notice::Status(msg::status_nothing_to_redo()));
+                }
             }
             ShellCommand::Jump(noun) => self.jump(noun, true, router),
             ShellCommand::ChangeDataFolder => {
@@ -952,6 +976,7 @@ mod tests {
 
     use super::*;
     use crate::fake::{FakeRailCounts, RecordingRouter, Routed};
+    use crate::history::Entry;
     use crate::keymap::GLOBAL_BINDINGS;
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -959,7 +984,7 @@ mod tests {
     }
 
     /// A Client with no Settings pages to step between.
-    type Shell = ShellPresenter<(), &'static str>;
+    type Shell = ShellPresenter<(), &'static str, &'static str>;
 
     fn presenter(clock: Clock) -> Shell {
         ShellPresenter::new(clock, NavState::new())
@@ -1402,6 +1427,62 @@ mod tests {
         };
         assert_eq!(history.view_model().rows.len(), 1);
         assert_eq!(shell.nav().mode(), InputMode::Dialog);
+    }
+
+    #[test]
+    fn undo_and_redo_with_an_empty_history_say_so_on_the_status_line_and_change_nothing() {
+        let mut shell = shell();
+        shell.navigate(NavInput::Show(Noun::Bills));
+
+        let (undo, undo_routed) = press(&mut shell, &["u"]);
+        let (redo, redo_routed) = press(&mut shell, &["ctrl+r"]);
+
+        assert_eq!(undo, ShellKey::Taken);
+        assert_eq!(redo, ShellKey::Taken);
+        assert_eq!(undo_routed, [Routed::Notice(status("Nothing to undo"))]);
+        assert_eq!(redo_routed, [Routed::Notice(status("Nothing to redo"))]);
+        assert_eq!(shell.nav().noun(), Noun::Bills, "no navigation");
+        assert_eq!(shell.nav().mode(), InputMode::Normal);
+    }
+
+    #[test]
+    fn undo_reverses_the_newest_entry_and_redo_replays_it_without_navigating() {
+        let mut shell = shell();
+        shell.navigate(NavInput::Show(Noun::Bills));
+        shell.history.push(Entry {
+            label: "Set Locale".to_string(),
+            reversal: "locale",
+        });
+
+        let (_, undone) = press(&mut shell, &["u"]);
+        let (_, redone) = press(&mut shell, &["ctrl+r"]);
+
+        assert_eq!(undone, [Routed::Reversed("locale")]);
+        assert_eq!(redone, [Routed::Replayed("locale")]);
+        assert_eq!(shell.nav().noun(), Noun::Bills);
+    }
+
+    #[test]
+    fn a_failed_undo_keeps_the_entry_to_undo_again() {
+        let mut shell = shell();
+        shell.history.push(Entry {
+            label: "Set Locale".to_string(),
+            reversal: "locale",
+        });
+        let mut router = RecordingRouter {
+            steps_apply: false,
+            ..RecordingRouter::default()
+        };
+
+        shell.command(ShellCommand::Undo, &mut router);
+        router.steps_apply = true;
+        shell.command(ShellCommand::Undo, &mut router);
+
+        assert_eq!(
+            router.routed,
+            [Routed::Reversed("locale"), Routed::Reversed("locale")]
+        );
+        assert!(shell.history.can_redo());
     }
 
     #[test]

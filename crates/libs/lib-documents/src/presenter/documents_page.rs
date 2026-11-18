@@ -28,7 +28,7 @@ use crate::interactor::{
     Accept, AcceptAllStrong, FileByHand, ImportDocuments, ToggleLink, UndoFiling,
 };
 use crate::keymap::{
-    ACCEPT, ACCEPT_ALL, ADD, FOLLOW, IMPORT, LINK, SHOW_IN_FOLDER, SKIP, SORT, TOGGLE_MODE, UNDO,
+    ACCEPT, ACCEPT_ALL, ADD, FOLLOW, IMPORT, LINK, SHOW_IN_FOLDER, SKIP, SORT, TOGGLE_MODE,
     documents_page_keymap,
 };
 use crate::protocols::{
@@ -986,13 +986,10 @@ impl DocumentsPagePresenter {
                 Hint::new(self.keymap.hint_chord(EDIT), msg::documents_hint_edit()),
                 Hint::new(self.keymap.hint_chord(ADD), msg::documents_hint_add()),
             ],
-            DocumentsMode::Inbox => vec![
-                Hint::new(self.keymap.hint_chord(UNDO), msg::documents_hint_undo()),
-                Hint::new(
-                    self.keymap.hint_chord(ACCEPT_ALL),
-                    msg::documents_hint_accept_all(),
-                ),
-            ],
+            DocumentsMode::Inbox => vec![Hint::new(
+                self.keymap.hint_chord(ACCEPT_ALL),
+                msg::documents_hint_accept_all(),
+            )],
         };
         index
             .into_iter()

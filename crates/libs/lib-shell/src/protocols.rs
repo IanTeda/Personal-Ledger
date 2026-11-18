@@ -36,6 +36,10 @@ pub trait ShellRouter: Notify {
     /// What one of the Client's palette Commands does ([`crate::PaletteEffect::Client`]).
     type Effect;
 
+    /// What reverses one History entry's change, the Client's own, since the Shell can't name a
+    /// Ledger's or the Configuration's writes ([`crate::History`]).
+    type Reversal;
+
     /// The Clock has crossed into a new calendar month, now `today`: generate its Bill Schedule
     /// and move every View dated by the month on to it.
     fn month_turned(&mut self, today: NaiveDate);
@@ -43,6 +47,14 @@ pub trait ShellRouter: Notify {
     /// A write the Client committed failed: put what it named back as stored and tell the person
     /// at once, with an Error Toast (ADR-0046).
     fn write_failed(&mut self, failure: Self::Failure);
+
+    /// Undo: puts back what `reversal` changed. Whether it applied; one that didn't stays on the
+    /// History to undo, and says why itself.
+    fn reverse(&mut self, reversal: &Self::Reversal) -> bool;
+
+    /// Redo: makes again the change `reversal` undid. Whether it applied; one that didn't stays on
+    /// the History to redo, and says why itself.
+    fn replay(&mut self, reversal: &Self::Reversal) -> bool;
 
     /// A prefix was followed by a key that finishes no sequence (`g x`): say so on the status
     /// line.

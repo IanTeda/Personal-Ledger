@@ -34,6 +34,8 @@ pub const FOCUS_PREVIOUS: &str = "focus_previous";
 pub const INSERT: &str = "insert";
 pub const DISMISS_TOASTS: &str = "dismiss_toasts";
 pub const TOAST_HISTORY: &str = "toast_history";
+pub const UNDO: &str = "undo";
+pub const REDO: &str = "redo";
 pub const CHANGE_DATA_FOLDER: &str = "change_data_folder";
 pub const JUMP_DASHBOARD: &str = "jump_dashboard";
 pub const JUMP_TRANSACTIONS: &str = "jump_transactions";
@@ -64,6 +66,10 @@ pub enum ShellCommand {
     Back,
     DismissToasts,
     ToastHistory,
+    /// Undoes the newest History entry.
+    Undo,
+    /// Redoes the History entry undone last.
+    Redo,
     Jump(Noun),
     /// `:data`: opens the file explorer to pick the Data folder, from any View, with or without a
     /// Ledger open.
@@ -130,6 +136,14 @@ pub const GLOBAL_BINDINGS: &[Binding<ShellCommand>] = &[
         ShellCommand::ToastHistory,
         "toasts",
         msg::command_toast_history,
+    ),
+    Binding::listed(UNDO, "u", ShellCommand::Undo, "undo", msg::command_undo),
+    Binding::listed(
+        REDO,
+        "ctrl+r",
+        ShellCommand::Redo,
+        "redo",
+        msg::command_redo,
     ),
     Binding::listed(
         CHANGE_DATA_FOLDER,
@@ -306,6 +320,8 @@ mod tests {
             "shift+tab",
             "esc",
             "ctrl+l",
+            "u",
+            "ctrl+r",
             "g",
             "g x",
             "g d",

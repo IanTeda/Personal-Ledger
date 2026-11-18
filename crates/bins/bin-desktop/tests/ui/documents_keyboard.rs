@@ -1,5 +1,5 @@
 //! The Documents page driven by keys alone: landing, the Inbox/Library toggle, the index and list
-//! zones, the Library's sort and search, the Inbox's accept, skip and undo, the link picker, `L`,
+//! zones, the Library's sort and search, the Inbox's accept and skip, the link picker, `L`,
 //! the Add, Import, Edit, Edit facts, Accept all and Delete Dialogs, their refusals, and the palette's
 //! `documents` commands. Assertions read state back
 //! from `Root`, never pixels.
@@ -182,7 +182,7 @@ fn slash_is_inert_in_the_inbox(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn y_accepts_the_focused_strong_match_and_u_undoes_it(app: &mut TestAppContext) {
+fn y_accepts_the_focused_strong_match(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.press("i");
     focus_row(&mut ui, STRONG_RECEIPT);
@@ -196,12 +196,6 @@ fn y_accepts_the_focused_strong_match_and_u_undoes_it(app: &mut TestAppContext) 
         "the filed row leaves the Inbox"
     );
     assert_ne!(accepted.selected_file.as_deref(), Some(STRONG_RECEIPT));
-
-    ui.press("u");
-    let undone = ui.documents();
-    assert_eq!(undone.inbox_rows, before);
-    assert_eq!(undone.selected_file.as_deref(), Some(STRONG_RECEIPT));
-    assert!(!undone.toasts.is_empty(), "undo says so with a Toast");
 }
 
 /// The page's key is one input: the filing and the Toast saying so commit once together, through
@@ -224,8 +218,11 @@ fn an_accept_is_one_input_committed_once_with_its_toast(app: &mut TestAppContext
     assert_eq!(ui.commits(), before + 1);
 }
 
+/// Documents binds no `u` of its own (#1243): the Shell's Undo takes it.
 #[gpui::test]
-fn u_with_nothing_to_undo_changes_nothing_and_says_so(app: &mut TestAppContext) {
+fn u_is_the_shells_undo_which_with_nothing_to_undo_changes_nothing_and_says_so(
+    app: &mut TestAppContext,
+) {
     let mut ui = on_documents(app);
     ui.press("i");
     let before = ui.documents();
@@ -233,7 +230,7 @@ fn u_with_nothing_to_undo_changes_nothing_and_says_so(app: &mut TestAppContext) 
     ui.press("u");
 
     let after = ui.documents();
-    assert_eq!(after.status.as_deref(), Some("Nothing to undo."));
+    assert_eq!(after.status.as_deref(), Some("Nothing to undo"));
     assert_eq!(
         DocumentsSnapshot {
             status: None,
@@ -376,7 +373,6 @@ fn y_and_x_do_nothing_in_the_library(app: &mut TestAppContext) {
     let before = ui.documents();
 
     ui.press("x");
-    ui.press("u");
 
     assert_eq!(ui.documents(), before);
 }
@@ -453,7 +449,7 @@ fn the_link_picker_pins_a_current_link_and_enter_removes_it(app: &mut TestAppCon
 }
 
 #[gpui::test]
-fn picking_in_the_inbox_files_the_document_and_u_undoes_it(app: &mut TestAppContext) {
+fn picking_in_the_inbox_files_the_document(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.press("i");
     focus_row(&mut ui, STRONG_RECEIPT);
@@ -464,11 +460,6 @@ fn picking_in_the_inbox_files_the_document_and_u_undoes_it(app: &mut TestAppCont
     let filed = ui.documents();
     assert_eq!(filed.dialog, None);
     assert_eq!(filed.inbox_rows, before - 1, "picking files the Document");
-
-    ui.press("u");
-    let undone = ui.documents();
-    assert_eq!(undone.inbox_rows, before, "one `u` undoes the filing");
-    assert_eq!(undone.selected_file.as_deref(), Some(STRONG_RECEIPT));
 }
 
 #[gpui::test]
@@ -955,7 +946,7 @@ fn e_in_the_inbox_edits_the_extracted_facts_and_refuses_a_bad_total(app: &mut Te
 }
 
 #[gpui::test]
-fn accept_all_files_the_count_it_quotes_and_u_undoes_them_all(app: &mut TestAppContext) {
+fn accept_all_files_the_count_it_quotes(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.press("i");
     let before = ui.documents().inbox_rows;
@@ -971,9 +962,6 @@ fn accept_all_files_the_count_it_quotes_and_u_undoes_them_all(app: &mut TestAppC
         body.contains(&count.to_string()),
         "the confirm quotes the count it files: {body}"
     );
-
-    ui.press("u");
-    assert_eq!(ui.documents().inbox_rows, before, "one `u` undoes them all");
 }
 
 #[gpui::test]
@@ -1016,7 +1004,7 @@ fn d_in_the_library_confirms_then_deletes_the_document_and_esc_keeps_it(app: &mu
 }
 
 #[gpui::test]
-fn d_in_the_inbox_confirms_then_deletes_and_u_has_nothing_to_undo_for_it(app: &mut TestAppContext) {
+fn d_in_the_inbox_confirms_and_esc_keeps_it_then_a_filed_one_deletes(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.press("i");
     focus_row(&mut ui, STRONG_RECEIPT);
@@ -1028,20 +1016,13 @@ fn d_in_the_inbox_confirms_then_deletes_and_u_has_nothing_to_undo_for_it(app: &m
     assert_eq!(ui.documents().dialog, None);
     assert_eq!(ui.documents().inbox_rows, before.inbox_rows);
 
-    // Accept it, so a filing Undo names it, then delete it from the Library.
+    // Accept it, then delete it from the Library.
     ui.press("y");
     ui.press("i");
     focus_row(&mut ui, STRONG_RECEIPT);
     ui.press("d");
     ui.press("enter");
     assert_eq!(ui.documents().library_rows, before.library_rows);
-    ui.press("i");
-    ui.press("u");
-    assert_eq!(
-        ui.documents().status.as_deref(),
-        Some("Nothing to undo."),
-        "`u` never reports undoing a Document that is gone"
-    );
 }
 
 #[gpui::test]

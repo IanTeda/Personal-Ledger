@@ -1,7 +1,7 @@
 //! The Shell driven by keys alone: `g` jumps, the primary rail's browse-and-commit, focus
 //! zone cycling, the rail toggle, the modes the global keys enter and leave, and the order a key
 //! is offered in (`bin_desktop`'s `input::route_key`), each step winning a key a later one also
-//! binds, the status message answering one key, the hints naming rebound keys, and the rail's
+//! binds, Undo and Redo as keys the Shell keeps, the status message answering one key, the hints naming rebound keys, and the rail's
 //! badges following a commit. Assertions read `NavState` and the rail counts back from `Root`,
 //! never pixels.
 
@@ -314,6 +314,98 @@ fn esc_closes_the_undo_list_and_does_nothing_else(app: &mut TestAppContext) {
     assert!(!ui.read(|s| s.undo_menu_open()));
     assert_eq!(ui.noun(), Noun::Transactions);
     assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+// Undo and Redo (#1243): kept globals, which with nothing recorded yet say so.
+
+fn status(ui: &mut Harness<'_>) -> Option<String> {
+    ui.read(|shell| shell.status_message())
+}
+
+#[gpui::test]
+fn u_and_ctrl_r_say_there_is_nothing_to_undo_or_redo_on_every_view(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    for (chord, noun) in jumps() {
+        ui.press(chord);
+        ui.press("u");
+        assert_eq!(
+            status(&mut ui).as_deref(),
+            Some("Nothing to undo"),
+            "{noun:?}"
+        );
+        ui.press("ctrl-r");
+        assert_eq!(
+            status(&mut ui).as_deref(),
+            Some("Nothing to redo"),
+            "{noun:?}"
+        );
+        assert_eq!(ui.noun(), noun, "Undo and Redo never navigate");
+        assert_eq!(mode(&mut ui), InputMode::Normal);
+    }
+}
+
+#[gpui::test]
+fn a_dialogs_text_field_types_u_and_takes_ctrl_r_before_the_shell(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    to_units(&mut ui);
+    ui.press("n");
+
+    ui.press("u");
+    ui.press("ctrl-r");
+
+    assert_eq!(
+        ui.dialog_value("code").as_deref(),
+        Some("u"),
+        "typed, not Undo"
+    );
+    assert_eq!(status(&mut ui), None);
+    assert_eq!(mode(&mut ui), InputMode::Dialog);
+}
+
+#[gpui::test]
+fn the_palette_types_u_and_keeps_ctrl_r_for_its_history(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    ui.press(": u");
+    assert_eq!(
+        ui.read(|shell| shell.palette_snapshot().map(|palette| palette.input))
+            .as_deref(),
+        Some("u")
+    );
+    ui.press("ctrl-r");
+
+    assert_eq!(status(&mut ui), None, "not Redo");
+    assert_eq!(mode(&mut ui), InputMode::Command);
+}
+
+#[gpui::test]
+fn the_palette_offers_undo_and_redo_under_their_keys(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    for (query, key) in [("undo", "u"), ("redo", "ctrl+r")] {
+        ui.press(":");
+        for character in query.chars() {
+            ui.press(&character.to_string());
+        }
+        let palette = ui
+            .read(|shell| shell.palette_snapshot())
+            .expect("the palette is open");
+        let at = palette
+            .matches
+            .iter()
+            .position(|name| *name == query)
+            .expect("undo and redo are offered");
+        assert_eq!(palette.keys[at], key);
+
+        ui.press("enter");
+        let said = format!("Nothing to {query}");
+        assert_eq!(
+            status(&mut ui),
+            Some(said),
+            "the Command runs as its key does"
+        );
+    }
 }
 
 // The key route: each step wins a key a later step also binds.

@@ -136,7 +136,6 @@ documents-hint-show-in-folder = show in folder
 documents-hint-sort = sort
 documents-hint-import = import
 documents-hint-accept = accept
-documents-hint-undo = undo
 documents-hint-accept-all = accept all strong matches
 documents-hint-link-elsewhere = link elsewhere
 documents-hint-follow = follow link

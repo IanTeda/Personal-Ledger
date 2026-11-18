@@ -651,6 +651,8 @@ On the Desktop, the keys that work on every screen are the global keymap, which 
 | `focus_next`         | `tab`       |
 | `focus_previous`     | `shift+tab` |
 | `insert`             | `a`         |
+| `undo`               | `u`         |
+| `redo`               | `ctrl+r`    |
 | `move_first`         | `g g`       |
 | `move_last`          | `G`         |
 | `half_page_down`     | `ctrl+d`    |
@@ -678,6 +680,8 @@ On the Desktop, the keys that work on every screen are the global keymap, which 
 A key written with a space is a sequence: press `g`, let go, then the letter, within a second. The movement keys move whichever list or rail has focus, so an override of `move_down` or `home` moves the Units and Bills lists as well as the rails. `focus_next`, `insert`, the movement keys and `select` give way to a screen that uses the same key for something of its own, such as Bills' `tab`, which switches tab.
 
 `quit` is deliberately **not** configurable: `bin-tui` has three separate, hardcoded quit mechanisms (`Ctrl+C` hard-quit, `Q`/`q` graceful quit, and the `:quit` command), none of which read this section.
+
+`undo` and `redo` step back and forward through what you've changed, on every screen; with nothing to undo or redo they say so on the status line. A Dialog, the palette, a text field or the Transactions filter takes the key first, so there `u` types and `ctrl+r` does that surface's own thing.
 
 `dismiss_toasts` dismisses every showing Toast, in `Normal` mode only; it is deliberately not `esc`, so a sticky Error Toast doesn't vanish on the key that backs out of a dialog. `toast_history` has no default key because the `toasts` command (alias `messages`) opens the Toast history; set it to bind one. See [Toasts design](toasts-design.md).
 

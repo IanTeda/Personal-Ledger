@@ -6,19 +6,21 @@ use super::common::Harness;
 use gpui::TestAppContext;
 use lib_config::KeyBindingConfig;
 use lib_shell::keymap::keeps;
+use lib_transactions::keymap::RESET_FILTERS;
 use lib_viper::keymap::{BACK, PREVIOUS_FIELD, SEARCH};
 
 /// The `(command, chord)` bindings among `bindings` the Shell takes before any page sees them. The
 /// Shell keeps `search` (`/`) and `back` (`esc`) and sends them on by name, so a page binding
 /// either is no clash. The Settings frame's moves and `select` and the Colour Theme grid's `tab`
 /// and half-page moves are the Shell's fall-backs, which `keeps` already lets through. The
-/// Transactions filter popover's `previous_field` (`shift+tab`) is a mode the Shell offers its keys
-/// to first, so it is no clash either.
+/// Transactions filter popover's `previous_field` (`shift+tab`) and `transactions.reset_filters`
+/// (`ctrl+r`, beside the Shell's Redo) are a mode the Shell offers its keys to first, so they are
+/// no clash either.
 fn clashes<'a>(bindings: impl IntoIterator<Item = (&'a str, &'a str)>) -> Vec<(String, String)> {
     let keymap = lib_shell::global_keymap(&KeyBindingConfig::default());
     bindings
         .into_iter()
-        .filter(|(command, _)| ![SEARCH, BACK, PREVIOUS_FIELD].contains(command))
+        .filter(|(command, _)| ![SEARCH, BACK, PREVIOUS_FIELD, RESET_FILTERS].contains(command))
         .filter(|(_, chord)| keeps(&keymap, chord))
         .map(|(command, chord)| (command.to_string(), chord.to_string()))
         .collect()
@@ -48,6 +50,8 @@ fn a_default_on_a_kept_key_is_a_clash_and_one_the_shell_falls_back_on_is_not(
         ("demo.back", "shift+tab"),
         ("demo.jump", "g x"),
         ("demo.help", "?"),
+        ("demo.undo", "u"),
+        ("demo.redo", "ctrl+r"),
         ("demo.insert", "a"),
         ("demo.free", "B"),
         ("demo.page", "ctrl+u"),
@@ -60,5 +64,8 @@ fn a_default_on_a_kept_key_is_a_clash_and_one_the_shell_falls_back_on_is_not(
         .into_iter()
         .map(|(_, chord)| chord)
         .collect();
-    assert_eq!(clashing, ["b", "ctrl+l", "shift+tab", "g x", "?"]);
+    assert_eq!(
+        clashing,
+        ["b", "ctrl+l", "shift+tab", "g x", "?", "u", "ctrl+r"]
+    );
 }
