@@ -313,6 +313,9 @@ impl ImportPresenter {
         match outcome {
             Ok(committed) => {
                 self.open = None;
+                router.notify(Notice::Changed(msg::transaction_import_changed(
+                    &self.file_name,
+                )));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     msg::transaction_import_done(count(committed.transactions)),
@@ -776,10 +779,10 @@ mod tests {
 
         assert_eq!(
             step.router.notices,
-            [Notice::Toast(
-                ToastKind::Success,
-                "Imported 18 transactions".to_string()
-            )]
+            [
+                Notice::Changed("Import statement.csv".to_string()),
+                Notice::Toast(ToastKind::Success, "Imported 18 transactions".to_string())
+            ]
         );
         assert_eq!(
             step.router.closed,

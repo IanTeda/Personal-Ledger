@@ -343,3 +343,35 @@ fn j_and_k_keep_the_chosen_row_inside_the_body_on_a_small_window(app: &mut TestA
     }
     assert_eq!(ui.dialog_value("choice").as_deref(), Some("0"));
 }
+
+/// A payment is undone by the Shell's `u` and redone by `ctrl+r`: the entry open again and the
+/// Transaction it booked gone, then both back under their own ids (#1248).
+#[gpui::test]
+fn u_undoes_paying_directly_and_ctrl_r_pays_it_again(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    on_telstra(&mut ui);
+    let status_before = telstra_status(&mut ui);
+    let transactions = |ui: &mut Harness<'_>| {
+        let mut rows = ui.stores(|stores| stores.transactions.borrow().all_transactions());
+        rows.sort_by_key(|row| row.id);
+        rows
+    };
+    let before = transactions(&mut ui);
+
+    ui.press("p right enter");
+    assert_eq!(telstra_status(&mut ui), "Paid");
+    let paid = transactions(&mut ui);
+    assert_eq!(paid.len(), before.len() + 1, "the payment booked one");
+
+    ui.press("u");
+    assert_eq!(telstra_status(&mut ui), status_before);
+    assert_eq!(transactions(&mut ui), before);
+    assert_eq!(
+        ui.read(|shell| shell.status_message()).as_deref(),
+        Some("Undid Pay bill Telstra Internet")
+    );
+
+    ui.press("ctrl-r");
+    assert_eq!(telstra_status(&mut ui), "Paid");
+    assert_eq!(transactions(&mut ui), paid, "back under its own id");
+}

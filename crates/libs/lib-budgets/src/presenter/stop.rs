@@ -177,6 +177,9 @@ impl StopPresenter {
         };
         match done {
             Ok(()) => {
+                router.notify(Notice::Changed(msg::budgets_changed_stopped(
+                    &self.category_name,
+                )));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     msg::budgets_toast_stopped(&self.category_name),
@@ -386,6 +389,7 @@ mod tests {
         assert_eq!(
             router.routed,
             [
+                Routed::Notice(Notice::Changed("Stop budgeting Groceries".into())),
                 Routed::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Stopped budgeting Groceries".into()

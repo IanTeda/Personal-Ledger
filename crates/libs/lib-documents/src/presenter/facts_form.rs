@@ -230,6 +230,7 @@ impl FactsFormPresenter {
         let saved = SetFacts { id: self.id, facts }.run(&mut *self.ports.documents.borrow_mut());
         match saved {
             Ok(()) => {
+                router.notify(Notice::Changed(msg::documents_changed_facts(&self.title)));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     msg::documents_dialog_toast_facts_saved(&self.title),
@@ -475,6 +476,7 @@ mod tests {
         assert!(matches!(
             calls.as_slice(),
             [
+                DocumentsCall::Notice(Notice::Changed(_)),
                 DocumentsCall::Notice(Notice::Toast(ToastKind::Success, _)),
                 DocumentsCall::CloseDialog(Some(DocumentsOutcome::FactsSaved(saved_id))),
             ] if *saved_id == id
@@ -544,6 +546,7 @@ mod tests {
         assert!(matches!(
             router.take().as_slice(),
             [
+                DocumentsCall::Notice(_),
                 DocumentsCall::Notice(_),
                 DocumentsCall::CloseDialog(Some(DocumentsOutcome::FactsSaved(saved)))
             ] if *saved == id

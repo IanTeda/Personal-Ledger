@@ -773,6 +773,7 @@ impl DocumentsPagePresenter {
         if let Some(at) = at {
             self.inbox_selected = focus_after_filing(at, len).unwrap_or(0);
         }
+        router.notify(Notice::Changed(msg::documents_changed_filed(&title)));
         router.notify(Notice::Toast(
             ToastKind::Success,
             msg::documents_toast_filed(&title),
@@ -834,6 +835,9 @@ impl DocumentsPagePresenter {
         let filed = batch.entries.len();
         self.undo = Some(batch);
         self.inbox_selected = 0;
+        router.notify(Notice::Changed(msg::documents_changed_filed_many(
+            &filed.to_string(),
+        )));
         router.notify(Notice::Toast(
             ToastKind::Success,
             msg::documents_toast_filed_many(&filed.to_string()),

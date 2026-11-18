@@ -89,6 +89,9 @@ impl DeleteDocumentPresenter {
         let deleted = DeleteDocument(self.id).run(&mut *self.documents.borrow_mut());
         match deleted {
             Ok(document) => {
+                router.notify(Notice::Changed(msg::documents_changed_deleted(
+                    &document.title,
+                )));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     msg::documents_dialog_toast_deleted(&document.title),
@@ -236,6 +239,7 @@ mod tests {
         assert_eq!(
             router.take(),
             [
+                DocumentsCall::Notice(Notice::Changed(format!("Delete document {title}"))),
                 DocumentsCall::Notice(Notice::Toast(
                     ToastKind::Success,
                     format!("Deleted \"{title}\". The file is still on disk.")

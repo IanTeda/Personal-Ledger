@@ -424,7 +424,13 @@ impl DocumentFormPresenter {
                 key_date,
             }
             .run(&mut *repository)
-            .map(|()| (id, msg::documents_dialog_toast_saved(&title))),
+            .map(|()| {
+                (
+                    id,
+                    msg::documents_dialog_toast_saved(&title),
+                    msg::documents_changed_edited(&title),
+                )
+            }),
             None => {
                 let files = &*self.ports.files;
                 let path = files.resolve(&self.path);
@@ -437,12 +443,19 @@ impl DocumentFormPresenter {
                     key_date,
                 })
                 .run(&mut *repository)
-                .map(|id| (id, msg::documents_dialog_toast_added(&title)))
+                .map(|id| {
+                    (
+                        id,
+                        msg::documents_dialog_toast_added(&title),
+                        msg::documents_changed_added(&title),
+                    )
+                })
             }
         };
         drop(repository);
         match saved {
-            Ok((id, toast)) => {
+            Ok((id, toast, changed)) => {
+                router.notify(Notice::Changed(changed));
                 router.notify(Notice::Toast(ToastKind::Success, toast));
                 router.close(Some(DocumentsOutcome::Shown(id)));
             }
@@ -806,6 +819,7 @@ mod tests {
         assert_eq!(
             form.router.take(),
             [
+                DocumentsCall::Notice(Notice::Changed("Add document policy".to_string())),
                 DocumentsCall::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Added \"policy\".".to_string()
@@ -875,6 +889,7 @@ mod tests {
         assert_eq!(
             form.router.take(),
             [
+                DocumentsCall::Notice(Notice::Changed("Edit document Car policy".to_string())),
                 DocumentsCall::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Saved \"Car policy\".".to_string()

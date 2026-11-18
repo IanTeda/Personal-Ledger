@@ -79,3 +79,6 @@ transaction-import-error-account-gone = This statement's account no longer exist
 transaction-import-error-account-inactive = This statement's account is inactive, so nothing was imported.
 transaction-import-error-name-taken = A payee named "{ $name }" already exists, so nothing was imported.
 transaction-import-error-alias-taken = The alias "{ $alias }" already belongs to a payee, so nothing was imported.
+
+## What History calls an import, for Undo, Redo and the header's list (#1248).
+transaction-import-changed = Import { $file }

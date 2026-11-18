@@ -136,6 +136,9 @@ impl FillPresenter {
         };
         match done {
             Ok(_) => {
+                router.notify(Notice::Changed(msg::budgets_changed_filled(&period_label(
+                    self.month,
+                ))));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     msg::budgets_toast_filled(&period_label(self.month)),
@@ -419,6 +422,7 @@ mod tests {
         assert_eq!(
             router.routed,
             [
+                Routed::Notice(Notice::Changed("Fill Jul 2026".into())),
                 Routed::Notice(Notice::Toast(ToastKind::Success, "Filled Jul 2026".into())),
                 Routed::Closed(None),
             ]

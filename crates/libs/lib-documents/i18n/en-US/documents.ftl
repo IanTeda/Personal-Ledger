@@ -378,3 +378,11 @@ documents-dialog-picker-hint-toggle = ↑↓ move · tab kind · enter link or u
 documents-dialog-picker-hint-follow = ↑↓ move · enter go · esc close
 documents-dialog-picker-need-type = Choose a document type first (← →).
 documents-dialog-toast-linked = Linked { $record }.
+
+## What History calls each Documents change, for Undo, Redo and the header's list (#1248).
+documents-changed-filed = File document { $title }
+documents-changed-filed-many = File { $count } documents
+documents-changed-deleted = Delete document { $title }
+documents-changed-added = Add document { $title }
+documents-changed-edited = Edit document { $title }
+documents-changed-facts = Edit what was read from { $title }

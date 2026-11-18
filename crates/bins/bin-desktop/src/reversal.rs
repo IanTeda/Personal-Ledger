@@ -2,9 +2,9 @@
 //! recorded below the Presenters as they are written and closed into one entry when the input's
 //! `send` drains (`Root::drain_notices`). `DeviceConfigFile` records `[General]`'s and
 //! `[Display]`'s keys here, and the Open Ledger's stores their row images in `lib-database`'s
-//! journal, which the drain takes as the entry's Ledger part. Only a Units change makes a Ledger
-//! entry yet: the Institutions record beside it, for the Unit delete that reassigns them, and the
-//! other domains join with #1248 and #1249.
+//! journal, which the drain takes as the entry's Ledger part. The Units, Institutions,
+//! Transactions, Bills, Budgets and Documents record (#1247, #1248); the other domains join with
+//! #1249, and a change to them alone makes no entry yet.
 //!
 //! The recording is per thread rather than held by `Root`, as the Notice queue is
 //! (`crate::notices`), since the device writes from inside a page's update with no way to reach
@@ -22,7 +22,7 @@ pub(crate) type ConfigChange = (ConfigKey, Option<String>, Option<String>);
 
 /// What reverses one History entry: the Configuration it changed, in the order written, and the
 /// Open Ledger's rows it changed (#1240).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Reversal {
     pub configuration: Vec<ConfigChange>,
     pub ledger: Option<LedgerReversal>,
@@ -58,8 +58,8 @@ pub(crate) fn close(
     ledger: Option<LedgerReversal>,
 ) -> Option<Entry<Reversal>> {
     let configuration = RECORDED.with_borrow_mut(std::mem::take);
-    // The halfway state (#1247): only a change that wrote the Units is undone yet.
-    let ledger = ledger.filter(|ledger| ledger.domains().contains(&Domain::Units));
+    // The halfway state (#1248): a change to the domains not recording yet (#1249) leaves no image
+    // here, so it makes no entry; one that also wrote a recording domain is undone in part.
     if configuration.is_empty() && ledger.is_none() {
         return None;
     }
@@ -187,14 +187,16 @@ mod tests {
     }
 
     #[test]
-    fn a_ledger_change_that_wrote_no_units_makes_no_entry_yet() {
+    fn a_ledger_change_to_any_recording_domain_makes_an_entry_named_by_it() {
         close(Vec::new(), None);
         let institutions = LedgerReversal::from(vec![lib_database::RowImage::Institution(
             None,
             Some(lib_institutions::personal_institution("Personal")),
         )]);
 
-        assert_eq!(close(Vec::new(), Some(institutions)), None);
+        let entry = close(Vec::new(), Some(institutions)).expect("one change recorded");
+
+        assert_eq!(entry.label, "Change institutions");
     }
 
     #[test]

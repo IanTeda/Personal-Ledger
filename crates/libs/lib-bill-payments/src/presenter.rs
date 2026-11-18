@@ -22,6 +22,7 @@ use lib_locale::format::{
     AmountStyle, format_amount, format_date_input, format_month_day, parse_optional_date,
     parse_positive_amount, upper,
 };
+use lib_toast::Notice;
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::keymap::{BACK, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
@@ -118,6 +119,8 @@ pub struct PayViewModel {
 /// What the Dialog shows that it reads once, when it opens.
 struct Opened {
     title: String,
+    /// The Bill Plan's name, which History calls the payment by.
+    plan_name: String,
     candidates: Vec<CandidateLine>,
     match_notice: String,
     chips: Vec<String>,
@@ -207,6 +210,7 @@ impl PayPresenter {
                     .unwrap_or_default();
             let opened = Opened {
                 title: msg::bill_payments_pay_title(&plan.name, &format_month_day(entry.due)),
+                plan_name: plan.name.clone(),
                 candidates: lines,
                 match_notice: msg::bill_payments_pay_match_notice(&money(
                     &*ports,
@@ -362,7 +366,14 @@ impl PayPresenter {
             },
         };
         match landed {
-            Ok(outcome) => router.close(Some(outcome)),
+            Ok(outcome) => {
+                let name = &self.opened.plan_name;
+                router.notify(Notice::Changed(match outcome {
+                    PayOutcome::Paid(_) => msg::bill_payments_changed_paid(name),
+                    PayOutcome::Matched => msg::bill_payments_changed_matched(name),
+                }));
+                router.close(Some(outcome));
+            }
             Err(refusal) => self.refusal = Some(refusal_text(&refusal)),
         }
     }

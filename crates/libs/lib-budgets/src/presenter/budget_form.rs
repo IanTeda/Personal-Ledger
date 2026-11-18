@@ -479,7 +479,13 @@ impl BudgetFormPresenter {
                         account_ids: self.account_ids.clone(),
                     }
                     .run(accounts, ports.budgets)
-                    .map(|()| (msg::budgets_toast_saved(&name), None))
+                    .map(|()| {
+                        (
+                            msg::budgets_toast_saved(&name),
+                            msg::budgets_changed_edited(&name),
+                            None,
+                        )
+                    })
                 }
                 (None, Some(unit)) => CreateBudget {
                     new: NewBudget {
@@ -497,12 +503,19 @@ impl BudgetFormPresenter {
                     today,
                 }
                 .run(ports.reads, ports.budgets)
-                .map(|id| (msg::budgets_toast_created(&name), Some(id))),
+                .map(|id| {
+                    (
+                        msg::budgets_toast_created(&name),
+                        msg::budgets_changed_created(&name),
+                        Some(id),
+                    )
+                }),
                 (None, None) => return,
             }
         };
         match done {
-            Ok((toast, created)) => {
+            Ok((toast, changed, created)) => {
+                router.notify(Notice::Changed(changed));
                 router.notify(Notice::Toast(ToastKind::Success, toast));
                 router.close(created.map(BudgetsOutcome::Show));
             }
@@ -884,6 +897,7 @@ mod tests {
         assert_eq!(
             form.router.routed,
             [
+                Routed::Notice(Notice::Changed("Create budget Trip".into())),
                 Routed::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Created the budget Trip".into()
@@ -929,6 +943,7 @@ mod tests {
         assert_eq!(
             form.router.routed,
             [
+                Routed::Notice(Notice::Changed("Edit budget Household".into())),
                 Routed::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Saved the budget Household".into()

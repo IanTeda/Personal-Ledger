@@ -103,6 +103,7 @@ use crate::{
     Domain, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter,
     TransactionsAdapter, UnitsAdapter, Written,
 };
+use lib_documents::DocumentLink;
 
 /// A store as [`Stores`] holds it: the adapter or the in-memory fake, wrapped once as `Stores` is
 /// built, noting its [`Domain`] in the commit's [`Written`] on every mutable access, so the commit
@@ -112,8 +113,10 @@ use crate::{
 ///
 /// Where the domain records onto History (#1247), its `*_mut()` hands out a recording wrapper
 /// around the repository, which notes each row's image before and after a write in the
-/// [`Journal`] `written` shares ([`crate::reversal`]). Only the Units and the Institutions record
-/// yet; the other domains are handed the plain repository.
+/// [`Journal`] `written` shares ([`crate::reversal`]). The Units, Institutions, Transactions,
+/// Bills, Budgets and Documents record (#1248); the Accounts, Payees and Inventory are handed a
+/// wrapper that notes only what a delete cascades into, and the other domains the plain
+/// repository.
 pub struct Recorded<S: ?Sized> {
     domain: Domain,
     store: Journaled<S>,
@@ -178,6 +181,180 @@ impl<S: InstitutionsStore + ?Sized> InstitutionRepository for Journaled<S> {
                 .record(RowImage::Institution(Some(before), None));
         }
         self.store.institutions_mut().delete_institution(id);
+    }
+}
+
+/// The Transactions, each write recorded with the row's image before it, and a delete with the
+/// Documents whose Links it takes with it.
+impl<S: TransactionsStore + ?Sized> TransactionRepository for Journaled<S> {
+    fn transactions(&self) -> Vec<Transaction> {
+        self.store.transactions().transactions()
+    }
+
+    fn transaction(&self, id: TransactionId) -> Option<Transaction> {
+        self.store.transactions().transaction(id)
+    }
+
+    fn upsert_transaction(&mut self, transaction: Transaction) {
+        let before = self.store.transactions().transaction(transaction.id);
+        self.written
+            .journal()
+            .record(RowImage::Transaction(before, Some(transaction.clone())));
+        self.store
+            .transactions_mut()
+            .upsert_transaction(transaction);
+    }
+
+    fn delete_transaction(&mut self, id: TransactionId) {
+        let journal = self.written.journal();
+        journal.unlink(DocumentLink::Transaction(id));
+        if let Some(before) = self.store.transactions().transaction(id) {
+            journal.record(RowImage::Transaction(Some(before), None));
+        }
+        self.store.transactions_mut().delete_transaction(id);
+    }
+}
+
+/// The Bill Plans, each write recorded with the row's image before it.
+impl<S: BillsStore + ?Sized> BillPlanRepository for Journaled<S> {
+    fn bill_plans(&self) -> Vec<lib_bills::BillPlan> {
+        self.store.plans().bill_plans()
+    }
+
+    fn bill_plan(&self, id: lib_core::BillPlanId) -> Option<lib_bills::BillPlan> {
+        self.store.plans().bill_plan(id)
+    }
+
+    fn upsert_bill_plan(&mut self, plan: lib_bills::BillPlan) {
+        let before = self.store.plans().bill_plan(plan.id);
+        self.written
+            .journal()
+            .record(RowImage::BillPlan(before, Some(plan.clone())));
+        self.store.plans_mut().upsert_bill_plan(plan);
+    }
+}
+
+/// The Bill Schedule, each write recorded with the entry's image before it.
+impl<S: BillsStore + ?Sized> BillScheduleRepository for Journaled<S> {
+    fn entries(&self) -> Vec<lib_bills::BillScheduleEntry> {
+        self.store.entries().entries()
+    }
+
+    fn entry(&self, id: lib_bills::EntryId) -> Option<lib_bills::BillScheduleEntry> {
+        self.store.entries().entry(id)
+    }
+
+    fn upsert_entry(&mut self, entry: lib_bills::BillScheduleEntry) {
+        let before = self.store.entries().entry(entry.id());
+        self.written
+            .journal()
+            .record(RowImage::BillEntry(before, Some(entry.clone())));
+        self.store.entries_mut().upsert_entry(entry);
+    }
+}
+
+/// The Budgets, each write recorded with the Budget's image before it.
+impl<S: BudgetsStore + ?Sized> BudgetRepository for Journaled<S> {
+    fn budgets(&self) -> Vec<lib_budgets::Budget> {
+        self.store.budgets().budgets()
+    }
+
+    fn budget(&self, id: lib_core::BudgetId) -> Option<lib_budgets::Budget> {
+        self.store.budgets().budget(id)
+    }
+
+    fn upsert_budget(&mut self, budget: &lib_budgets::Budget) {
+        let before = self.store.budgets().budget(budget.id);
+        self.written
+            .journal()
+            .record(RowImage::Budget(before, Some(budget.clone())));
+        self.store.budgets_mut().upsert_budget(budget);
+    }
+}
+
+/// The Accounts, noting only what a delete cascades into: the Account's own rows record with
+/// #1249, which notes this before the Account's image so Undo restores the Account first.
+impl<S: AccountsStore + ?Sized> AccountRepository for Journaled<S> {
+    fn accounts(&self) -> Vec<lib_accounts::Account> {
+        self.store.accounts().accounts()
+    }
+
+    fn account(&self, id: AccountId) -> Option<lib_accounts::Account> {
+        self.store.accounts().account(id)
+    }
+
+    fn upsert_account(&mut self, account: lib_accounts::Account) {
+        self.store.accounts_mut().upsert_account(account);
+    }
+
+    fn delete_account(&mut self, id: AccountId) {
+        self.written.journal().unlink_account(id);
+        self.store.accounts_mut().delete_account(id);
+    }
+}
+
+/// The Payees, noting only the Document Links a delete cascades into.
+impl<S: PayeesStore + ?Sized> PayeeRepository for Journaled<S> {
+    fn payees(&self) -> Vec<lib_payees::Payee> {
+        self.store.payees().payees()
+    }
+
+    fn payee(&self, id: PayeeId) -> Option<lib_payees::Payee> {
+        self.store.payees().payee(id)
+    }
+
+    fn upsert_payee(&mut self, payee: lib_payees::Payee) {
+        self.store.payees_mut().upsert_payee(payee);
+    }
+
+    fn delete_payee(&mut self, id: PayeeId) {
+        self.written.journal().unlink(DocumentLink::Payee(id));
+        self.store.payees_mut().delete_payee(id);
+    }
+}
+
+/// The Inventory, noting only the Document Links a delete of an Item, or of a Location and so its
+/// Items, cascades into.
+impl<S: InventoryStore + ?Sized> InventoryRepository for Journaled<S> {
+    fn locations(&self) -> Vec<lib_inventory::Location> {
+        self.store.inventory().locations()
+    }
+
+    fn items(&self) -> Vec<lib_inventory::Item> {
+        self.store.inventory().items()
+    }
+
+    fn location(&self, id: LocationId) -> Option<lib_inventory::Location> {
+        self.store.inventory().location(id)
+    }
+
+    fn item(&self, id: lib_core::ItemId) -> Option<lib_inventory::Item> {
+        self.store.inventory().item(id)
+    }
+
+    fn upsert_location(&mut self, location: lib_inventory::Location) {
+        self.store.inventory_mut().upsert_location(location);
+    }
+
+    fn upsert_item(&mut self, item: lib_inventory::Item) {
+        self.store.inventory_mut().upsert_item(item);
+    }
+
+    fn delete_item(&mut self, id: lib_core::ItemId) {
+        self.written
+            .journal()
+            .unlink(DocumentLink::InventoryItem(id));
+        self.store.inventory_mut().delete_item(id);
+    }
+
+    fn delete_location(&mut self, id: LocationId) {
+        let journal = self.written.journal();
+        for item in self.store.inventory().items() {
+            if item.location == id {
+                journal.unlink(DocumentLink::InventoryItem(item.id));
+            }
+        }
+        self.store.inventory_mut().delete_location(id);
     }
 }
 
@@ -274,27 +451,90 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
 
     fn upsert_document(&mut self, document: &lib_documents::Document) {
         self.store.written.note(Domain::Documents);
+        let before = self
+            .store
+            .documents()
+            .documents()
+            .into_iter()
+            .find(|held| held.id == document.id);
+        self.store
+            .written
+            .journal()
+            .record(RowImage::Document(before, Some(document.clone())));
         self.store.documents_mut().upsert_document(document);
     }
 
     fn delete_document(&mut self, id: lib_core::DocumentId) {
         self.store.written.note(Domain::Documents);
+        let before = self
+            .store
+            .documents()
+            .documents()
+            .into_iter()
+            .find(|held| held.id == id);
+        if let Some(before) = before {
+            self.store
+                .written
+                .journal()
+                .record(RowImage::Document(Some(before), None));
+        }
         self.store.documents_mut().delete_document(id);
     }
 
     fn upsert_document_type(&mut self, row: &lib_documents::types::DocumentTypeRow) {
         self.store.written.note(Domain::DocumentTypes);
+        let types = self.store.documents().document_types();
+        let before = types.iter().find(|held| held.id == row.id).cloned();
+        let journal = self.store.written.journal();
+        // The order first, so Undo, which goes newest first, restores the type before its place.
+        let mut order: Vec<_> = types.iter().map(|held| held.id).collect();
+        let before_order = order.clone();
+        if before.is_none() {
+            order.push(row.id);
+        }
+        journal.record(RowImage::DocumentTypeOrder(before_order, order));
+        journal.record(RowImage::DocumentType(before, Some(row.clone())));
         self.store.documents_mut().upsert_document_type(row);
     }
 
     fn delete_document_type(&mut self, id: lib_core::DocumentTypeId) {
         self.store.written.note(Domain::DocumentTypes);
+        let types = self.store.documents().document_types();
+        let journal = self.store.written.journal();
+        let before_order: Vec<_> = types.iter().map(|held| held.id).collect();
+        let order = before_order
+            .iter()
+            .copied()
+            .filter(|held| *held != id)
+            .collect();
+        journal.record(RowImage::DocumentTypeOrder(before_order, order));
+        if let Some(before) = types.into_iter().find(|held| held.id == id) {
+            journal.record(RowImage::DocumentType(Some(before), None));
+        }
         self.store.documents_mut().delete_document_type(id);
     }
 
     fn move_document_type(&mut self, id: lib_core::DocumentTypeId, to: usize) {
         self.store.written.note(Domain::DocumentTypes);
+        let before: Vec<_> = self
+            .store
+            .documents()
+            .document_types()
+            .iter()
+            .map(|held| held.id)
+            .collect();
         self.store.documents_mut().move_document_type(id, to);
+        let after: Vec<_> = self
+            .store
+            .documents()
+            .document_types()
+            .iter()
+            .map(|held| held.id)
+            .collect();
+        self.store
+            .written
+            .journal()
+            .record(RowImage::DocumentTypeOrder(before, after));
     }
 }
 
@@ -654,12 +894,13 @@ impl AccountsStore for AccountsAdapter {
 /// The store, noting its domain written on every mutable access.
 impl<S: AccountsStore + ?Sized> AccountsStore for Recorded<S> {
     fn accounts(&self) -> &dyn AccountRepository {
-        self.store.accounts()
+        self.store.store.accounts()
     }
 
+    /// The wrapper around the repository.
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         self.store.written.note(self.domain);
-        self.store.accounts_mut()
+        &mut self.store
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -881,12 +1122,13 @@ impl InventoryStore for InventoryAdapter {
 /// The store, noting its domain written on every mutable access.
 impl<S: InventoryStore + ?Sized> InventoryStore for Recorded<S> {
     fn inventory(&self) -> &dyn InventoryRepository {
-        self.store.inventory()
+        self.store.store.inventory()
     }
 
+    /// The wrapper around the repository.
     fn inventory_mut(&mut self) -> &mut dyn InventoryRepository {
         self.store.written.note(self.domain);
-        self.store.inventory_mut()
+        &mut self.store
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -955,12 +1197,13 @@ impl TransactionsStore for TransactionsAdapter {
 /// The store, noting its domain written on every mutable access.
 impl<S: TransactionsStore + ?Sized> TransactionsStore for Recorded<S> {
     fn transactions(&self) -> &dyn TransactionRepository {
-        self.store.transactions()
+        self.store.store.transactions()
     }
 
+    /// The recording wrapper around the repository.
     fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
         self.store.written.note(self.domain);
-        self.store.transactions_mut()
+        &mut self.store
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1026,21 +1269,23 @@ impl BillsStore for BillsAdapter {
 /// The store, noting its domain written on every mutable access.
 impl<S: BillsStore + ?Sized> BillsStore for Recorded<S> {
     fn plans(&self) -> &dyn BillPlanRepository {
-        self.store.plans()
+        self.store.store.plans()
     }
 
+    /// The recording wrapper around the repository.
     fn plans_mut(&mut self) -> &mut dyn BillPlanRepository {
         self.store.written.note(self.domain);
-        self.store.plans_mut()
+        &mut self.store
     }
 
     fn entries(&self) -> &dyn BillScheduleRepository {
-        self.store.entries()
+        self.store.store.entries()
     }
 
+    /// The recording wrapper around the repository.
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
         self.store.written.note(self.domain);
-        self.store.entries_mut()
+        &mut self.store
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1111,12 +1356,13 @@ impl PayeesStore for PayeesAdapter {
 /// The store, noting its domain written on every mutable access.
 impl<S: PayeesStore + ?Sized> PayeesStore for Recorded<S> {
     fn payees(&self) -> &dyn PayeeRepository {
-        self.store.payees()
+        self.store.store.payees()
     }
 
+    /// The wrapper around the repository.
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
         self.store.written.note(self.domain);
-        self.store.payees_mut()
+        &mut self.store
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1200,12 +1446,13 @@ impl BudgetsStore for BudgetsAdapter {
 /// The store, noting its domain written on every mutable access.
 impl<S: BudgetsStore + ?Sized> BudgetsStore for Recorded<S> {
     fn budgets(&self) -> &dyn BudgetRepository {
-        self.store.budgets()
+        self.store.store.budgets()
     }
 
+    /// The recording wrapper around the repository.
     fn budgets_mut(&mut self) -> &mut dyn BudgetRepository {
         self.store.written.note(self.domain);
-        self.store.budgets_mut()
+        &mut self.store
     }
 
     fn reload(&mut self) -> Result<()> {

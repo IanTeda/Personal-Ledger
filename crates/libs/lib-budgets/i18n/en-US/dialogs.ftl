@@ -154,3 +154,10 @@ budgets-toast-saved = Saved the budget { $budget }
 budgets-toast-limit-saved = Saved the budget for { $category }
 budgets-toast-stopped = Stopped budgeting { $category }
 budgets-toast-filled = Filled { $month }
+
+## What History calls each Budgets change, for Undo, Redo and the header's list (#1248).
+budgets-changed-created = Create budget { $budget }
+budgets-changed-edited = Edit budget { $budget }
+budgets-changed-limit = Set the budget for { $category }
+budgets-changed-stopped = Stop budgeting { $category }
+budgets-changed-filled = Fill { $month }

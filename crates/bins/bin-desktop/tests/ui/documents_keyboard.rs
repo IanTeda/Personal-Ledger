@@ -1066,3 +1066,37 @@ fn esc_on_the_list_is_one_input_committed_once(app: &mut TestAppContext) {
     assert!(ui.documents().index_focused, "`esc` backs out to the index");
     assert_eq!(ui.commits(), before + 1);
 }
+
+/// Filing a Document through the Inbox is undone by the Shell's `u` and redone by `ctrl+r`, the
+/// Document back under its own id with its Links (#1248).
+#[gpui::test]
+fn u_undoes_an_accepted_filing_and_ctrl_r_files_it_again(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    let stored = |ui: &mut Harness<'_>| {
+        let mut documents = ui.stores(|stores| stores.documents.borrow().documents().documents());
+        documents.sort_by_key(|document| document.id);
+        documents
+    };
+    ui.press("i");
+    focus_row(&mut ui, STRONG_RECEIPT);
+    let before = stored(&mut ui);
+    let inbox = ui.documents().inbox_rows;
+
+    ui.press("y");
+    let filed = stored(&mut ui);
+    assert_ne!(filed, before, "the accept wrote the Document");
+
+    ui.press("u");
+    assert_eq!(stored(&mut ui), before, "back under its own id, unfiled");
+    assert_eq!(ui.documents().inbox_rows, inbox, "the Inbox repaints");
+    assert!(
+        ui.documents()
+            .status
+            .is_some_and(|status| status.starts_with("Undid File document")),
+        "the status line says what was undone"
+    );
+
+    ui.press("ctrl-r");
+    assert_eq!(stored(&mut ui), filed);
+    assert_eq!(ui.documents().inbox_rows, inbox - 1);
+}

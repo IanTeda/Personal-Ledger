@@ -219,9 +219,12 @@ impl Change for AccountsChange {
         Domain::Accounts
     }
 
-    /// A deleted Account drops the Document Links to it.
-    fn cascades_to(&self) -> Option<Domain> {
-        matches!(self, Self::Delete(_)).then_some(Domain::Documents)
+    /// A deleted Account drops the Document Links to it and its place in the Budgets that count it.
+    fn cascades_to(&self) -> &'static [Domain] {
+        match self {
+            Self::Delete(_) => &[Domain::Documents, Domain::Budgets],
+            Self::Upsert(_) => &[],
+        }
     }
 
     fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>> {

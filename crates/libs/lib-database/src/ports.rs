@@ -171,6 +171,7 @@ impl LedgerPorts {
             commit,
             failures,
         } = shared;
+        journal.attach(&stores.documents, &stores.budgets);
         let category_save = StoredCategoriesPorts::new(
             stores.categories.clone(),
             stores.budgets.clone(),
@@ -529,6 +530,12 @@ impl LedgerPorts {
     /// The one commit every input ends with, for the Client's input door to hold.
     pub fn commit(&self) -> Rc<dyn Commit> {
         self.commit.clone()
+    }
+
+    /// The shared stores, for the tests that write a row the ports don't reach.
+    #[cfg(test)]
+    pub(crate) fn stores(&self) -> &SharedStores {
+        &self.stores
     }
 
     /// What the input's writes changed, as the row images that undo and redo it, leaving none for

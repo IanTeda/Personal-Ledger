@@ -441,6 +441,9 @@ impl LimitFormPresenter {
         };
         match done {
             Ok(()) => {
+                router.notify(Notice::Changed(msg::budgets_changed_limit(
+                    &self.category_name(draft.category),
+                )));
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     msg::budgets_toast_limit_saved(&self.category_name(draft.category)),
@@ -904,6 +907,7 @@ mod tests {
         assert_eq!(
             form.router.routed,
             [
+                Routed::Notice(Notice::Changed("Set the budget for Groceries".into())),
                 Routed::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Saved the budget for Groceries".into()

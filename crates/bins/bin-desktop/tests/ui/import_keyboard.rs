@@ -418,3 +418,30 @@ fn a_payee_written_outside_is_silent_and_refuses_the_clashing_commit(app: &mut T
         "a refused commit leaves the step open"
     );
 }
+
+/// An Import is undone by the Shell's `u` and redone by `ctrl+r`: its eighteen Transactions go and
+/// come back under their own ids (#1248). The Payee it created is the Payees' to undo (#1249).
+#[gpui::test]
+fn u_undoes_an_import_and_ctrl_r_books_its_transactions_again(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let transactions = |ui: &mut Harness<'_>| {
+        let mut rows = ui.stores(|stores| stores.transactions.borrow().all_transactions());
+        rows.sort_by_key(|row| row.id);
+        rows
+    };
+    let before = transactions(&mut ui);
+
+    commit_the_candle_shop_as_a_new_payee(&mut ui);
+    let imported = transactions(&mut ui);
+    assert_eq!(imported.len(), before.len() + 18);
+
+    ui.press("u");
+    assert_eq!(transactions(&mut ui), before);
+    assert_eq!(
+        ui.read(|shell| shell.status_message()).as_deref(),
+        Some("Undid Import statement.csv")
+    );
+
+    ui.press("ctrl-r");
+    assert_eq!(transactions(&mut ui), imported, "back under their own ids");
+}

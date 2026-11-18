@@ -866,11 +866,12 @@ mod tests {
                 DocumentLink::BillPlan(_) => panic!("a Bill Plan has no delete"),
             }
             let cascades = self.pending.commit().cascaded;
-            assert_eq!(
-                cascades,
-                [Domain::Documents],
-                "the commit asks for the reload"
-            );
+            // An Account's delete also takes its place in the Budgets that count it.
+            let expected: &[Domain] = match record {
+                DocumentLink::Account(_) => &[Domain::Documents, Domain::Budgets],
+                _ => &[Domain::Documents],
+            };
+            assert_eq!(cascades, expected, "the commit asks for the reload");
             if let Some(failure) = self.failures().first() {
                 panic!("the delete failed: {failure:?}");
             }

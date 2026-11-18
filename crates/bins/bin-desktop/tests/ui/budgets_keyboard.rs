@@ -657,3 +657,33 @@ fn j_and_k_move_the_manage_cursor(app: &mut TestAppContext) {
     ui.press("k");
     assert_eq!(ui.budgets().manage_selected, Some(0));
 }
+
+/// A saved limit is undone by the Shell's `u` and redone by `ctrl+r`, the Budget back as it was
+/// stored, chains and all (#1248).
+#[gpui::test]
+fn u_undoes_a_saved_limit_and_ctrl_r_saves_it_again(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    let stored =
+        |ui: &mut Harness<'_>| ui.stores(|stores| stores.budgets.borrow().budgets().budgets());
+    let before = stored(&mut ui);
+    ui.press("j e");
+    let prefilled = ui.budgets().limit_amount.unwrap_or_default().len();
+    for _ in 0..prefilled {
+        ui.press("backspace");
+    }
+    ui.press("7 5");
+    ui.press("enter");
+    let saved = stored(&mut ui);
+    assert_ne!(saved, before, "the limit changed");
+
+    ui.press("u");
+    assert_eq!(stored(&mut ui), before);
+    let status = ui.read(|shell| shell.status_message());
+    assert!(
+        status.is_some_and(|status| status.starts_with("Undid Set the budget for")),
+        "the status line says what was undone"
+    );
+
+    ui.press("ctrl-r");
+    assert_eq!(stored(&mut ui), saved);
+}
