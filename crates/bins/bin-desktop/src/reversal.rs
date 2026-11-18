@@ -1,7 +1,7 @@
 //! What the Desktop's History entries reverse (#1238, #1244): the changes an input made, recorded
 //! below the Presenters as they are written and closed into one entry when the input's `send`
-//! drains (`Root::drain_notices`). Only `DeviceConfigFile` records yet, and only `[General]`'s
-//! keys: Display and the Ledger join in their own slices.
+//! drains (`Root::drain_notices`). Only `DeviceConfigFile` records yet, and `[General]`'s and
+//! `[Display]`'s keys: the Ledger joins in its own slice.
 //!
 //! The recording is per thread rather than held by `Root`, as the Notice queue is
 //! (`crate::notices`), since the device writes from inside a page's update with no way to reach
@@ -30,9 +30,9 @@ thread_local! {
 }
 
 /// Notes that the running input changed `key` in the file from `before` to `after`. A write that
-/// left the file's value as it was is no change, and only `[General]` is recorded in this slice.
+/// left the file's value as it was is no change, and only `[General]` and `[Display]` are recorded.
 pub(crate) fn record(key: ConfigKey, before: Option<String>, after: Option<String>) {
-    if before == after || key.section() != Section::General {
+    if before == after || !matches!(key.section(), Section::General | Section::Display) {
         return;
     }
     RECORDED.with_borrow_mut(|recorded| recorded.push((key, before, after)));
@@ -98,6 +98,17 @@ mod tests {
     }
 
     #[test]
+    fn a_display_change_is_recorded() {
+        close(Vec::new());
+        record(ConfigKey::ColourTheme, None, some("nord"));
+
+        assert_eq!(
+            close(Vec::new()).map(|entry| entry.reversal.configuration),
+            Some(vec![(ConfigKey::ColourTheme, None, some("nord"))])
+        );
+    }
+
+    #[test]
     fn a_change_with_no_label_is_named_by_its_key() {
         close(Vec::new());
         record(ConfigKey::Locale, None, some("en-GB"));
@@ -109,9 +120,9 @@ mod tests {
     }
 
     #[test]
-    fn only_generals_keys_are_recorded_yet() {
+    fn only_generals_and_displays_keys_are_recorded_yet() {
         close(Vec::new());
-        record(ConfigKey::HintBar, None, some("false"));
+        record(ConfigKey::Log, None, some("debug"));
 
         assert_eq!(close(Vec::new()), None);
     }

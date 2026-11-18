@@ -2,7 +2,8 @@
 //! grid, changing each control with `h`/`l`, toggling the checkbox, and stepping back out. The date
 //! style, Row density, Status glyphs and Colour Theme are saved to the conf file (ADR-0053), unless
 //! a source above it sets them, and the page starts on what the file holds. State is read back from
-//! `Root` and the conf file.
+//! `Root` and the conf file. `u` undoes each change and `ctrl-r` redoes it, putting the file's raw
+//! line back and repainting the window in the earlier colours (#1246).
 
 use super::common;
 use bin_desktop::shell::router::SettingsDisplaySnapshot;
@@ -375,4 +376,70 @@ fn the_theme_and_appearance_commands_save_to_the_conf_file(app: &mut TestAppCont
     );
     let status = ui.read(bin_desktop::shell::router::Root::status_message);
     assert!(status.is_some_and(|text| text.starts_with("colour_appearance saved to")));
+}
+
+/// The status line's message.
+fn status_message(ui: &mut Harness<'_>) -> Option<String> {
+    ui.read(bin_desktop::shell::router::Root::status_message)
+}
+
+#[gpui::test]
+fn u_undoes_a_display_field_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
+    let mut ui = in_display(app);
+
+    ui.press("l");
+    assert_eq!(ui.conf(), "[Display]\ndate_style = short\n");
+
+    ui.press("u");
+    assert_eq!(ui.conf(), "[Display]\n");
+    assert_eq!(ui.settings::<SettingsDisplaySnapshot>().date_style, None);
+    assert!(status_message(&mut ui).is_some_and(|text| text.starts_with("Undid Date format: ")));
+
+    ui.press("ctrl-r");
+    assert_eq!(ui.conf(), "[Display]\ndate_style = short\n");
+    assert_eq!(
+        ui.settings::<SettingsDisplaySnapshot>()
+            .date_style
+            .as_deref(),
+        Some("Short")
+    );
+}
+
+#[gpui::test]
+fn undoing_a_theme_and_an_appearance_repaints_the_window_in_the_earlier_ones(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::new(app);
+    ui.press(": t h e m e space n o r d enter");
+    ui.press(": a p p e a r a n c e space l i g h t enter");
+
+    ui.press("u");
+    assert_eq!(ui.colour_choice().1, Some("System".to_string()));
+    assert_eq!(ui.colour_choice().0.as_deref(), Some("nord"));
+    assert_eq!(ui.conf(), "[Display]\ncolour_theme = nord\n");
+
+    ui.press("u");
+    assert_eq!(ui.colour_choice().0, None);
+    assert_eq!(ui.conf(), "[Display]\n");
+
+    ui.press("ctrl-r ctrl-r");
+    assert_eq!(
+        ui.colour_choice(),
+        (Some("nord".to_string()), Some("Light".to_string()))
+    );
+    assert_eq!(
+        ui.conf(),
+        "[Display]\ncolour_theme = nord\ncolour_appearance = light\n"
+    );
+}
+
+#[gpui::test]
+fn a_grid_pick_is_undone_and_repeating_the_theme_makes_no_entry(app: &mut TestAppContext) {
+    let mut ui = Harness::with_conf_file(app, "[Display]\ncolour_theme = nord\n");
+    ui.press(": t h e m e space n o r d enter");
+
+    ui.press("u");
+
+    assert_eq!(status_message(&mut ui).as_deref(), Some("Nothing to undo"));
+    assert_eq!(ui.conf(), "[Display]\ncolour_theme = nord\n");
 }

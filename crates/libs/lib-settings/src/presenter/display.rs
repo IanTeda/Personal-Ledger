@@ -23,6 +23,7 @@ use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_core::{DateStyle, Money};
 use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date};
+use lib_toast::Notice;
 use lib_viper::display::{PageDisplay, RowDensity, StatusGlyphs};
 use lib_viper::keymap::{KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
@@ -402,7 +403,10 @@ impl Presenter for DisplayPresenter {
                 .and_then(|input| self.form.handle(input, router)),
         };
         match answer {
-            Some(FormAnswer::Saved(_, FieldValue::Set(value))) => self.saved(&value, router),
+            Some(FormAnswer::Saved(field, FieldValue::Set(value))) => {
+                router.notify(Notice::Changed(self.change_label(field, &value)));
+                self.saved(&value, router);
+            }
             Some(FormAnswer::Changed(DisplayField::StartSidebar, FieldValue::Flag(_))) => {
                 router.display_changed(self.output());
             }
@@ -540,6 +544,43 @@ impl PagePresenter for DisplayPresenter {
 }
 
 impl DisplayPresenter {
+    /// Shows what `snapshot` reads after Undo or Redo put a Display key back (#1246): an open list
+    /// and the grid's focus close, and the fields' values, notes, in-file flags and the Colour Theme
+    /// are read again. Start Sidebar minimised, which the file never holds, keeps its value. The
+    /// Client applies the Display output and the colours, as a write would. Nothing is written, and
+    /// nothing raised.
+    pub fn reload(&mut self, snapshot: DeviceSnapshot) {
+        let sidebar = self.form.value(DisplayField::StartSidebar).cloned();
+        self.form.reload(&snapshot);
+        if let Some(sidebar) = sidebar {
+            self.form.set_value(DisplayField::StartSidebar, sidebar);
+        }
+        self.grid = None;
+        self.colour_theme_shadowed =
+            shadowed_note(snapshot.get(ConfigKey::ColourTheme).shadow.as_deref());
+        let state = snapshot.get(ConfigKey::ColourTheme);
+        self.colour_theme = match (&state.shadow, &state.stored) {
+            (None, Some(ConfigValue::ColourTheme(id))) => Some(id.clone()),
+            _ => match snapshot.shown(ConfigKey::ColourTheme) {
+                Some(ConfigValue::ColourTheme(id)) => Some(id.clone()),
+                _ => None,
+            },
+        };
+    }
+
+    /// What History calls a saved change of `field` to `value`, as the page shows it.
+    fn change_label(&self, field: DisplayField, _value: &ConfigValue) -> String {
+        let view = self.form.view(field);
+        let name = view
+            .as_ref()
+            .map(|view| view.label.clone())
+            .unwrap_or_default();
+        let value = view
+            .and_then(|view| view.chosen.and_then(|at| view.options.get(at).cloned()))
+            .unwrap_or_default();
+        msg::settings_changed(&name, &value)
+    }
+
     /// The index of the Colour Theme drawn now, where the grid's focus starts: the configured one,
     /// or the default for none or an id this release doesn't know, as the colours resolve it.
     fn chosen_theme(&self) -> usize {
@@ -592,6 +633,10 @@ impl DisplayPresenter {
             .write_unfielded(ConfigValue::ColourTheme(id.to_string()), router)
         {
             self.colour_theme = Some(saved);
+            router.notify(Notice::Changed(msg::settings_changed(
+                &msg::settings_display_colour_theme(),
+                &colour_theme_name(id),
+            )));
             router.colour_changed(ColourChoice::Theme(id));
         }
     }
@@ -1306,6 +1351,72 @@ mod tests {
         assert_eq!(
             options(DisplayField::StatusGlyphs).map(|options| options[1].clone()),
             Some("ascii fallback \u{2014} o / x !".to_string())
+        );
+    }
+
+    /// The History labels `router` was told, in order.
+    fn changes(router: &RecordingRouter) -> Vec<String> {
+        router
+            .routed
+            .iter()
+            .filter_map(|routed| match routed {
+                Routed::Notice(Notice::Changed(label)) => Some(label.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn each_saved_change_is_named_for_history_by_its_field_and_new_value() {
+        let (_, mut display) = writable();
+
+        let router = send(
+            &mut display,
+            [
+                DisplayEvent::Choose {
+                    field: DisplayField::RowDensity,
+                    index: 0,
+                },
+                DisplayEvent::ClickColourTheme("nord"),
+                DisplayEvent::ChooseColour(ColourChoice::Appearance(ColourAppearance::Dark)),
+            ],
+        );
+
+        let labels = changes(&router);
+        assert_eq!(labels.len(), 3, "{labels:?}");
+        assert!(labels[0].starts_with("Row density: "), "{labels:?}");
+        assert_eq!(labels[1], "Colour theme: Nord");
+        assert!(labels[2].starts_with("Appearance: "), "{labels:?}");
+    }
+
+    #[test]
+    fn reload_shows_the_files_values_again_and_the_grids_theme() {
+        let (device, mut display) = writable();
+        send(
+            &mut display,
+            [
+                DisplayEvent::Choose {
+                    field: DisplayField::RowDensity,
+                    index: 0,
+                },
+                DisplayEvent::ClickColourTheme("nord"),
+                DisplayEvent::Press(DisplayField::StartSidebar),
+            ],
+        );
+        {
+            let mut stored = device.stored.borrow_mut();
+            stored.0.remove(&ConfigKey::RowDensity);
+            stored.0.remove(&ConfigKey::ColourTheme);
+        }
+
+        display.reload(device.read());
+
+        let settings = display.settings();
+        assert_eq!(settings.row_density, RowDensity::default());
+        assert_eq!(settings.colour_theme, None);
+        assert!(
+            display.output().start_sidebar_minimised,
+            "the sidebar is the client's, not the file's"
         );
     }
 }

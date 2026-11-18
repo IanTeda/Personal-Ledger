@@ -2,7 +2,7 @@
 //! the sidebar checkbox, the Toasts control and the Colour Theme cards, and the preview stacking
 //! under the fields at the Medium floor. The date style, Row density, Status glyphs, Colour Theme and
 //! Appearance are saved to the conf file (ADR-0053). Only elements tagged with `debug_selector` are
-//! clicked.
+//! clicked. A clicked change is undone with `u` and redone with `ctrl-r` (#1246).
 
 use super::common;
 use bin_desktop::shell::router::SettingsDisplaySnapshot;
@@ -159,4 +159,24 @@ fn the_preview_stacks_under_the_fields_only_at_the_medium_floor(app: &mut TestAp
     let preview = ui.bounds("display-preview");
     assert!(preview.top() > fields.bottom(), "stacked at 720px");
     assert_eq!(preview.left(), fields.left());
+}
+
+#[gpui::test]
+fn a_clicked_option_and_card_are_undone_and_redone(app: &mut TestAppContext) {
+    let mut ui = on_display(app);
+    ui.click("display-date-style-4");
+    ui.click("display-colour-theme-3");
+    let conf = ui.conf();
+    let theme = ui.colour_choice().0;
+    assert!(theme.is_some());
+
+    ui.press("u");
+    assert_eq!(ui.colour_choice().0, None, "the window is repainted");
+    ui.press("u");
+    assert_eq!(ui.conf(), "[Display]\n");
+    assert_eq!(ui.settings::<SettingsDisplaySnapshot>().date_style, None);
+
+    ui.press("ctrl-r ctrl-r");
+    assert_eq!(ui.conf(), conf);
+    assert_eq!(ui.colour_choice().0, theme);
 }

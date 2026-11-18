@@ -589,8 +589,8 @@ impl SettingsView {
             .update(cx, |page, cx| page.send(GeneralEvent::SetToasts(on), cx));
     }
 
-    /// Undo or Redo of a Settings › General change (#1244): puts each key back in the file, in
-    /// order, then hands General what the file now reads, whichever page shows. Whether every key
+    /// Undo or Redo of a Settings › General or Display change (#1244, #1246): puts each key back in
+    /// the file, in order, then hands both pages what the file now reads, whichever shows. Whether every key
     /// went back; the first that didn't, shadowed or refused, says why on the status line and stops
     /// the rest. With none back, the page is left as it was.
     pub fn restore_device(
@@ -612,10 +612,20 @@ impl SettingsView {
         if restored > 0 {
             let snapshot = self.device.read();
             self.pages.general.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| presenter.reload(snapshot.clone()));
+            });
+            self.pages.display.update(cx, |page, cx| {
                 page.update_presenter(cx, |presenter| presenter.reload(snapshot));
             });
         }
         restored == changes.len()
+    }
+
+    /// The Display settings as Settings › Display holds them: what a restore applies at once, as a
+    /// write would.
+    pub fn display_in_effect(&self, cx: &App) -> (DisplayOutput, lib_settings::DisplaySettings) {
+        let display = self.pages.display.read(cx).presenter();
+        (display.output(), display.settings())
     }
 
     /// Whether non-Error Toasts show and the Data folder in effect, as Settings › General holds

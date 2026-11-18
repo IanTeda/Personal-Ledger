@@ -672,8 +672,8 @@ impl Root {
     }
 
     /// Applies the Configuration keys Undo or Redo put back that take effect at once, as a write
-    /// would: Toasts on the Shell, and the Data folder where `:open` and `:new` start. The rest
-    /// apply at the next start.
+    /// would: Toasts on the Shell, the Data folder where `:open` and `:new` start, the Display
+    /// Preferences and the Colour Theme and Appearance. The rest apply at the next start.
     fn apply_restored(&mut self, restored: &[ConfigKey], cx: &mut Context<'_, Self>) {
         let (toasts_on, data_folder) = self.settings.read(cx).general_in_effect(cx);
         if restored.contains(&ConfigKey::Toasts) {
@@ -682,6 +682,31 @@ impl Root {
         if restored.contains(&ConfigKey::Data) {
             self.presenter
                 .set_explorer_start(Some(data_folder), dirs::home_dir());
+        }
+        let display_keys = [
+            ConfigKey::DateStyle,
+            ConfigKey::RowDensity,
+            ConfigKey::StatusGlyphs,
+            ConfigKey::ColourTheme,
+            ConfigKey::ColourAppearance,
+        ];
+        if !restored.iter().any(|key| display_keys.contains(key)) {
+            return;
+        }
+        let (output, settings) = self.settings.read(cx).display_in_effect(cx);
+        if restored.iter().any(|key| {
+            matches!(
+                key,
+                ConfigKey::DateStyle | ConfigKey::RowDensity | ConfigKey::StatusGlyphs
+            )
+        }) {
+            self.push_display_preferences(output, cx);
+        }
+        if restored.contains(&ConfigKey::ColourTheme) {
+            crate::theme::colours::set_colour_theme(settings.colour_theme, cx);
+        }
+        if restored.contains(&ConfigKey::ColourAppearance) {
+            crate::theme::colours::set_colour_appearance(Some(settings.colour_appearance), cx);
         }
     }
 
