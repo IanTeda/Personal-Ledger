@@ -338,25 +338,18 @@ impl CategoriesPagePresenter {
     }
 
     fn hints(&self) -> Vec<Hint> {
-        let hint = |chord: String, action: String| Hint { chord, action };
         let pair = |a: &str, b: &str| self.keymap.hint_chords(&[a, b]);
         vec![
-            hint(pair(MOVE_DOWN, MOVE_UP), msg::categories_hint_row()),
-            hint(pair(EXPAND, COLLAPSE), msg::categories_hint_expand()),
-            hint(
-                self.keymap.hint_chord(EDIT).to_string(),
-                msg::categories_hint_edit(),
-            ),
-            hint(
-                self.keymap.hint_chord(DELETE).to_string(),
+            Hint::new(pair(MOVE_DOWN, MOVE_UP), msg::categories_hint_row()),
+            Hint::new(pair(EXPAND, COLLAPSE), msg::categories_hint_expand()),
+            Hint::new(self.keymap.hint_chord(EDIT), msg::categories_hint_edit()),
+            Hint::new(
+                self.keymap.hint_chord(DELETE),
                 msg::categories_hint_delete(),
             ),
-            hint(
-                self.keymap.hint_chord(NEW).to_string(),
-                msg::categories_hint_new(),
-            ),
-            hint(
-                self.keymap.hint_chord(NEW_CHILD).to_string(),
+            Hint::new(self.keymap.hint_chord(NEW), msg::categories_hint_new()),
+            Hint::new(
+                self.keymap.hint_chord(NEW_CHILD),
                 msg::categories_hint_sub(),
             ),
         ]

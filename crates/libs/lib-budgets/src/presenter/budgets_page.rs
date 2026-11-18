@@ -341,39 +341,39 @@ impl BudgetsPagePresenter {
     fn hints(&self) -> Vec<Hint> {
         let chord = |command: &str| self.keys.all.hint_chord(command).to_string();
         let pair = |a: &str, b: &str| format!("{}/{}", chord(a), chord(b));
-        let hint = |chord: String, action: String| Hint { chord, action };
-        let rows = hint(pair(MOVE_DOWN, MOVE_UP), msg::budgets_hint_row());
-        let switch = hint(chord(NEXT_TAB), msg::budgets_hint_switch_view());
-        let range = hint(
+        let rows = Hint::new(pair(MOVE_DOWN, MOVE_UP), msg::budgets_hint_row());
+        let switch = Hint::new(chord(NEXT_TAB), msg::budgets_hint_switch_view());
+        let range = Hint::new(
             pair(PREVIOUS_PERIOD, NEXT_PERIOD),
             msg::budgets_hint_range(),
         );
-        let budget_category = hint(chord(BUDGET_CATEGORY), msg::budgets_hint_budget_category());
+        let budget_category =
+            Hint::new(chord(BUDGET_CATEGORY), msg::budgets_hint_budget_category());
         match self.tab {
             BudgetsTab::Progress => vec![
                 rows,
-                hint(chord(SELECT), msg::budgets_hint_open()),
-                hint(chord(EDIT), msg::budgets_hint_edit_budget()),
+                Hint::new(chord(SELECT), msg::budgets_hint_open()),
+                Hint::new(chord(EDIT), msg::budgets_hint_edit_budget()),
                 budget_category,
-                hint(chord(STOP), msg::budgets_hint_stop_budgeting()),
-                hint(chord(SWITCH), msg::budgets_hint_switch_budget()),
-                hint(
+                Hint::new(chord(STOP), msg::budgets_hint_stop_budgeting()),
+                Hint::new(chord(SWITCH), msg::budgets_hint_switch_budget()),
+                Hint::new(
                     pair(PREVIOUS_PERIOD, NEXT_PERIOD),
                     msg::budgets_hint_period(),
                 ),
                 switch,
             ],
             BudgetsTab::Plan if self.editing() => vec![
-                hint("enter".to_string(), msg::budgets_hint_save_cell()),
-                hint("esc".to_string(), msg::budgets_hint_cancel()),
-                hint("tab".to_string(), msg::budgets_hint_next_month()),
-                hint(
+                Hint::new("enter".to_string(), msg::budgets_hint_save_cell()),
+                Hint::new("esc".to_string(), msg::budgets_hint_cancel()),
+                Hint::new("tab".to_string(), msg::budgets_hint_next_month()),
+                Hint::new(
                     "shift+enter".to_string(),
                     msg::budgets_hint_this_month_only(),
                 ),
             ],
             BudgetsTab::Plan => vec![
-                hint(
+                Hint::new(
                     format!(
                         "{}/{}/{}/{}",
                         chord(COLUMN_LEFT),
@@ -383,19 +383,19 @@ impl BudgetsPagePresenter {
                     ),
                     msg::budgets_hint_cell(),
                 ),
-                hint(chord(SELECT), msg::budgets_hint_edit()),
-                hint(chord(ROLLOVER), msg::budgets_hint_rollover()),
-                hint(chord(CLEAR), msg::budgets_hint_clear()),
-                hint(chord(FILL), msg::budgets_hint_fill()),
+                Hint::new(chord(SELECT), msg::budgets_hint_edit()),
+                Hint::new(chord(ROLLOVER), msg::budgets_hint_rollover()),
+                Hint::new(chord(CLEAR), msg::budgets_hint_clear()),
+                Hint::new(chord(FILL), msg::budgets_hint_fill()),
                 budget_category,
                 range,
                 switch,
             ],
             BudgetsTab::History => vec![
                 rows,
-                hint(pair(COLUMN_LEFT, COLUMN_RIGHT), msg::budgets_hint_month()),
-                hint(chord(SELECT), msg::budgets_hint_open()),
-                hint(chord(EXPORT), msg::budgets_hint_export()),
+                Hint::new(pair(COLUMN_LEFT, COLUMN_RIGHT), msg::budgets_hint_month()),
+                Hint::new(chord(SELECT), msg::budgets_hint_open()),
+                Hint::new(chord(EXPORT), msg::budgets_hint_export()),
                 range,
                 switch,
             ],

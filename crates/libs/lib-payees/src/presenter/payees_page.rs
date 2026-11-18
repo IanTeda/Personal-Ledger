@@ -266,28 +266,18 @@ impl PayeesPagePresenter {
     }
 
     fn hints(&self) -> Vec<Hint> {
-        let hint = |chord: String, action: String| Hint { chord, action };
         vec![
-            hint(
+            Hint::new(
                 self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                 msg::payees_hint_row(),
             ),
-            hint(
-                self.keymap.hint_chord(SELECT).to_string(),
+            Hint::new(
+                self.keymap.hint_chord(SELECT),
                 msg::payees_hint_open_transactions(),
             ),
-            hint(
-                self.keymap.hint_chord(EDIT).to_string(),
-                msg::payees_hint_edit(),
-            ),
-            hint(
-                self.keymap.hint_chord(DELETE).to_string(),
-                msg::payees_hint_delete(),
-            ),
-            hint(
-                self.keymap.hint_chord(NEW).to_string(),
-                msg::payees_hint_new(),
-            ),
+            Hint::new(self.keymap.hint_chord(EDIT), msg::payees_hint_edit()),
+            Hint::new(self.keymap.hint_chord(DELETE), msg::payees_hint_delete()),
+            Hint::new(self.keymap.hint_chord(NEW), msg::payees_hint_new()),
         ]
     }
 }

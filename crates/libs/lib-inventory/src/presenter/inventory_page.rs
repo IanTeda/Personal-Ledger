@@ -527,26 +527,22 @@ impl InventoryPagePresenter {
 
     /// The legend for the selected row.
     fn hints(&self, selected: Option<InventoryRow>) -> Vec<Hint> {
-        let hint = |chord: &str, action: String| Hint {
-            chord: chord.to_string(),
-            action,
-        };
         let pair = |a: &str, b: &str| self.keymap.hint_chords(&[a, b]);
-        let motion = hint(&pair(MOVE_DOWN, MOVE_UP), msg::inventory_hint_move());
-        let edit = hint(self.keymap.hint_chord(EDIT), msg::inventory_hint_edit());
-        let remove = hint(self.keymap.hint_chord(REMOVE), msg::inventory_hint_remove());
-        let new_location = hint(
+        let motion = Hint::new(pair(MOVE_DOWN, MOVE_UP), msg::inventory_hint_move());
+        let edit = Hint::new(self.keymap.hint_chord(EDIT), msg::inventory_hint_edit());
+        let remove = Hint::new(self.keymap.hint_chord(REMOVE), msg::inventory_hint_remove());
+        let new_location = Hint::new(
             self.keymap.hint_chord(NEW),
             msg::inventory_hint_new_location(),
         );
-        let new_area = hint(
+        let new_area = Hint::new(
             self.keymap.hint_chord(ADD_AREA),
             msg::inventory_hint_new_area(),
         );
         match selected {
             Some(InventoryRow::Location(_)) => vec![
                 motion,
-                hint(&pair(EXPAND, COLLAPSE), msg::inventory_hint_expand()),
+                Hint::new(pair(EXPAND, COLLAPSE), msg::inventory_hint_expand()),
                 edit,
                 remove,
                 new_location,
@@ -554,12 +550,12 @@ impl InventoryPagePresenter {
             ],
             Some(InventoryRow::Area(_)) => vec![
                 motion,
-                hint(
+                Hint::new(
                     self.keymap.hint_chord(COLLAPSE),
                     msg::inventory_hint_location(),
                 ),
-                hint(
-                    &pair(MOVE_AREA_DOWN, MOVE_AREA_UP),
+                Hint::new(
+                    pair(MOVE_AREA_DOWN, MOVE_AREA_UP),
                     msg::inventory_hint_reorder(),
                 ),
                 edit,

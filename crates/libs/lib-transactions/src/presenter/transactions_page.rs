@@ -510,17 +510,16 @@ impl TransactionsPagePresenter {
     /// The page's legend, its chords read from the keymap so an override shows.
     fn page_hints(&self) -> Vec<Hint> {
         let chord = |command: &str| self.keymap.hint_chord(command).to_string();
-        let hint = |chord: String, action: String| Hint { chord, action };
         vec![
-            hint(
+            Hint::new(
                 format!("{}/{}", chord(MOVE_DOWN), chord(MOVE_UP)),
                 msg::transactions_hint_row(),
             ),
-            hint(chord(SELECT), msg::transactions_hint_open()),
-            hint(chord(EDIT), msg::transactions_hint_edit()),
-            hint(chord(NEW), msg::transactions_hint_add()),
-            hint(chord(SEARCH), msg::transactions_hint_search()),
-            hint(chord(FILTER), msg::transactions_hint_filter()),
+            Hint::new(chord(SELECT), msg::transactions_hint_open()),
+            Hint::new(chord(EDIT), msg::transactions_hint_edit()),
+            Hint::new(chord(NEW), msg::transactions_hint_add()),
+            Hint::new(chord(SEARCH), msg::transactions_hint_search()),
+            Hint::new(chord(FILTER), msg::transactions_hint_filter()),
         ]
     }
 }

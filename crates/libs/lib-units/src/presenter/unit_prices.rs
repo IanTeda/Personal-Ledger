@@ -281,17 +281,16 @@ impl UnitPricesPresenter {
 
     fn hints(&self, manual: bool) -> Vec<Hint> {
         let chord = |command| self.keymap.hint_chord(command).to_string();
-        let hint = |chord: String, action: String| Hint { chord, action };
         let mut hints = vec![
-            hint(
+            Hint::new(
                 format!("{}/{}", chord(MOVE_DOWN), chord(MOVE_UP)),
                 msg::units_prices_hint_week(),
             ),
-            hint(chord(EARLIER), msg::units_prices_hint_earlier()),
-            hint(chord(LATER), msg::units_prices_hint_later()),
+            Hint::new(chord(EARLIER), msg::units_prices_hint_earlier()),
+            Hint::new(chord(LATER), msg::units_prices_hint_later()),
         ];
         if manual {
-            hints.push(hint(chord(SET_PRICE), msg::units_hint_set_price()));
+            hints.push(Hint::new(chord(SET_PRICE), msg::units_hint_set_price()));
         }
         hints
     }

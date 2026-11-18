@@ -294,24 +294,17 @@ impl InstitutionsPagePresenter {
     }
 
     fn hints(&self) -> Vec<Hint> {
-        let hint = |chord: String, action: String| Hint { chord, action };
         vec![
-            hint(
+            Hint::new(
                 self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                 msg::institutions_hint_row(),
             ),
-            hint(
-                self.keymap.hint_chord(EDIT).to_string(),
-                msg::institutions_hint_edit(),
-            ),
-            hint(
-                self.keymap.hint_chord(DELETE).to_string(),
+            Hint::new(self.keymap.hint_chord(EDIT), msg::institutions_hint_edit()),
+            Hint::new(
+                self.keymap.hint_chord(DELETE),
                 msg::institutions_hint_delete(),
             ),
-            hint(
-                self.keymap.hint_chord(NEW).to_string(),
-                msg::institutions_hint_new(),
-            ),
+            Hint::new(self.keymap.hint_chord(NEW), msg::institutions_hint_new()),
         ]
     }
 }

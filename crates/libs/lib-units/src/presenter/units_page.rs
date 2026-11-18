@@ -844,7 +844,6 @@ impl UnitsPagePresenter {
     /// The legend for `row`'s table, with Set price while `row` offers it.
     fn hints(&self, row: Option<Row<'_>>) -> Vec<Hint> {
         let chord = |command| self.keymap.hint_chord(command).to_string();
-        let hint = |chord: String, action: String| Hint { chord, action };
         let moves = format!("{}/{}", chord(MOVE_DOWN), chord(MOVE_UP));
         let on_source = matches!(row, Some(Row::Source(..)));
         let set_price =
@@ -863,19 +862,19 @@ impl UnitsPagePresenter {
             )
         };
         let mut hints = vec![
-            hint(moves, row),
-            hint(chord(EDIT), msg::units_hint_edit()),
-            hint(chord(DELETE), msg::units_hint_delete()),
-            hint(chord(NEW), msg::units_hint_new()),
+            Hint::new(moves, row),
+            Hint::new(chord(EDIT), msg::units_hint_edit()),
+            Hint::new(chord(DELETE), msg::units_hint_delete()),
+            Hint::new(chord(NEW), msg::units_hint_new()),
         ];
         if !on_source {
-            hints.push(hint(chord(OPEN), msg::units_hint_prices()));
+            hints.push(Hint::new(chord(OPEN), msg::units_hint_prices()));
         }
         if set_price {
-            hints.push(hint(chord(SET_PRICE), msg::units_hint_set_price()));
+            hints.push(Hint::new(chord(SET_PRICE), msg::units_hint_set_price()));
         }
-        hints.push(hint(chord(TEST_SOURCE), test));
-        hints.push(hint(chord(NEXT_TABLE), other));
+        hints.push(Hint::new(chord(TEST_SOURCE), test));
+        hints.push(Hint::new(chord(NEXT_TABLE), other));
         hints
     }
 }

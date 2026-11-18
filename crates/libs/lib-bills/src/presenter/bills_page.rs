@@ -332,30 +332,29 @@ impl BillsPagePresenter {
     fn hints(&self) -> Vec<Hint> {
         let chord = |command: &str| self.keymap.hint_chord(command).to_string();
         let pair = |a: &str, b: &str, joint: &str| format!("{}{joint}{}", chord(a), chord(b));
-        let hint = |chord: String, action: String| Hint { chord, action };
-        let rows = hint(pair(MOVE_DOWN, MOVE_UP, "/"), msg::bills_hint_row());
-        let switch = hint(chord(NEXT_TAB), msg::bills_hint_switch_view());
+        let rows = Hint::new(pair(MOVE_DOWN, MOVE_UP, "/"), msg::bills_hint_row());
+        let switch = Hint::new(chord(NEXT_TAB), msg::bills_hint_switch_view());
         match self.tab {
             BillsTab::Schedule => vec![
                 rows,
-                hint(chord(PAY), msg::bills_hint_pay()),
-                hint(chord(SKIP), msg::bills_hint_skip()),
-                hint(
+                Hint::new(chord(PAY), msg::bills_hint_pay()),
+                Hint::new(chord(SKIP), msg::bills_hint_skip()),
+                Hint::new(
                     pair(PREVIOUS_PERIOD, NEXT_PERIOD, "/"),
                     msg::bills_hint_period(),
                 ),
-                hint(chord(ALL), msg::bills_hint_all()),
-                hint(
+                Hint::new(chord(ALL), msg::bills_hint_all()),
+                Hint::new(
                     pair(CHIP_PAID, CHIP_UPCOMING, "\u{2013}"),
                     msg::bills_hint_status_chips(),
                 ),
-                hint(chord(FILTERS), msg::bills_hint_filters()),
+                Hint::new(chord(FILTERS), msg::bills_hint_filters()),
                 switch,
             ],
             BillsTab::Planner => vec![
                 rows,
-                hint(chord(EDIT), msg::bills_hint_edit()),
-                hint(chord(NEW), msg::bills_hint_new()),
+                Hint::new(chord(EDIT), msg::bills_hint_edit()),
+                Hint::new(chord(NEW), msg::bills_hint_new()),
                 switch,
             ],
         }

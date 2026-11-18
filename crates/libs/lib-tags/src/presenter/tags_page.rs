@@ -268,32 +268,19 @@ impl TagsPagePresenter {
     }
 
     fn hints(&self) -> Vec<Hint> {
-        let hint = |chord: String, action: String| Hint { chord, action };
         vec![
-            hint(
+            Hint::new(
                 self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                 msg::tags_hint_row(),
             ),
-            hint(
-                self.keymap.hint_chord(SELECT).to_string(),
+            Hint::new(
+                self.keymap.hint_chord(SELECT),
                 msg::tags_hint_open_transactions(),
             ),
-            hint(
-                self.keymap.hint_chord(EDIT).to_string(),
-                msg::tags_hint_edit(),
-            ),
-            hint(
-                self.keymap.hint_chord(REMOVE).to_string(),
-                msg::tags_hint_remove(),
-            ),
-            hint(
-                self.keymap.hint_chord(MERGE).to_string(),
-                msg::tags_hint_merge(),
-            ),
-            hint(
-                self.keymap.hint_chord(NEW).to_string(),
-                msg::tags_hint_new(),
-            ),
+            Hint::new(self.keymap.hint_chord(EDIT), msg::tags_hint_edit()),
+            Hint::new(self.keymap.hint_chord(REMOVE), msg::tags_hint_remove()),
+            Hint::new(self.keymap.hint_chord(MERGE), msg::tags_hint_merge()),
+            Hint::new(self.keymap.hint_chord(NEW), msg::tags_hint_new()),
         ]
     }
 }

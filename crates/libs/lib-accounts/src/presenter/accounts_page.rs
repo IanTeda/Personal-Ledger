@@ -356,28 +356,18 @@ impl AccountsPagePresenter {
     }
 
     fn hints(&self) -> Vec<Hint> {
-        let hint = |chord: String, action: String| Hint { chord, action };
         vec![
-            hint(
+            Hint::new(
                 self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                 msg::accounts_hint_row(),
             ),
-            hint(
-                self.keymap.hint_chord(SELECT).to_string(),
+            Hint::new(
+                self.keymap.hint_chord(SELECT),
                 msg::accounts_hint_open_ledger(),
             ),
-            hint(
-                self.keymap.hint_chord(EDIT).to_string(),
-                msg::accounts_hint_edit(),
-            ),
-            hint(
-                self.keymap.hint_chord(DELETE).to_string(),
-                msg::accounts_hint_delete(),
-            ),
-            hint(
-                self.keymap.hint_chord(NEW).to_string(),
-                msg::accounts_hint_new(),
-            ),
+            Hint::new(self.keymap.hint_chord(EDIT), msg::accounts_hint_edit()),
+            Hint::new(self.keymap.hint_chord(DELETE), msg::accounts_hint_delete()),
+            Hint::new(self.keymap.hint_chord(NEW), msg::accounts_hint_new()),
         ]
     }
 }
