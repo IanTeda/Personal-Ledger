@@ -4,7 +4,7 @@
 //! lists the Presenter's; the View keeps only each open list's scroll ([`GeneralWidgets`]).
 
 use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_settings::presenter::{DataFolderView, FieldView, ThisDeviceView};
+use lib_settings::presenter::{DataFolderView, FieldNote, FieldView, ThisDeviceView};
 use lib_settings::{GeneralEvent, GeneralField, GeneralViewModel};
 use lib_viper::view::Hint;
 
@@ -250,10 +250,7 @@ fn locale_field(
     scroll: &mut usize,
     cx: &App,
 ) -> impl IntoElement {
-    let note = view
-        .own_note
-        .clone()
-        .map(|text| note(text, "general-locale-note", cx));
+    let note = own_text(view).map(|text| note(text, "general-locale-note", cx));
     focus_mark(view.focused, cx)
         .debug_selector(|| "general-locale".to_string())
         .child(dropdown(
@@ -303,12 +300,16 @@ fn data_folder_field(
                     cx,
                 )),
         )
-        .children(
-            view.own_note
-                .clone()
-                .map(|text| note(text, "general-data-folder-note", cx)),
-        )
+        .children(own_text(view).map(|text| note(text, "general-data-folder-note", cx)))
         .children(view.hint.clone().map(|text| hint(text, cx)))
+}
+
+/// The field's own note, which the Locale and the Data folder draw in place of the stock one.
+fn own_text(view: &FieldView) -> Option<String> {
+    match &view.note {
+        Some(FieldNote::Own(text)) => Some(text.clone()),
+        _ => None,
+    }
 }
 
 /// A note under a field, after a square accent marker: the Locale's and the Data folder's.

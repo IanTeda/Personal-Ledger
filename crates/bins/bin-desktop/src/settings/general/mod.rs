@@ -14,6 +14,7 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, Context, Window};
 use lib_core::StartView;
 use lib_database::Domain;
+use lib_settings::presenter::FieldNote;
 use lib_settings::{
     DeviceConfiguration, GeneralEvent, GeneralField, GeneralPresenter, GeneralSetup,
     GeneralViewModel, LocaleLine,
@@ -167,10 +168,11 @@ impl PageSnapshot for SettingsGeneralSnapshot {
                 .view(field)
                 .and_then(|field| field.list.highlight())
         };
-        let own_note = |field| {
-            view.fields
-                .view(field)
-                .and_then(|field| field.own_note.clone())
+        let own_text = |field| {
+            view.fields.view(field).and_then(|field| match &field.note {
+                Some(FieldNote::Own(note)) => Some(note.clone()),
+                _ => None,
+            })
         };
         SettingsGeneralSnapshot {
             field: view.fields.focused(),
@@ -180,10 +182,10 @@ impl PageSnapshot for SettingsGeneralSnapshot {
             locale: settings.locale.map(|locale| locale.tag().to_string()),
             start_view_list: highlight(GeneralField::StartView),
             locale_list: highlight(GeneralField::Locale),
-            locale_note: own_note(GeneralField::Locale),
+            locale_note: own_text(GeneralField::Locale),
             data_folder: path(presenter.data_folder()),
             data_folder_shown: view.data_folder.value.clone(),
-            data_folder_note: own_note(GeneralField::DataFolder),
+            data_folder_note: own_text(GeneralField::DataFolder),
             last_ledger: presenter.last_ledger().map(path),
             configuration: presenter.configuration_file().map(path),
         }

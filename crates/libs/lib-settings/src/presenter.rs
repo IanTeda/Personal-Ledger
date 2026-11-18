@@ -20,7 +20,7 @@ pub use display::{
     ColourCardView, ColourThemeView, DisplayEvent, DisplayField, DisplayOutput, DisplayPresenter,
     DisplaySettings, DisplaySetup, DisplayViewModel, PreviewRowView, PreviewView,
 };
-pub use form::{FieldKind, FieldValue, FieldView, FieldViews, Presentation};
+pub use form::{FieldKind, FieldNote, FieldValue, FieldView, FieldViews, Presentation};
 pub use frame::{
     Breadcrumb, IndexGroup, IndexRow, PickerGroup, PickerRow, PickerView, SettingsFocus,
     SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,

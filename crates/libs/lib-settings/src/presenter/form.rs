@@ -161,7 +161,7 @@ impl<F> FieldDecl<F> {
         }
     }
 
-    /// The field's own note ([`FieldView::own_note`]), drawn in place of the stock "Set by" note,
+    /// The field's own note ([`FieldNote::Own`]), drawn in place of the stock "Set by" note,
     /// which the field then never shows.
     pub fn own_note_replacing_shadowed(
         self,
@@ -235,14 +235,21 @@ pub struct FieldView {
     pub focused: bool,
     /// The line under the field.
     pub hint: Option<String>,
-    /// The stock note while a source above the file sets the key, unless the field declares its
-    /// own.
-    pub shadowed: Option<String>,
-    /// The field's own note, which it declares in place of the stock one.
-    pub own_note: Option<String>,
+    /// The note under the field, if any.
+    pub note: Option<FieldNote>,
     pub presentation: Presentation,
     /// A dropdown's list, closed for every other field.
     pub list: SelectList,
+}
+
+/// The note under a field: the stock one, or the field's own, which it declares in place of the
+/// stock one, so never both.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldNote {
+    /// The stock note while a source above the file sets the key.
+    Shadowed(String),
+    /// The field's own note.
+    Own(String),
 }
 
 impl FieldView {
@@ -528,14 +535,10 @@ impl<F: Copy + Eq> DeviceForm<F> {
             chosen: self.chosen(entry),
             focused: self.focus == Some(field),
             hint: decl.note.clone(),
-            shadowed: match decl.own_note {
-                Some(_) => None,
-                None => shadowed_note(entry.shadow.as_deref()),
+            note: match &decl.own_note {
+                Some(note) => note(&entry.value, entry.shadow.as_deref()).map(FieldNote::Own),
+                None => shadowed_note(entry.shadow.as_deref()).map(FieldNote::Shadowed),
             },
-            own_note: decl
-                .own_note
-                .as_ref()
-                .and_then(|note| note(&entry.value, entry.shadow.as_deref())),
             presentation: decl.presentation,
             list: match self.open {
                 Some((open, list)) if open == field => list,
@@ -1279,10 +1282,10 @@ mod tests {
         ));
         let mut form = form_on(device.clone());
         assert_eq!(
-            form.view(Toy::Density).and_then(|view| view.shadowed),
-            Some("Set by --roomy".to_string())
+            form.view(Toy::Density).and_then(|view| view.note),
+            Some(FieldNote::Shadowed("Set by --roomy".to_string()))
         );
-        assert_eq!(form.view(Toy::Start).and_then(|view| view.shadowed), None);
+        assert_eq!(form.view(Toy::Start).and_then(|view| view.note), None);
 
         let (answer, statuses) = send(
             &mut form,
@@ -1331,13 +1334,9 @@ mod tests {
             "the file's"
         );
         assert_eq!(
-            view.as_ref().and_then(|view| view.shadowed.clone()),
-            None,
-            "the field draws its own note"
-        );
-        assert_eq!(
-            view.and_then(|view| view.own_note),
-            Some("Over --locale en-AU".to_string())
+            view.and_then(|view| view.note),
+            Some(FieldNote::Own("Over --locale en-AU".to_string())),
+            "the field draws its own note in place of the stock one"
         );
 
         let (answer, statuses) = send(
@@ -1508,8 +1507,7 @@ mod tests {
                 chosen: Some(1),
                 focused: false,
                 hint: Some("Rows".to_string()),
-                shadowed: None,
-                own_note: None,
+                note: None,
                 presentation: Presentation::Segmented,
                 list: SelectList::default(),
             })

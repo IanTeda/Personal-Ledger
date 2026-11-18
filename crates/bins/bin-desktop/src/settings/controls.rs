@@ -4,7 +4,7 @@
 
 use gpui::{App, SharedString, div, prelude::*, px};
 use lib_core::configuration::ConfigKey;
-use lib_settings::presenter::FieldView;
+use lib_settings::presenter::{FieldNote, FieldView};
 
 use crate::form::fields::{OnSegmentClick, segmented_labelled};
 use crate::theme::color;
@@ -50,28 +50,29 @@ pub(super) fn segmented_choices(
 
 /// The line under a control.
 pub(super) fn hint(text: String, cx: &App) -> impl IntoElement {
+    muted_line(text, cx)
+}
+
+/// One muted line under a control: a hint or the shadowed note.
+fn muted_line(text: impl Into<SharedString>, cx: &App) -> gpui::Div {
     div()
         .mt(px(3.0))
         .text_size(px(12.0))
         .text_color(color::muted(cx))
-        .child(text)
+        .child(text.into())
 }
 
 /// The note under a field while a source above the file sets its key, so the field says why a
 /// change won't take.
 pub(super) fn shadowed(view: &FieldView, cx: &App) -> Option<gpui::Div> {
-    shadowed_note(view.key?, view.shadowed.as_deref(), cx)
+    match &view.note {
+        Some(FieldNote::Shadowed(note)) => shadowed_note(view.key?, Some(note), cx),
+        _ => None,
+    }
 }
 
 /// The note under `key`'s control while a source above the file sets it.
 pub(super) fn shadowed_note(key: ConfigKey, note: Option<&str>, cx: &App) -> Option<gpui::Div> {
     let note = note?.to_string();
-    Some(
-        div()
-            .debug_selector(move || format!("shadowed-{}", key.name()))
-            .mt(px(3.0))
-            .text_size(px(12.0))
-            .text_color(color::muted(cx))
-            .child(note),
-    )
+    Some(muted_line(note, cx).debug_selector(move || format!("shadowed-{}", key.name())))
 }
