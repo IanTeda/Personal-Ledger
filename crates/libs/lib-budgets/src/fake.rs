@@ -310,7 +310,7 @@ pub fn sample_categories() -> Vec<CategoryRef> {
             is_leaf,
         };
     let (expense, income) = (true, false);
-    vec![
+    let rows = vec![
         category(1, "Housing", "Housing", None, expense, false),
         category(2, "Rent", "Housing \u{203a} Rent", Some(1), expense, true),
         category(
@@ -351,5 +351,14 @@ pub fn sample_categories() -> Vec<CategoryRef> {
         category(10, "Household", "Household", None, expense, true),
         category(11, "Salary", "Salary", None, income, true),
         category(12, "Interest", "Interest", None, income, true),
-    ]
+    ];
+    // Listed in tree order: siblings A-Z within their type, as `lib-categories` lists them.
+    [6, 8, 7, 10, 1, 2, 3, 4, 5, 9, 12, 11]
+        .into_iter()
+        .filter_map(|n| {
+            rows.iter()
+                .find(|row| row.id == CategoryId::seed(n))
+                .cloned()
+        })
+        .collect()
 }

@@ -233,7 +233,7 @@ fn the_add_unit_controls_and_confirm_button_add_the_unit(app: &mut TestAppContex
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.unit_rows().last(),
+        ui.unit_rows().iter().find(|row| row.0 == "gold"),
         Some(&(
             "gold".to_string(),
             "Gold".to_string(),

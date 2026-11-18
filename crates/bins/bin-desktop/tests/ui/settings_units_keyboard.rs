@@ -247,7 +247,7 @@ fn typing_tab_and_enter_fill_and_save_an_add_unit_dialog(app: &mut TestAppContex
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.unit_rows().last(),
+        ui.unit_rows().iter().find(|row| row.0 == "eth"),
         Some(&("eth".to_string(), "Ether".to_string(), "Crypto".to_string()))
     );
 }
@@ -271,8 +271,8 @@ fn precision_follows_type_on_add_takes_typed_digits_and_reopens_in_edit(app: &mu
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
 
-    // A new Unit lands at the foot of the table.
-    ui.press("g g j j j");
+    // A new Unit lands in its place by code, between btc and vas.
+    ui.press("g g j j");
     assert_eq!(selected(&mut ui), "eth");
     ui.press("e");
     assert_eq!(ui.dialog_value("precision").as_deref(), Some("1"));
@@ -1142,7 +1142,7 @@ fn u_undoes_an_added_unit_and_ctrl_r_redoes_it_under_its_own_id(app: &mut TestAp
 
     ui.press("ctrl-r");
     assert_eq!(stored_units(&mut ui), added, "back under its own id");
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas", "eth"]);
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "eth", "vas"]);
     assert_eq!(
         status_message(&mut ui).as_deref(),
         Some("Redid Add unit eth")
@@ -1211,8 +1211,8 @@ fn u_undoes_a_deleted_base_unit_and_the_base_it_moved(app: &mut TestAppContext) 
     ui.press("u");
     assert_eq!(
         ui.unit_codes(),
-        ["btc", "vas", "aud"],
-        "restored behind the Units written since"
+        ["aud", "btc", "vas"],
+        "restored in its place by code"
     );
     assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
 
@@ -1289,4 +1289,20 @@ fn closing_the_ledger_leaves_only_configuration_on_history(app: &mut TestAppCont
         "only the Configuration is left"
     );
     assert!(history.redo.is_empty(), "the undone Ledger change went too");
+}
+
+/// A Unit deleted from the middle of the list and restored by Undo returns to its place by code
+/// (#1261).
+#[gpui::test]
+fn u_restores_a_deleted_unit_to_its_place_by_code(app: &mut TestAppContext) {
+    let mut ui = on_units_unused(app);
+    let before = ui.unit_codes();
+    ui.press("j d");
+    type_word(&mut ui, "btc");
+    ui.press("enter");
+    assert_eq!(ui.unit_codes(), ["aud", "vas"]);
+
+    ui.press("u");
+
+    assert_eq!(ui.unit_codes(), before);
 }

@@ -134,7 +134,7 @@ pub fn descendants_inclusive(categories: &[Category], id: CategoryId) -> Vec<Cat
     found
 }
 
-/// Every category with its [`path`], depth-first from each top-level category in list order --
+/// Every category with its [`path`], depth-first from each top-level category, siblings A-Z by name (ignoring case, ties by id) within their type --
 /// the Category filter's option list, parents included (choosing a parent matches its descendants).
 pub fn paths_in_tree_order(categories: &[Category]) -> Vec<(CategoryId, String)> {
     fn walk(
@@ -142,7 +142,15 @@ pub fn paths_in_tree_order(categories: &[Category]) -> Vec<(CategoryId, String)>
         parent: Option<CategoryId>,
         out: &mut Vec<(CategoryId, String)>,
     ) {
-        for category in categories.iter().filter(|c| c.parent == parent) {
+        let mut siblings: Vec<_> = categories.iter().filter(|c| c.parent == parent).collect();
+        siblings.sort_by_cached_key(|c| {
+            (
+                matches!(c.category_type, CategoryTypes::Income),
+                c.name.to_lowercase(),
+                c.id,
+            )
+        });
+        for category in siblings {
             if let Some(label) = path(categories, category.id) {
                 out.push((category.id, label));
             }
@@ -155,7 +163,7 @@ pub fn paths_in_tree_order(categories: &[Category]) -> Vec<(CategoryId, String)>
 }
 
 /// The categories in tree order: depth-first from each top-level category, each parent before its
-/// children and siblings in list order. A row the tree can't reach (a missing parent or a cycle)
+/// children and siblings A-Z by name within their type, so a restored row returns to its place. A row the tree can't reach (a missing parent or a cycle)
 /// is left out, as [`paths_in_tree_order`] leaves it out.
 pub fn tree_order(categories: &[Category]) -> Vec<Category> {
     paths_in_tree_order(categories)
@@ -588,15 +596,16 @@ mod tests {
             .map(|(_, label)| label)
             .collect();
         assert_eq!(labels.len(), 12);
-        assert_eq!(labels[0], "Housing");
-        assert_eq!(labels[1], "Housing \u{203a} Rent");
-        assert_eq!(labels[2], "Housing \u{203a} Utilities");
-        assert_eq!(labels[3], "Housing \u{203a} Utilities \u{203a} Electricity");
+        assert_eq!(labels[0], "Food");
+        assert_eq!(labels[4], "Housing");
+        assert_eq!(labels[5], "Housing \u{203a} Rent");
+        assert_eq!(labels[6], "Housing \u{203a} Utilities");
+        assert_eq!(labels[7], "Housing \u{203a} Utilities \u{203a} Electricity");
         assert!(labels.contains(&"Salary".to_string()));
     }
 
     #[test]
-    fn tree_order_lists_each_parent_before_its_children_and_siblings_in_row_order() {
+    fn tree_order_lists_each_parent_before_its_children_and_siblings_a_to_z_within_their_type() {
         let mut categories = sample_categories();
         // Food moved under Transport, which comes after it in the rows.
         let food = find_by_name(&categories, "Food").unwrap();
@@ -610,6 +619,7 @@ mod tests {
         assert_eq!(
             names,
             [
+                "Household",
                 "Housing",
                 "Rent",
                 "Utilities",
@@ -617,11 +627,10 @@ mod tests {
                 "Water",
                 "Transport",
                 "Food",
-                "Groceries",
                 "Dining",
-                "Household",
-                "Salary",
-                "Interest"
+                "Groceries",
+                "Interest",
+                "Salary"
             ]
         );
     }

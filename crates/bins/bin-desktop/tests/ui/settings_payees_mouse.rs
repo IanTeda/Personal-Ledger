@@ -106,7 +106,7 @@ fn a_rule_and_a_default_category_are_added_by_clicks(app: &mut TestAppContext) {
     ui.press("z o o");
     ui.click("add-payee-category");
     ui.click("add-payee-category-option-1");
-    assert_eq!(ui.dialog_value("category").as_deref(), Some("Rent"));
+    assert_eq!(ui.dialog_value("category").as_deref(), Some("Dining"));
     ui.click("add-payee-rule-input");
     ui.press("z o o x");
     ui.click("add-payee-rule-add");

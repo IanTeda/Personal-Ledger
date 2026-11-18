@@ -454,22 +454,22 @@ mod tests {
         assert_eq!(
             names,
             [
+                "Food",
+                "Dining",
+                "Groceries",
+                "Household",
                 "Housing",
                 "Rent",
                 "Utilities",
                 "Electricity",
                 "Water",
-                "Food",
-                "Groceries",
-                "Dining",
-                "Transport",
-                "Household"
+                "Transport"
             ]
         );
-        let housing = &view.expense.rows[0];
+        let housing = &view.expense.rows[4];
         assert_eq!(housing.subcount.as_deref(), Some("2 subcategories"));
         assert!(housing.can_add_child && housing.is_expanded);
-        let electricity = &view.expense.rows[3];
+        let electricity = &view.expense.rows[7];
         assert_eq!((electricity.depth, electricity.can_add_child), (2, false));
         assert_eq!(view.columns.name, "NAME");
         assert_eq!(
@@ -484,20 +484,20 @@ mod tests {
         let mut page = Page::new(shared);
 
         page.send(CategoriesPageEvent::Move(Step::Next));
-        assert_eq!(page.selected_name().as_deref(), Some("Housing"));
+        assert_eq!(page.selected_name().as_deref(), Some("Food"));
         page.send(CategoriesPageEvent::Move(Step::Last));
-        assert_eq!(page.selected_name().as_deref(), Some("Interest"));
+        assert_eq!(page.selected_name().as_deref(), Some("Salary"));
 
         page.send(CategoriesPageEvent::Select(HOUSING));
         page.send(CategoriesPageEvent::Collapse);
         assert!(
-            !page.view().expense.rows[0].is_expanded,
+            !page.view().expense.rows[4].is_expanded,
             "left folds Housing"
         );
         page.send(CategoriesPageEvent::Move(Step::Next));
         assert_eq!(
             page.selected_name().as_deref(),
-            Some("Food"),
+            Some("Transport"),
             "Rent is folded away"
         );
         page.send(CategoriesPageEvent::Select(HOUSING));

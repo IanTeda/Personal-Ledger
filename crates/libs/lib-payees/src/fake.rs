@@ -65,15 +65,15 @@ impl PayeeCategories for InMemoryPayeeCategories {
 /// The sample Categories' leaves, with their ids, as a Payee's Default category reads them.
 pub fn sample_categories() -> Vec<PayeeCategory> {
     [
+        (8, "Dining"),
+        (7, "Groceries"),
+        (10, "Household"),
         (2, "Rent"),
         (4, "Electricity"),
         (5, "Water"),
-        (7, "Groceries"),
-        (8, "Dining"),
         (9, "Transport"),
-        (10, "Household"),
-        (11, "Salary"),
         (12, "Interest"),
+        (11, "Salary"),
     ]
     .into_iter()
     .map(|(n, label)| PayeeCategory {

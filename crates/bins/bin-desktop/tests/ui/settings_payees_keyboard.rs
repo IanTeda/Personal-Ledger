@@ -537,7 +537,7 @@ fn tab_reaches_the_default_category_and_down_picks_a_leaf_ctrl_enter_saves(
         "the select swallows typing"
     );
     ui.press("down");
-    assert_eq!(ui.dialog_value("category").as_deref(), Some("Rent"));
+    assert_eq!(ui.dialog_value("category").as_deref(), Some("Dining"));
     ui.press("ctrl-enter");
     assert_eq!(ui.dialog(), None, "submit confirms from the select");
     assert_eq!(
@@ -548,7 +548,7 @@ fn tab_reaches_the_default_category_and_down_picks_a_leaf_ctrl_enter_saves(
     );
 
     ui.press("e");
-    assert_eq!(ui.dialog_value("category").as_deref(), Some("Rent"));
+    assert_eq!(ui.dialog_value("category").as_deref(), Some("Dining"));
 }
 
 #[gpui::test]
@@ -566,7 +566,7 @@ fn escape_closes_the_default_categorys_open_list_before_it_cancels(app: &mut Tes
     ui.press("down");
     assert_eq!(
         ui.dialog_value("category").as_deref(),
-        Some("Rent"),
+        Some("Dining"),
         "the closed select steps its value"
     );
     ui.press("escape");

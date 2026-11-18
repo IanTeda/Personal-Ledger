@@ -50,12 +50,12 @@ fn rows_move_with_j_k_and_the_ends(app: &mut TestAppContext) {
         first
     );
     ui.press("shift-g");
-    // Interest is the last row: the Income tree sits below the Expense one.
+    // Salary is the last row: the Income tree sits below the Expense one, A-Z.
     assert_eq!(
         ui.settings::<SettingsCategoriesSnapshot>()
             .selected_category
             .as_deref(),
-        Some("Interest")
+        Some("Salary")
     );
     ui.press("g g");
     assert_eq!(
@@ -139,8 +139,8 @@ fn a_failed_write_puts_the_categories_back_with_an_error_toast(app: &mut TestApp
 fn shift_n_opens_add_under_the_selected_row(app: &mut TestAppContext) {
     let mut ui = in_categories(app);
 
-    // Housing is the first row and a top-level Category, so it can take a sub-category.
-    ui.press("j shift-n");
+    // Housing is the fifth row (A-Z) and a top-level Category, so it can take a sub-category.
+    ui.press("j j j j j shift-n");
     assert_eq!(ui.dialog(), Some("AddCategory"));
     assert_eq!(ui.dialog_value("parent").as_deref(), Some("Housing"));
     ui.press("escape");
@@ -221,7 +221,7 @@ fn escape_closes_the_edit_dialog_without_renaming(app: &mut TestAppContext) {
 fn d_on_a_parent_is_refused_and_a_leaf_opens_the_delete_dialog(app: &mut TestAppContext) {
     let mut ui = in_categories(app);
 
-    ui.press("j d");
+    ui.press("j j j j j d");
     let page = ui.settings_frame();
     assert_eq!(ui.dialog(), None);
     assert_eq!(
@@ -262,7 +262,7 @@ fn typing_the_exact_name_and_pressing_enter_removes_the_leaf(app: &mut TestAppCo
 
     // Rent is used by splits, so they move to Uncategorised: the count can stay level, so the
     // check is on the name.
-    ui.press("j right d");
+    ui.press("j j j j j right d");
     // The delete confirm is gated on the exact, case-sensitive name, so enter does nothing yet.
     ui.press("enter");
     assert_eq!(ui.dialog(), Some("DeleteCategory"));
@@ -324,9 +324,9 @@ fn the_edit_type_change_is_held_until_enter_and_dropped_by_escape(app: &mut Test
     let mut ui = in_categories(app);
     let before = ui.settings::<SettingsCategoriesSnapshot>().category_types;
 
-    // The last row is Interest, a top-level Income no Budget or Bill Plan uses, so its type can
+    // The last row but one is Interest, a top-level Income no Budget or Bill Plan uses, so its type can
     // change.
-    ui.press("shift-g");
+    ui.press("shift-g k");
     ui.press("e");
     assert_eq!(ui.dialog(), Some("EditCategory"));
     assert_eq!(ui.dialog_value("name").as_deref(), Some("Interest"));
@@ -359,8 +359,8 @@ fn a_blocked_type_shows_its_notice_on_pick_and_enter_is_refused_with_the_same_te
     let mut ui = in_categories(app);
     let before = ui.settings::<SettingsCategoriesSnapshot>().category_types;
 
-    // The first row is Housing, whose Rent the sample Budgets and Bill Plans use.
-    ui.press("j e");
+    // The fifth row is Housing, whose Rent the sample Budgets and Bill Plans use.
+    ui.press("j j j j j e");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("Housing"));
     let opened = ui.dialog_value("notice").unwrap_or_default();
     assert!(!opened.contains("can't become"), "{opened}");
@@ -396,7 +396,7 @@ fn the_edit_dialog_hides_parents_that_would_nest_the_subtree_past_three_levels(
     let mut ui = in_categories(app);
 
     // Housing (height 2) can't go under Transport; its Utilities (height 1) can.
-    ui.press("j e");
+    ui.press("j j j j j e");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("Housing"));
     let parents = ui.dialog_value("parents").expect("the offered parents");
     assert!(!parents.split(',').any(|name| name == "Transport"));
@@ -481,10 +481,10 @@ fn tab_reaches_the_parent_select_and_down_picks_a_parent_whose_type_it_takes(
     assert_eq!(ui.dialog_value("field").as_deref(), Some("Parent"));
     assert_eq!(ui.dialog_value("parent"), None);
     ui.press("down");
-    assert_eq!(ui.dialog_value("parent").as_deref(), Some("Housing"));
-    // Salary is the first Income parent the list offers.
+    assert_eq!(ui.dialog_value("parent").as_deref(), Some("Food"));
+    // Interest is the first Income parent the list offers.
     for _ in 0..12 {
-        if ui.dialog_value("parent").as_deref() == Some("Salary") {
+        if ui.dialog_value("parent").as_deref() == Some("Interest") {
             break;
         }
         ui.press("down");
@@ -545,7 +545,7 @@ fn a_parent_that_already_has_children_shows_no_stop_notice(app: &mut TestAppCont
     let mut ui = in_categories(app);
 
     // Housing already has children.
-    ui.press("j shift-n");
+    ui.press("j j j j j shift-n");
     assert_eq!(ui.dialog_value("parent").as_deref(), Some("Housing"));
     assert!(
         !ui.dialog_value("notice")
@@ -641,14 +641,14 @@ fn adding_a_child_under_a_leaf_with_splits_warns_then_hands_them_over(app: &mut 
         "the Category and its handover in one commit"
     );
     // Groceries is a parent now, so it stays folded over its new child: `right` opens it, and
-    // `j` then steps onto the child (`j` from the folded parent skips to Dining).
+    // `j` then steps onto the child (`j` from the folded parent skips to Household).
     assert!(select_category(&mut ui, "Groceries"));
     ui.press("j");
     assert_eq!(
         ui.settings::<SettingsCategoriesSnapshot>()
             .selected_category
             .as_deref(),
-        Some("Dining"),
+        Some("Household"),
         "folded, Groceries hides its child"
     );
     ui.press("k");
@@ -688,7 +688,7 @@ fn a_leaf_holding_nothing_shows_no_handover_notice(app: &mut TestAppContext) {
     let mut ui = in_categories(app);
 
     // Housing already has children.
-    ui.press("j shift-n");
+    ui.press("j j j j j shift-n");
     let notice = ui.dialog_value("notice").expect("a notice");
     assert!(!notice.contains("move to"), "{notice}");
     ui.press("escape");
@@ -830,5 +830,28 @@ fn u_undoes_an_added_category_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
     assert_eq!(
         ui.settings::<SettingsCategoriesSnapshot>().category_names,
         added
+    );
+}
+
+/// A Category deleted and restored by Undo returns to its A-Z place among its siblings (#1261).
+#[gpui::test]
+fn u_restores_a_deleted_category_to_its_a_to_z_place(app: &mut TestAppContext) {
+    let mut ui = in_categories(app);
+    let before = ui.settings::<SettingsCategoriesSnapshot>().category_names;
+    ui.press("j j j j j right d");
+    ui.press("shift-r e n t");
+    ui.press("enter");
+    assert!(
+        !ui.settings::<SettingsCategoriesSnapshot>()
+            .category_names
+            .iter()
+            .any(|name| name == "Rent")
+    );
+
+    ui.press("u");
+
+    assert_eq!(
+        ui.settings::<SettingsCategoriesSnapshot>().category_names,
+        before
     );
 }

@@ -93,7 +93,8 @@ fn a_new_category_is_added_by_typing_its_name(app: &mut TestAppContext) {
 fn a_parent_category_cannot_be_deleted_but_a_leaf_can(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
 
-    ui.press("j");
+    // Housing is the fifth row, A-Z.
+    ui.press("j j j j j");
     ui.press("d");
     assert_eq!(ui.dialog(), None);
     ui.press("right");

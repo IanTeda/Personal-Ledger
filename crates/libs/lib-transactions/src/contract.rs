@@ -366,7 +366,7 @@ where
         rent.clone(),
         power.clone(),
     ];
-    let tree = vec![housing, utilities, power, rent, food, groceries];
+    let tree = vec![food, groceries, housing, rent, utilities, power];
 
     let reads = factory.create(added);
     assert_eq!(reads.transaction_categories(), tree);

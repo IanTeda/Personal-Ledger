@@ -54,5 +54,5 @@ fn a_unit_added_on_a_new_ledger_is_there_after_a_restart(app: &mut TestAppContex
         .storage()
         .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas", "nzd"]);
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "nzd", "vas"]);
 }

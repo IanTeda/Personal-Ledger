@@ -105,6 +105,7 @@ Intended features for Units. Ticked means built in at least one app; the tag say
 - [ ] UNT-008: Cross-unit aggregate reporting and portfolio valuation
 - [x] UNT-009 (TUI, desktop): Set a Manual entry unit's price for the current or an earlier week
 - [x] UNT-010 (TUI, desktop): View a unit's weekly prices as a chart and a table, a year at a time, stepped back and forward by a month
+- [x] UNT-011 (TUI, desktop): List units by code, ignoring case, so a unit that Undo restores returns to its place
 
 ## For developers
 

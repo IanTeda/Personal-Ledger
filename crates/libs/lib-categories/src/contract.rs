@@ -15,7 +15,7 @@ use crate::fake::{InMemoryCategories, InMemoryCategoryBudget};
 use crate::interactor::{AddCategory, BudgetChange, MoveCategory, RenameCategory};
 use crate::{
     Category, CategoryBudgetMonths, CategoryError, CategoryRepository, CategorySavePorts,
-    CategoryUse, Holdings, sample_categories,
+    CategoryUse, Holdings, sample_categories, tree_order,
 };
 
 /// A stored Categories port.
@@ -233,9 +233,9 @@ pub fn a_moved_category_reloads_under_its_new_parent<F: PortsFactory>(factory: &
     assert_eq!(parent(&mut ports, ELECTRICITY), Some(UTILITIES));
 }
 
-/// The tree lists each parent before its children, depth first, siblings in the order added,
-/// before and after a reload: a child added under an early parent lists among its siblings, not
-/// last, and a Category moved under a parent added after it lists after that parent.
+/// The tree lists each parent before its children, depth first, siblings A-Z by name within their type,
+/// before and after a reload: a child added under a parent lists among its siblings A-Z, and a
+/// Category moved under another parent lists under it.
 pub fn categories_list_in_tree_order<F: PortsFactory>(factory: &mut F) {
     let mut ports = factory.create(sample_categories());
 
@@ -252,19 +252,19 @@ pub fn categories_list_in_tree_order<F: PortsFactory>(factory: &mut F) {
     factory.commit(&mut ports);
 
     let expected = [
+        "Household",
         "Housing",
+        "Insurance",
         "Rent",
         "Utilities",
         "Electricity",
         "Water",
-        "Insurance",
         "Transport",
         "Food",
-        "Groceries",
         "Dining",
-        "Household",
-        "Salary",
+        "Groceries",
         "Interest",
+        "Salary",
     ];
     assert_eq!(names(&mut ports), expected);
     let mut ports = factory.reload(ports);
@@ -524,7 +524,7 @@ pub fn a_refused_monthly_budget_writes_nothing<F: SaveFactory>(factory: &mut F) 
     factory.commit(&mut ports);
 
     assert_eq!(loaded(&mut ports), tree);
-    assert_eq!(factory.stored_categories(), tree);
+    assert_eq!(tree_order(&factory.stored_categories()), tree);
     assert_eq!(factory.stored_amount(GROCERIES), budgeted);
 }
 
@@ -637,7 +637,7 @@ pub fn the_writes_wait_for_the_one_commit<F: SaveFactory>(factory: &mut F) {
     .run(categories, save)
     .expect("Groceries takes a child");
 
-    assert_eq!(factory.stored_categories(), tree);
+    assert_eq!(tree_order(&factory.stored_categories()), tree);
     assert_eq!(factory.stored_holdings(GROCERIES), held);
     assert_eq!(factory.stored_amount(GROCERIES), budgeted);
     assert_eq!(factory.stored_amount(child.id), None);

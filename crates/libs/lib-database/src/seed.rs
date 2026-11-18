@@ -257,7 +257,7 @@ pub fn sample_accounts() -> Vec<lib_accounts::Account> {
 /// `lib-categories`' sample, the Sample Ledger's Categories, with the ids its Splits, Bill Plans,
 /// Payees and Budgets name.
 pub fn sample_categories() -> Vec<lib_categories::Category> {
-    lib_categories::fake::InMemoryCategories::sample().categories
+    lib_categories::tree_order(&lib_categories::fake::InMemoryCategories::sample().categories)
 }
 
 /// `lib-budgets`' sample as of `today`, the Sample Ledger's Budgets, fed the sample Accounts and

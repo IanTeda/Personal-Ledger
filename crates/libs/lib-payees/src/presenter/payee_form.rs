@@ -723,7 +723,7 @@ mod tests {
         let mut form = PayeeFormPresenter::add(shared, DialogKeys::default());
 
         send(&mut form, vec![TAB, DOWN]);
-        assert_eq!(category_label(&form), "Rent", "a closed select steps");
+        assert_eq!(category_label(&form), "Dining", "a closed select steps");
         send(&mut form, typing("x"));
         assert_eq!(
             form.view_model().name.text,
@@ -742,12 +742,12 @@ mod tests {
         send(&mut form, vec![DOWN, DOWN]);
         assert_eq!(
             category_label(&form),
-            "Rent",
+            "Dining",
             "moving the highlight picks nothing"
         );
         send(&mut form, vec![SELECT]);
         assert!(!form.view_model().default_category_list.is_open());
-        assert_eq!(category_label(&form), "Water");
+        assert_eq!(category_label(&form), "Household");
     }
 
     #[test]
@@ -756,7 +756,7 @@ mod tests {
         let mut form = PayeeFormPresenter::add(shared, DialogKeys::default());
 
         send(&mut form, vec![TAB, SELECT, DOWN, TAB]);
-        assert_eq!(category_label(&form), "Rent");
+        assert_eq!(category_label(&form), "Dining");
         assert_eq!(form.view_model().focused, PayeeField::Rule);
 
         send(&mut form, vec![SHIFT_TAB, SELECT, DOWN]);
@@ -764,7 +764,7 @@ mod tests {
         assert!(!form.view_model().default_category_list.is_open());
         assert_eq!(
             category_label(&form),
-            "Rent",
+            "Dining",
             "a closed list picked nothing"
         );
 

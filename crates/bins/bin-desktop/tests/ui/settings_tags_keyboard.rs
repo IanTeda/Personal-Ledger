@@ -311,3 +311,38 @@ fn u_undoes_an_added_tag_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
     ui.press("ctrl-r");
     assert_eq!(ui.settings::<SettingsTagsSnapshot>().tag_names, added);
 }
+
+/// A removed Tag that Undo restores returns to its A-Z place, not after its siblings (#1261).
+#[gpui::test]
+fn u_restores_a_removed_tag_to_its_a_to_z_place(app: &mut TestAppContext) {
+    let mut ui = in_tags(app);
+    let before = ui.settings::<SettingsTagsSnapshot>().tag_names;
+    ui.press("n");
+    ui.press("b z z");
+    ui.press("enter");
+    let with_new = ui.settings::<SettingsTagsSnapshot>().tag_names;
+    assert_eq!(with_new.len(), before.len() + 1);
+    for _ in 0..with_new.len() {
+        if ui
+            .settings::<SettingsTagsSnapshot>()
+            .selected_tag
+            .as_deref()
+            == Some("bzz")
+        {
+            break;
+        }
+        ui.press("j");
+    }
+    assert_eq!(
+        ui.settings::<SettingsTagsSnapshot>()
+            .selected_tag
+            .as_deref(),
+        Some("bzz")
+    );
+    ui.press("x");
+    ui.press("enter");
+    assert_eq!(ui.settings::<SettingsTagsSnapshot>().tag_names, before);
+
+    ui.press("u");
+    assert_eq!(ui.settings::<SettingsTagsSnapshot>().tag_names, with_new);
+}

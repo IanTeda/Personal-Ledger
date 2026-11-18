@@ -29,7 +29,7 @@ fn opens_on_progress_for_the_current_month(app: &mut TestAppContext) {
     assert_eq!(page.budget, "Personal spending");
     assert_eq!(page.period, (2026, 6));
     assert_eq!(page.rows.len(), 10);
-    assert_eq!(page.rows[0].category, "Housing");
+    assert_eq!(page.rows[0].category, "Food");
     assert!(page.rows[0].is_parent);
     assert_eq!(page.selected, 0);
     assert_eq!(page.dialog, None);

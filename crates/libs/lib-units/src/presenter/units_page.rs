@@ -20,7 +20,7 @@ use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
 use crate::interactor::ReactivateUnit;
 use crate::keymap::{NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE, unit_prices_keymap};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
-use crate::{MANUAL_ENTRY, PriceSource, SourceOrigin, UnitRow, last_fetched, msg};
+use crate::{MANUAL_ENTRY, PriceSource, SourceOrigin, UnitRow, last_fetched, msg, units_by_code};
 
 /// A row of either table. One is selected at a time, the Units drawn above the Price Sources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -504,8 +504,8 @@ impl UnitsPagePresenter {
         let selection = resolve(Self::rows_of(&units, &sources), self.selected);
         let now = (self.clock)();
 
-        let unit_lines = units
-            .iter()
+        let unit_lines = units_by_code(&units)
+            .into_iter()
             .map(|unit| {
                 let base_flag = (unit.id == base).then(msg::units_flag_base);
                 let inactive_tag = (!unit.is_active).then(msg::units_inactive);
@@ -669,8 +669,8 @@ impl PagePresenter for UnitsPagePresenter {
 
 impl UnitsPagePresenter {
     fn rows_of(units: &[UnitRow], sources: &[PriceSource<'_>]) -> Vec<UnitsRow> {
-        units
-            .iter()
+        units_by_code(units)
+            .into_iter()
             .map(|unit| UnitsRow::Unit(unit.id))
             .chain(sources.iter().map(|source| UnitsRow::Source(source.id)))
             .collect()
@@ -935,6 +935,19 @@ mod tests {
                 })
                 .unwrap_or_default()
         }
+    }
+
+    #[test]
+    fn units_are_listed_by_code_ignoring_case_wherever_the_store_holds_them() {
+        let page = Page::new();
+        let mut first = page.ports.borrow().units.units[2].clone();
+        first.code = "Aaa".into();
+        // Appended last, as an Undo restore appends.
+        page.ports.borrow_mut().units.units.push(first);
+
+        let codes: Vec<_> = page.view().units.iter().map(|u| u.code.clone()).collect();
+        assert_eq!(codes, ["Aaa", "aud", "btc", "vas"]);
+        assert_eq!(page.selected(), "Aaa");
     }
 
     #[test]
