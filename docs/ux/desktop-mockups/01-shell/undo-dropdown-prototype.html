@@ -1,0 +1,245 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway (#1242, History map #1237).
+  Question: how should the header's Undo dropdown look and behave?
+  Three variants of the header's Undo, switchable with ?variant=A|B|C or the bottom bar (← →).
+  The History is live in memory: u undoes, ctrl r redoes, "New change" pushes an entry.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Undo Dropdown Prototype</title>
+<style>
+  :root { --chrome:#eae9e9; --page:#f4f3f3; --fg:#201e1d; --muted:#605d5d; --faint:#9b9797; --rule:rgba(32,30,29,.38); --hover:rgba(32,30,29,.08); --sel:rgba(32,30,29,.14); --accent:#2d5bd7; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:13px/1.35 system-ui, sans-serif; color:var(--fg); background:#cfcdcd; }
+  .window { width:1040px; max-width:calc(100vw - 32px); margin:16px auto 96px; background:var(--page); border:1px solid var(--rule); display:flex; flex-direction:column; height:560px; }
+  header { height:48px; flex:none; display:flex; align-items:center; gap:12px; padding:0 10px 0 12px; background:var(--chrome); border-bottom:2px solid var(--rule); position:relative; }
+  .btn { width:28px; height:28px; display:flex; align-items:center; justify-content:center; cursor:pointer; user-select:none; font-size:15px; }
+  .btn:hover:not(.off) { background:var(--hover); }
+  .btn.off { color:var(--faint); cursor:default; }
+  .btn.open { background:var(--hover); }
+  .caret { width:16px; font-size:10px; }
+  .word { font-weight:800; font-size:15px; white-space:nowrap; }
+  .cluster { display:flex; align-items:center; position:relative; }
+  .sep { width:1px; height:18px; background:var(--rule); margin:0 4px; }
+  .sync { margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap; }
+  .menu { position:absolute; top:34px; left:0; width:320px; z-index:6; padding:4px 0; background:var(--chrome); border:1px solid var(--rule); box-shadow:0 8px 24px rgba(32,30,29,.25); font-size:12px; }
+  .menu h6 { margin:0; padding:4px 12px; font-size:10.5px; font-weight:700; color:var(--muted); display:flex; justify-content:space-between; }
+  .row { padding:6px 12px; display:flex; gap:12px; white-space:nowrap; cursor:pointer; }
+  .row .l { flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .row .t { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .row:hover, .row.hl { background:var(--hover); }
+  .row.hl2 { background:var(--sel); }
+  .row.redo .l { color:var(--faint); font-style:italic; }
+  .row.inert { cursor:default; }
+  .row.inert:hover { background:none; }
+  .row.empty { color:var(--faint); cursor:default; }
+  .row.empty:hover { background:none; }
+  .now { display:flex; align-items:center; gap:8px; padding:2px 12px; color:var(--accent); font-size:10.5px; font-weight:700; }
+  .now::after { content:""; flex:1; height:1px; background:var(--accent); }
+  .foot { border-top:1px solid var(--rule); margin-top:4px; padding-top:4px; }
+  .foot .row .k, .row .k { color:var(--muted); font-size:11px; }
+  kbd { font:700 11px ui-monospace, monospace; }
+  main { flex:1; display:flex; gap:16px; padding:20px 24px; overflow:auto; }
+  .pane { flex:1; }
+  .pane h2 { margin:0 0 8px; font-size:20px; font-weight:800; }
+  .pane p { color:var(--muted); margin:4px 0 12px; max-width:520px; }
+  .pane button { font:inherit; margin:0 6px 6px 0; padding:4px 10px; border:1px solid var(--rule); background:var(--chrome); cursor:pointer; }
+  .state { width:300px; flex:none; font:11px/1.45 ui-monospace, monospace; background:#fff; border:1px solid var(--rule); padding:8px 10px; overflow:auto; }
+  .state b { display:block; margin-top:6px; font-family:system-ui; font-size:10.5px; color:var(--muted); }
+  .state .cur { color:var(--accent); }
+  footer.status { height:28px; flex:none; display:flex; align-items:center; gap:12px; padding:0 12px; background:var(--chrome); border-top:1px solid var(--rule); font-size:12px; }
+  .chip { font-weight:800; font-size:11px; padding:1px 6px; background:var(--fg); color:var(--chrome); }
+  .notice { color:var(--fg); }
+  .path { margin-left:auto; color:var(--muted); }
+  .switcher { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:10px; background:#111; color:#fff; padding:8px 14px; border-radius:999px; box-shadow:0 6px 20px rgba(0,0,0,.35); font-size:13px; z-index:100; }
+  .switcher button { background:none; border:0; color:#fff; font-size:16px; cursor:pointer; }
+  .about { max-width:1040px; margin:0 auto; padding:0 16px; color:#333; font-size:12.5px; }
+</style>
+</head>
+<body>
+<div class="window">
+  <header>
+    <div class="btn">☰</div>
+    <div class="cluster"><div class="btn">‹</div><div class="btn off">›</div></div>
+    <div class="word">Personal Ledger</div>
+    <div id="undo-slot" class="cluster"></div>
+    <div class="sync">Synced 14:22</div>
+    <div class="cluster"><div class="btn">–</div><div class="btn">□</div><div class="btn">✕</div></div>
+  </header>
+  <main>
+    <div class="pane">
+      <h2 id="vname"></h2>
+      <p id="vnote"></p>
+      <p>Keys: <kbd>u</kbd> undo · <kbd>ctrl r</kbd> redo · <kbd>esc</kbd> closes the list. Mouse: Undo, its caret, and the list rows.</p>
+      <div>
+        <button data-act="new">New change (clears Redo)</button>
+        <button data-act="general">Change Locale on General</button>
+        <button data-act="close">Close Ledger (drops its entries)</button>
+        <button data-act="empty">Empty History</button>
+        <button data-act="reset">Reset</button>
+      </div>
+    </div>
+    <div class="state" id="state"></div>
+  </main>
+  <footer class="status"><span class="chip">NORMAL</span><span class="notice" id="notice"></span><span class="path">~/documents/ledgers/teda.pldb</span></footer>
+</div>
+<div class="about">PROTOTYPE for #1242. Not a design file: throwaway, on a throwaway branch.</div>
+<div class="switcher"><button id="prev">←</button><span id="vlabel"></span><button id="next">→</button></div>
+
+<script>
+const VARIANTS = {
+  A: { name: 'One timeline', note: 'Undo keeps its split button. The caret opens one list: undone entries (Redo) faint above a NOW marker, done entries below, newest nearest NOW. Hovering an entry highlights everything a click would step through; a click undoes (or redoes) down to it, as DESKTOP-122 says. No Redo button: Redo lives in the list and on ctrl r.' },
+  B: { name: 'Two split buttons', note: 'Undo ▾ and Redo ▾ sit side by side, each with its own list of the last 6. A click on an entry undoes or redoes through to it. Redo is faint while nothing has been undone. The header grows by one button pair.' },
+  C: { name: 'Read-only log, Redo footer', note: 'Undo keeps its split button. The list is a read-only log of the last 6: only the newest is a button ("Undo" on hover); older rows do nothing. A footer row offers Redo of the last undone entry with its key, ctrl r.' },
+};
+const KEYS = Object.keys(VARIANTS);
+let variant = new URLSearchParams(location.search).get('variant');
+if (!KEYS.includes(variant)) variant = 'A';
+
+const SEED = [
+  ['Import statement.csv', '13:48', 'ledger'],
+  ['Delete transaction at Bunnings', '13:52', 'ledger'],
+  ['Date format: 18/11/2026', '13:55', 'config'],
+  ['Tag 2 splits Japan Trip 2026', '14:01', 'ledger'],
+  ['Rename payee Coles Express', '14:07', 'ledger'],
+  ['Add transaction at Woolworths', '14:15', 'ledger'],
+  ['Categorise 3 splits as Groceries', '14:20', 'ledger'],
+];
+const FRESH = ['Add bill Origin Energy', 'Rename account ANZ Everyday', 'Set Budget limit Dining 400.00', 'Merge tags Travel into Holidays', 'Add unit USD'];
+let undo, redo, open, notice, clock, fresh;
+function reset() {
+  undo = SEED.map(([label, time, kind]) => ({ label, time, kind }));
+  redo = []; open = null; notice = ''; clock = 20; fresh = 0;
+}
+reset();
+const DEPTH = 50, SHOWN = 6;
+function now() { clock += 1; return `14:${String(clock).padStart(2, '0')}`; }
+function push(label, kind) { undo.push({ label, time: now(), kind }); if (undo.length > DEPTH) undo.shift(); redo = []; }
+function doUndo(n = 1) {
+  if (!undo.length) { notice = 'Nothing to undo'; return; }
+  let last;
+  for (let i = 0; i < n && undo.length; i++) { last = undo.pop(); redo.push(last); }
+  notice = n > 1 ? `Undid ${n} changes, back to before “${last.label}”` : `Undid ${last.label}`;
+}
+function doRedo(n = 1) {
+  if (!redo.length) { notice = 'Nothing to redo'; return; }
+  let last;
+  for (let i = 0; i < n && redo.length; i++) { last = redo.pop(); undo.push(last); }
+  notice = n > 1 ? `Redid ${n} changes, through “${last.label}”` : `Redid ${last.label}`;
+}
+
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const recentUndo = () => undo.slice(-SHOWN).reverse();   // newest first
+const recentRedo = () => redo.slice(-SHOWN).reverse();   // next to redo first
+
+function splitButton(kind, glyph, enabled, caretEnabled) {
+  return `<div class="btn ${enabled ? '' : 'off'}" data-click="${kind}" title="${kind === 'undo' ? 'Undo (u)' : 'Redo (ctrl r)'}">${glyph}</div>` +
+         `<div class="btn caret ${caretEnabled ? '' : 'off'} ${open === kind ? 'open' : ''}" data-click="caret-${kind}">▾</div>`;
+}
+function row(e, attrs, cls = '') {
+  return `<div class="row ${cls}" ${attrs}><span class="l">${esc(e.label)}</span><span class="t">${e.time}</span></div>`;
+}
+
+function renderA() {
+  // Picked in #1242: the caret stays live on an empty History and shows "Nothing to undo".
+  let h = splitButton('undo', '↶', undo.length > 0, true);
+  if (open === 'undo') {
+    const rs = recentRedo().slice(0, 3).reverse();  // up to 3 redo rows, the furthest on top
+    const us = recentUndo();
+    h += `<div class="menu"><h6><span>History</span><span>${undo.length} of ${DEPTH}</span></h6>`;
+    rs.forEach((e) => { const n = rs.length - rs.indexOf(e); h += row(e, `data-redo="${n}" data-hl="r${n}"`, 'redo'); });
+    h += `<div class="now">NOW</div>`;
+    us.forEach((e, i) => h += row(e, `data-undo="${i + 1}" data-hl="u${i + 1}"`));
+    if (!us.length) h += `<div class="row empty">Nothing to undo</div>`;
+    h += `</div>`;
+  }
+  return h;
+}
+function renderB() {
+  let h = splitButton('undo', '↶', undo.length > 0, undo.length > 0);
+  h += splitButton('redo', '↷', redo.length > 0, redo.length > 0);
+  if (open) {
+    const list = open === 'undo' ? recentUndo() : recentRedo();
+    const left = open === 'undo' ? 0 : 44;
+    h += `<div class="menu" style="left:${left}px"><h6><span>${open === 'undo' ? 'Undo' : 'Redo'}</span><span>${(open === 'undo' ? undo : redo).length} in History</span></h6>`;
+    list.forEach((e, i) => h += row(e, `data-${open}="${i + 1}" data-hl="${open[0]}${i + 1}"`));
+    h += `</div>`;
+  }
+  return h;
+}
+function renderC() {
+  let h = splitButton('undo', '↶', undo.length > 0, undo.length > 0 || redo.length > 0);
+  if (open === 'undo') {
+    const us = recentUndo();
+    h += `<div class="menu"><h6><span>Recent changes</span><span>newest first</span></h6>`;
+    us.forEach((e, i) => h += i === 0
+      ? `<div class="row" data-undo="1"><span class="l">${esc(e.label)}</span><span class="k">Undo <kbd>u</kbd></span></div>`
+      : row(e, '', 'inert'));
+    if (!us.length) h += `<div class="row empty">Nothing to undo</div>`;
+    if (redo.length) {
+      const r = redo[redo.length - 1];
+      h += `<div class="foot"><div class="row" data-redo="1"><span class="l">Redo ${esc(r.label)}</span><span class="k"><kbd>ctrl r</kbd></span></div></div>`;
+    }
+    h += `</div>`;
+  }
+  return h;
+}
+
+function render() {
+  const v = VARIANTS[variant];
+  document.getElementById('vlabel').textContent = `${variant} (${v.name})`;
+  document.getElementById('vname').textContent = `${variant}: ${v.name}`;
+  document.getElementById('vnote').textContent = v.note;
+  document.getElementById('undo-slot').innerHTML = ({ A: renderA, B: renderB, C: renderC })[variant]();
+  document.getElementById('notice').textContent = notice;
+  const line = (e, cls = '') => `<div class="${cls}">${e.time} ${e.kind === 'config' ? '⚙' : '▤'} ${esc(e.label)}</div>`;
+  document.getElementById('state').innerHTML =
+    `<b>REDO (${redo.length}) — next on top</b>` + redo.slice().reverse().map(e => line(e)).join('') +
+    `<b class="cur">— now —</b>` +
+    `<b>UNDO (${undo.length}/${DEPTH}) — next on top</b>` + undo.slice().reverse().map((e, i) => line(e, i === 0 ? 'cur' : '')).join('') +
+    `<b>menu open</b>${open ?? 'no'}`;
+}
+
+function setVariant(k) { variant = k; open = null; const u = new URL(location); u.searchParams.set('variant', k); history.replaceState(null, '', u); render(); }
+
+document.addEventListener('click', ev => {
+  const t = ev.target.closest('[data-click],[data-undo],[data-redo],[data-act]');
+  if (!t) { if (open && !ev.target.closest('.menu')) { open = null; render(); } return; }
+  if (t.classList.contains('off')) return;
+  const c = t.dataset.click;
+  if (c === 'undo') { doUndo(); open = null; }
+  else if (c === 'redo') { doRedo(); open = null; }
+  else if (c && c.startsWith('caret-')) { const k = c.slice(6); open = open === k ? null : k; }
+  else if (t.dataset.undo) { doUndo(+t.dataset.undo); open = null; }
+  else if (t.dataset.redo) { doRedo(+t.dataset.redo); open = null; }
+  else if (t.dataset.act === 'new') { push(FRESH[fresh++ % FRESH.length], 'ledger'); notice = ''; }
+  else if (t.dataset.act === 'general') { push('Locale: English (United Kingdom)', 'config'); notice = 'Locale saved'; }
+  else if (t.dataset.act === 'close') { undo = undo.filter(e => e.kind === 'config'); redo = redo.filter(e => e.kind === 'config'); notice = 'Ledger closed'; }
+  else if (t.dataset.act === 'empty') { undo = []; redo = []; notice = ''; }
+  else if (t.dataset.act === 'reset') { reset(); }
+  render();
+});
+// Hovering a row highlights every row a click would step through (variants A and B).
+document.addEventListener('mouseover', ev => {
+  const r = ev.target.closest('[data-hl]');
+  document.querySelectorAll('.row.hl2').forEach(x => x.classList.remove('hl2'));
+  if (!r) return;
+  const kind = r.dataset.hl[0], n = +r.dataset.hl.slice(1);
+  document.querySelectorAll(`[data-hl^="${kind}"]`).forEach(x => { if (+x.dataset.hl.slice(1) <= n) x.classList.add('hl2'); });
+});
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' && open) { open = null; render(); return; }
+  if (ev.key === 'u' && !ev.ctrlKey) { doUndo(); render(); return; }
+  if (ev.key === 'r' && ev.ctrlKey) { ev.preventDefault(); doRedo(); render(); return; }
+  if (ev.key === 'ArrowLeft') setVariant(KEYS[(KEYS.indexOf(variant) + KEYS.length - 1) % KEYS.length]);
+  if (ev.key === 'ArrowRight') setVariant(KEYS[(KEYS.indexOf(variant) + 1) % KEYS.length]);
+});
+document.getElementById('prev').onclick = () => setVariant(KEYS[(KEYS.indexOf(variant) + KEYS.length - 1) % KEYS.length]);
+document.getElementById('next').onclick = () => setVariant(KEYS[(KEYS.indexOf(variant) + 1) % KEYS.length]);
+render();
+</script>
+</body>
+</html>
