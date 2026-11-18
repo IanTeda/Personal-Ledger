@@ -226,6 +226,15 @@ pub struct DialogHint {
     pub action: String,
 }
 
+impl DialogHint {
+    pub fn new(commands: &'static [&'static str], action: impl Into<String>) -> Self {
+        Self {
+            commands,
+            action: action.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use lib_config::KeyBindingConfig;

@@ -478,22 +478,10 @@ impl FilterPresenter {
     /// The popover's four keys, named by command so a Client reads the chords the keymaps bind.
     fn dialog_hints() -> Vec<DialogHint> {
         vec![
-            DialogHint {
-                commands: &[NEXT_FIELD],
-                action: lib_locale::msg::dialog_hint_next_field(),
-            },
-            DialogHint {
-                commands: &[SELECT],
-                action: msg::transactions_hint_apply(),
-            },
-            DialogHint {
-                commands: &[BACK],
-                action: lib_locale::msg::dialog_hint_cancel(),
-            },
-            DialogHint {
-                commands: &[RESET_FILTERS],
-                action: msg::transactions_hint_reset(),
-            },
+            DialogHint::new(&[NEXT_FIELD], lib_locale::msg::dialog_hint_next_field()),
+            DialogHint::new(&[SELECT], msg::transactions_hint_apply()),
+            DialogHint::new(&[BACK], lib_locale::msg::dialog_hint_cancel()),
+            DialogHint::new(&[RESET_FILTERS], msg::transactions_hint_reset()),
         ]
     }
 

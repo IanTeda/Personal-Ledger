@@ -339,12 +339,14 @@ impl BudgetsPagePresenter {
     /// The tab shown's legend, its chords read from the keymap so an override shows. The Plan
     /// cell editor's keys are its own, not the keymap's.
     fn hints(&self) -> Vec<Hint> {
-        let chord = |command: &str| self.keys.all.hint_chord(command).to_string();
-        let pair = |a: &str, b: &str| format!("{}/{}", chord(a), chord(b));
-        let rows = Hint::new(pair(MOVE_DOWN, MOVE_UP), msg::budgets_hint_row());
+        let chord = |command: &str| self.keys.all.hint_chord(command);
+        let rows = Hint::new(
+            self.keys.all.hint_chords(&[MOVE_DOWN, MOVE_UP]),
+            msg::budgets_hint_row(),
+        );
         let switch = Hint::new(chord(NEXT_TAB), msg::budgets_hint_switch_view());
         let range = Hint::new(
-            pair(PREVIOUS_PERIOD, NEXT_PERIOD),
+            self.keys.all.hint_chords(&[PREVIOUS_PERIOD, NEXT_PERIOD]),
             msg::budgets_hint_range(),
         );
         let budget_category =
@@ -358,29 +360,22 @@ impl BudgetsPagePresenter {
                 Hint::new(chord(STOP), msg::budgets_hint_stop_budgeting()),
                 Hint::new(chord(SWITCH), msg::budgets_hint_switch_budget()),
                 Hint::new(
-                    pair(PREVIOUS_PERIOD, NEXT_PERIOD),
+                    self.keys.all.hint_chords(&[PREVIOUS_PERIOD, NEXT_PERIOD]),
                     msg::budgets_hint_period(),
                 ),
                 switch,
             ],
             BudgetsTab::Plan if self.editing() => vec![
-                Hint::new("enter".to_string(), msg::budgets_hint_save_cell()),
-                Hint::new("esc".to_string(), msg::budgets_hint_cancel()),
-                Hint::new("tab".to_string(), msg::budgets_hint_next_month()),
-                Hint::new(
-                    "shift+enter".to_string(),
-                    msg::budgets_hint_this_month_only(),
-                ),
+                Hint::new("enter", msg::budgets_hint_save_cell()),
+                Hint::new("esc", msg::budgets_hint_cancel()),
+                Hint::new("tab", msg::budgets_hint_next_month()),
+                Hint::new("shift+enter", msg::budgets_hint_this_month_only()),
             ],
             BudgetsTab::Plan => vec![
                 Hint::new(
-                    format!(
-                        "{}/{}/{}/{}",
-                        chord(COLUMN_LEFT),
-                        chord(MOVE_DOWN),
-                        chord(MOVE_UP),
-                        chord(COLUMN_RIGHT)
-                    ),
+                    self.keys
+                        .all
+                        .hint_chords(&[COLUMN_LEFT, MOVE_DOWN, MOVE_UP, COLUMN_RIGHT]),
                     msg::budgets_hint_cell(),
                 ),
                 Hint::new(chord(SELECT), msg::budgets_hint_edit()),
@@ -393,7 +388,10 @@ impl BudgetsPagePresenter {
             ],
             BudgetsTab::History => vec![
                 rows,
-                Hint::new(pair(COLUMN_LEFT, COLUMN_RIGHT), msg::budgets_hint_month()),
+                Hint::new(
+                    self.keys.all.hint_chords(&[COLUMN_LEFT, COLUMN_RIGHT]),
+                    msg::budgets_hint_month(),
+                ),
                 Hint::new(chord(SELECT), msg::budgets_hint_open()),
                 Hint::new(chord(EXPORT), msg::budgets_hint_export()),
                 range,

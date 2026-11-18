@@ -436,49 +436,25 @@ impl ImportPresenter {
     fn hints(&self) -> Vec<DialogHint> {
         if self.open.is_some() {
             return vec![
-                DialogHint {
-                    commands: &[ARROW_UP, ARROW_DOWN],
-                    action: msg::transaction_import_hint_choose(),
-                },
-                DialogHint {
-                    commands: &[SELECT],
-                    action: msg::transaction_import_hint_select(),
-                },
-                DialogHint {
-                    commands: &[BACK],
-                    action: msg::transaction_import_hint_close(),
-                },
+                DialogHint::new(
+                    &[ARROW_UP, ARROW_DOWN],
+                    msg::transaction_import_hint_choose(),
+                ),
+                DialogHint::new(&[SELECT], msg::transaction_import_hint_select()),
+                DialogHint::new(&[BACK], msg::transaction_import_hint_close()),
             ];
         }
         vec![
-            DialogHint {
-                commands: &[MOVE_DOWN, MOVE_UP],
-                action: msg::transaction_import_hint_row(),
-            },
-            DialogHint {
-                commands: &[PICK_PAYEE],
-                action: msg::transaction_import_hint_payee(),
-            },
-            DialogHint {
-                commands: &[PICK_CATEGORY],
-                action: msg::transaction_import_hint_category(),
-            },
-            DialogHint {
-                commands: &[NEW_PAYEE],
-                action: msg::transaction_import_hint_create_new_payee(),
-            },
-            DialogHint {
-                commands: &[REMEMBER],
-                action: msg::transaction_import_hint_remember_rules(),
-            },
-            DialogHint {
-                commands: &[CONTINUE],
-                action: msg::transaction_import_hint_continue(),
-            },
-            DialogHint {
-                commands: &[BACK],
-                action: msg::transaction_import_hint_back(),
-            },
+            DialogHint::new(&[MOVE_DOWN, MOVE_UP], msg::transaction_import_hint_row()),
+            DialogHint::new(&[PICK_PAYEE], msg::transaction_import_hint_payee()),
+            DialogHint::new(&[PICK_CATEGORY], msg::transaction_import_hint_category()),
+            DialogHint::new(
+                &[NEW_PAYEE],
+                msg::transaction_import_hint_create_new_payee(),
+            ),
+            DialogHint::new(&[REMEMBER], msg::transaction_import_hint_remember_rules()),
+            DialogHint::new(&[CONTINUE], msg::transaction_import_hint_continue()),
+            DialogHint::new(&[BACK], msg::transaction_import_hint_back()),
         ]
     }
 }

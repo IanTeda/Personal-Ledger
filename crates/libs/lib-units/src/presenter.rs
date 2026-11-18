@@ -63,25 +63,19 @@ fn form_hints() -> Vec<DialogHint> {
 }
 
 fn next_field_hint() -> DialogHint {
-    DialogHint {
-        commands: &[NEXT_FIELD],
-        action: lib_locale::msg::dialog_hint_next_field(),
-    }
+    DialogHint::new(&[NEXT_FIELD], lib_locale::msg::dialog_hint_next_field())
 }
 
 /// Steps a select, for a Dialog that has one.
 fn choose_hint() -> DialogHint {
-    DialogHint {
-        commands: &[SELECT_PREVIOUS, SELECT_NEXT],
-        action: lib_locale::msg::dialog_hint_choose(),
-    }
+    DialogHint::new(
+        &[SELECT_PREVIOUS, SELECT_NEXT],
+        lib_locale::msg::dialog_hint_choose(),
+    )
 }
 
 fn cancel_hint() -> DialogHint {
-    DialogHint {
-        commands: &[BACK],
-        action: lib_locale::msg::dialog_hint_cancel(),
-    }
+    DialogHint::new(&[BACK], lib_locale::msg::dialog_hint_cancel())
 }
 
 /// A Dialog's status-line legend: confirm, then the keys its frame lists, each chord read from the

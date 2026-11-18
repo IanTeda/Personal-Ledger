@@ -280,10 +280,10 @@ impl UnitPricesPresenter {
     }
 
     fn hints(&self, manual: bool) -> Vec<Hint> {
-        let chord = |command| self.keymap.hint_chord(command).to_string();
+        let chord = |command| self.keymap.hint_chord(command);
         let mut hints = vec![
             Hint::new(
-                format!("{}/{}", chord(MOVE_DOWN), chord(MOVE_UP)),
+                self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                 msg::units_prices_hint_week(),
             ),
             Hint::new(chord(EARLIER), msg::units_prices_hint_earlier()),

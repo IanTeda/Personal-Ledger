@@ -330,9 +330,11 @@ impl PagePresenter for BillsPagePresenter {
 impl BillsPagePresenter {
     /// The tab shown's legend, its chords read from the keymap so an override shows.
     fn hints(&self) -> Vec<Hint> {
-        let chord = |command: &str| self.keymap.hint_chord(command).to_string();
-        let pair = |a: &str, b: &str, joint: &str| format!("{}{joint}{}", chord(a), chord(b));
-        let rows = Hint::new(pair(MOVE_DOWN, MOVE_UP, "/"), msg::bills_hint_row());
+        let chord = |command: &str| self.keymap.hint_chord(command);
+        let rows = Hint::new(
+            self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
+            msg::bills_hint_row(),
+        );
         let switch = Hint::new(chord(NEXT_TAB), msg::bills_hint_switch_view());
         match self.tab {
             BillsTab::Schedule => vec![
@@ -340,12 +342,12 @@ impl BillsPagePresenter {
                 Hint::new(chord(PAY), msg::bills_hint_pay()),
                 Hint::new(chord(SKIP), msg::bills_hint_skip()),
                 Hint::new(
-                    pair(PREVIOUS_PERIOD, NEXT_PERIOD, "/"),
+                    self.keymap.hint_chords(&[PREVIOUS_PERIOD, NEXT_PERIOD]),
                     msg::bills_hint_period(),
                 ),
                 Hint::new(chord(ALL), msg::bills_hint_all()),
                 Hint::new(
-                    pair(CHIP_PAID, CHIP_UPCOMING, "\u{2013}"),
+                    format!("{}\u{2013}{}", chord(CHIP_PAID), chord(CHIP_UPCOMING)),
                     msg::bills_hint_status_chips(),
                 ),
                 Hint::new(chord(FILTERS), msg::bills_hint_filters()),

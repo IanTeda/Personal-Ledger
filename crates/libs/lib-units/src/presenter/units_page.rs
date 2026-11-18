@@ -843,8 +843,8 @@ impl UnitsPagePresenter {
 
     /// The legend for `row`'s table, with Set price while `row` offers it.
     fn hints(&self, row: Option<Row<'_>>) -> Vec<Hint> {
-        let chord = |command| self.keymap.hint_chord(command).to_string();
-        let moves = format!("{}/{}", chord(MOVE_DOWN), chord(MOVE_UP));
+        let chord = |command| self.keymap.hint_chord(command);
+        let moves = self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]);
         let on_source = matches!(row, Some(Row::Source(..)));
         let set_price =
             row.is_some_and(|row| MenuAction::for_row(row).contains(&MenuAction::SetPrice));
