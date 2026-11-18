@@ -583,7 +583,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
                     keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                     msg::settings_hint_move(),
                 ),
-                Hint::new(back_chord.to_string(), msg::settings_hint_close()),
+                Hint::new(back_chord, msg::settings_hint_close()),
             ];
         }
         match self.focus {

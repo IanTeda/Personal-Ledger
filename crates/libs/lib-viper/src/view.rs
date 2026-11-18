@@ -179,17 +179,7 @@ impl DialogFrame {
 pub fn legend<E: Clone>(hints: &[DialogHint], keymap: &Keymap<E>) -> Vec<Hint> {
     hints
         .iter()
-        .map(|hint| {
-            let chords: Vec<&str> = hint
-                .commands
-                .iter()
-                .map(|command| keymap.hint_chord(command))
-                .collect();
-            Hint {
-                chord: chords.join("/"),
-                action: hint.action.clone(),
-            }
-        })
+        .map(|hint| Hint::new(keymap.hint_chords(hint.commands), hint.action.clone()))
         .collect()
 }
 
@@ -255,14 +245,8 @@ mod tests {
             can_confirm: true,
             destructive: false,
             hints: vec![
-                DialogHint {
-                    commands: &[SELECT_PREVIOUS, SELECT_NEXT],
-                    action: "choose".to_string(),
-                },
-                DialogHint {
-                    commands: &[BACK],
-                    action: "cancel".to_string(),
-                },
+                DialogHint::new(&[SELECT_PREVIOUS, SELECT_NEXT], "choose"),
+                DialogHint::new(&[BACK], "cancel"),
             ],
         }
     }

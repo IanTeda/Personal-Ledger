@@ -135,7 +135,7 @@ fn global_shortcuts(keymap: &Keymap<ShellCommand>) -> Vec<(String, String)> {
         (msg::help_shortcut_help(), key(HELP)),
         (
             msg::help_shortcut_focus(),
-            format!("{}/{}", key(MOVE_DOWN), key(MOVE_UP)),
+            keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
         ),
         (msg::help_shortcut_confirm(), key(SELECT)),
         (msg::help_shortcut_close(), key(BACK)),

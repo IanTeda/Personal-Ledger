@@ -295,11 +295,7 @@ impl<E: Clone> Keymap<E> {
 
     /// Several commands' chords as one hint shows them, `j/k`.
     pub fn hint_chords(&self, commands: &[&str]) -> String {
-        commands
-            .iter()
-            .map(|command| self.hint_chord(command))
-            .collect::<Vec<_>>()
-            .join("/")
+        join_chords(commands.iter().map(|command| self.hint_chord(command)))
     }
 
     /// The Commands the palette lists, in binding order, each with its live chord.
@@ -416,6 +412,11 @@ pub const GO_UP: &str = "go_up";
 /// The list step's two chords as a hint shows them, `j/k` by default, read from a Dialog `keymap`.
 pub fn list_step_chords<E: Clone>(keymap: &Keymap<E>) -> String {
     keymap.hint_chords(&[LIST_NEXT, LIST_PREVIOUS])
+}
+
+/// Chords as one hint shows them, `j/k`: the one place the `/` join is written.
+pub(crate) fn join_chords<'a>(chords: impl IntoIterator<Item = &'a str>) -> String {
+    chords.into_iter().collect::<Vec<_>>().join("/")
 }
 
 #[cfg(test)]

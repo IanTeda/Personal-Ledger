@@ -12,6 +12,7 @@
 
 use lib_toast::Notify;
 
+use crate::keymap::join_chords;
 use crate::keymap::{
     BACK, BACK_DEFAULT, Binding, GO_INTO, GO_UP, KeyBindingConfig, Keymap, LIST_NEXT,
     LIST_PREVIOUS, NEXT_FIELD, PREVIOUS_FIELD, SELECT, SELECT_NEXT, SELECT_PREVIOUS, SUBMIT,
@@ -179,19 +180,15 @@ impl DialogKeys {
         hints
             .iter()
             .map(|hint| {
-                let chords: Vec<&str> = hint
-                    .commands
-                    .iter()
-                    .map(|command| self.chord(command))
-                    .collect();
-                Hint::new(chords.join("/"), hint.action.clone())
+                let chords = join_chords(hint.commands.iter().map(|command| self.chord(command)));
+                Hint::new(chords, hint.action.clone())
             })
             .collect()
     }
 
     /// The list step's two chords as a hint shows them, `j/k` by default.
     pub fn list_step(&self) -> String {
-        format!("{}/{}", self.chord(LIST_NEXT), self.chord(LIST_PREVIOUS))
+        join_chords([self.chord(LIST_NEXT), self.chord(LIST_PREVIOUS)])
     }
 }
 
