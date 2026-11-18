@@ -166,24 +166,6 @@ pub struct GeneralSettings {
 }
 
 impl GeneralSettings {
-    /// What each field shows of `snapshot` ([`DeviceSnapshot::shown`]): the value in force, but
-    /// the file's own Locale and Data folder, each one of the choices or the default.
-    pub fn read(snapshot: &DeviceSnapshot) -> Self {
-        let mut settings = Self::default();
-        for key in [
-            ConfigKey::OnStart,
-            ConfigKey::StartView,
-            ConfigKey::Toasts,
-            ConfigKey::Locale,
-            ConfigKey::Data,
-        ] {
-            if let Some(value) = snapshot.shown(key) {
-                settings.take(value);
-            }
-        }
-        settings
-    }
-
     fn take(&mut self, value: &ConfigValue) {
         match value {
             ConfigValue::OnStart(on_start) => self.on_start = *on_start,

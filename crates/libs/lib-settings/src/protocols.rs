@@ -15,7 +15,9 @@ use lib_toast::Notify;
 
 use crate::log::LogLine;
 use crate::page::SettingsPage;
-use crate::presenter::{ClearLogsPresenter, DisplayOutput, LogListChange, LogScroll};
+use crate::presenter::{
+    ClearLogsPresenter, DisplayOutput, GeneralSettings, LogListChange, LogScroll,
+};
 
 /// What only the Shell does for the Settings frame.
 pub trait SettingsRouter: Notify {
@@ -130,17 +132,20 @@ impl DeviceSnapshot {
         }
     }
 
-    /// Whether non-Error Toasts show: Toasts' value in force, else the Toasts default. The Shell
-    /// starts its Toasts on it and Settings › General shows it.
+    /// Whether non-Error Toasts show: Toasts' value in force, else [`GeneralSettings`]' default.
+    /// The value in force for a reader other than a control (the Shell starts its Toasts on it);
+    /// Settings › General reads its own value through [`DeviceSnapshot::shown`].
     pub fn toasts_on(&self) -> bool {
         match self.get(ConfigKey::Toasts).effective {
             Some(ConfigValue::Toasts(on)) => on,
-            _ => lib_toast::Display::default().toasts_on,
+            _ => GeneralSettings::default().toasts_on,
         }
     }
 
     /// The Data folder in effect, where `:open` and `:new` start: Data's value in force, whatever
-    /// the file names; `None` when nothing sets it.
+    /// the file names; `None` when nothing sets it. A value in force for a reader other than a
+    /// control, as [`DeviceSnapshot::toasts_on`] is; Settings › General reads its own value through
+    /// [`DeviceSnapshot::shown`], the file's, since Data writes when shadowed.
     pub fn data_folder(&self) -> Option<&std::path::Path> {
         match &self.get(ConfigKey::Data).effective {
             Some(ConfigValue::Data(folder)) => Some(folder),
@@ -338,6 +343,14 @@ mod tests {
             Some(std::path::Path::new("/home/me/ledgers"))
         );
         assert_eq!(DeviceSnapshot::default().data_folder(), None);
+    }
+
+    #[test]
+    fn toasts_on_with_no_value_in_force_is_generals_default() {
+        assert_eq!(
+            DeviceSnapshot::default().toasts_on(),
+            GeneralSettings::default().toasts_on
+        );
     }
 
     #[test]
