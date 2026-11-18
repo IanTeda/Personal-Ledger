@@ -16,7 +16,8 @@ use std::rc::Rc;
 use gpui::{AnyElement, Context, Window};
 use lib_database::Domain;
 use lib_settings::{
-    DeviceConfiguration, DisplayEvent, DisplayPresenter, DisplaySetup, DisplayViewModel,
+    DeviceConfiguration, DeviceSnapshot, DisplayEvent, DisplayPresenter, DisplaySetup,
+    DisplayViewModel,
 };
 use lib_viper::keymap::KeyBindingConfig;
 
@@ -37,10 +38,11 @@ pub type DisplayPage = ModulePage<DisplayPresenter>;
 /// Display reads no Ledger, so it stands before one is open.
 pub fn display_page(
     device: Rc<dyn DeviceConfiguration>,
+    snapshot: DeviceSnapshot,
     config: &KeyBindingConfig,
     cx: &mut Context<'_, DisplayPage>,
 ) -> DisplayPage {
-    let presenter = DisplayPresenter::new(DisplaySetup { device }, config);
+    let presenter = DisplayPresenter::new(DisplaySetup { device, snapshot }, config);
     ModulePage::detached(presenter, (), cx)
 }
 
@@ -113,6 +115,10 @@ impl PageView for DisplayPresenter {
                 .map(|hint| (hint.action.clone(), hint.chord.clone()))
                 .collect(),
         })
+    }
+
+    fn summary_rows(&self) -> Option<Vec<lib_settings::SummaryRow>> {
+        Some(Self::summary_rows(self))
     }
 }
 

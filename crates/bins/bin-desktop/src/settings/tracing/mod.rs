@@ -159,6 +159,10 @@ impl PageView for TracingPresenter {
             right: StatusRight::of_settings_page(SettingsPage::Tracing),
         }
     }
+
+    fn summary_rows(&self) -> Option<Vec<lib_settings::SummaryRow>> {
+        Some(Self::summary_rows(self))
+    }
 }
 
 impl SettingsPageView for TracingPresenter {

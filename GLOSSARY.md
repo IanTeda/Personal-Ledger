@@ -196,6 +196,10 @@ timestamp, tie-broken by Client ID — see
 _Avoid_: Diff, patch, delta — those are implementation-neutral synonyms; Change Set is
 this glossary's canonical term.
 
+**History**:
+The list of changes a person can step back through with Undo and forward again with Redo, newest first, kept by a Client for the session and capped at a fixed depth, the oldest falling off. An entry is one action's change, Configuration or Ledger data alike, undone whole. A new change after an Undo discards what could be redone, and a Ledger's entries leave History when that Ledger closes. Undo puts the earlier value back by the same rules as any other change, so an override still wins. History is not yet kept past quitting or shared between devices.
+_Avoid_: Undo stack, undo history, change log, Change Set (the sync unit, not what Undo steps through).
+
 **Institution**:
 The financial institution (e.g. a bank or broker) that an Account is held with — a first-class entity as of [ADR-0017](docs/adr/0017-loan-and-investment-as-entities-not-account-types.md), not a free-text field: every Account, of any Account Kind (see below), carries a mandatory link to exactly one Institution. A Cash-type Transaction Account (physical, on-hand cash — see Transaction Account, below) has no bank, so it names the Personal Institution (see below) rather than leaving the link empty. See `docs/accounts.md`.
 _Avoid_: Company, organization.

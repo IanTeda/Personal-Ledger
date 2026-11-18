@@ -34,7 +34,7 @@ use super::form::{
 };
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
-use crate::protocols::{ColourChoice, DeviceConfiguration, DeviceRouter};
+use crate::protocols::{ColourChoice, DeviceConfiguration, DeviceRouter, DeviceSnapshot};
 use crate::summary::SummaryRow;
 
 /// The Date format control's choices: `None` is "Locale default", the Locale picking the form.
@@ -172,8 +172,11 @@ impl DisplaySettings {
 
 /// What the Client hands Display as it builds it.
 pub struct DisplaySetup {
-    /// Where the settings are read from, once, and written: the configuration file start-up read.
+    /// Where the settings are written: the configuration file start-up read.
     pub device: Rc<dyn DeviceConfiguration>,
+    /// What `device` read as the window opened, which the Shell and every This device page share
+    /// rather than each reading the file again.
+    pub snapshot: DeviceSnapshot,
 }
 
 /// One PREVIEW row, formatted under the choices made.
@@ -262,7 +265,7 @@ impl DisplayPresenter {
     /// Display on what `setup`'s device reads.
     pub fn new(setup: DisplaySetup, config: &KeyBindingConfig) -> Self {
         let (keymap, back_chord) = Self::keys(config);
-        let snapshot = setup.device.read();
+        let snapshot = setup.snapshot;
         let fields = DisplayField::ALL.into_iter().map(declare).collect();
         Self {
             form: DeviceForm::new(setup.device, &snapshot, fields),
@@ -289,23 +292,18 @@ impl DisplayPresenter {
 
     /// The Display output the fields show.
     pub fn output(&self) -> DisplayOutput {
-        let mut output = DisplayOutput::default();
-        for field in DisplayField::ALL {
-            match self.form.value(field) {
-                Some(FieldValue::Set(ConfigValue::DateStyle(style))) => {
-                    output.page.date_style = *style;
-                }
-                Some(FieldValue::Set(ConfigValue::RowDensity(density))) => {
-                    output.page.density = *density;
-                }
-                Some(FieldValue::Set(ConfigValue::StatusGlyphs(glyphs))) => {
-                    output.page.glyphs = *glyphs;
-                }
-                Some(FieldValue::Flag(minimised)) => output.start_sidebar_minimised = *minimised,
-                _ => {}
-            }
+        let settings = self.settings();
+        DisplayOutput {
+            page: PageDisplay {
+                date_style: settings.date_style,
+                glyphs: settings.status_glyphs,
+                density: settings.row_density,
+            },
+            start_sidebar_minimised: matches!(
+                self.form.value(DisplayField::StartSidebar),
+                Some(FieldValue::Flag(true))
+            ),
         }
-        output
     }
 
     /// The settings as they stand now, as start-up read them or as the page last wrote them.
@@ -437,11 +435,9 @@ impl Presenter for DisplayPresenter {
             Hint::new(self.back_chord.clone(), msg::settings_hint_field()),
         ];
         let index = Hint::new(self.back_chord.clone(), msg::settings_hint_index());
-        // The cheat sheet holds every field's keys, whichever field has the keyboard: the
-        // checkbox's are the segmented fields' and its own `enter`.
         let help = self
             .form
-            .field_hints(DisplayField::StartSidebar, &self.keymap)
+            .help_hints(&self.keymap)
             .into_iter()
             .chain([index.clone()])
             .chain(grid_hints.iter().take(2).cloned())
@@ -836,6 +832,7 @@ mod tests {
         let mut display = DisplayPresenter::new(
             DisplaySetup {
                 device: device.clone(),
+                snapshot: device.read(),
             },
             &KeyBindingConfig::default(),
         );

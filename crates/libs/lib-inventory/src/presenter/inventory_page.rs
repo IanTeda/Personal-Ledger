@@ -527,8 +527,10 @@ impl InventoryPagePresenter {
 
     /// The legend for the selected row.
     fn hints(&self, selected: Option<InventoryRow>) -> Vec<Hint> {
-        let pair = |a: &str, b: &str| self.keymap.hint_chords(&[a, b]);
-        let motion = Hint::new(pair(MOVE_DOWN, MOVE_UP), msg::inventory_hint_move());
+        let motion = Hint::new(
+            self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
+            msg::inventory_hint_move(),
+        );
         let edit = Hint::new(self.keymap.hint_chord(EDIT), msg::inventory_hint_edit());
         let remove = Hint::new(self.keymap.hint_chord(REMOVE), msg::inventory_hint_remove());
         let new_location = Hint::new(
@@ -542,7 +544,10 @@ impl InventoryPagePresenter {
         match selected {
             Some(InventoryRow::Location(_)) => vec![
                 motion,
-                Hint::new(pair(EXPAND, COLLAPSE), msg::inventory_hint_expand()),
+                Hint::new(
+                    self.keymap.hint_chords(&[EXPAND, COLLAPSE]),
+                    msg::inventory_hint_expand(),
+                ),
                 edit,
                 remove,
                 new_location,
@@ -555,7 +560,7 @@ impl InventoryPagePresenter {
                     msg::inventory_hint_location(),
                 ),
                 Hint::new(
-                    pair(MOVE_AREA_DOWN, MOVE_AREA_UP),
+                    self.keymap.hint_chords(&[MOVE_AREA_DOWN, MOVE_AREA_UP]),
                     msg::inventory_hint_reorder(),
                 ),
                 edit,

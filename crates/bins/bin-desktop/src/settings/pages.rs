@@ -12,7 +12,7 @@ use gpui::{App, AppContext as _, Context, Entity, Subscription};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_settings::{DeviceConfiguration, LedgerCounts, LedgerSummaries};
+use lib_settings::{DeviceConfiguration, DeviceSnapshot, LedgerCounts, LedgerSummaries};
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::{
@@ -186,18 +186,20 @@ impl LedgerPages {
 }
 
 impl SettingsPages {
-    /// The This device pages, with no Ledger open, General and Display on `device`, each reading
-    /// it once, their keys built from `config`, each framed in `window_size`.
+    /// The This device pages, with no Ledger open, General and Display writing to `device` and
+    /// showing `snapshot`, what it read as the window opened, their keys built from `config`, each
+    /// framed in `window_size`.
     pub fn new(
         device: Rc<dyn DeviceConfiguration>,
+        snapshot: &DeviceSnapshot,
         config: &KeyBindingConfig,
         window_size: WindowSize,
         cx: &mut Context<'_, SettingsView>,
     ) -> Self {
         let log_feed = cx.new(|_| LogFeed);
         let pages = Self {
-            general: cx.new(|cx| general_page(device.clone(), config, cx)),
-            display: cx.new(|cx| display_page(device, config, cx)),
+            general: cx.new(|cx| general_page(device.clone(), snapshot.clone(), config, cx)),
+            display: cx.new(|cx| display_page(device, snapshot.clone(), config, cx)),
             // A private, empty capture until `set_log_capture` hands over the real one.
             tracing: cx.new(|cx| {
                 tracing_page(

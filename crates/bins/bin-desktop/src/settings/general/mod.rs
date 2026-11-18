@@ -15,8 +15,8 @@ use gpui::{AnyElement, App, Context, Window};
 use lib_core::StartView;
 use lib_database::Domain;
 use lib_settings::{
-    DeviceConfiguration, GeneralEvent, GeneralField, GeneralPresenter, GeneralSetup,
-    GeneralViewModel, LocaleLine,
+    DeviceConfiguration, DeviceSnapshot, GeneralEvent, GeneralField, GeneralPresenter,
+    GeneralSetup, GeneralViewModel, LocaleLine,
 };
 use lib_viper::keymap::KeyBindingConfig;
 use lib_viper::view::Choice;
@@ -39,6 +39,7 @@ pub type GeneralPage = ModulePage<GeneralPresenter>;
 /// one is open.
 pub fn general_page(
     device: Rc<dyn DeviceConfiguration>,
+    snapshot: DeviceSnapshot,
     config: &KeyBindingConfig,
     cx: &mut Context<'_, GeneralPage>,
 ) -> GeneralPage {
@@ -47,6 +48,7 @@ pub fn general_page(
     let presenter = GeneralPresenter::new(
         GeneralSetup {
             device,
+            snapshot,
             start_views: start_view::CHOICES
                 .into_iter()
                 .map(|key| Choice {
@@ -120,6 +122,10 @@ impl PageView for GeneralPresenter {
             PageCue::Focused(focused) => Some(GeneralEvent::Focused(focused)),
             _ => None,
         }
+    }
+
+    fn summary_rows(&self) -> Option<Vec<lib_settings::SummaryRow>> {
+        Some(Self::summary_rows(self))
     }
 }
 

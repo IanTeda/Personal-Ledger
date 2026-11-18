@@ -196,19 +196,14 @@ fn set_key(text: &str, key: ConfigKey, value: &str) -> String {
 /// `text` without the lines setting `key` in its section, every other byte kept, or `None` when
 /// no line sets it.
 fn remove_key(text: &str, key: ConfigKey) -> Option<String> {
-    let mut in_section = false;
     let mut removed = false;
     let mut out = String::with_capacity(text.len());
-    for line in text.split_inclusive('\n') {
-        if let Some(name) = section_name(line) {
-            in_section = name == crate::keys::normalised(key.section());
-        } else if in_section
-            && line_key(line).is_some_and(|name| name.eq_ignore_ascii_case(key.name()))
-        {
+    for (line, sets) in marking_key(text.split_inclusive('\n'), key) {
+        if sets {
             removed = true;
-            continue;
+        } else {
+            out.push_str(line);
         }
-        out.push_str(line);
     }
     removed.then_some(out)
 }
@@ -216,27 +211,18 @@ fn remove_key(text: &str, key: ConfigKey) -> Option<String> {
 /// The value `text` sets `key` to in its section, the last line winning as the parser reads it,
 /// with surrounding quotes taken off.
 fn key_value(text: &str, key: ConfigKey) -> Option<String> {
-    let mut in_section = false;
-    let mut value = None;
-    for line in text.lines() {
-        if let Some(name) = section_name(line) {
-            in_section = name == crate::keys::normalised(key.section());
-            continue;
-        }
-        if !in_section || !line_key(line).is_some_and(|name| name.eq_ignore_ascii_case(key.name()))
-        {
-            continue;
-        }
-        if let Some((_, raw)) = line.split_once(['=', ':']) {
+    marking_key(text.lines(), key)
+        .filter(|(_, sets)| *sets)
+        .filter_map(|(line, _)| {
+            let (_, raw) = line.split_once(['=', ':'])?;
             let raw = raw.trim();
             let unquoted = raw
                 .strip_prefix('"')
                 .and_then(|inner| inner.strip_suffix('"'))
                 .unwrap_or(raw);
-            value = Some(unescape(unquoted));
-        }
-    }
-    value
+            Some(unescape(unquoted))
+        })
+        .last()
 }
 
 /// `value` as the parser reads it back: the INI parser takes `\` as an escape, so a Windows
@@ -280,20 +266,31 @@ fn unescape(raw: &str) -> String {
 /// `key`'s own lines in an already-normalised `text`, under its section's header and nothing
 /// else, so the parser can read the key when another key of the file fails it.
 pub(crate) fn only_key(text: &str, key: ConfigKey) -> String {
-    let section = crate::keys::normalised(key.section());
-    let mut in_section = false;
-    let mut out = format!("[{section}]\n");
-    for line in text.lines() {
-        if let Some(name) = section_name(line) {
-            in_section = name == section;
-        } else if in_section
-            && line_key(line).is_some_and(|name| name.eq_ignore_ascii_case(key.name()))
-        {
-            out.push_str(line);
-            out.push('\n');
-        }
+    let mut out = format!("[{}]\n", crate::keys::normalised(key.section()));
+    for (line, _) in marking_key(text.lines(), key).filter(|(_, sets)| *sets) {
+        out.push_str(line);
+        out.push('\n');
     }
     out
+}
+
+/// Each of `lines` with whether it sets `key` in `key`'s section: the one walk [`remove_key`],
+/// [`key_value`] and [`only_key`] read the file's sections by.
+fn marking_key<'t>(
+    lines: impl Iterator<Item = &'t str>,
+    key: ConfigKey,
+) -> impl Iterator<Item = (&'t str, bool)> {
+    let section = crate::keys::normalised(key.section());
+    let mut in_section = false;
+    lines.map(move |line| {
+        if let Some(name) = section_name(line) {
+            in_section = name == section;
+            return (line, false);
+        }
+        let sets =
+            in_section && line_key(line).is_some_and(|name| name.eq_ignore_ascii_case(key.name()));
+        (line, sets)
+    })
 }
 
 /// A section header's name as `normalise_ini` reads it, or `None` for any other line.

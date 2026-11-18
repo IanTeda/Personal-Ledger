@@ -22,7 +22,7 @@ use lib_settings::{DisplayEvent, DisplayField};
 use super::DisplayPage;
 use crate::{
     form::fields::UNIFORM_OPTION_WIDTH,
-    settings::controls::{segmented_choices, shadowed, shadowed_note},
+    settings::controls::{field_label, segmented_choices, shadowed, shadowed_note},
     shell::view::page_clicks::PageClicks,
     theme::color,
     theme::colours::{self, to_gpui},
@@ -119,11 +119,11 @@ pub fn render(
                 .mt(px(18.0))
                 .child(field_label(view.label.clone(), cx)),
         )
-        .children(shadowed_note(
-            ConfigKey::ColourTheme,
-            view.shadowed.as_deref(),
-            cx,
-        ))
+        .children(
+            view.shadowed
+                .as_deref()
+                .map(|note| shadowed_note(ConfigKey::ColourTheme, note, cx)),
+        )
         .child(
             div()
                 .relative()
@@ -259,14 +259,6 @@ fn mini_ledger(c: &ResolvedColours) -> impl IntoElement {
         .child(row(false, to_gpui(c.text_shades.positive)))
         .child(row(true, to_gpui(c.text_shades.negative)))
         .child(row(false, rgba(c.roles.muted)))
-}
-
-fn field_label(label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
-    div()
-        .text_size(px(12.0))
-        .mb(px(5.0))
-        .text_color(color::muted(cx))
-        .child(label.into())
 }
 
 fn note(text: String, cx: &App) -> impl IntoElement {

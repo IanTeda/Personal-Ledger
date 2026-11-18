@@ -68,6 +68,10 @@ impl PageView for AboutPresenter {
             right: StatusRight::of_settings_page(SettingsPage::About),
         }
     }
+
+    fn summary_rows(&self) -> Option<Vec<lib_settings::SummaryRow>> {
+        Some(Self::summary_rows(self))
+    }
 }
 
 impl SettingsPageView for AboutPresenter {

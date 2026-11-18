@@ -145,6 +145,12 @@ pub trait PageView: PagePresenter + Sized + 'static {
         None
     }
 
+    /// A This device Settings page's rows for the X-Large index's detail pane, as its Presenter
+    /// answers them; `None` for every other page, whose values come from the Ledger's counts.
+    fn summary_rows(&self) -> Option<Vec<lib_settings::SummaryRow>> {
+        None
+    }
+
     /// A pane drawn at the View's right edge, beside the page.
     ///
     /// A hook of its own, not a [`PageCue`]: it draws, rather than handing the Presenter an event.

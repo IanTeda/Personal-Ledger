@@ -249,6 +249,8 @@ pub trait SettingsPageHandle: PageHandle {
     fn heading_meta(&self, cx: &App) -> Option<AnyElement>;
     /// A pane drawn at the View's right edge, beside the page.
     fn side_pane(&self, cx: &App) -> Option<AnyElement>;
+    /// A This device page's rows for the index's detail pane, [`PageView::summary_rows`].
+    fn summary_rows(&self, cx: &App) -> Option<Vec<lib_settings::SummaryRow>>;
 }
 
 impl<P: PageView> SettingsPageHandle for Entity<ModulePage<P>> {
@@ -258,6 +260,10 @@ impl<P: PageView> SettingsPageHandle for Entity<ModulePage<P>> {
 
     fn side_pane(&self, cx: &App) -> Option<AnyElement> {
         self.read(cx).side_pane(self, cx)
+    }
+
+    fn summary_rows(&self, cx: &App) -> Option<Vec<lib_settings::SummaryRow>> {
+        self.read(cx).presenter().summary_rows()
     }
 }
 

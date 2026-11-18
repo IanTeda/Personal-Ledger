@@ -159,10 +159,6 @@ pub struct GeneralSettings {
     /// The Locale the user's configuration file names, `None` for **System**: not the one in
     /// effect, which a flag, a variable or a higher file may set.
     pub locale: Option<Locale>,
-    /// The Data folder the user's configuration file names, `None` when it names none: not the one
-    /// in effect ([`GeneralPresenter::data_folder`]), which a flag, a variable or a higher file may
-    /// set.
-    pub data: Option<PathBuf>,
 }
 
 impl GeneralSettings {
@@ -171,10 +167,8 @@ impl GeneralSettings {
             ConfigValue::OnStart(on_start) => self.on_start = *on_start,
             ConfigValue::StartView(start_view) => self.start_view = start_view.clone(),
             ConfigValue::Toasts(on) => self.toasts_on = *on,
-            // One of the choices, else **System**, as the TUI reads it: an unsupported tag would
-            // otherwise show as en-US checked, and choosing en-US would then write nothing.
+            // The Locale field's `reading` already took an unsupported tag to **System**.
             ConfigValue::Locale(tag) => self.locale = Locale::choice(tag),
-            ConfigValue::Data(folder) => self.data = Some(folder.clone()),
             _ => {}
         }
     }
@@ -187,7 +181,6 @@ impl Default for GeneralSettings {
             start_view: StartView::default(),
             toasts_on: lib_toast::Display::default().toasts_on,
             locale: None,
-            data: None,
         }
     }
 }
@@ -218,8 +211,11 @@ impl Default for LocaleLine {
 
 /// What the Client hands General as it builds it.
 pub struct GeneralSetup {
-    /// Where the settings are read from, once, and written: the configuration file start-up read.
+    /// Where the settings are written: the configuration file start-up read.
     pub device: Rc<dyn DeviceConfiguration>,
+    /// What `device` read as the window opened, which the Shell and every This device page share
+    /// rather than each reading the file again.
+    pub snapshot: DeviceSnapshot,
     /// Start view's choices, labelled, in the order the radio group shows them: the Client's own
     /// Views, since each Client lands on its own.
     pub start_views: Vec<Choice<StartView>>,
@@ -292,7 +288,7 @@ impl GeneralPresenter {
     /// General on what `setup`'s device reads.
     pub fn new(setup: GeneralSetup, config: &KeyBindingConfig) -> Self {
         let (keymap, back_chord) = Self::keys(config);
-        let snapshot = setup.device.read();
+        let snapshot = setup.snapshot;
         let data_folder = snapshot
             .data_folder()
             .map(Path::to_path_buf)
@@ -617,7 +613,7 @@ fn declare(
                 .collect(),
         )
         .when_unset(set(ConfigValue::OnStart(defaults.on_start)))
-        .note(msg::settings_general_on_start_hint()),
+        .hint(msg::settings_general_on_start_hint()),
         GeneralField::StartView => FieldDecl::configuration(
             field,
             ConfigKey::StartView,
@@ -634,7 +630,7 @@ fn declare(
         .when_unset(set(ConfigValue::StartView(defaults.start_view)))
         // A noun from the file that isn't a choice steps from the Dashboard.
         .step_from(set(ConfigValue::StartView(StartView::Dashboard)))
-        .note(msg::settings_general_start_view_hint()),
+        .hint(msg::settings_general_start_view_hint()),
         GeneralField::Toasts => FieldDecl::configuration(
             field,
             ConfigKey::Toasts,
@@ -650,7 +646,7 @@ fn declare(
         )
         .when_unset(set(ConfigValue::Toasts(defaults.toasts_on)))
         .change_hint(msg::settings_hint_on_off())
-        .note(lib_locale::msg::toast_setting_test_note()),
+        .hint(lib_locale::msg::toast_setting_test_note()),
         // **System** is no value: choosing it takes the key out. Each choice reads as its label
         // then its code (`System · now en-AU`).
         GeneralField::Locale => FieldDecl::configuration(
@@ -677,7 +673,7 @@ fn declare(
             _ => FieldValue::Unset,
         })
         .own_note_replacing_shadowed(locale_note(locale.effective, locale.system))
-        .note(msg::settings_general_locale_hint()),
+        .hint(msg::settings_general_locale_hint()),
         GeneralField::DataFolder => FieldDecl::configuration(
             field,
             ConfigKey::Data,
@@ -692,7 +688,7 @@ fn declare(
                     .map(|source| msg::settings_general_data_folder_overridden(source, &in_effect))
             }
         })
-        .note(msg::settings_general_data_folder_hint()),
+        .hint(msg::settings_general_data_folder_hint()),
     }
 }
 
@@ -784,6 +780,7 @@ mod tests {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         GeneralPresenter::new(
             GeneralSetup {
+                snapshot: device.read(),
                 device,
                 start_views: start_views(),
                 locale: LocaleLine {
@@ -857,7 +854,6 @@ mod tests {
                 start_view: StartView::Last,
                 toasts_on: false,
                 locale: Some(Locale::EnGb),
-                data: Some(PathBuf::from("/in/the/file")),
             }
         );
         let view = general.view_model();
@@ -1216,10 +1212,6 @@ mod tests {
             Some(&ConfigValue::Data(PathBuf::from("/home/me/finance")))
         );
         assert_eq!(general.data_folder(), Path::new("/home/me/finance"));
-        assert_eq!(
-            general.settings().data,
-            Some(PathBuf::from("/home/me/finance"))
-        );
         assert_eq!(general.view_model().data_folder.value, "/home/me/finance");
         assert_eq!(
             router.routed,

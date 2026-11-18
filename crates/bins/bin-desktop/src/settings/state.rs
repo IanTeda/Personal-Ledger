@@ -32,10 +32,10 @@ use crate::{
 use gpui::{AnyView, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_list_cursor::Step;
 use lib_settings::{
-    ColourChoice, DataFolderOutcome, DeviceConfiguration, DisplayEvent, DisplayOutput,
-    GeneralEvent, LedgerSummaries, PageRows, PageSummary, ScopeFacts, SettingsFrameEvent,
-    SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel, SummarySources,
-    TracingLevel, TracingLog, summarise,
+    ColourChoice, DataFolderOutcome, DeviceConfiguration, DeviceSnapshot, DisplayEvent,
+    DisplayOutput, GeneralEvent, LedgerSummaries, PageRows, PageSummary, ScopeFacts, ScopeGroup,
+    SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,
+    SummarySources, TracingLevel, TracingLog, summarise,
 };
 use lib_viper::display::PageDisplay;
 use lib_viper::keymap::KeyBindingConfig;
@@ -75,12 +75,13 @@ impl SettingsView {
     /// [`PageHandle::rebind`].
     pub fn new(
         device: Rc<dyn DeviceConfiguration>,
+        snapshot: &DeviceSnapshot,
         config: &KeyBindingConfig,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         // Not yet drawn: the Window Size the View starts at, until `Root` tells it the window's.
         let window_size = WindowSize::Large;
-        let pages = SettingsPages::new(device, config, window_size, cx);
+        let pages = SettingsPages::new(device, snapshot, config, window_size, cx);
         let _page_subscriptions = subscribe_pages(&pages, cx);
         let frame = SettingsFramePresenter::new(
             SettingsFrameSetup {
@@ -202,35 +203,18 @@ impl SettingsView {
     /// index's cursor, built from the values the pages hold and, with a Ledger open, its counts.
     /// `None` wherever no pane docks: on a page, and at Medium and Large.
     pub(super) fn pane_summary(&self, cx: &App) -> Option<PageSummary> {
-        let model = self.frame.view_model();
-        if !model.index_page || self.window_size != WindowSize::XLarge {
+        if self.frame.focus() != SettingsFocus::Index || self.window_size != WindowSize::XLarge {
             return None;
         }
-        // Every page named, so a new one says where its values come from.
-        let rows = match model.selected {
-            SettingsPage::General => {
-                PageRows::Device(self.pages.general.read(cx).presenter().summary_rows())
-            }
-            SettingsPage::Display => {
-                PageRows::Device(self.pages.display.read(cx).presenter().summary_rows())
-            }
-            SettingsPage::Tracing => {
-                PageRows::Device(self.pages.tracing.read(cx).presenter().summary_rows())
-            }
-            SettingsPage::About => {
-                PageRows::Device(self.pages.about.read(cx).presenter().summary_rows())
-            }
-            SettingsPage::Ledger
-            | SettingsPage::Units
-            | SettingsPage::Institutions
-            | SettingsPage::Accounts
-            | SettingsPage::Categories
-            | SettingsPage::Tags
-            | SettingsPage::Payees
-            | SettingsPage::Documents
-            | SettingsPage::Inventory
-            | SettingsPage::SyncServer
-            | SettingsPage::DataBackup => PageRows::Ledger(
+        let page = self.frame.selected();
+        let rows = match page.scope_group() {
+            ScopeGroup::ThisDevice => PageRows::Device(
+                self.pages
+                    .get(page)
+                    .and_then(|handle| handle.summary_rows(cx))
+                    .unwrap_or_default(),
+            ),
+            ScopeGroup::ThisLedger => PageRows::Ledger(
                 self.pages
                     .ledger
                     .as_ref()
@@ -243,7 +227,7 @@ impl SettingsView {
                 log_capacity: lib_tracing::LOG_CAPACITY,
             },
         };
-        Some(summarise(model.selected, sources))
+        Some(summarise(page, sources))
     }
 
     /// The page Entity hosting Presenter `P`, for what `Root` drives on a page: a module Router's
@@ -798,6 +782,7 @@ mod tests {
         let view = cx.new(|cx| {
             SettingsView::new(
                 Rc::new(lib_settings::fake::InMemoryDeviceConfiguration::default()),
+                &DeviceSnapshot::default(),
                 &KeyBindingConfig::default(),
                 cx,
             )

@@ -6,7 +6,7 @@ mod clear_logs;
 pub(crate) mod data_backup;
 mod device;
 pub mod display;
-pub mod form;
+mod form;
 mod frame;
 pub mod general;
 pub mod ledger;
@@ -20,7 +20,7 @@ pub use display::{
     ColourCardView, ColourThemeView, DisplayEvent, DisplayField, DisplayOutput, DisplayPresenter,
     DisplaySettings, DisplaySetup, DisplayViewModel, PreviewRowView, PreviewView,
 };
-pub use form::{FieldKind, FieldNote, FieldValue, FieldView, FieldViews, Presentation};
+pub use form::{FieldValue, FieldView, FieldViews, Presentation};
 pub use frame::{
     Breadcrumb, IndexGroup, IndexRow, PickerGroup, PickerRow, PickerView, SettingsFocus,
     SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,

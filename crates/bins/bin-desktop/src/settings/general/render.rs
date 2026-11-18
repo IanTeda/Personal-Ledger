@@ -11,8 +11,8 @@ use lib_viper::view::Hint;
 use super::{GeneralPage, GeneralWidgets};
 use crate::{
     form::fields::{UNIFORM_OPTION_WIDTH, field_label, field_value},
-    form::select::SelectState,
     form::select_field::{self, SelectFieldProps},
+    form::viper::drawn_list,
     settings::controls::{focus_mark, hint, segmented_choices, shadowed},
     shell::view::page_clicks::PageClicks,
     theme::color,
@@ -130,8 +130,7 @@ fn dropdown(
     let chosen = view
         .chosen
         .and_then(|index| view.options.get(index).cloned());
-    let state = SelectState::drawn(chosen, view.list.highlight(), *scroll, view.options.len());
-    *scroll = state.scroll();
+    let state = drawn_list(chosen, view.list, view.options.len(), scroll);
     select_field::render(
         SelectFieldProps {
             id: id.into(),

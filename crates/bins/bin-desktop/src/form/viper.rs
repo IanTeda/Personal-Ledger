@@ -29,12 +29,18 @@ pub(crate) fn drawn<T: PartialEq>(
     list: SelectList,
     scroll: &mut usize,
 ) -> SelectState {
-    let state = SelectState::drawn(
-        chosen_label(view),
-        list.highlight(),
-        *scroll,
-        view.options.len(),
-    );
+    drawn_list(chosen_label(view), list, view.options.len(), scroll)
+}
+
+/// A select of `len` options showing `chosen`, with the list its Presenter holds, as the shared
+/// dropdown draws it: [`drawn`] for a select that isn't a [`SelectView`], as a Settings field.
+pub(crate) fn drawn_list(
+    chosen: Option<String>,
+    list: SelectList,
+    len: usize,
+    scroll: &mut usize,
+) -> SelectState {
+    let state = SelectState::drawn(chosen, list.highlight(), *scroll, len);
     *scroll = state.scroll();
     state
 }

@@ -29,7 +29,7 @@ pub enum FieldValue {
     Set(ConfigValue),
     /// No value: choosing it removes the key from the file.
     Unset,
-    /// A [`FieldKind::Remembered`] checkbox's state, which the Client keeps, not the file.
+    /// A remembered checkbox's state, which the Client keeps, not the file.
     Flag(bool),
 }
 
@@ -46,18 +46,6 @@ pub enum Presentation {
     Action,
 }
 
-/// Where a field's change goes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FieldKind {
-    /// Written to the device and settled.
-    Configuration,
-    /// Not Configuration: nothing is written, and a change is answered to the page as
-    /// [`FormAnswer::Changed`].
-    Remembered,
-    /// Written and settled, but `j`/`k` skip it: a click reaches it.
-    NotInWalk,
-}
-
 /// A field's own note from its value and the source above the file that sets its key, if any:
 /// the Locale's next-start and override note, the Data folder's "overridden, in effect is X".
 pub(crate) type OwnNote = Rc<dyn Fn(&FieldValue, Option<&str>) -> Option<String>>;
@@ -66,14 +54,17 @@ pub(crate) type OwnNote = Rc<dyn Fn(&FieldValue, Option<&str>) -> Option<String>
 #[derive(Clone)]
 pub(crate) struct FieldDecl<F> {
     field: F,
+    /// The key the field writes; `None` for a remembered field, which nothing is written for, a
+    /// change being answered to the page as [`FormAnswer::Changed`].
     key: Option<ConfigKey>,
     label: String,
     choices: Vec<Choice<FieldValue>>,
     presentation: Presentation,
-    kind: FieldKind,
+    /// Whether `j`/`k` reach the field; a click reaches every field.
+    in_walk: bool,
     step_from: Option<FieldValue>,
     change_hint: Option<String>,
-    note: Option<String>,
+    hint: Option<String>,
     own_note: Option<OwnNote>,
     when_unset: FieldValue,
     read: fn(&ConfigValue) -> FieldValue,
@@ -94,17 +85,18 @@ impl<F> FieldDecl<F> {
             label,
             choices,
             presentation,
-            kind: FieldKind::Configuration,
+            in_walk: true,
             step_from: None,
             change_hint: None,
-            note: None,
+            hint: None,
             own_note: None,
             when_unset: FieldValue::Unset,
             read: |value| FieldValue::Set(value.clone()),
         }
     }
 
-    /// A [`FieldKind::Remembered`] field holding `value`, which the Client hands the page.
+    /// A remembered field holding `value`, which the Client hands the page: no key, so nothing is
+    /// written.
     pub fn remembered(
         field: F,
         label: String,
@@ -118,10 +110,10 @@ impl<F> FieldDecl<F> {
             label,
             choices,
             presentation,
-            kind: FieldKind::Remembered,
+            in_walk: true,
             step_from: None,
             change_hint: None,
-            note: None,
+            hint: None,
             own_note: None,
             when_unset: value,
             read: |value| FieldValue::Set(value.clone()),
@@ -131,7 +123,7 @@ impl<F> FieldDecl<F> {
     /// Takes the field out of the `j`/`k` walk.
     pub fn not_in_walk(self) -> Self {
         Self {
-            kind: FieldKind::NotInWalk,
+            in_walk: false,
             ..self
         }
     }
@@ -153,10 +145,10 @@ impl<F> FieldDecl<F> {
         }
     }
 
-    /// The line under the field.
-    pub fn note(self, note: String) -> Self {
+    /// The line under the field ([`FieldView::hint`]).
+    pub fn hint(self, hint: String) -> Self {
         Self {
-            note: Some(note),
+            hint: Some(hint),
             ..self
         }
     }
@@ -235,8 +227,9 @@ pub struct FieldView {
     pub focused: bool,
     /// The line under the field.
     pub hint: Option<String>,
-    /// The note under the field, if any.
-    pub note: Option<FieldNote>,
+    /// The note under the field, if any: read through [`Self::own_note`] and
+    /// [`Self::shadowed_note`].
+    note: Option<FieldNote>,
     pub presentation: Presentation,
     /// A dropdown's list, closed for every other field.
     pub list: SelectList,
@@ -245,7 +238,7 @@ pub struct FieldView {
 /// The note under a field: the stock one, or the field's own, which it declares in place of the
 /// stock one, so never both.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FieldNote {
+enum FieldNote {
     /// The stock note while a source above the file sets the key.
     Shadowed(String),
     /// The field's own note.
@@ -333,11 +326,9 @@ impl<F: Copy + Eq> DeviceForm<F> {
         let fields = fields
             .into_iter()
             .map(|decl| {
-                let (value, shadow, in_file) = match (decl.kind, decl.key) {
-                    (FieldKind::Remembered, _) | (_, None) => {
-                        (decl.when_unset.clone(), None, false)
-                    }
-                    (_, Some(key)) => (
+                let (value, shadow, in_file) = match decl.key {
+                    None => (decl.when_unset.clone(), None, false),
+                    Some(key) => (
                         snapshot
                             .shown(key)
                             .map_or_else(|| decl.when_unset.clone(), decl.read),
@@ -503,12 +494,9 @@ impl<F: Copy + Eq> DeviceForm<F> {
     ) -> Option<FormAnswer<F>> {
         let device = Rc::clone(&self.device);
         let entry = self.get_mut(field)?;
-        let key = match (entry.decl.kind, entry.decl.key) {
-            (FieldKind::Remembered, _) | (_, None) => {
-                entry.value = value.clone();
-                return Some(FormAnswer::Changed(field, value));
-            }
-            (_, Some(key)) => key,
+        let Some(key) = entry.decl.key else {
+            entry.value = value.clone();
+            return Some(FormAnswer::Changed(field, value));
         };
         let saved = match value {
             FieldValue::Set(value) => {
@@ -550,7 +538,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
                 .collect(),
             chosen: self.chosen(entry),
             focused: self.focus == Some(field),
-            hint: decl.note.clone(),
+            hint: decl.hint.clone(),
             note: match &decl.own_note {
                 Some(note) => note(&entry.value, entry.shadow.as_deref()).map(FieldNote::Own),
                 None => shadowed_note(entry.shadow.as_deref()).map(FieldNote::Shadowed),
@@ -593,7 +581,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
     }
 
     /// The keys while `field` has the keyboard and no list is open: `j`/`k` and the field's own.
-    pub(crate) fn field_hints<E: Clone>(&self, field: F, keymap: &Keymap<E>) -> Vec<Hint> {
+    fn field_hints<E: Clone>(&self, field: F, keymap: &Keymap<E>) -> Vec<Hint> {
         let walk = walk_hint(keymap);
         let Some(decl) = self.get(field).map(|f| &f.decl) else {
             return vec![walk];
@@ -627,6 +615,21 @@ impl<F: Copy + Eq> DeviceForm<F> {
         hints
     }
 
+    /// Every walked field's keys, each once, in walk order: a page's `?` cheat sheet, whichever
+    /// field has the keyboard.
+    pub(crate) fn help_hints<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
+        let mut hints: Vec<Hint> = Vec::new();
+        for hint in self
+            .walk()
+            .flat_map(|field| self.field_hints(field, keymap))
+        {
+            if !hints.contains(&hint) {
+                hints.push(hint);
+            }
+        }
+        hints
+    }
+
     fn get(&self, field: F) -> Option<&Field<F>> {
         self.fields.iter().find(|entry| entry.decl.field == field)
     }
@@ -641,7 +644,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
     fn walk(&self) -> impl Iterator<Item = F> + '_ {
         self.fields
             .iter()
-            .filter(|entry| entry.decl.kind != FieldKind::NotInWalk)
+            .filter(|entry| entry.decl.in_walk)
             .map(|entry| entry.decl.field)
     }
 
@@ -855,7 +858,7 @@ mod tests {
                 ],
             )
             .when_unset(set(ConfigValue::RowDensity(RowDensity::Regular)))
-            .note("Rows".to_string()),
+            .hint("Rows".to_string()),
             FieldDecl::configuration(
                 Toy::Appearance,
                 ConfigKey::ColourAppearance,

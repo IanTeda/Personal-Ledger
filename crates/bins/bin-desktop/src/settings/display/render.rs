@@ -14,7 +14,7 @@ use lib_viper::display::RowDensity;
 use super::{DisplayPage, colour_theme};
 use crate::{
     form::fields::{UNIFORM_OPTION_WIDTH, radio_dot},
-    settings::controls::{focus_mark, segmented_choices, shadowed},
+    settings::controls::{field_label, focus_mark, segmented_choices, shadowed},
     shell::view::page_clicks::PageClicks,
     theme::color,
 };
@@ -159,14 +159,6 @@ fn start_sidebar_minimised_toggle(
 
 /// Display's own field label, lighter than the form fields' bold one, which sits over
 /// `Input`/`select` pairs.
-fn field_label(label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
-    div()
-        .text_size(px(12.0))
-        .mb(px(5.0))
-        .text_color(color::muted(cx))
-        .child(label.into())
-}
-
 fn status_glyphs_field(view: &FieldView, clicks: &PageClicks<DisplayPage>, cx: &App) -> gpui::Div {
     let field = DisplayField::StatusGlyphs;
     focus_mark(view.focused, cx)

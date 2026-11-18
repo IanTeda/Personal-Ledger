@@ -196,9 +196,9 @@ fn ledger_rows(page: SettingsPage, counts: &LedgerCounts) -> Vec<SummaryRow> {
             number(msg::settings_summary_items(), counts.items),
         ],
         // Neither has data of its own yet, so neither quotes a value (#1161).
-        SettingsPage::SyncServer
-        | SettingsPage::DataBackup
-        | SettingsPage::General
+        SettingsPage::SyncServer | SettingsPage::DataBackup => Vec::new(),
+        // A This device page's rows are its Presenter's, `PageRows::Device`.
+        SettingsPage::General
         | SettingsPage::Display
         | SettingsPage::Tracing
         | SettingsPage::About => Vec::new(),

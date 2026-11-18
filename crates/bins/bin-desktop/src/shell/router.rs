@@ -262,7 +262,7 @@ impl Root {
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let snapshot = device.read();
-        let settings = cx.new(|cx| SettingsView::new(device, keybindings, cx));
+        let settings = cx.new(|cx| SettingsView::new(device, &snapshot, keybindings, cx));
         let mut _settings_subscriptions = settings.subscribe(&Self::page_signals(cx), cx);
         // The frame's Router says which page the person moved to, for Back and Forward.
         _settings_subscriptions.push(cx.subscribe(&settings, |shell, _, PageChanged(page), cx| {
@@ -302,12 +302,10 @@ impl Root {
                     snapshot.data_folder().map(std::path::Path::to_path_buf),
                     dirs::home_dir(),
                 );
-                presenter.toast(ToastInput::Display(lib_toast::Display {
-                    toasts_on: snapshot.toasts_on(),
-                }));
                 presenter
             },
         };
+        root.push_toasts_on(snapshot.toasts_on());
         root.refresh_palette_entries(cx);
         root
     }
@@ -593,8 +591,8 @@ impl Root {
         )
     }
 
-    /// Hands the Toasts Preference to the Toasts, after a change on Settings › General or
-    /// `:toasts`.
+    /// Hands the Toasts Preference to the Toasts: as the window opens, and after a change on
+    /// Settings › General or `:toasts`.
     fn push_toasts_on(&mut self, toasts_on: bool) {
         self.presenter
             .toast(ToastInput::Display(lib_toast::Display { toasts_on }));
