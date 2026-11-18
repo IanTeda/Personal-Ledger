@@ -145,14 +145,18 @@ struct Bound<E> {
     palette: Palette,
 }
 
-impl<E> fmt::Debug for Bound<E> {
+/// Hand-written because the Argument constructor is a `dyn Fn`, which has no `Debug`: it shows as
+/// whether it is set. Every other field is shown, the event included, so a dump names the event
+/// each chord sends.
+impl<E: fmt::Debug> fmt::Debug for Bound<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Bound")
             .field("chord", &self.chord)
             .field("command", &self.command)
+            .field("event", &self.event)
             .field("has_argument_event", &self.argument_event.is_some())
             .field("palette", &self.palette)
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 
@@ -635,15 +639,15 @@ mod tests {
         Typed::Command { name, argument }
     }
 
+    fn edit_description() -> String {
+        "edit the selected row".to_string()
+    }
+
+    /// Hidden, so the palette-flag tests cover all three kinds of binding: listed with an
+    /// Argument, listed without, and not listed at all.
     const TYPED: &[Binding<Typed>] = &[
-        Binding::listed_with_argument(
-            EDIT,
-            "e",
-            Typed::Key,
-            typed,
-            "rows edit",
-            delete_description,
-        ),
+        Binding::hidden("rows.hidden", "h", Typed::Key),
+        Binding::listed_with_argument(EDIT, "e", Typed::Key, typed, "rows edit", edit_description),
         Binding::listed(DELETE, "d", Typed::Key, "rows delete", delete_description),
     ];
 
@@ -662,7 +666,26 @@ mod tests {
             .bindings()
             .map(|bound| (bound.command, takes_argument(bound.palette)))
             .collect();
-        assert_eq!(flags, [(EDIT, Some(true)), (DELETE, Some(false))]);
+        assert_eq!(
+            flags,
+            [
+                ("rows.hidden", None),
+                (EDIT, Some(true)),
+                (DELETE, Some(false))
+            ]
+        );
+    }
+
+    #[test]
+    fn a_keymap_dump_shows_the_event_each_binding_sends() {
+        // A dump is how a stray chord gets diagnosed, and it must name the event, not just the
+        // chord, since two chords can send the same event and one event's chord can move.
+        let keymap = Keymap::new(TYPED, &KeyBindingConfig::default());
+
+        assert!(
+            format!("{keymap:?}").contains("event: Key"),
+            "the Debug dump names each binding's event: {keymap:?}"
+        );
     }
 
     #[test]
@@ -708,19 +731,7 @@ mod tests {
 
     #[test]
     fn takes_argument_is_set_exactly_where_the_palette_builds_the_argument_event() {
-        const EVERY_KIND: &[Binding<Typed>] = &[
-            Binding::hidden("rows.hidden", "h", Typed::Key),
-            Binding::listed(DELETE, "d", Typed::Key, "rows delete", delete_description),
-            Binding::listed_with_argument(
-                EDIT,
-                "e",
-                Typed::Key,
-                typed,
-                "rows edit",
-                delete_description,
-            ),
-        ];
-        let keymap = Keymap::new(EVERY_KIND, &KeyBindingConfig::default());
+        let keymap = Keymap::new(TYPED, &KeyBindingConfig::default());
 
         for bound in keymap.bindings() {
             let takes_argument = takes_argument(bound.palette).unwrap_or(false);
