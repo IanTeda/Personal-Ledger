@@ -49,6 +49,18 @@ units-activity-price-set = Set the price of { $code } for the week of { $week }
 units-activity-source-saved = Saved price source { $name }
 units-activity-source-deleted = Deleted price source { $name }
 
+## What History calls each change, for Undo, Redo and the header's list (#1247).
+units-changed-added = Add unit { $code }
+units-changed-edited = Edit unit { $code }
+units-changed-deleted = Delete unit { $code }
+units-changed-deactivated = Deactivate unit { $code }
+units-changed-reactivated = Reactivate unit { $code }
+units-changed-base-set = Make { $code } the base unit
+units-changed-price-set = Set the price of { $code } for the week of { $week }
+units-changed-source-added = Add price source { $name }
+units-changed-source-edited = Edit price source { $name }
+units-changed-source-deleted = Delete price source { $name }
+
 ## The detail pane docked at X-Large.
 
 units-pane-unit = Unit

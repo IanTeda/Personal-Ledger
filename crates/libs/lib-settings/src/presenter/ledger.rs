@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use lib_core::UnitId;
 use lib_list_cursor::Step;
+use lib_toast::Notice;
 use lib_viper::keymap::{KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Hint;
@@ -104,6 +105,17 @@ impl LedgerPresenter {
             return;
         }
         if self.preferences.set_base_unit(id) == BaseUnitAnswer::Saved {
+            let code = self
+                .units
+                .choices()
+                .into_iter()
+                .find(|unit| unit.id == id)
+                .map(|unit| unit.code)
+                .unwrap_or_default();
+            router.notify(Notice::Changed(msg::settings_changed(
+                &msg::settings_ledger_base_unit(),
+                &code,
+            )));
             router.base_unit_changed();
         }
     }
@@ -248,6 +260,11 @@ mod tests {
         assert!(view.options[0].label.starts_with("aud — "));
     }
 
+    /// What History calls a base Unit change (#1247).
+    fn changed(label: &str) -> Routed {
+        Routed::Notice(Notice::Changed(label.to_string()))
+    }
+
     #[test]
     fn steps_set_the_base_and_stop_at_the_ends() {
         let units = InMemoryLedgerUnits::sample();
@@ -264,7 +281,12 @@ mod tests {
         assert_eq!(base(&presenter), Some(UnitId::SEED_VAS));
         assert_eq!(
             router.routed,
-            [Routed::BaseUnitChanged, Routed::BaseUnitChanged]
+            [
+                changed("Base unit: btc"),
+                Routed::BaseUnitChanged,
+                changed("Base unit: vas"),
+                Routed::BaseUnitChanged
+            ]
         );
     }
 
@@ -304,7 +326,10 @@ mod tests {
 
         presenter.handle(LedgerEvent::ChooseBaseUnit(UnitId::new()), &mut router);
         assert_eq!(base(&presenter), Some(UnitId::SEED_BTC));
-        assert_eq!(router.routed, [Routed::BaseUnitChanged]);
+        assert_eq!(
+            router.routed,
+            [changed("Base unit: btc"), Routed::BaseUnitChanged]
+        );
     }
 
     #[test]

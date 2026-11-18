@@ -139,6 +139,16 @@ impl<R> History<R> {
         steps
     }
 
+    /// Keeps what `keep` leaves of each entry on both lists: it trims an entry's reversal in place
+    /// and says whether anything is left to step, an entry with nothing left being removed. A
+    /// closed Ledger's part leaves this way (#1247).
+    pub fn retain(&mut self, mut keep: impl FnMut(&mut R) -> bool) {
+        self.undo
+            .retain_mut(|stamped| keep(&mut stamped.entry.reversal));
+        self.redo
+            .retain_mut(|stamped| keep(&mut stamped.entry.reversal));
+    }
+
     /// The labels Undo would step through, newest first.
     pub fn undo_labels(&self) -> impl Iterator<Item = &str> {
         self.undo.iter().map(|entry| entry.entry.label.as_str())
@@ -380,6 +390,33 @@ mod tests {
         assert_eq!(stepped, Stepped::Failed("first".to_string()));
         assert_eq!(redo_labels(&history), ["first", "second"]);
         assert!(!history.can_undo());
+    }
+
+    #[test]
+    fn retain_trims_each_entry_on_both_lists_and_drops_those_left_empty() {
+        let mut history = History::default();
+        for (label, reversal) in [("first", 1), ("second", 2), ("third", 3)] {
+            history.push(
+                Entry {
+                    label: label.to_string(),
+                    reversal,
+                },
+                at(0),
+            );
+        }
+        history.undo(|_| true);
+
+        history.retain(|reversal| {
+            *reversal -= 1;
+            *reversal > 0
+        });
+
+        assert_eq!(undo_labels(&history), ["second"]);
+        assert_eq!(redo_labels(&history), ["third"]);
+        history.redo(|reversal| {
+            assert_eq!(*reversal, 2, "trimmed in place");
+            true
+        });
     }
 
     #[test]

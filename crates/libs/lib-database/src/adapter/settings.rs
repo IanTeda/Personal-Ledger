@@ -140,11 +140,12 @@ impl LedgerPreferences for LedgerPreferencesAdapter {
         // The usage `split_mut` lends beside the write ports goes unread: setting the base checks
         // only that the Unit exists and is active.
         let unread = UnitUse::default();
-        let ports = store.split_mut(&unread);
-        match SetBaseUnit(id).run(&*ports.units, ports.base_unit) {
-            Ok(()) => BaseUnitAnswer::Saved,
-            Err(_) => BaseUnitAnswer::Refused,
-        }
+        store.split_write(&unread, |ports| {
+            match SetBaseUnit(id).run(&*ports.units, ports.base_unit) {
+                Ok(()) => BaseUnitAnswer::Saved,
+                Err(_) => BaseUnitAnswer::Refused,
+            }
+        })
     }
 }
 

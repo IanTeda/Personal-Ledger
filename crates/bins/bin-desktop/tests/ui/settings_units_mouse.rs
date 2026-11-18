@@ -617,3 +617,36 @@ fn clicking_add_price_source_opens_its_dialog(app: &mut TestAppContext) {
     ui.click("settings-add-price-source");
     assert_eq!(ui.dialog(), Some("AddPriceSource"));
 }
+
+#[gpui::test]
+fn the_headers_undo_takes_back_a_deactivation_and_its_list_redoes_it(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.right_click("unit-row-1");
+    ui.click("settings-units-menu-delete-unit");
+    ui.click("delete-unit-confirm");
+    assert_eq!(ui.inactive_unit_codes(), ["btc"]);
+
+    ui.click("topbar-undo");
+    assert!(ui.inactive_unit_codes().is_empty(), "btc is active again");
+
+    ui.click("topbar-undo-menu");
+    ui.click("topbar-history-redo-1");
+    assert_eq!(ui.inactive_unit_codes(), ["btc"]);
+}
+
+#[gpui::test]
+fn the_headers_undo_takes_back_a_unit_deleted_by_mouse(app: &mut TestAppContext) {
+    let mut ui = on_units_with(app, common::unquote_units);
+    let before = ui.unit_codes();
+    ui.right_click("unit-row-1");
+    ui.click("settings-units-menu-delete-unit");
+    ui.press("b t c");
+    ui.click("delete-unit-confirm");
+    assert!(!ui.unit_codes().contains(&"btc".to_string()));
+
+    ui.click("topbar-undo");
+
+    let mut after = ui.unit_codes();
+    after.sort();
+    assert_eq!(after, before, "btc back");
+}

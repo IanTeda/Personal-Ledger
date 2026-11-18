@@ -272,8 +272,8 @@ pub trait LedgerPreferences {
 }
 
 /// What only the Shell does once Settings › Ledger has set the base Unit: every view of the Units
-/// is the Client's to bring in line.
-pub trait LedgerRouter {
+/// is the Client's to bring in line. What History calls the change goes through [`Notify`].
+pub trait LedgerRouter: Notify {
     /// The base Unit was saved, so the Client announces the Units domain.
     fn base_unit_changed(&mut self);
 }

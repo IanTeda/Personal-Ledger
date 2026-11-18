@@ -137,3 +137,21 @@ fn a_deactivated_unit_is_not_offered_as_the_base_unit(app: &mut TestAppContext) 
     assert!(!general.options.contains(&"btc".to_string()));
     assert_eq!(general.base_unit.as_deref(), Some("aud"));
 }
+
+#[gpui::test]
+fn u_undoes_the_base_unit_and_ctrl_r_redoes_it_saying_so(app: &mut TestAppContext) {
+    let mut ui = on_ledger(app);
+    ui.press("l j");
+    let base = |ui: &mut Harness<'_>| ui.settings::<SettingsLedgerSnapshot>().base_unit;
+    assert_eq!(base(&mut ui).as_deref(), Some("btc"));
+
+    ui.press("u");
+    assert_eq!(base(&mut ui).as_deref(), Some("aud"));
+    assert_eq!(
+        ui.read(|shell| shell.status_message()).as_deref(),
+        Some("Undid Base unit: btc")
+    );
+
+    ui.press("ctrl-r");
+    assert_eq!(base(&mut ui).as_deref(), Some("btc"));
+}

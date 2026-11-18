@@ -71,7 +71,7 @@ pub use adapter::categories::CategoriesAdapter;
 pub(crate) use adapter::category_deletion::CategoryDeletionAdapter;
 pub(crate) use adapter::category_rows::StoredCategoryRows;
 pub use adapter::documents::DocumentsAdapter;
-pub use adapter::fake_fails::FakeFails;
+pub use adapter::fake_fails::{FailArm, FakeFails};
 pub use adapter::institutions::InstitutionsAdapter;
 pub use adapter::inventory::InventoryAdapter;
 // Public, unlike the Ledger-bound adapters: it runs before any Ledger is open, so a Client's
@@ -117,6 +117,10 @@ pub mod seed;
 /// The writes every adapter makes in one Interactor call, committed together (ADR-0046).
 pub mod commit;
 pub use commit::{Commit, Committed, InMemoryCommit, PendingWrites, Written};
+
+/// What undoes and redoes one input's Ledger change: the row images the stores record (#1247).
+pub mod reversal;
+pub use reversal::{Journal, LedgerReversal, RowImage};
 
 /// The one writer thread every adapter saves through (ADR-0046).
 pub mod writer;

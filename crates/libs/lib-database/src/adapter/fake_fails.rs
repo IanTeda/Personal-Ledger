@@ -37,6 +37,35 @@ pub struct FakeFails {
     pub writes: Vec<Domain>,
     /// The domains whose reload, after a failed write, fails too.
     pub reloads: Vec<Domain>,
+    /// Whether `writes` fail yet: armed by default. A test that disarms it first makes changes
+    /// that land, then arms it so a later write fails, such as an Undo's (#1247).
+    pub armed: FailArm,
+}
+
+/// The switch that holds [`FakeFails::writes`] off until a test arms it; a clone shares it.
+#[derive(Debug, Clone)]
+pub struct FailArm(std::rc::Rc<std::cell::Cell<bool>>);
+
+impl Default for FailArm {
+    fn default() -> Self {
+        Self(std::rc::Rc::new(std::cell::Cell::new(true)))
+    }
+}
+
+impl FailArm {
+    /// A switch holding the failing writes off until [`Self::arm`].
+    pub fn disarmed() -> Self {
+        Self(std::rc::Rc::new(std::cell::Cell::new(false)))
+    }
+
+    /// From now on the failing domains' writes fail.
+    pub fn arm(&self) {
+        self.0.set(true);
+    }
+
+    pub fn is_armed(&self) -> bool {
+        self.0.get()
+    }
 }
 
 impl FakeFails {
@@ -47,6 +76,8 @@ impl FakeFails {
             live,
             reload_fails: self.reloads.contains(&domain),
             inbox_reads: std::cell::Cell::new(0),
+            arm: self.armed.clone(),
+            frozen: self.armed.is_armed(),
         }
     }
 }
@@ -59,14 +90,32 @@ pub(crate) struct Switched<T> {
     reload_fails: bool,
     /// How many times the rail asked for the Inbox count, kept on the Documents store (#1120).
     inbox_reads: std::cell::Cell<usize>,
+    arm: FailArm,
+    /// Whether `stored` is the snapshot from when the writes started failing: until then the
+    /// writes land, so the first write once armed snapshots what they left.
+    frozen: bool,
 }
 
 impl<T: Clone> Switched<T> {
+    /// The live rows to write, snapshotting them first as the stored rows the first time a write
+    /// arrives once the failing writes are armed.
+    fn live_mut(&mut self) -> &mut T {
+        if self.stored.is_some() {
+            if !self.arm.is_armed() {
+                self.frozen = false;
+            } else if !self.frozen {
+                self.stored = Some(self.live.clone());
+                self.frozen = true;
+            }
+        }
+        &mut self.live
+    }
+
     fn reload_snapshot(&mut self) -> Result<()> {
         if self.reload_fails {
             return Err(crate::Error::Generic("the test's reload fails".into()));
         }
-        if let Some(stored) = &self.stored {
+        if let Some(stored) = self.stored.as_ref().filter(|_| self.frozen) {
             self.live = stored.clone();
         }
         Ok(())
@@ -78,14 +127,19 @@ impl<T: Clone> Switched<T> {
 pub(crate) struct FailingCommit {
     pub(crate) written: Written,
     pub(crate) fails: Vec<Domain>,
+    pub(crate) armed: FailArm,
     pub(crate) report: mpsc::Sender<WriteFailure>,
 }
 
 impl Commit for FailingCommit {
     fn commit(&self) -> Committed {
         let wrote = self.written.take();
-        let failed: Vec<Domain> = self
-            .fails
+        let fails: &[Domain] = if self.armed.is_armed() {
+            &self.fails
+        } else {
+            &[]
+        };
+        let failed: Vec<Domain> = fails
             .iter()
             .copied()
             .filter(|domain| {
@@ -120,8 +174,8 @@ impl<T: UnitsStore + Clone> UnitsStore for Switched<T> {
         self.live.base_unit()
     }
 
-    fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a> {
-        self.live.split_mut(usage)
+    fn write_ports(&mut self, usage: &dyn UnitUsage, write: &mut dyn FnMut(PortsMut<'_>)) {
+        self.live_mut().write_ports(usage, write);
     }
 
     fn unit_code(&self, id: UnitId) -> Option<String> {
@@ -139,7 +193,7 @@ impl<T: InstitutionsStore + Clone> InstitutionsStore for Switched<T> {
     }
 
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
-        self.live.institutions_mut()
+        self.live_mut().institutions_mut()
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -153,7 +207,7 @@ impl<T: AccountsStore + Clone> AccountsStore for Switched<T> {
     }
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
-        self.live.accounts_mut()
+        self.live_mut().accounts_mut()
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -167,11 +221,11 @@ impl<T: CategoriesStore + Clone> CategoriesStore for Switched<T> {
     }
 
     fn categories_mut(&mut self) -> &mut dyn CategoryRepository {
-        self.live.categories_mut()
+        self.live_mut().categories_mut()
     }
 
     fn delete_category(&mut self, id: CategoryId) {
-        self.live.delete_category(id);
+        self.live_mut().delete_category(id);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -185,11 +239,11 @@ impl<T: TagsStore + Clone> TagsStore for Switched<T> {
     }
 
     fn tags_mut(&mut self) -> &mut dyn TagRepository {
-        self.live.tags_mut()
+        self.live_mut().tags_mut()
     }
 
     fn delete_tag(&mut self, id: TagId) {
-        self.live.delete_tag(id);
+        self.live_mut().delete_tag(id);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -203,7 +257,7 @@ impl<T: InventoryStore + Clone> InventoryStore for Switched<T> {
     }
 
     fn inventory_mut(&mut self) -> &mut dyn InventoryRepository {
-        self.live.inventory_mut()
+        self.live_mut().inventory_mut()
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -217,7 +271,7 @@ impl<T: TransactionsStore + Clone> TransactionsStore for Switched<T> {
     }
 
     fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
-        self.live.transactions_mut()
+        self.live_mut().transactions_mut()
     }
 
     fn all_transactions(&self) -> Vec<Transaction> {
@@ -225,7 +279,7 @@ impl<T: TransactionsStore + Clone> TransactionsStore for Switched<T> {
     }
 
     fn upsert_transaction(&mut self, transaction: Transaction) {
-        self.live.upsert_transaction(transaction);
+        self.live_mut().upsert_transaction(transaction);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -239,7 +293,7 @@ impl<T: BillsStore + Clone> BillsStore for Switched<T> {
     }
 
     fn plans_mut(&mut self) -> &mut dyn BillPlanRepository {
-        self.live.plans_mut()
+        self.live_mut().plans_mut()
     }
 
     fn entries(&self) -> &dyn BillScheduleRepository {
@@ -247,7 +301,7 @@ impl<T: BillsStore + Clone> BillsStore for Switched<T> {
     }
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
-        self.live.entries_mut()
+        self.live_mut().entries_mut()
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -261,7 +315,7 @@ impl<T: PayeesStore + Clone> PayeesStore for Switched<T> {
     }
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
-        self.live.payees_mut()
+        self.live_mut().payees_mut()
     }
 
     fn payee_name(&self, id: PayeeId) -> Option<String> {
@@ -279,7 +333,7 @@ impl<T: BudgetsStore + Clone> BudgetsStore for Switched<T> {
     }
 
     fn budgets_mut(&mut self) -> &mut dyn BudgetRepository {
-        self.live.budgets_mut()
+        self.live_mut().budgets_mut()
     }
 
     fn account_budgets(&self, id: AccountId) -> usize {
@@ -305,7 +359,7 @@ impl<T: DocumentsStore + Clone> DocumentsStore for Switched<T> {
     }
 
     fn documents_mut(&mut self) -> &mut dyn DocumentRepository {
-        self.live.documents_mut()
+        self.live_mut().documents_mut()
     }
 
     fn inbox_count(&self) -> usize {

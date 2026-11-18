@@ -55,7 +55,7 @@ pub use units_pane::{
 
 use crate::protocols::UnitsPorts;
 pub use crate::protocols::{UnitChange, UnitsOutcome};
-use crate::{UnitUse, Updates, msg};
+use crate::{UnitUse, UnitsDialog, Updates, msg};
 
 /// A form Dialog's keys besides its submit: next field, choose and cancel.
 fn form_hints() -> Vec<DialogHint> {
@@ -105,6 +105,29 @@ impl UnitsOutcome {
                 msg::units_toast_source_deleted(name, count(*moved))
             }
         })
+    }
+
+    /// What History calls the change, from the Dialog it was made in: `None` for a Unit or Price
+    /// Source saved with no Dialog open, which only a Dialog saves (#1247).
+    fn changed(&self, dialog: Option<UnitsDialog>) -> String {
+        match self {
+            Self::Unit { change, code } => match change {
+                UnitChange::Saved if dialog == Some(UnitsDialog::AddUnit) => {
+                    msg::units_changed_added(code)
+                }
+                UnitChange::Saved => msg::units_changed_edited(code),
+                UnitChange::Deleted => msg::units_changed_deleted(code),
+                UnitChange::Deactivated => msg::units_changed_deactivated(code),
+                UnitChange::Reactivated => msg::units_changed_reactivated(code),
+                UnitChange::BaseSet => msg::units_changed_base_set(code),
+            },
+            Self::PriceSet { code, week } => msg::units_changed_price_set(code, &week_text(*week)),
+            Self::SourceSaved { name } if dialog == Some(UnitsDialog::AddPriceSource) => {
+                msg::units_changed_source_added(name)
+            }
+            Self::SourceSaved { name } => msg::units_changed_source_edited(name),
+            Self::SourceDeleted { name, .. } => msg::units_changed_source_deleted(name),
+        }
     }
 
     /// The line ACTIVITY logs while the detail pane is docked.

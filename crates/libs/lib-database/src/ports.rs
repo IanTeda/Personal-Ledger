@@ -66,6 +66,7 @@ use crate::adapter::store::{
     StoredPayeeReads, StoredShellReads, StoredTagReads, StoredTagRemovalReads,
     StoredTransactionReads, StoredUnitReads,
 };
+use crate::reversal::{Journal, LedgerReversal, Step};
 use crate::{
     AccountDeletionAdapter, BillPaymentsAdapter, CategoryDeletionAdapter, Commit, Domain,
     LedgerPreferencesAdapter, Result, SharedLedger, StoredCategoryRows, StoredSettingsReads,
@@ -147,6 +148,8 @@ pub struct LedgerPorts {
     shell_reads: Rc<StoredShellReads>,
     /// The one commit every input ends with, returning what it wrote ([`Committed`](crate::Committed)).
     commit: Rc<dyn Commit>,
+    /// The row images the stores record each input's writes in, for History (#1247).
+    journal: Journal,
 }
 
 impl LedgerPorts {
@@ -164,6 +167,7 @@ impl LedgerPorts {
     pub fn over(shared: SharedLedger, clock: Clock) -> (Self, mpsc::Receiver<WriteFailure>) {
         let SharedLedger {
             stores,
+            journal,
             commit,
             failures,
         } = shared;
@@ -337,6 +341,7 @@ impl LedgerPorts {
                 transactions: stores.transactions.clone(),
             }),
             stores,
+            journal,
             commit,
         };
         (ports, failures)
@@ -524,6 +529,25 @@ impl LedgerPorts {
     /// The one commit every input ends with, for the Client's input door to hold.
     pub fn commit(&self) -> Rc<dyn Commit> {
         self.commit.clone()
+    }
+
+    /// What the input's writes changed, as the row images that undo and redo it, leaving none for
+    /// the next input: `None` where it changed no row. The Client takes it once per input, as the
+    /// input closes into a History entry.
+    pub fn take_reversal(&self) -> Option<LedgerReversal> {
+        self.journal.take()
+    }
+
+    /// Undo: writes `reversal`'s rows back as they were before it, the newest first, recording
+    /// nothing. The writes wait for the input's commit like any other.
+    pub fn reverse(&self, reversal: &LedgerReversal) {
+        crate::reversal::apply(reversal, Step::Reverse, &self.stores, &self.journal);
+    }
+
+    /// Redo: writes `reversal`'s rows as it left them again, in the order first written,
+    /// recording nothing.
+    pub fn replay(&self, reversal: &LedgerReversal) {
+        crate::reversal::apply(reversal, Step::Replay, &self.stores, &self.journal);
     }
 
     /// Reads `domain`'s rows back as stored and drops its writes not yet committed: after a failed

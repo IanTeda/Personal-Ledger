@@ -30,7 +30,11 @@ impl Root {
             }
         }
         // The input's recorded changes become its one History entry, named by its Presenters.
-        if let Some(entry) = crate::reversal::close(changed) {
+        let ledger = self
+            .open
+            .as_ref()
+            .and_then(|open| open.ports.take_reversal());
+        if let Some(entry) = crate::reversal::close(changed, ledger) {
             self.presenter.record(entry);
         }
         if !shown {

@@ -98,3 +98,20 @@ desktop-toast-write-failed-inventory = Couldn't save the change to the inventory
 desktop-toast-write-failed-inventory-unsaved = Couldn't save the change to the inventory or reload it, so what you see isn't saved
 desktop-toast-write-failed-documents = Couldn't save the change to documents, so they are back as last saved
 desktop-toast-write-failed-documents-unsaved = Couldn't save the change to documents or reload them, so what you see isn't saved
+
+## History: what an entry is called when no Presenter named the Ledger change it made, by the
+## domains it wrote (#1247). `$domains` is a list of the domain names below.
+
+desktop-history-ledger-changed = Change { $domains }
+desktop-history-domain-units = units
+desktop-history-domain-institutions = institutions
+desktop-history-domain-accounts = accounts
+desktop-history-domain-categories = categories
+desktop-history-domain-tags = tags
+desktop-history-domain-payees = payees
+desktop-history-domain-transactions = transactions
+desktop-history-domain-bills = bills
+desktop-history-domain-budgets = budgets
+desktop-history-domain-inventory = inventory
+desktop-history-domain-documents = documents
+desktop-history-domain-document-types = document types

@@ -24,7 +24,7 @@ impl Rows {
     /// Runs `write` on the store's write ports, which reach its recorder, so the commit names the
     /// Units in what the input wrote.
     fn write(&self, write: impl FnOnce(PortsMut<'_>)) {
-        write(self.store.borrow_mut().split_mut(&self.usage));
+        self.store.borrow_mut().split_write(&self.usage, write);
     }
 }
 

@@ -11,6 +11,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::reversal::Journal;
 use crate::writer::{Batch, Change, Domain, Writer};
 
 /// Ends one Interactor call's writes. What the bins hold, so they commit the same way on the
@@ -43,14 +44,21 @@ impl Committed {
 }
 
 /// The domains written since the last commit, noted by each store's recorder and drained by the
-/// commit. Single-threaded, as the ports are; a clone shares the same set.
+/// commit, beside the [`Journal`] of row images every recorder shares (#1247), which the Client
+/// takes once the input closes. Single-threaded, as the ports are; a clone shares the same set.
 #[derive(Debug, Clone, Default)]
-pub struct Written(Rc<RefCell<Vec<Domain>>>);
+pub struct Written(Rc<WrittenState>);
+
+#[derive(Debug, Default)]
+struct WrittenState {
+    domains: RefCell<Vec<Domain>>,
+    journal: Journal,
+}
 
 impl Written {
     /// Notes that `domain` was written, once, behind those already noted.
     pub fn note(&self, domain: Domain) {
-        let mut written = self.0.borrow_mut();
+        let mut written = self.0.domains.borrow_mut();
         if !written.contains(&domain) {
             written.push(domain);
         }
@@ -58,7 +66,12 @@ impl Written {
 
     /// The domains noted since the last take, leaving none.
     pub fn take(&self) -> Vec<Domain> {
-        std::mem::take(&mut *self.0.borrow_mut())
+        std::mem::take(&mut *self.0.domains.borrow_mut())
+    }
+
+    /// The row images every store sharing this set records into.
+    pub fn journal(&self) -> &Journal {
+        &self.0.journal
     }
 }
 

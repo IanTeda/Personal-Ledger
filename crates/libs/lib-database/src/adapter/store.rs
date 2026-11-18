@@ -97,6 +97,7 @@ use crate::adapter::payees::payee_refs;
 use crate::adapter::{
     accounts, bills, categories, institutions, inventory, tags, transactions, units,
 };
+use crate::reversal::{Journal, RowImage};
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
     Domain, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter,
@@ -108,10 +109,14 @@ use crate::{
 /// says what an input wrote and no Client counts its own writes. The grain is the borrow, not the
 /// write: a mutable borrow that writes nothing costs one extra repaint. A reload notes nothing,
 /// since it puts memory back as stored rather than writing.
+///
+/// Where the domain records onto History (#1247), its `*_mut()` hands out a recording wrapper
+/// around the repository, which notes each row's image before and after a write in the
+/// [`Journal`] `written` shares ([`crate::reversal`]). Only the Units and the Institutions record
+/// yet; the other domains are handed the plain repository.
 pub struct Recorded<S: ?Sized> {
     domain: Domain,
-    written: Written,
-    store: Box<S>,
+    store: Journaled<S>,
 }
 
 impl<S: ?Sized> Recorded<S> {
@@ -119,9 +124,140 @@ impl<S: ?Sized> Recorded<S> {
     pub fn new(domain: Domain, written: Written, store: Box<S>) -> Self {
         Self {
             domain,
-            written,
-            store,
+            store: Journaled { written, store },
         }
+    }
+
+    /// The row images this store records into, shared by every store.
+    pub(crate) fn journal(&self) -> &Journal {
+        self.store.written.journal()
+    }
+}
+
+/// A store with the set its writes are noted in and the journal they are recorded in: what a
+/// recording repository wraps, so `*_mut()` can lend it out as the repository.
+struct Journaled<S: ?Sized> {
+    written: Written,
+    store: Box<S>,
+}
+
+impl<S: ?Sized> std::ops::Deref for Journaled<S> {
+    type Target = S;
+
+    fn deref(&self) -> &S {
+        &self.store
+    }
+}
+
+impl<S: ?Sized> std::ops::DerefMut for Journaled<S> {
+    fn deref_mut(&mut self) -> &mut S {
+        &mut self.store
+    }
+}
+
+/// The Institutions, each write recorded with the row's image before it.
+impl<S: InstitutionsStore + ?Sized> InstitutionRepository for Journaled<S> {
+    fn institutions(&self) -> Vec<lib_institutions::Institution> {
+        self.store.institutions().institutions()
+    }
+
+    fn upsert_institution(&mut self, institution: lib_institutions::Institution) {
+        let before = self.store.institutions().institution(institution.id);
+        self.written
+            .journal()
+            .record(RowImage::Institution(before, Some(institution.clone())));
+        self.store
+            .institutions_mut()
+            .upsert_institution(institution);
+    }
+
+    fn delete_institution(&mut self, id: InstitutionId) {
+        if let Some(before) = self.store.institutions().institution(id) {
+            self.written
+                .journal()
+                .record(RowImage::Institution(Some(before), None));
+        }
+        self.store.institutions_mut().delete_institution(id);
+    }
+}
+
+/// The Units, each write recorded with the row's image before it.
+struct RecordingUnits<'a> {
+    units: &'a mut dyn UnitRepository,
+    journal: &'a Journal,
+}
+
+impl UnitRepository for RecordingUnits<'_> {
+    fn units(&self) -> Vec<lib_units::UnitRow> {
+        self.units.units()
+    }
+
+    fn upsert_unit(&mut self, unit: lib_units::UnitRow) {
+        let before = self.units.unit(unit.id);
+        self.journal
+            .record(RowImage::Unit(before, Some(unit.clone())));
+        self.units.upsert_unit(unit);
+    }
+
+    fn delete_unit(&mut self, id: UnitId) {
+        if let Some(before) = self.units.unit(id) {
+            self.journal.record(RowImage::Unit(Some(before), None));
+        }
+        self.units.delete_unit(id);
+    }
+}
+
+/// The stored Price Sources, each write recorded with the row's image before it.
+struct RecordingPriceSources<'a> {
+    sources: &'a mut dyn PriceSourceRepository,
+    journal: &'a Journal,
+}
+
+impl RecordingPriceSources<'_> {
+    fn record(&self, id: lib_core::PriceSourceId) -> Option<lib_units::PriceSourceRecord> {
+        self.sources
+            .price_source_records()
+            .into_iter()
+            .find(|record| record.id() == id)
+    }
+}
+
+impl PriceSourceRepository for RecordingPriceSources<'_> {
+    fn price_source_records(&self) -> Vec<lib_units::PriceSourceRecord> {
+        self.sources.price_source_records()
+    }
+
+    fn upsert_price_source(&mut self, record: lib_units::PriceSourceRecord) {
+        let before = self.record(record.id());
+        self.journal
+            .record(RowImage::PriceSource(before, Some(record.clone())));
+        self.sources.upsert_price_source(record);
+    }
+
+    fn delete_price_source(&mut self, id: lib_core::PriceSourceId) {
+        if let Some(before) = self.record(id) {
+            self.journal
+                .record(RowImage::PriceSource(Some(before), None));
+        }
+        self.sources.delete_price_source(id);
+    }
+}
+
+/// The base Unit, each change recorded with the base before it.
+struct RecordingBaseUnit<'a> {
+    base: &'a mut dyn BaseUnitRepository,
+    journal: &'a Journal,
+}
+
+impl BaseUnitRepository for RecordingBaseUnit<'_> {
+    fn base_unit(&self) -> UnitId {
+        self.base.base_unit()
+    }
+
+    fn set_base_unit(&mut self, id: UnitId) {
+        self.journal
+            .record(RowImage::BaseUnit(self.base.base_unit(), id));
+        self.base.set_base_unit(id);
     }
 }
 
@@ -137,27 +273,27 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
     }
 
     fn upsert_document(&mut self, document: &lib_documents::Document) {
-        self.written.note(Domain::Documents);
+        self.store.written.note(Domain::Documents);
         self.store.documents_mut().upsert_document(document);
     }
 
     fn delete_document(&mut self, id: lib_core::DocumentId) {
-        self.written.note(Domain::Documents);
+        self.store.written.note(Domain::Documents);
         self.store.documents_mut().delete_document(id);
     }
 
     fn upsert_document_type(&mut self, row: &lib_documents::types::DocumentTypeRow) {
-        self.written.note(Domain::DocumentTypes);
+        self.store.written.note(Domain::DocumentTypes);
         self.store.documents_mut().upsert_document_type(row);
     }
 
     fn delete_document_type(&mut self, id: lib_core::DocumentTypeId) {
-        self.written.note(Domain::DocumentTypes);
+        self.store.written.note(Domain::DocumentTypes);
         self.store.documents_mut().delete_document_type(id);
     }
 
     fn move_document_type(&mut self, id: lib_core::DocumentTypeId, to: usize) {
-        self.written.note(Domain::DocumentTypes);
+        self.store.written.note(Domain::DocumentTypes);
         self.store.documents_mut().move_document_type(id, to);
     }
 }
@@ -171,8 +307,9 @@ pub trait UnitsStore {
 
     fn base_unit(&self) -> &dyn BaseUnitRepository;
 
-    /// The three ports, with `usage`, for one Interactor call.
-    fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a>;
+    /// Lends `write` the three ports, with `usage`, for one Interactor call. A closure rather than
+    /// a borrow, so the recorder can lend recording wrappers that live only as long as the call.
+    fn write_ports(&mut self, usage: &dyn UnitUsage, write: &mut dyn FnMut(PortsMut<'_>));
 
     /// Unit `id`'s code, as `lib-budgets`' `BudgetUnits` reads it.
     fn unit_code(&self, id: UnitId) -> Option<String> {
@@ -203,12 +340,32 @@ impl UnitsStore for UnitsAdapter {
         UnitsAdapter::base_unit(self)
     }
 
-    fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a> {
-        UnitsAdapter::split_mut(self, usage)
+    fn write_ports(&mut self, usage: &dyn UnitUsage, write: &mut dyn FnMut(PortsMut<'_>)) {
+        write(UnitsAdapter::split_mut(self, usage));
     }
 
     fn reload(&mut self) -> Result<()> {
         UnitsAdapter::reload(self)
+    }
+}
+
+impl dyn UnitsStore + '_ {
+    /// Runs `write` on the three ports, with `usage`, returning what it does.
+    #[expect(
+        clippy::expect_used,
+        reason = "every store calls `write_ports`' closure exactly once, so `written` is set"
+    )]
+    pub fn split_write<T>(
+        &mut self,
+        usage: &dyn UnitUsage,
+        write: impl FnOnce(PortsMut<'_>) -> T,
+    ) -> T {
+        let mut write = Some(write);
+        let mut written = None;
+        self.write_ports(usage, &mut |ports| {
+            written = write.take().map(|write| write(ports));
+        });
+        written.expect("every store lends its ports to `write_ports`' closure exactly once")
     }
 }
 
@@ -226,13 +383,13 @@ impl UnitsStore for InMemoryPorts {
         UnitsPorts::base_unit(self)
     }
 
-    fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a> {
-        PortsMut {
+    fn write_ports(&mut self, usage: &dyn UnitUsage, write: &mut dyn FnMut(PortsMut<'_>)) {
+        write(PortsMut {
             units: &mut self.units,
             price_sources: &mut self.price_sources,
             base_unit: &mut self.base_unit,
             usage,
-        }
+        });
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -415,9 +572,28 @@ impl<S: UnitsStore + ?Sized> UnitsStore for Recorded<S> {
         self.store.base_unit()
     }
 
-    fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a> {
-        self.written.note(self.domain);
-        self.store.split_mut(usage)
+    /// Lends `write` recording wrappers around the three ports.
+    fn write_ports(&mut self, usage: &dyn UnitUsage, write: &mut dyn FnMut(PortsMut<'_>)) {
+        let Journaled { written, store } = &mut self.store;
+        written.note(self.domain);
+        let journal = written.journal();
+        store.write_ports(usage, &mut |ports| {
+            write(PortsMut {
+                units: &mut RecordingUnits {
+                    units: ports.units,
+                    journal,
+                },
+                price_sources: &mut RecordingPriceSources {
+                    sources: ports.price_sources,
+                    journal,
+                },
+                base_unit: &mut RecordingBaseUnit {
+                    base: ports.base_unit,
+                    journal,
+                },
+                usage: ports.usage,
+            });
+        });
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -428,16 +604,17 @@ impl<S: UnitsStore + ?Sized> UnitsStore for Recorded<S> {
 /// The store, noting its domain written on every mutable access.
 impl<S: InstitutionsStore + ?Sized> InstitutionsStore for Recorded<S> {
     fn institutions(&self) -> &dyn InstitutionRepository {
-        self.store.institutions()
+        self.store.store.institutions()
     }
 
+    /// The recording wrapper around the repository.
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
-        self.written.note(self.domain);
-        self.store.institutions_mut()
+        self.store.written.note(self.domain);
+        &mut self.store
     }
 
     fn reload(&mut self) -> Result<()> {
-        self.store.reload()
+        self.store.store.reload()
     }
 }
 
@@ -481,7 +658,7 @@ impl<S: AccountsStore + ?Sized> AccountsStore for Recorded<S> {
     }
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
-        self.written.note(self.domain);
+        self.store.written.note(self.domain);
         self.store.accounts_mut()
     }
 
@@ -556,12 +733,12 @@ impl<S: CategoriesStore + ?Sized> CategoriesStore for Recorded<S> {
     }
 
     fn categories_mut(&mut self) -> &mut dyn CategoryRepository {
-        self.written.note(self.domain);
+        self.store.written.note(self.domain);
         self.store.categories_mut()
     }
 
     fn delete_category(&mut self, id: CategoryId) {
-        self.written.note(self.domain);
+        self.store.written.note(self.domain);
         self.store.delete_category(id);
     }
 
@@ -637,12 +814,12 @@ impl<S: TagsStore + ?Sized> TagsStore for Recorded<S> {
     }
 
     fn tags_mut(&mut self) -> &mut dyn TagRepository {
-        self.written.note(self.domain);
+        self.store.written.note(self.domain);
         self.store.tags_mut()
     }
 
     fn delete_tag(&mut self, id: TagId) {
-        self.written.note(self.domain);
+        self.store.written.note(self.domain);
         self.store.delete_tag(id);
     }
 
@@ -708,7 +885,7 @@ impl<S: InventoryStore + ?Sized> InventoryStore for Recorded<S> {
     }
 
     fn inventory_mut(&mut self) -> &mut dyn InventoryRepository {
-        self.written.note(self.domain);
+        self.store.written.note(self.domain);
         self.store.inventory_mut()
     }
 
@@ -782,7 +959,7 @@ impl<S: TransactionsStore + ?Sized> TransactionsStore for Recorded<S> {
     }
 
     fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
-        self.written.note(self.domain);
+        self.store.written.note(self.domain);
         self.store.transactions_mut()
     }
 
@@ -853,7 +1030,7 @@ impl<S: BillsStore + ?Sized> BillsStore for Recorded<S> {
     }
 
     fn plans_mut(&mut self) -> &mut dyn BillPlanRepository {
-        self.written.note(self.domain);
+        self.store.written.note(self.domain);
         self.store.plans_mut()
     }
 
@@ -862,7 +1039,7 @@ impl<S: BillsStore + ?Sized> BillsStore for Recorded<S> {
     }
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
-        self.written.note(self.domain);
+        self.store.written.note(self.domain);
         self.store.entries_mut()
     }
 
@@ -938,7 +1115,7 @@ impl<S: PayeesStore + ?Sized> PayeesStore for Recorded<S> {
     }
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
-        self.written.note(self.domain);
+        self.store.written.note(self.domain);
         self.store.payees_mut()
     }
 
@@ -1027,7 +1204,7 @@ impl<S: BudgetsStore + ?Sized> BudgetsStore for Recorded<S> {
     }
 
     fn budgets_mut(&mut self) -> &mut dyn BudgetRepository {
-        self.written.note(self.domain);
+        self.store.written.note(self.domain);
         self.store.budgets_mut()
     }
 
@@ -1999,6 +2176,7 @@ impl Stores {
         let failing = super::fake_fails::FailingCommit {
             written: written.clone(),
             fails: fakes.fails.writes.clone(),
+            armed: fakes.fails.armed.clone(),
             report,
         };
         let commit = CountingCommit::new(Rc::new(failing));
@@ -2119,6 +2297,35 @@ mod tests {
         assert_eq!(stores.tags.tags().tags().len(), before - 1);
         stores.tags.reload().expect("the reload");
         assert_eq!(stores.tags.tags().tags().len(), before);
+    }
+
+    /// Disarmed, the failing domain's writes land; armed, the next one fails and a reload puts back
+    /// what the landed writes left.
+    #[test]
+    fn writes_land_until_the_failures_are_armed_and_a_reload_keeps_what_landed() {
+        let mut fakes = FakeStores::sample(chrono::Local::now().date_naive());
+        let arm = crate::FailArm::disarmed();
+        fakes.fails.writes = vec![Domain::Tags];
+        fakes.fails.armed = arm.clone();
+        let before = fakes.tags.tags.tags.len();
+        let (mut stores, _) = Stores::fake(fakes);
+        let first = stores.tags.tags().tags()[0].id;
+        let second = stores.tags.tags().tags()[1].id;
+
+        stores.tags.delete_tag(first);
+        stores.commit.commit();
+        assert!(
+            stores.failures.try_recv().is_err(),
+            "disarmed, the write lands"
+        );
+
+        arm.arm();
+        stores.tags.delete_tag(second);
+        stores.commit.commit();
+        assert!(stores.failures.try_recv().is_ok(), "armed, the write fails");
+        stores.tags.reload().expect("the reload");
+
+        assert_eq!(stores.tags.tags().tags().len(), before - 1);
     }
 
     /// A domain whose writes succeed reports nothing, and one arranged to fail its reload does.
@@ -2367,11 +2574,10 @@ mod tests {
         btc.is_active = false;
         btc.precision = lib_units::Precision::new(6).expect("six places is within the most");
         let unread = lib_units::fake::InMemoryUnitUsage::default();
-        let mut store = units.borrow_mut();
-        let ports = store.split_mut(&unread);
-        ports.units.upsert_unit(btc);
-        ports.base_unit.set_base_unit(UnitId::SEED_BTC);
-        drop(store);
+        units.borrow_mut().split_write(&unread, |ports| {
+            ports.units.upsert_unit(btc);
+            ports.base_unit.set_base_unit(UnitId::SEED_BTC);
+        });
 
         let edited = reads
             .account_units()
@@ -2383,11 +2589,9 @@ mod tests {
         assert_eq!(edited.precision, 6);
         assert_eq!(AccountUnits::base_unit(&reads), Some(UnitId::SEED_BTC));
 
-        units
-            .borrow_mut()
-            .split_mut(&unread)
-            .base_unit
-            .set_base_unit(UnitId::new());
+        units.borrow_mut().split_write(&unread, |ports| {
+            ports.base_unit.set_base_unit(UnitId::new())
+        });
         assert_eq!(
             AccountUnits::base_unit(&reads),
             None,

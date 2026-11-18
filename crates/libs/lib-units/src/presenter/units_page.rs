@@ -478,8 +478,9 @@ impl UnitsPagePresenter {
                 self.menu = menu;
             }
             UnitsPageEvent::DialogClosed(outcome) => {
-                self.open_dialog = None;
+                let dialog = self.open_dialog.take();
                 if let Some(outcome) = outcome {
+                    router.notify(Notice::Changed(outcome.changed(dialog)));
                     self.land(outcome, router);
                 }
             }
@@ -808,6 +809,7 @@ impl UnitsPagePresenter {
             ReactivateUnit(id).run(ports.split_mut().units)
         };
         if let Ok(unit) = reactivated {
+            router.notify(Notice::Changed(msg::units_changed_reactivated(&unit.code)));
             self.land(
                 UnitsOutcome::Unit {
                     change: UnitChange::Reactivated,
@@ -1437,10 +1439,15 @@ mod tests {
 
         assert_eq!(
             page.send(set()),
-            vec![RouterCall::Notice(Notice::Toast(
-                ToastKind::Success,
-                "Set the price of vas for the week of Oct 19, 2026".into()
-            ))]
+            vec![
+                RouterCall::Notice(Notice::Changed(
+                    "Set the price of vas for the week of Oct 19, 2026".into()
+                )),
+                RouterCall::Notice(Notice::Toast(
+                    ToastKind::Success,
+                    "Set the price of vas for the week of Oct 19, 2026".into()
+                ))
+            ]
         );
         page.send(UnitsPageEvent::SetDocked(true));
         page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
@@ -1493,10 +1500,13 @@ mod tests {
 
         assert_eq!(
             calls,
-            vec![RouterCall::Notice(Notice::Toast(
-                ToastKind::Success,
-                "Reactivated unit btc".into()
-            ))]
+            vec![
+                RouterCall::Notice(Notice::Changed("Reactivate unit btc".into())),
+                RouterCall::Notice(Notice::Toast(
+                    ToastKind::Success,
+                    "Reactivated unit btc".into()
+                ))
+            ]
         );
         assert!(page.ports.borrow().units.units[1].is_active);
         assert_eq!(
@@ -1518,6 +1528,32 @@ mod tests {
         assert_eq!(page.send(UnitsPageEvent::Test), vec![]);
     }
 
+    /// History names each change by what it did, which a save tells from the Dialog it came from.
+    #[test]
+    fn a_unit_saved_in_the_add_dialog_is_named_an_add_and_one_edited_an_edit() {
+        let mut page = Page::new();
+        let saved = || {
+            UnitsPageEvent::DialogClosed(Some(UnitsOutcome::Unit {
+                change: UnitChange::Saved,
+                code: "nzd".into(),
+            }))
+        };
+
+        page.send(UnitsPageEvent::NewUnit);
+        let added = page.send(saved());
+        page.send(UnitsPageEvent::Edit);
+        let edited = page.send(saved());
+
+        assert_eq!(
+            added,
+            [RouterCall::Notice(Notice::Changed("Add unit nzd".into()))]
+        );
+        assert_eq!(
+            edited,
+            [RouterCall::Notice(Notice::Changed("Edit unit nzd".into()))]
+        );
+    }
+
     #[test]
     fn an_outcome_toasts_below_x_large_and_goes_to_activity_when_docked() {
         let mut page = Page::new();
@@ -1526,26 +1562,27 @@ mod tests {
             code: "btc".into(),
         };
 
+        let changed = |label: &str| RouterCall::Notice(Notice::Changed(label.into()));
         assert_eq!(
             page.send(UnitsPageEvent::DialogClosed(Some(deleted()))),
-            vec![RouterCall::Notice(Notice::Toast(
-                ToastKind::Success,
-                "Deleted unit btc".into()
-            ))]
+            vec![
+                changed("Delete unit btc"),
+                RouterCall::Notice(Notice::Toast(ToastKind::Success, "Deleted unit btc".into()))
+            ]
         );
         assert_eq!(
             page.send(UnitsPageEvent::DialogClosed(Some(UnitsOutcome::Unit {
                 change: UnitChange::Saved,
                 code: "eth".into()
             }))),
-            vec![],
+            vec![changed("Edit unit eth")],
             "a save raises no Toast"
         );
 
         page.send(UnitsPageEvent::SetDocked(true));
         assert_eq!(
             page.send(UnitsPageEvent::DialogClosed(Some(deleted()))),
-            vec![]
+            vec![changed("Delete unit btc")]
         );
         page.send(UnitsPageEvent::DialogClosed(Some(
             UnitsOutcome::SourceDeleted {

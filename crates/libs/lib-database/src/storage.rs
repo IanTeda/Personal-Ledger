@@ -64,6 +64,8 @@ pub struct Stores {
 /// builds on, so a Client can keep a clone of the [`SharedStores`](store::SharedStores) first.
 pub struct SharedLedger {
     pub stores: store::SharedStores,
+    /// The row images every store records into, which the Client takes once an input closes.
+    pub journal: crate::Journal,
     pub commit: Rc<dyn crate::Commit>,
     pub failures: mpsc::Receiver<WriteFailure>,
 }
@@ -72,6 +74,7 @@ impl Stores {
     /// Shares out each store once, keeping the commit and the failure channel beside them.
     pub fn share(self) -> SharedLedger {
         SharedLedger {
+            journal: self.units.journal().clone(),
             stores: store::SharedStores {
                 units: Rc::new(std::cell::RefCell::new(self.units)),
                 institutions: Rc::new(std::cell::RefCell::new(self.institutions)),

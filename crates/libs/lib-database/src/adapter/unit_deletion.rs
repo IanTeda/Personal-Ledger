@@ -64,11 +64,12 @@ impl UnitDeletion for UnitDeletionAdapter {
         // The usage `split_mut` lends beside the write ports goes unread: the Interactor checked
         // the usage before writing.
         let unread = UnitUse::default();
-        let ports = store.split_mut(&unread);
-        if let Some(new_base) = new_base {
-            ports.base_unit.set_base_unit(new_base);
-        }
-        ports.units.delete_unit(unit);
+        store.split_write(&unread, |ports| {
+            if let Some(new_base) = new_base {
+                ports.base_unit.set_base_unit(new_base);
+            }
+            ports.units.delete_unit(unit);
+        });
     }
 }
 

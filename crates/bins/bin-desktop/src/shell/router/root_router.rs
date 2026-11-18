@@ -111,8 +111,14 @@ impl ShellRouter for RootRouter<'_, '_> {
         }
     }
 
-    /// Puts back each key's raw value from before the change, the last written first.
+    /// Puts back each key's raw value from before the change, the last written first, and the
+    /// Ledger's rows as they were before it.
     fn reverse(&mut self, reversal: &Reversal) -> bool {
+        if let Some(ledger) = &reversal.ledger
+            && !self.step_ledger(|ports| ports.reverse(ledger))
+        {
+            return false;
+        }
         let changes: Vec<_> = reversal
             .configuration
             .iter()
@@ -122,8 +128,14 @@ impl ShellRouter for RootRouter<'_, '_> {
         self.restore(&changes)
     }
 
-    /// Writes each key's raw value from after the change again, in the order first written.
+    /// Writes each key's raw value from after the change again, in the order first written, and
+    /// the Ledger's rows as the change left them.
     fn replay(&mut self, reversal: &Reversal) -> bool {
+        if let Some(ledger) = &reversal.ledger
+            && !self.step_ledger(|ports| ports.replay(ledger))
+        {
+            return false;
+        }
         let changes: Vec<_> = reversal
             .configuration
             .iter()
@@ -351,6 +363,46 @@ impl ShellRouter for RootRouter<'_, '_> {
 }
 
 impl RootRouter<'_, '_> {
+    /// Writes an entry's Ledger rows through `step` as the Undo or Redo input's writes, then commits them
+    /// at once and waits for the writer, so a failed step is known before History moves the entry
+    /// (#1247): the failure is rolled back as any failed write is, says so on the status line, and
+    /// the step reports it failed. A failure from an earlier input still waiting to be read is
+    /// rolled back first, so it isn't taken for this step's. With no Ledger open there is nothing
+    /// to step, which can't happen: a closed Ledger's parts leave History.
+    fn step_ledger(&mut self, step: impl FnOnce(&lib_database::LedgerPorts)) -> bool {
+        let Some(open) = self.open.as_ref() else {
+            return false;
+        };
+        for failure in open.flush_and_take_failures() {
+            self.write_failed(failure);
+        }
+        let Some(open) = self.open.as_ref() else {
+            return false;
+        };
+        step(&open.ports);
+        crate::input::commit_now(self.cx);
+        let failures = open.flush_and_take_failures();
+        let failed = !failures.is_empty();
+        let mut notices = Vec::new();
+        for failure in failures {
+            tracing::error!(
+                error = %failure.error,
+                domains = ?failure.domains,
+                "Failed to save an Undo or Redo"
+            );
+            notices.extend(super::write_failures::roll_back(&failure, open, self.cx));
+        }
+        // The status line says why in place of "Undid …", which a failed step doesn't set.
+        if let Some(Notice::Toast(_, text)) = notices.first() {
+            let status = Notice::Status(text.clone());
+            self.notify(status);
+        }
+        for notice in notices {
+            self.notify(notice);
+        }
+        !failed
+    }
+
     /// Puts `changes` back in the configuration file through Settings, which repaints General from
     /// what the file then reads. Whether they all went back.
     fn restore(&mut self, changes: &[(ConfigKey, Option<String>)]) -> bool {
@@ -660,8 +712,10 @@ impl Root {
         if !restored.is_empty() {
             self.apply_restored(&restored, cx);
         }
-        // The pages a module Command runs on come and go with the Ledger.
+        // The pages a module Command runs on come and go with the Ledger, and a Ledger closed or
+        // replaced takes its changes off History, since there is nothing left to undo them in.
         if ledger_swapped {
+            self.presenter.ledger_closed(Reversal::drop_ledger);
             self.refresh_palette_entries(cx);
         }
         if !palette_was_open && self.presenter.palette_open() {

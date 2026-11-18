@@ -568,6 +568,13 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
         self.history.push(entry, self.clock.now());
     }
 
+    /// The Open Ledger closed, or another opened in its place: every entry on History keeps only
+    /// what `drop_ledger` leaves of it once it removes the Ledger's part, saying whether anything
+    /// is left. An entry left with nothing goes; a mixed one keeps its Configuration part (#1247).
+    pub fn ledger_closed(&mut self, drop_ledger: impl FnMut(&mut H) -> bool) {
+        self.history.retain(drop_ledger);
+    }
+
     /// What the header's Undo dropdown draws, its times relative to the Clock now.
     pub fn history(&self) -> HistoryViewModel {
         self.history.view_model(self.clock.now())
@@ -1549,6 +1556,23 @@ mod tests {
             ]
         );
         assert!(shell.history.can_redo());
+    }
+
+    #[test]
+    fn a_closed_ledger_leaves_history_with_only_what_is_not_the_ledgers() {
+        let mut shell = recorded(&["Add unit nzd", "Toasts: Off", "Delete unit btc"]);
+        press(&mut shell, &["u"]);
+
+        shell.ledger_closed(|reversal| !reversal.contains("unit"));
+
+        assert_eq!(
+            shell.history.undo_labels().collect::<Vec<_>>(),
+            ["Toasts: Off"]
+        );
+        assert!(
+            !shell.history.can_redo(),
+            "the undone Ledger change went too"
+        );
     }
 
     /// A Shell with `labels` recorded in turn, each reversed by its own label.

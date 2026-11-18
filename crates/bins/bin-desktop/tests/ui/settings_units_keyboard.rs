@@ -1104,3 +1104,189 @@ fn p_on_a_unit_its_source_prices_opens_nothing(app: &mut TestAppContext) {
 
     assert_eq!(ui.dialog(), None, "btc is priced by CoinGecko");
 }
+
+/// Every Unit as the stores hold it, by code: what an Undo must put back under its own id.
+fn stored_units(ui: &mut Harness<'_>) -> Vec<lib_units::UnitRow> {
+    let mut units = ui.stores(|stores| stores.units.borrow().units().units());
+    units.sort_by(|a, b| a.code.cmp(&b.code));
+    units
+}
+
+/// The labels History would undo, newest first.
+fn undo_labels(ui: &mut Harness<'_>) -> Vec<String> {
+    ui.read(|shell| shell.history())
+        .undo
+        .into_iter()
+        .map(|row| row.label)
+        .collect()
+}
+
+#[gpui::test]
+fn u_undoes_an_added_unit_and_ctrl_r_redoes_it_under_its_own_id(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let before = stored_units(&mut ui);
+    ui.press("n");
+    type_word(&mut ui, "eth");
+    ui.press("tab down tab");
+    type_word(&mut ui, "Ether");
+    ui.press("enter");
+    let added = stored_units(&mut ui);
+
+    ui.press("u");
+    assert_eq!(stored_units(&mut ui), before);
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"], "the page repaints");
+    assert_eq!(
+        status_message(&mut ui).as_deref(),
+        Some("Undid Add unit eth")
+    );
+
+    ui.press("ctrl-r");
+    assert_eq!(stored_units(&mut ui), added, "back under its own id");
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas", "eth"]);
+    assert_eq!(
+        status_message(&mut ui).as_deref(),
+        Some("Redid Add unit eth")
+    );
+}
+
+#[gpui::test]
+fn u_undoes_an_edited_unit_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    rename_aud_to_aux(&mut ui);
+
+    ui.press("u");
+    assert_eq!(ui.unit_codes()[0], "aud");
+    assert_eq!(
+        status_message(&mut ui).as_deref(),
+        Some("Undid Edit unit aux")
+    );
+
+    ui.press("ctrl-r");
+    assert_eq!(ui.unit_codes()[0], "aux");
+}
+
+#[gpui::test]
+fn u_undoes_a_unit_delete_with_the_institutions_it_reassigned(app: &mut TestAppContext) {
+    let mut ui = on_units_unused(app);
+    let before = stored_units(&mut ui);
+    ui.press("j d down");
+    type_word(&mut ui, "btc");
+    ui.press("enter");
+    assert_eq!(
+        ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
+            .as_deref(),
+        Some("aud")
+    );
+
+    ui.press("u");
+    assert_eq!(stored_units(&mut ui), before, "btc back under its own id");
+    assert_eq!(
+        ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
+            .as_deref(),
+        Some("btc"),
+        "the Institution names btc again"
+    );
+    assert_eq!(
+        status_message(&mut ui).as_deref(),
+        Some("Undid Delete unit btc")
+    );
+
+    ui.press("ctrl-r");
+    assert_eq!(ui.unit_codes(), ["aud", "vas"]);
+    assert_eq!(
+        ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
+            .as_deref(),
+        Some("aud")
+    );
+}
+
+#[gpui::test]
+fn u_undoes_a_deleted_base_unit_and_the_base_it_moved(app: &mut TestAppContext) {
+    let mut ui = on_units_with(app, common::unquote_units);
+    ui.press("d down");
+    type_word(&mut ui, "aud");
+    ui.press("enter");
+    assert_eq!(ui.base_unit_code().as_deref(), Some("vas"));
+
+    ui.press("u");
+    assert_eq!(
+        ui.unit_codes(),
+        ["btc", "vas", "aud"],
+        "restored behind the Units written since"
+    );
+    assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
+
+    ui.press("ctrl-r");
+    assert_eq!(ui.unit_codes(), ["btc", "vas"]);
+    assert_eq!(ui.base_unit_code().as_deref(), Some("vas"));
+}
+
+#[gpui::test]
+fn a_moved_base_unit_is_undone_and_redone(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("B down enter");
+    assert_eq!(ui.dialog(), None);
+    let moved = ui.base_unit_code();
+    assert_ne!(moved.as_deref(), Some("aud"), "the base moved");
+
+    ui.press("u");
+    assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
+
+    ui.press("ctrl-r");
+    assert_eq!(ui.base_unit_code(), moved);
+}
+
+#[gpui::test]
+fn a_failed_undo_reloads_the_units_keeps_the_entry_and_says_why(app: &mut TestAppContext) {
+    let arm = lib_database::FailArm::disarmed();
+    let armed = arm.clone();
+    let mut ui = Harness::arrange(app, move |fakes| {
+        fakes.fails.writes = vec![Domain::Units];
+        fakes.fails.armed = armed;
+    });
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    rename_aud_to_aux(&mut ui);
+    ui.settle_writes();
+    assert_eq!(ui.unit_codes()[0], "aux", "the rename landed");
+
+    arm.arm();
+    ui.press("u");
+
+    assert_eq!(ui.unit_codes()[0], "aux", "read back as stored");
+    assert_eq!(undo_labels(&mut ui), ["Edit unit aux"], "still to undo");
+    assert_eq!(
+        status_message(&mut ui).as_deref(),
+        Some("Couldn't save the change to units, so they are back as last saved")
+    );
+    assert!(visible_toasts(&mut ui).contains(&(
+        "Error".to_string(),
+        "Couldn't save the change to units, so they are back as last saved".to_string()
+    )));
+}
+
+#[gpui::test]
+fn closing_the_ledger_leaves_only_configuration_on_history(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Large);
+    ui.press("g s l l");
+    let configuration = undo_labels(&mut ui);
+    assert_eq!(configuration.len(), 1, "a General change");
+    ui.press("escape j j j j j l");
+    assert_eq!(ui.settings_frame().page, "Units");
+    rename_aud_to_aux(&mut ui);
+    ui.press("B down enter");
+    ui.press("u");
+    assert_eq!(undo_labels(&mut ui).len(), 2);
+    assert_eq!(ui.read(|shell| shell.history()).redo.len(), 1);
+
+    ui.press(": c l o s e enter");
+
+    let history = ui.read(|shell| shell.history());
+    assert_eq!(
+        undo_labels(&mut ui),
+        configuration,
+        "only the Configuration is left"
+    );
+    assert!(history.redo.is_empty(), "the undone Ledger change went too");
+}

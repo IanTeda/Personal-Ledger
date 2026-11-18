@@ -242,13 +242,13 @@ mod tests {
         let path = dir.path().join("personal-ledger.conf");
         std::fs::write(&path, "[General]\nstart_view = cash\n").expect("the file written");
         let device = writing_to(&path, &[]);
-        crate::reversal::close(Vec::new());
+        crate::reversal::close(Vec::new(), None);
 
         device.write(ConfigValue::StartView(StartView::Dashboard));
         device.write(ConfigValue::StartView(StartView::Dashboard));
         device.remove(ConfigKey::Locale);
 
-        let entry = crate::reversal::close(Vec::new()).expect("one change recorded");
+        let entry = crate::reversal::close(Vec::new(), None).expect("one change recorded");
         assert_eq!(
             entry.reversal.configuration,
             [(
@@ -263,7 +263,7 @@ mod tests {
             device.restore(ConfigKey::StartView, Some("cash")),
             DeviceAnswer::Saved { .. }
         ));
-        assert_eq!(crate::reversal::close(Vec::new()), None);
+        assert_eq!(crate::reversal::close(Vec::new(), None), None);
         assert_eq!(
             std::fs::read_to_string(&path).unwrap_or_default(),
             "[General]\nstart_view = cash\n"

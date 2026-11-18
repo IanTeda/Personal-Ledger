@@ -72,6 +72,9 @@ struct Door {
     /// The domains read back from the file during the running input (a failed write's rollback),
     /// announced with what it wrote.
     reloaded: BTreeSet<Domain>,
+    /// What the running input committed early through [`commit_now`], reloaded and announced with
+    /// its end commit.
+    committed: Committed,
 }
 
 impl Global for Door {}
@@ -84,6 +87,7 @@ pub(crate) fn install(shell: WeakEntity<Root>, cx: &mut App) {
         shell,
         open: false,
         reloaded: BTreeSet::new(),
+        committed: Committed::default(),
     });
 }
 
@@ -109,6 +113,35 @@ pub(crate) fn close_ledger(cx: &mut App) {
 pub(crate) fn reloaded(domain: Domain, cx: &mut App) {
     if cx.has_global::<Door>() {
         cx.global_mut::<Door>().reloaded.insert(domain);
+    }
+}
+
+/// Commits the running input's writes so far, before it ends: an Undo or Redo, which waits for the
+/// writer to know whether its step held before History moves the entry (#1247). What it committed
+/// is reloaded and announced with the input's end commit, which then has nothing left of it to
+/// send. Outside an input, or with no Ledger open, there is nothing to commit.
+pub(crate) fn commit_now(cx: &mut App) {
+    if !sending(cx) {
+        return;
+    }
+    let door = cx.global_mut::<Door>();
+    if let Some((commit, _)) = &door.ledger {
+        let committed = commit.commit();
+        merge(&mut door.committed, committed);
+    }
+}
+
+/// Adds what `later` changed to `committed`, each domain once.
+fn merge(committed: &mut Committed, later: Committed) {
+    for domain in later.wrote {
+        if !committed.wrote.contains(&domain) {
+            committed.wrote.push(domain);
+        }
+    }
+    for domain in later.cascaded {
+        if !committed.cascaded.contains(&domain) {
+            committed.cascaded.push(domain);
+        }
     }
 }
 
@@ -172,13 +205,17 @@ pub(crate) fn offer<C: BorrowMut<App>, R>(
     let app: &mut App = cx.borrow_mut();
     let door = app.global_mut::<Door>();
     door.open = false;
-    if !taken && door.reloaded.is_empty() {
+    let mut committed = std::mem::take(&mut door.committed);
+    if !taken && door.reloaded.is_empty() && committed.is_empty() {
         return handled;
     }
     let reloaded = std::mem::take(&mut door.reloaded);
-    let (committed, announcer) = match &door.ledger {
-        Some((commit, announcer)) => (commit.commit(), Some(announcer.clone())),
-        None => (Committed::default(), None),
+    let announcer = match &door.ledger {
+        Some((commit, announcer)) => {
+            merge(&mut committed, commit.commit());
+            Some(announcer.clone())
+        }
+        None => None,
     };
     let shell = door.shell.clone();
     app.defer(move |cx| {
@@ -443,6 +480,27 @@ mod tests {
                 Domain::Documents,
                 Domain::Units,
             ])
+        );
+    }
+
+    #[gpui::test]
+    fn what_an_input_commits_early_is_announced_with_its_end_commit(cx: &mut TestAppContext) {
+        let (count, written, announcer) = door_announcing(cx);
+        let (heard, _subscription) = heard(&announcer, cx);
+
+        cx.update(|cx| {
+            send(cx, |cx| {
+                written.note(Domain::Units);
+                commit_now(cx);
+                written.note(Domain::Institutions);
+            })
+        });
+        cx.run_until_parked();
+
+        assert_eq!(count.get(), 2, "the early commit and the end one");
+        assert_eq!(
+            *heard.borrow(),
+            [BTreeSet::from([Domain::Institutions, Domain::Units])]
         );
     }
 
