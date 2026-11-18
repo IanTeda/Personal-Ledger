@@ -4,7 +4,7 @@
 
 use gpui::{App, SharedString, div, prelude::*, px};
 use lib_core::configuration::ConfigKey;
-use lib_settings::presenter::{FieldNote, FieldView};
+use lib_settings::presenter::FieldView;
 
 use crate::form::fields::{OnSegmentClick, segmented_labelled};
 use crate::theme::color;
@@ -65,10 +65,8 @@ fn muted_line(text: impl Into<SharedString>, cx: &App) -> gpui::Div {
 /// The note under a field while a source above the file sets its key, so the field says why a
 /// change won't take.
 pub(super) fn shadowed(view: &FieldView, cx: &App) -> Option<gpui::Div> {
-    match &view.note {
-        Some(FieldNote::Shadowed(note)) => shadowed_note(view.key?, Some(note), cx),
-        _ => None,
-    }
+    view.shadowed_note()
+        .and_then(|note| shadowed_note(view.key?, Some(note), cx))
 }
 
 /// The note under `key`'s control while a source above the file sets it.

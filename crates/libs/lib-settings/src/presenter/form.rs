@@ -257,6 +257,22 @@ impl FieldView {
     pub fn checked(&self) -> bool {
         self.chosen == Some(1)
     }
+
+    /// The field's own note's text, `None` for no note or the stock one.
+    pub fn own_note(&self) -> Option<&str> {
+        match &self.note {
+            Some(FieldNote::Own(text)) => Some(text),
+            _ => None,
+        }
+    }
+
+    /// The stock "Set by" note's text, `None` for no note or the field's own.
+    pub fn shadowed_note(&self) -> Option<&str> {
+        match &self.note {
+            Some(FieldNote::Shadowed(text)) => Some(text),
+            _ => None,
+        }
+    }
 }
 
 /// A page's fields as drawn, in the order the page asked for them.
@@ -1317,6 +1333,29 @@ mod tests {
             statuses,
             ["Couldn't save row_density to personal-ledger.conf: the log says why"]
         );
+    }
+
+    #[test]
+    fn each_note_answers_its_own_accessor_and_none_from_the_other() {
+        let shadowed = Rc::new(InMemoryDeviceConfiguration::shadowing(
+            ConfigKey::RowDensity,
+            "--roomy",
+        ));
+        let form = form_on(shadowed);
+        let view = form.view(Toy::Density).expect("density");
+        assert_eq!(view.shadowed_note(), Some("Set by --roomy"));
+        assert_eq!(view.own_note(), None);
+        let plain = form.view(Toy::Start).expect("start");
+        assert_eq!((plain.own_note(), plain.shadowed_note()), (None, None));
+
+        let own = Rc::new(
+            InMemoryDeviceConfiguration::shadowing(ConfigKey::Locale, "--locale en-AU")
+                .reading([ConfigValue::Locale("en-AU".to_string())]),
+        );
+        let form = form_on(own);
+        let view = form.view(Toy::Lang).expect("lang");
+        assert_eq!(view.own_note(), Some("Over --locale en-AU"));
+        assert_eq!(view.shadowed_note(), None);
     }
 
     #[test]

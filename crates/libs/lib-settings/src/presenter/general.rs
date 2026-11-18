@@ -761,7 +761,6 @@ mod tests {
 
     use super::*;
     use crate::fake::{InMemoryDeviceConfiguration, RecordingRouter, Routed, StoredDevice};
-    use crate::presenter::form::{FieldNote, FieldView};
 
     fn start_views() -> Vec<Choice<StartView>> {
         ["dashboard", "last", "settings", "bills"]
@@ -1090,19 +1089,11 @@ mod tests {
             ])
         );
         assert_eq!(locale.and_then(|view| view.chosen), Some(0), "System");
-        assert_eq!(locale.and_then(own_text), None);
+        assert_eq!(locale.and_then(|view| view.own_note()), None);
         assert_eq!(
             view.locale_fallback.as_deref(),
             Some("en-XX isn't supported")
         );
-    }
-
-    /// A field's own note's text, `None` for no note or the stock one.
-    fn own_text(view: &FieldView) -> Option<String> {
-        match &view.note {
-            Some(FieldNote::Own(text)) => Some(text.clone()),
-            _ => None,
-        }
     }
 
     /// The Locale's own note as drawn.
@@ -1111,7 +1102,7 @@ mod tests {
             .view_model()
             .fields
             .view(GeneralField::Locale)
-            .and_then(own_text)
+            .and_then(|view| view.own_note().map(str::to_string))
     }
 
     #[test]
@@ -1295,7 +1286,7 @@ mod tests {
                 .view_model()
                 .fields
                 .view(GeneralField::DataFolder)
-                .and_then(own_text)
+                .and_then(|view| view.own_note().map(str::to_string))
         };
         assert_eq!(note(&general).as_deref(), Some(overridden));
 
