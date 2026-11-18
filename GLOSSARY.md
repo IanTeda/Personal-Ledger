@@ -197,7 +197,7 @@ _Avoid_: Diff, patch, delta — those are implementation-neutral synonyms; Chang
 this glossary's canonical term.
 
 **History**:
-The list of changes a person can step back through with Undo and forward again with Redo, newest first, kept by a Client for the session and capped at a fixed depth, the oldest falling off. An entry is one action's change, Configuration or Ledger data alike, undone whole. A new change after an Undo discards what could be redone, and a Ledger's entries leave History when that Ledger closes. Undo puts the earlier value back by the same rules as any other change, so an override still wins. History is not yet kept past quitting or shared between devices.
+The list of changes a person can step back through with Undo and forward again with Redo, newest first, kept by a Client for the session and capped at a fixed depth, the oldest falling off. An entry is one action's change, Configuration or Ledger data alike, undone whole. A new change after an Undo discards what could be redone, and a Ledger's entries leave History when that Ledger closes. Undo puts the earlier value back by the same rules as any other change, so an override still wins. History is not yet kept past quitting or shared between devices; see [ADR-0059](docs/adr/0059-history-starts-in-memory-client-local-and-session-only.md).
 _Avoid_: Undo stack, undo history, change log, Change Set (the sync unit, not what Undo steps through).
 
 **Institution**:
