@@ -51,6 +51,9 @@ mod write_failures;
 
 use crate::navigation::command;
 use crate::navigation::nav::NounLabel;
+/// The History row the pointer is over, which the UI tests read back through `Root::undo_hover`.
+#[doc(hidden)]
+pub use crate::shell::view::topbar::HistoryPick;
 pub use date_clock::{DATE_POLL, wall_clock};
 pub use key_dispatch::PENDING_G_TIMEOUT;
 pub use log_feed::LOG_COALESCE;
@@ -283,6 +286,7 @@ impl Root {
                 hover_generation: 0,
                 hosted: None,
                 undo_menu_open: false,
+                undo_hover: None,
             },
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,

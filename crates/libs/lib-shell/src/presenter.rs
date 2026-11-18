@@ -29,7 +29,7 @@ use crate::explorer::{
     ExplorerViewModel, LedgerFolders,
 };
 use crate::help::HelpPresenter;
-use crate::history::{Entry, History, Stepped};
+use crate::history::{Entry, History, HistoryViewModel};
 use crate::keymap::{HELP, OPEN_COMMAND_POPUP, SEARCH, ShellCommand, TOGGLE_RAIL, global_keymap};
 use crate::nav::{ContextSelection, FocusZone, InputMode, NavState};
 use crate::navigation::{Movement, Noun};
@@ -565,7 +565,53 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
     /// Records one input's change onto the History, the newest for `undo`: the Client closes each
     /// input that recorded a change into one entry (#1244).
     pub fn record(&mut self, entry: Entry<H>) {
-        self.history.push(entry);
+        self.history.push(entry, self.clock.now());
+    }
+
+    /// What the header's Undo dropdown draws, its times relative to the Clock now.
+    pub fn history(&self) -> HistoryViewModel {
+        self.history.view_model(self.clock.now())
+    }
+
+    /// Undoes the newest `count` entries as one input: `u` steps one, a click on the dropdown's
+    /// Undo row steps down to and including it. Undo never navigates, since the View the change
+    /// came from repaints itself, and a failed step says why itself through the Router, so the
+    /// status line is left to it.
+    pub fn undo_through<R: ShellRouter<Reversal = H> + ?Sized>(
+        &mut self,
+        count: usize,
+        router: &mut R,
+    ) {
+        let steps = self
+            .history
+            .undo_through(count, |reversal| router.reverse(reversal));
+        if steps.failed.is_some() {
+            return;
+        }
+        let status = match steps.done.last() {
+            None => msg::status_nothing_to_undo(),
+            Some(label) => msg::status_undid(count_of(&steps.done), label),
+        };
+        router.notify(Notice::Status(status));
+    }
+
+    /// Redoes the next `count` entries as one input, as [`Self::undo_through`] undoes them.
+    pub fn redo_through<R: ShellRouter<Reversal = H> + ?Sized>(
+        &mut self,
+        count: usize,
+        router: &mut R,
+    ) {
+        let steps = self
+            .history
+            .redo_through(count, |reversal| router.replay(reversal));
+        if steps.failed.is_some() {
+            return;
+        }
+        let status = match steps.done.last() {
+            None => msg::status_nothing_to_redo(),
+            Some(label) => msg::status_redid(count_of(&steps.done), label),
+        };
+        router.notify(Notice::Status(status));
     }
 
     /// Drops the Back and Forward history (`NavState::forget_history`), as `:close` does.
@@ -810,18 +856,8 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
                 let history = ToastHistoryPresenter::open(self.toasts.history());
                 self.host(ShellDialog::ToastHistory(history), router);
             }
-            // Undo and Redo never navigate: the View the change came from repaints itself.
-            // A failed step says why itself, through the Router.
-            ShellCommand::Undo => match self.history.undo(|reversal| router.reverse(reversal)) {
-                Stepped::Nothing => router.notify(Notice::Status(msg::status_nothing_to_undo())),
-                Stepped::Done(label) => router.notify(Notice::Status(msg::status_undid(&label))),
-                Stepped::Failed(_) => {}
-            },
-            ShellCommand::Redo => match self.history.redo(|reversal| router.replay(reversal)) {
-                Stepped::Nothing => router.notify(Notice::Status(msg::status_nothing_to_redo())),
-                Stepped::Done(label) => router.notify(Notice::Status(msg::status_redid(&label))),
-                Stepped::Failed(_) => {}
-            },
+            ShellCommand::Undo => self.undo_through(1, router),
+            ShellCommand::Redo => self.redo_through(1, router),
             ShellCommand::Jump(noun) => self.jump(noun, true, router),
             ShellCommand::ChangeDataFolder => {
                 self.palette.close();
@@ -972,6 +1008,12 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
             ShellInput::PrefixExpired => self.prefix = None,
         }
     }
+}
+
+/// How many entries a multi-step Undo or Redo stepped, as the Message's plural count; never more
+/// than the History's [`crate::history::DEPTH`].
+fn count_of(done: &[String]) -> i64 {
+    i64::try_from(done.len()).unwrap_or(i64::MAX)
 }
 
 #[cfg(test)]
@@ -1507,6 +1549,94 @@ mod tests {
             ]
         );
         assert!(shell.history.can_redo());
+    }
+
+    /// A Shell with `labels` recorded in turn, each reversed by its own label.
+    fn recorded(labels: &[&'static str]) -> Shell {
+        let mut shell = shell();
+        for label in labels {
+            shell.record(Entry {
+                label: (*label).to_string(),
+                reversal: label,
+            });
+        }
+        shell
+    }
+
+    #[test]
+    fn the_history_view_model_lists_recorded_changes_newest_first_stamped_by_the_clock() {
+        let mut shell = recorded(&["Toasts: Off", "Start view: Last", "Locale: en-AU"]);
+
+        let view = shell.history();
+        let undo: Vec<(&str, &str, usize)> = view
+            .undo
+            .iter()
+            .map(|row| (row.label.as_str(), row.when.as_str(), row.steps))
+            .collect();
+        assert_eq!(
+            undo,
+            [
+                ("Locale: en-AU", "just now", 1),
+                ("Start view: Last", "just now", 2),
+                ("Toasts: Off", "just now", 3),
+            ]
+        );
+        assert!(view.can_undo);
+        assert!(view.redo.is_empty());
+
+        press(&mut shell, &["u"]);
+
+        let view = shell.history();
+        assert_eq!(view.redo.len(), 1);
+        assert_eq!(view.redo[0].label, "Locale: en-AU");
+        assert_eq!(view.undo.len(), 2);
+    }
+
+    #[test]
+    fn undo_through_steps_back_several_entries_in_one_input_and_says_so() {
+        let mut shell = recorded(&["Toasts: Off", "Start view: Last", "Locale: en-AU"]);
+        let mut router = RecordingRouter::default();
+
+        shell.undo_through(3, &mut router);
+
+        assert_eq!(
+            router.routed,
+            [
+                Routed::Reversed("Locale: en-AU"),
+                Routed::Reversed("Start view: Last"),
+                Routed::Reversed("Toasts: Off"),
+                Routed::Notice(status("Undid 3 changes, back to before Toasts: Off")),
+            ]
+        );
+        assert!(!shell.history().can_undo);
+
+        let mut router = RecordingRouter::default();
+        shell.redo_through(3, &mut router);
+
+        assert_eq!(
+            router.routed,
+            [
+                Routed::Replayed("Toasts: Off"),
+                Routed::Replayed("Start view: Last"),
+                Routed::Replayed("Locale: en-AU"),
+                Routed::Notice(status("Redid 3 changes, through Locale: en-AU")),
+            ]
+        );
+        assert_eq!(shell.history().undo.len(), 3);
+    }
+
+    #[test]
+    fn a_multi_step_that_fails_leaves_the_status_line_to_the_failure() {
+        let mut shell = recorded(&["Toasts: Off", "Start view: Last"]);
+        let mut router = RecordingRouter {
+            steps_apply: false,
+            ..RecordingRouter::default()
+        };
+
+        shell.undo_through(2, &mut router);
+
+        assert_eq!(router.routed, [Routed::Reversed("Start view: Last")]);
+        assert_eq!(shell.history().undo.len(), 2);
     }
 
     #[test]

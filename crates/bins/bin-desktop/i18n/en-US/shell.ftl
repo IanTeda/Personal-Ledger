@@ -55,17 +55,12 @@ desktop-ledger-open-incomplete = it isn't a complete Ledger; create it again wit
 
 desktop-topbar-synced = Synced { $time }
 
-## The top bar's Undo button and its list of recent actions, newest first. The actions are
-## representative until the Ledger keeps an Undo history.
+## The top bar's Undo list (`lib_shell::HistoryViewModel`): its heading, the marker between the
+## entries to redo and those to undo, and its one row when there is nothing to undo.
 
-desktop-topbar-undo-recent = Recent actions
-desktop-topbar-undo-action-categorise = Categorise 3 splits as Groceries
-desktop-topbar-undo-action-add-transaction = Add transaction at Woolworths
-desktop-topbar-undo-action-rename-payee = Rename payee Coles Express
-desktop-topbar-undo-action-tag = Tag 2 splits Japan Trip 2026
-desktop-topbar-undo-action-delete-transaction = Delete transaction at Bunnings
-desktop-topbar-undo-action-import = Import statement.csv
-desktop-status-undo-not-yet-built = undo — not yet built
+desktop-topbar-history = History
+desktop-topbar-history-now = NOW
+desktop-topbar-history-empty = Nothing to undo
 
 ## The Dashboard with no Ledger open. `$open` and `$new` are the command names as typed, and the
 ## tags mark them as the clickable spans.

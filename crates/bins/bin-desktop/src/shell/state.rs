@@ -1,13 +1,16 @@
 //! The Shell's gpui View state, which `Root` owns as its `state` field: the hosted Dialog Entity
 //! and its Subscription, the collapsed rail's hover tooltip and its generation, and whether the top
-//! bar's recent-actions list is open. These are gpui View state, not a stand-in for Presenter
+//! bar's History list is open and which of its rows the pointer is over. These are gpui View state, not a stand-in for Presenter
 //! state, so they do not move into `lib_shell` and do not become Entities (ADR-0032). The status
 //! message, the Toasts, focus, modes, the rail's `b` override and the Dialog keymap are the Shell's
 //! Presenter's (`lib_shell`), and so is the command palette's input, selection and history (#1063):
 //! only its row list's scroll handle is View state here. So is the file explorer's (#1064): its
 //! row list's scroll handle is the one piece of it here.
 
-use crate::{navigation::nav::Noun, shell::view::dialog_entity::DialogHandle};
+use crate::{
+    navigation::nav::Noun,
+    shell::view::{dialog_entity::DialogHandle, topbar::HistoryPick},
+};
 
 pub(crate) struct ShellState {
     /// The command palette's row list scroll, kept on the selected row after each palette key
@@ -31,6 +34,8 @@ pub(crate) struct ShellState {
     /// `Root::close_dialog` change it, so `NavState::mode` is `InputMode::Dialog` for exactly as
     /// long as this is `Some`.
     pub(crate) hosted: Option<(DialogHandle, gpui::Subscription)>,
-    /// The top bar's recent-actions list below Undo is open.
+    /// The top bar's History list below Undo is open.
     pub(crate) undo_menu_open: bool,
+    /// The History row the pointer is over, if the list is open.
+    pub(crate) undo_hover: Option<HistoryPick>,
 }

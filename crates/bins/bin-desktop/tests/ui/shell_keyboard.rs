@@ -316,6 +316,55 @@ fn esc_closes_the_undo_list_and_does_nothing_else(app: &mut TestAppContext) {
     assert_eq!(mode(&mut ui), InputMode::Normal);
 }
 
+#[gpui::test]
+fn u_and_ctrl_r_move_entries_across_now_in_the_undo_list(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g s l");
+    ui.press("l j l");
+    let labels = |ui: &mut Harness<'_>| {
+        let history = ui.read(|s| s.history());
+        let labels = |rows: Vec<lib_shell::HistoryRow>| -> Vec<String> {
+            rows.into_iter().map(|row| row.label).collect()
+        };
+        (labels(history.undo), labels(history.redo))
+    };
+    let (undo, redo) = labels(&mut ui);
+    assert_eq!(
+        undo,
+        [
+            "Start view: Last view",
+            "On start: Start with no Ledger open"
+        ]
+    );
+    assert!(redo.is_empty());
+
+    ui.press("u");
+    ui.click("topbar-undo-menu");
+
+    assert!(ui.is_drawn("topbar-history-redo-1"));
+    assert!(ui.is_drawn("topbar-history-undo-1"));
+    assert!(!ui.is_drawn("topbar-history-undo-2"));
+    assert_eq!(
+        labels(&mut ui),
+        (
+            vec!["On start: Start with no Ledger open".to_string()],
+            vec!["Start view: Last view".to_string()]
+        )
+    );
+
+    ui.press("escape");
+    assert!(!ui.read(|s| s.undo_menu_open()));
+    ui.press("u");
+    assert!(!ui.read(|s| s.history()).can_undo);
+
+    ui.click("topbar-undo-menu");
+    assert!(ui.is_drawn("topbar-history-empty"));
+    assert!(ui.is_drawn("topbar-history-redo-2"), "both above NOW");
+    ui.press("escape");
+    ui.press("ctrl-r ctrl-r");
+    assert_eq!(labels(&mut ui).0, undo);
+}
+
 // Undo and Redo (#1243): kept globals, which with nothing recorded yet say so.
 
 fn status(ui: &mut Harness<'_>) -> Option<String> {

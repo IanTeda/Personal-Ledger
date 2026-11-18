@@ -1,5 +1,5 @@
 //! The shell's top bar (`docs/ux/desktop-mockups/01-shell/README.md`'s "1a" spec, "Top
-//! bar" component): rail toggle, Back/Forward, brand mark, Undo with its recent-actions list,
+//! bar" component): rail toggle, Back/Forward, brand mark, Undo with its History list (#1245),
 //! sync indicator, window controls. The rail toggle is clickable (issue #152). The spec's own
 //! `:` palette-hint box was dropped from here --
 //! palette entry is keyboard-only (`:`), and the status line's own hint strip already names it.
@@ -22,6 +22,8 @@ use gpui::{
     App, ClickEvent, FontWeight, MouseButton, Pixels, Size, Window, div, point, prelude::*, px,
 };
 use gpui_component::Sizable;
+
+use lib_shell::{HistoryRow, HistoryViewModel};
 
 use crate::{assets::icon::DesktopIcon, theme::color};
 
@@ -53,29 +55,34 @@ pub enum TopBarAction {
     Forward,
     Undo,
     ToggleUndoMenu,
-    /// Undo back to the recent action at this index, `0` the newest.
-    UndoTo(usize),
-    /// A click outside the open recent-actions list.
+    /// A click on a History row: undo or redo through it.
+    Pick(HistoryPick),
+    /// The pointer entering a History row (`true`) or leaving it.
+    Hover(HistoryPick, bool),
+    /// A click outside the open History list.
     DismissUndoMenu,
 }
 
-pub type OnTopBarAction = Rc<dyn Fn(TopBarAction, &mut Window, &mut App)>;
-
-/// How many recent actions the Undo caret lists.
-pub const RECENT_ACTIONS: usize = 6;
-
-/// The recent actions the Undo caret lists, newest first. Representative content -- the
-/// Ledger keeps no Undo history yet, so these name the kind of action one would hold.
-pub fn recent_actions() -> [String; RECENT_ACTIONS] {
-    [
-        crate::msg::desktop_topbar_undo_action_categorise(),
-        crate::msg::desktop_topbar_undo_action_add_transaction(),
-        crate::msg::desktop_topbar_undo_action_rename_payee(),
-        crate::msg::desktop_topbar_undo_action_tag(),
-        crate::msg::desktop_topbar_undo_action_delete_transaction(),
-        crate::msg::desktop_topbar_undo_action_import(),
-    ]
+/// A History row, by which side of NOW it sits and how many entries a click on it steps
+/// (`lib_shell::HistoryRow::steps`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HistoryPick {
+    Undo(usize),
+    Redo(usize),
 }
+
+impl HistoryPick {
+    /// Whether a click on `self` steps through `row` too, so hovering `self` highlights it.
+    fn reaches(self, row: HistoryPick) -> bool {
+        match (self, row) {
+            (HistoryPick::Undo(hovered), HistoryPick::Undo(row))
+            | (HistoryPick::Redo(hovered), HistoryPick::Redo(row)) => row <= hovered,
+            _ => false,
+        }
+    }
+}
+
+pub type OnTopBarAction = Rc<dyn Fn(TopBarAction, &mut Window, &mut App)>;
 
 #[derive(IntoElement)]
 pub struct TopBar {
@@ -83,7 +90,15 @@ pub struct TopBar {
     on_action: OnTopBarAction,
     can_go_back: bool,
     can_go_forward: bool,
-    undo_menu_open: bool,
+    /// The History list, while it is open.
+    undo_menu: Option<UndoMenu>,
+    can_undo: bool,
+}
+
+/// The open History list: the Shell's view model and the row the pointer is over.
+pub struct UndoMenu {
+    pub history: HistoryViewModel,
+    pub hovered: Option<HistoryPick>,
 }
 
 impl TopBar {
@@ -92,14 +107,16 @@ impl TopBar {
         on_action: OnTopBarAction,
         can_go_back: bool,
         can_go_forward: bool,
-        undo_menu_open: bool,
+        can_undo: bool,
+        undo_menu: Option<UndoMenu>,
     ) -> Self {
         Self {
             on_rail_toggle,
             on_action,
             can_go_back,
             can_go_forward,
-            undo_menu_open,
+            undo_menu,
+            can_undo,
         }
     }
 }
@@ -144,7 +161,8 @@ impl RenderOnce for TopBar {
             .child(brand_mark())
             .child(undo_cluster(
                 self.on_action,
-                self.undo_menu_open,
+                self.can_undo,
+                self.undo_menu,
                 viewport,
                 cx,
             ))
@@ -217,16 +235,24 @@ fn history_button(
         .child(icon.icon().with_size(px(16.0)).text_color(icon_color))
 }
 
-/// Undo and its caret, a split button: Undo steps back one action, the caret lists the last
-/// `RECENT_ACTIONS` to undo back to. The list hangs below the pair, painted over the page.
+/// Undo and its caret, a split button: Undo steps back one entry, drawn faint and inert with
+/// nothing to undo, and the caret, always live, opens the History list. The list hangs below the
+/// pair, painted over the page.
 fn undo_cluster(
     on_action: OnTopBarAction,
-    menu_open: bool,
+    can_undo: bool,
+    menu: Option<UndoMenu>,
     viewport: Size<Pixels>,
     cx: &App,
 ) -> impl IntoElement {
     let on_undo = on_action.clone();
     let on_caret = on_action.clone();
+    let menu_open = menu.is_some();
+    let undo_color = if can_undo {
+        color::foreground(cx)
+    } else {
+        color::faint_text(cx)
+    };
     div()
         .relative()
         .flex()
@@ -240,14 +266,16 @@ fn undo_cluster(
                 .flex()
                 .items_center()
                 .justify_center()
-                .cursor_pointer()
-                .hover(|this| this.bg(color::hover(cx)))
-                .on_click(move |_event, window, cx| on_undo(TopBarAction::Undo, window, cx))
+                .when(can_undo, |this| {
+                    this.cursor_pointer()
+                        .hover(|this| this.bg(color::hover(cx)))
+                        .on_click(move |_event, window, cx| on_undo(TopBarAction::Undo, window, cx))
+                })
                 .child(
                     DesktopIcon::Undo
                         .icon()
                         .with_size(px(16.0))
-                        .text_color(color::foreground(cx)),
+                        .text_color(undo_color),
                 ),
         )
         .child(
@@ -272,36 +300,90 @@ fn undo_cluster(
                         .text_color(color::foreground(cx)),
                 ),
         )
-        .when(menu_open, |this| {
-            this.child(undo_menu(on_action, viewport, cx))
+        .when_some(menu, |this, menu| {
+            this.child(undo_menu(on_action, menu, viewport, cx))
         })
 }
 
-/// The open recent-actions list, newest first, under a window-wide layer that closes it on a
-/// click anywhere else (the caret included, so that click closes rather than reopens it). Both
-/// are `deferred` so the page and rails below can't paint over them; the list's higher priority
-/// keeps it above its own dismiss layer.
-fn undo_menu(on_action: OnTopBarAction, viewport: Size<Pixels>, cx: &App) -> impl IntoElement {
-    let on_dismiss = on_action.clone();
-    let rows = recent_actions()
-        .into_iter()
-        .enumerate()
-        .map(|(index, label)| {
-            let on_action = on_action.clone();
+/// One History row: its label and when it was recorded. Redo rows are faint and italic, and
+/// every row a click on the hovered one would step through is highlighted.
+fn history_row(
+    row: HistoryRow,
+    pick: HistoryPick,
+    hovered: Option<HistoryPick>,
+    on_action: &OnTopBarAction,
+    cx: &App,
+) -> impl IntoElement {
+    let (id, selector) = match pick {
+        HistoryPick::Undo(steps) => (
+            ("topbar-history-undo", steps),
+            format!("topbar-history-undo-{steps}"),
+        ),
+        HistoryPick::Redo(steps) => (
+            ("topbar-history-redo", steps),
+            format!("topbar-history-redo-{steps}"),
+        ),
+    };
+    let redo = matches!(pick, HistoryPick::Redo(_));
+    let highlighted = hovered.is_some_and(|hovered| hovered.reaches(pick));
+    let on_click = on_action.clone();
+    let on_hover = on_action.clone();
+    div()
+        .id(id)
+        .debug_selector(move || selector.clone())
+        .px(px(12.0))
+        .py(px(6.0))
+        .flex()
+        .gap(px(12.0))
+        .whitespace_nowrap()
+        .text_size(MENU_TEXT_SIZE)
+        .cursor_pointer()
+        .when(highlighted, |this| this.bg(color::hover(cx)))
+        .on_hover(move |entered, window, cx| {
+            on_hover(TopBarAction::Hover(pick, *entered), window, cx)
+        })
+        .on_click(move |_event, window, cx| on_click(TopBarAction::Pick(pick), window, cx))
+        .child(
             div()
-                .id(("topbar-undo-action", index))
-                .debug_selector(move || format!("topbar-undo-action-{index}"))
-                .px(px(12.0))
-                .py(px(6.0))
-                .whitespace_nowrap()
-                .text_size(MENU_TEXT_SIZE)
-                .cursor_pointer()
-                .hover(|this| this.bg(color::hover(cx)))
-                .on_click(move |_event, window, cx| {
-                    on_action(TopBarAction::UndoTo(index), window, cx)
-                })
-                .child(label)
-        });
+                .flex_1()
+                .overflow_hidden()
+                .text_ellipsis()
+                .when(redo, |this| this.italic().text_color(color::faint_text(cx)))
+                .child(row.label),
+        )
+        .child(div().text_color(color::muted(cx)).child(row.when))
+}
+
+/// The open History list: the entries to redo, faint, above a NOW marker and those to undo below
+/// it, newest first, under a window-wide layer that closes it on a click anywhere else (the caret
+/// included, so that click closes rather than reopens it). Both are `deferred` so the page and
+/// rails below can't paint over them; the list's higher priority keeps it above its own dismiss
+/// layer.
+fn undo_menu(
+    on_action: OnTopBarAction,
+    menu: UndoMenu,
+    viewport: Size<Pixels>,
+    cx: &App,
+) -> impl IntoElement {
+    let on_dismiss = on_action.clone();
+    let UndoMenu { history, hovered } = menu;
+    let redo_rows: Vec<_> = history
+        .redo
+        .into_iter()
+        .map(|row| {
+            let pick = HistoryPick::Redo(row.steps);
+            history_row(row, pick, hovered, &on_action, cx)
+        })
+        .collect();
+    let undo_empty = history.undo.is_empty();
+    let undo_rows: Vec<_> = history
+        .undo
+        .into_iter()
+        .map(|row| {
+            let pick = HistoryPick::Undo(row.steps);
+            history_row(row, pick, hovered, &on_action, cx)
+        })
+        .collect();
     let card = div()
         .debug_selector(|| "topbar-undo-list".to_string())
         .occlude()
@@ -320,9 +402,35 @@ fn undo_menu(on_action: OnTopBarAction, viewport: Size<Pixels>, cx: &App) -> imp
                 .text_size(px(10.5))
                 .font_weight(FontWeight::BOLD)
                 .text_color(color::muted(cx))
-                .child(crate::msg::desktop_topbar_undo_recent()),
+                .child(crate::msg::desktop_topbar_history()),
         )
-        .children(rows);
+        .children(redo_rows)
+        .child(
+            div()
+                .debug_selector(|| "topbar-history-now".to_string())
+                .px(px(12.0))
+                .py(px(2.0))
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .text_size(px(10.5))
+                .font_weight(FontWeight::BOLD)
+                .text_color(color::accent_text(cx))
+                .child(crate::msg::desktop_topbar_history_now())
+                .child(div().flex_1().h(px(1.0)).bg(color::accent(cx))),
+        )
+        .children(undo_rows)
+        .when(undo_empty, |this| {
+            this.child(
+                div()
+                    .debug_selector(|| "topbar-history-empty".to_string())
+                    .px(px(12.0))
+                    .py(px(6.0))
+                    .text_size(MENU_TEXT_SIZE)
+                    .text_color(color::faint_text(cx))
+                    .child(crate::msg::desktop_topbar_history_empty()),
+            )
+        });
     div()
         .absolute()
         .top(BUTTON + px(4.0))

@@ -70,8 +70,8 @@ impl Root {
             .test_toasts(lib_toast::test_text, Local::now());
     }
 
-    /// Sets the status message from the Shell's own handling (a palette command, an Undo with
-    /// nothing built behind it), which the next key clears.
+    /// Sets the status message from the Shell's own handling (a palette command), which the next
+    /// key clears.
     pub(super) fn set_status(&mut self, text: String) {
         self.presenter.show(Notice::Status(text), Local::now());
     }

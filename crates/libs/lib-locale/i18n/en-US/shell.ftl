@@ -19,6 +19,25 @@ help-shortcut-redo = Redo
 status-nothing-to-undo = Nothing to undo
 status-nothing-to-redo = Nothing to redo
 
-## The status line once `u` or `ctrl+r` has stepped through History, `$label` the entry's label.
-status-undid = Undid { $label }
-status-redid = Redid { $label }
+## The status line once `u`, `ctrl+r` or a click in the header's History list has stepped through
+## History, `$count` entries, `$label` the last entry stepped.
+status-undid = { $count ->
+    [1] Undid { $label }
+   *[other] Undid { $count } changes, back to before { $label }
+}
+status-redid = { $count ->
+    [1] Redid { $label }
+   *[other] Redid { $count } changes, through { $label }
+}
+
+## When a History entry was recorded, back from now, in the header's Undo list.
+history-just-now = just now
+history-minutes-ago = { $minutes ->
+   *[other] { $minutes } min ago
+}
+history-hours-ago = { $hours ->
+   *[other] { $hours } h ago
+}
+history-days-ago = { $days ->
+   *[other] { $days } d ago
+}

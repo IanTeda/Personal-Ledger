@@ -1,5 +1,5 @@
 //! The Shell driven by the mouse: primary rail rows (expanded and collapsed) and the topbar's
-//! rail toggle, Back/Forward and Undo with its recent-actions list, and how the status line fits a
+//! rail toggle, Back/Forward and Undo with its History list (#1245), and how the status line fits a
 //! narrow window. Only the elements clicked or measured are tagged with `debug_selector`.
 
 use super::common;
@@ -7,6 +7,7 @@ use super::common;
 use bin_desktop::{
     WindowSize,
     navigation::nav::{FocusZone, Noun, RailMode},
+    shell::router::HistoryPick,
 };
 use common::Harness;
 use gpui::TestAppContext;
@@ -88,39 +89,131 @@ fn topbar_back_and_forward_retrace_the_nouns_visited(app: &mut TestAppContext) {
     assert_eq!(ui.noun(), Noun::Bills, "a new noun drops what was ahead");
 }
 
-#[gpui::test]
-fn the_undo_caret_lists_the_last_six_actions(app: &mut TestAppContext) {
+/// Settings › General with three changes made in turn, On start, Start view and the language, so
+/// the History holds three entries, the language's newest.
+fn three_general_changes(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
-    assert!(!ui.is_drawn("topbar-undo-list"));
+    ui.press("g s l");
+    ui.press("l j l j j l");
+    assert_eq!(ui.read(|s| s.history()).undo.len(), 3);
+    ui
+}
+
+/// The labels of the History list's Undo rows, newest first, and its Redo rows, furthest on top.
+fn history_labels(ui: &mut Harness<'_>) -> (Vec<String>, Vec<String>) {
+    let history = ui.read(|s| s.history());
+    let labels = |rows: Vec<lib_shell::HistoryRow>| rows.into_iter().map(|row| row.label).collect();
+    (labels(history.undo), labels(history.redo))
+}
+
+#[gpui::test]
+fn the_caret_lists_three_changes_newest_first_with_relative_times(app: &mut TestAppContext) {
+    let mut ui = three_general_changes(app);
 
     ui.click("topbar-undo-menu");
 
-    assert!(ui.read(|s| s.undo_menu_open()));
     assert!(ui.is_drawn("topbar-undo-list"));
-    for index in 0..6 {
-        assert!(ui.is_drawn(&format!("topbar-undo-action-{index}")));
+    assert!(ui.is_drawn("topbar-history-now"));
+    for steps in 1..=3 {
+        assert!(ui.is_drawn(&format!("topbar-history-undo-{steps}")));
     }
-    assert!(!ui.is_drawn("topbar-undo-action-6"));
+    assert!(!ui.is_drawn("topbar-history-undo-4"));
+    assert!(!ui.is_drawn("topbar-history-redo-1"));
+    assert!(!ui.is_drawn("topbar-history-empty"));
+    let history = ui.read(|s| s.history());
+    let rows: Vec<(&str, &str)> = history
+        .undo
+        .iter()
+        .map(|row| (row.label.as_str(), row.when.as_str()))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("Language and region: English (Australia)", "just now"),
+            ("Start view: Last view", "just now"),
+            ("On start: Start with no Ledger open", "just now"),
+        ]
+    );
 }
 
 #[gpui::test]
-fn picking_a_recent_action_closes_the_list_and_reports_undo_unbuilt(app: &mut TestAppContext) {
-    let mut ui = Harness::new(app);
-    ui.click("topbar-undo-menu");
-
-    ui.click("topbar-undo-action-2");
-
-    assert!(!ui.read(|s| s.undo_menu_open()));
-    assert!(ui.read(|s| s.status_message().is_some()));
-}
-
-#[gpui::test]
-fn the_undo_button_reports_undo_unbuilt(app: &mut TestAppContext) {
-    let mut ui = Harness::new(app);
+fn undo_once_moves_the_newest_above_now(app: &mut TestAppContext) {
+    let mut ui = three_general_changes(app);
+    let (undo, _) = history_labels(&mut ui);
 
     ui.click("topbar-undo");
+    ui.click("topbar-undo-menu");
 
-    assert!(ui.read(|s| s.status_message().is_some()));
+    assert!(ui.is_drawn("topbar-history-redo-1"));
+    assert!(!ui.is_drawn("topbar-history-undo-3"));
+    let (now_undo, now_redo) = history_labels(&mut ui);
+    assert_eq!(now_redo, [undo[0].clone()]);
+    assert_eq!(now_undo, undo[1..]);
+    assert_eq!(
+        ui.read(|s| s.status_message()),
+        Some(format!("Undid {}", undo[0]))
+    );
+}
+
+#[gpui::test]
+fn the_third_undo_row_undoes_all_three_and_the_top_redo_row_redoes_them(app: &mut TestAppContext) {
+    let mut ui = three_general_changes(app);
+    let (undo, _) = history_labels(&mut ui);
+    let changed = ui.conf();
+
+    ui.click("topbar-undo-menu");
+    ui.click("topbar-history-undo-3");
+
+    assert!(
+        !ui.read(|s| s.undo_menu_open()),
+        "a row click closes the list"
+    );
+    assert_eq!(ui.conf(), "[General]\n", "all three undone");
+    assert_eq!(
+        ui.read(|s| s.status_message()),
+        Some(format!("Undid 3 changes, back to before {}", undo[2]))
+    );
+    assert!(!ui.read(|s| s.history()).can_undo);
+
+    ui.click("topbar-undo-menu");
+    ui.click("topbar-history-redo-3");
+
+    assert!(!ui.read(|s| s.undo_menu_open()));
+    assert_eq!(ui.conf(), changed, "all three redone");
+    assert_eq!(
+        ui.read(|s| s.status_message()),
+        Some(format!("Redid 3 changes, through {}", undo[0]))
+    );
+    assert_eq!(history_labels(&mut ui), (undo, Vec::new()));
+}
+
+#[gpui::test]
+fn hovering_a_row_highlights_every_row_its_click_steps_through(app: &mut TestAppContext) {
+    let mut ui = three_general_changes(app);
+    ui.click("topbar-undo-menu");
+
+    ui.hover("topbar-history-undo-2");
+    assert_eq!(ui.read(|s| s.undo_hover()), Some(HistoryPick::Undo(2)));
+
+    ui.hover("topbar-history-undo-3");
+    assert_eq!(ui.read(|s| s.undo_hover()), Some(HistoryPick::Undo(3)));
+
+    ui.click("topbar-undo-menu");
+    assert_eq!(ui.read(|s| s.undo_hover()), None, "closing forgets it");
+}
+
+#[gpui::test]
+fn an_empty_history_draws_undo_inert_and_the_caret_shows_nothing_to_undo(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    assert!(!ui.read(|s| s.history()).can_undo);
+
+    ui.click("topbar-undo");
+    assert_eq!(ui.read(|s| s.status_message()), None, "Undo is inert");
+
+    ui.click("topbar-undo-menu");
+    assert!(ui.read(|s| s.undo_menu_open()));
+    assert!(ui.is_drawn("topbar-history-empty"));
+    assert!(!ui.is_drawn("topbar-history-undo-1"));
 }
 
 #[gpui::test]

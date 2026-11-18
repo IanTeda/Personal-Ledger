@@ -1,17 +1,19 @@
 //! The top bar's history buttons on `Root`: Back and Forward through the nouns visited, and Undo
-//! with its recent-actions list. An `impl Root` block for the concern, not a module of the name.
+//! with its History list. An `impl Root` block for the concern, not a module of the name.
 
 use gpui::Context;
 
 use super::Root;
 use crate::navigation::nav::Noun;
-use crate::shell::view::topbar::TopBarAction;
+use crate::shell::view::topbar::{HistoryPick, TopBarAction};
+use crate::shell::view::window_size::WindowSize;
 use lib_shell::NavInput;
 
 impl Root {
-    /// A click on Back, Forward, Undo or the recent-actions list (`shell::view::topbar::TopBar`'s
+    /// A click on Back, Forward, Undo or the History list (`shell::view::topbar::TopBar`'s
     /// `on_action`). Back and Forward land the way a rail click does, scroll reset included.
-    /// Undo has no history to act on yet, so it says so on the status line.
+    /// Undo steps one entry, and a click on a History row undoes or redoes through it, each as one
+    /// input that closes the list.
     pub(super) fn handle_topbar_action(
         &mut self,
         action: TopBarAction,
@@ -25,19 +27,40 @@ impl Root {
             TopBarAction::Forward => {
                 self.navigate(NavInput::Forward);
             }
-            TopBarAction::Undo | TopBarAction::UndoTo(_) => {
-                self.state.undo_menu_open = false;
-                self.set_status(crate::msg::desktop_status_undo_not_yet_built());
+            TopBarAction::Undo => {
+                self.close_undo_menu();
+                self.send_with_router(WindowSize::Large, cx, |presenter, router| {
+                    presenter.undo_through(1, router);
+                });
+            }
+            TopBarAction::Pick(pick) => {
+                self.close_undo_menu();
+                self.send_with_router(WindowSize::Large, cx, |presenter, router| match pick {
+                    HistoryPick::Undo(steps) => presenter.undo_through(steps, router),
+                    HistoryPick::Redo(steps) => presenter.redo_through(steps, router),
+                });
+            }
+            // Leaving a row clears only its own highlight, whichever order the pointer leaving
+            // one row and entering the next arrive in.
+            TopBarAction::Hover(pick, true) => self.state.undo_hover = Some(pick),
+            TopBarAction::Hover(pick, false) => {
+                if self.state.undo_hover == Some(pick) {
+                    self.state.undo_hover = None;
+                }
             }
             TopBarAction::ToggleUndoMenu => {
-                self.state.undo_menu_open = !self.state.undo_menu_open;
+                if self.state.undo_menu_open {
+                    self.close_undo_menu();
+                } else {
+                    self.state.undo_menu_open = true;
+                }
             }
             TopBarAction::DismissUndoMenu => {
-                self.state.undo_menu_open = false;
+                self.close_undo_menu();
             }
         }
         if self.nav().noun() != noun_before {
-            self.state.undo_menu_open = false;
+            self.close_undo_menu();
             self.reset_view_scroll(cx);
         }
         // After the View is told it is entered, which lands Settings on its index: Back and Forward
@@ -52,9 +75,27 @@ impl Root {
         cx.notify();
     }
 
-    /// The recent-actions list below Undo is open.
+    /// Closes the History list, forgetting the row the pointer was over.
+    pub(super) fn close_undo_menu(&mut self) {
+        self.state.undo_menu_open = false;
+        self.state.undo_hover = None;
+    }
+
+    /// The History list below Undo is open.
     #[doc(hidden)]
     pub fn undo_menu_open(&self) -> bool {
         self.state.undo_menu_open
+    }
+
+    /// What the History list draws, from the Shell's Presenter.
+    #[doc(hidden)]
+    pub fn history(&self) -> lib_shell::HistoryViewModel {
+        self.presenter.history()
+    }
+
+    /// The History row the pointer is over, whose click the list highlights the rows of.
+    #[doc(hidden)]
+    pub fn undo_hover(&self) -> Option<HistoryPick> {
+        self.state.undo_hover
     }
 }

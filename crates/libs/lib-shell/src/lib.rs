@@ -44,7 +44,7 @@ pub use explorer::{
     ExplorerViewModel, FolderEntry, FolderUnreadable, LedgerFolders,
 };
 pub use help::{HelpEvent, HelpGroup, HelpPresenter, HelpViewModel};
-pub use history::{Entry, History, Stepped};
+pub use history::{Entry, History, HistoryRow, HistoryViewModel, Stepped, Steps};
 pub use keymap::{ShellCommand, global_keymap};
 pub use nav::{ContextSelection, FocusZone, InputMode, NavState};
 pub use navigation::{ActiveView, Movement, Noun};

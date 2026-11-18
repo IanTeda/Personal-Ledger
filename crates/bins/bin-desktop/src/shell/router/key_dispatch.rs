@@ -63,9 +63,9 @@ impl Root {
     ) -> bool {
         let keystroke = &event.keystroke;
         let cleared = self.presenter.keypress();
-        // The top bar's recent-actions list is a mouse affordance; Esc closes it and nothing else.
+        // The top bar's History list is a mouse affordance; Esc closes it and nothing else.
         if self.state.undo_menu_open && keystroke.key == "escape" {
-            self.state.undo_menu_open = false;
+            self.close_undo_menu();
             return true;
         }
         let redraw = input::route_key(&mut Keys {

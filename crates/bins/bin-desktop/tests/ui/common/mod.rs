@@ -669,6 +669,14 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Moves the pointer onto the centre of the element tagged `debug_selector(selector)`.
+    pub fn hover(&mut self, selector: &str) {
+        let position = self.bounds(selector).center();
+        self.cx
+            .simulate_mouse_move(position, None, Modifiers::none());
+        self.cx.run_until_parked();
+    }
+
     /// Right-clicks the centre of the element tagged `debug_selector(selector)`, as opening a
     /// row's context menu does.
     pub fn right_click(&mut self, selector: &str) {
