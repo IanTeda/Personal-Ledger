@@ -99,6 +99,6 @@ A hand-rolled overlay owned by `Shell`, drawn last in `Shell::draw` (`Clear` + b
 
 ## Not part of Toasts
 
-- **Actions on a Toast** (Undo after a delete, View after an import): neither Client has a command or undo model yet.
+- **Actions on a Toast** (Undo after a delete, View after an import): Undo is History's (see Getting around), reached from `u`, `ctrl`+`r` and the header's Undo list, so a Toast carries no Undo button; the Desktop's `Notice::Changed` names each change for History and the status line says "Undid …" or "Redid …". A View button after an import still has no home.
 - **Accessibility** ([#341](https://github.com/IanTeda/Personal-Ledger/issues/341)): deferred. `gpui` 0.2.2 has no accessibility tree, so Desktop screen-reader announcement waits on gpui; in the TUI, Toasts off plus the status-line echo is the natural fallback.
 - **Operating-system notifications:** "notification" is reserved for them; a Toast is always drawn inside the Client.

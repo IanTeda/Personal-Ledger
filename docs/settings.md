@@ -325,7 +325,7 @@ Settings in the Desktop app is paged, and the Settings index, the list of its pa
 - **This device:** General, Display, Tracing (Logs) and About. These belong to the computer you are on and never sync.
 - **This ledger:** Ledger, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, Sync server and Data & backup. These are stored in the open Ledger, or act on its file.
 
-`j`, `k`, `[` and `]` run from the end of This device straight into This ledger, and the page picker lists the pages under the same two headings. The Desktop has no AI connections or History page yet.
+`j`, `k`, `[` and `]` run from the end of This device straight into This ledger, and the page picker lists the pages under the same two headings. The Desktop has no AI connections page yet, and its History is the header's Undo list, not a Settings page (see History below).
 
 With no Ledger open, `g` `s` and `settings` still open Settings on the index, its cursor on the page you last left if it is a This device page, otherwise on General. The This ledger pages are drawn dim. Choosing one says "No Ledger open: :open or :new first" and leaves you where you were. If the Ledger closes while a This ledger page is showing, Settings goes back to the index with the cursor on General. That covers `j`, `k`, `G`, `[`, `]`, a click, the picker and `settings units`.
 
@@ -352,6 +352,10 @@ General holds what belongs to this device:
 Press `l` to move onto On start, `j` and `k` to move between On start, Start view, Toasts, Language and region and Data folder, and `h` and `l` to change the one you are on. Start view and Language and region are dropdowns: on either, `enter` (or a click on the field) opens its list on the current choice, `j` and `k` move through it, `enter` (or a click on an option) picks one and closes the list, and `esc` closes it without changing anything, leaving you on the page. `h` and `l` still step the choice with the list closed. In Language and region each option shows its code after its name, such as `English (Australia) · en-AU`. Beside the fields, the THIS DEVICE box shows the Ledger On start would reopen and the config file Settings writes to.
 
 The Ledger page holds what used to be on General: the Ledger's name, owner, financial year and Base unit.
+
+### History
+
+A change you make on General or Display is one entry in History, and so is every change to the Ledger except Balance Checks (see Getting around). Press `u` to undo the newest entry, or `ctrl`+`r` to redo what you undid; the header's Undo list does the same for several entries at once. Undoing a General or Display change writes the earlier value back to `personal-ledger.conf` at once, by the same rules as any other change, so a value set by `--locale`, an environment variable or a higher configuration file still wins, and the Locale still applies only when the app next starts. History is in memory and keeps the last 50 entries: it is lost when you quit, and a Ledger's entries go when that Ledger closes. See [Getting around](getting-around.md#undo-and-redo).
 
 ### What the Desktop's Settings write to personal-ledger.conf
 
@@ -491,7 +495,7 @@ A field name or value that `set` doesn't know is refused on the status line, whi
 - Ledger name, owner and financial year hold only until you close the app, until the Ledger saves its Preferences.
 - Status glyphs is saved and shown on its row, but the TUI still draws Unicode glyphs either way: it doesn't read the setting yet.
 - Turning Terminal colours off again while the app runs draws the Colour Theme, but System appearance can't follow your terminal's background until a restart: the TUI checks the background only at start-up, and skips the check while Terminal colours is on.
-- Undo and redo for History have no commands yet. On the History page, `u` and `ctrl`+`r` say they are not built yet.
+- The TUI has no History yet: `u` and `ctrl`+`r` on its History page say they are not built yet. Undo and Redo work in the Desktop app (see History below).
 
 ## Toasts
 

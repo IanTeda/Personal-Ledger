@@ -76,8 +76,18 @@ Ever unsure what a key will do? Glance at the bottom of the screen first.
 | `:` | Opens the command box |
 | `/` | Starts a search or filter |
 | `g` then a letter | Jumps to a screen |
+| `u` | Undoes the last change (desktop app) |
+| `ctrl`+`r` | Redoes what you undid (desktop app) |
 
 Each screen also has its own keys for things like adding, editing or deleting an item, and the help screen (`?`) lists them for wherever you are.
+
+## Undo and redo
+
+In the desktop app, every change you make is kept in **History**: Settings › General and Display, and every change to the Ledger, a delete and what it takes with it included. The one exception is Balance Checks, which can't be undone. Press `u` to undo the newest change and `ctrl`+`r` to redo what you undid; the status line says what was undone or redone, or that there is nothing to undo or redo. A dialog, the command box, a text field or the Transactions filter takes the key first, so there `u` types.
+
+The header's **Undo** button opens the History list: the last six changes below a NOW line with how long ago each was made, and any you undid above it, faint. Click a row to undo or redo through it, several changes at once; an empty History shows "Nothing to undo". A new change after an undo discards what could be redone.
+
+History lives in memory: it keeps the last 50 changes, is lost when you quit, and a Ledger's changes go when that Ledger closes. The terminal app has no History yet.
 
 ## Toasts
 

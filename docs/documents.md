@@ -85,7 +85,7 @@ Two columns: File, with the source (Scanned, Emailed, Downloads, Watched folder,
 - A file with no readable amount never gets a suggestion. File it by hand or skip it.
 - Skip lasts for the session and is never saved: skipped files drop to the bottom of the Inbox, and are back in place next time you open the ledger.
 - Deleting a record a document links to (a transaction, account, payee, inventory item or location) removes that link and keeps the document. A document left with no links shows as not linked.
-- Undo reverses only the last accept, pick or accept-all.
+- `u` undoes an accept, pick or accept-all through History, like any other change, and `ctrl`+`r` files it again. See [Getting around](getting-around.md).
 - A document can't be sent back to the Inbox. Fix a misfiled one in place with `e` and `l`.
 - Open and Show in folder use your system. If the file isn't at its path, you get a message saying where it should be.
 - Files are never renamed or moved.
@@ -103,7 +103,7 @@ Press `d` on a document, or click **Delete** under its details, in the Library o
 - Deleting a document removes it from the Ledger, and its links with it.
 - The records it linked stay: no transaction, account, payee, bill plan or inventory item changes.
 - The file on disk stays. The Ledger only refers to it and never renames, moves or deletes it, so you can add the same file again with `a` or import it again with `shift`+`i`.
-- A delete is permanent and can't be undone with `u`, which only reverses filing. It does trim the last filing: the deleted document leaves it, and the rest of an accept-all batch can still be undone.
+- A delete is a change in History, so `u` brings the document back with its links.
 - Focus moves to the next row, or the previous one at the end of the list. A deleted skipped document leaves the skipped set, and the Library keeps its type or year filter even if the delete leaves it empty.
 
 ## Scope
@@ -145,7 +145,7 @@ Inside Documents, `i` flips between the Library and the Inbox, `h` and `l` move 
 | `y` | Not used | Accept |
 | `shift`+`y` | Not used | Accept all strong matches |
 | `x` | Not used | Skip |
-| `u` | Not used | Undo |
+| `u` | Undo | Undo |
 | `shift`+`i` | Import files | Import files |
 
 For the full set of keys, see [Getting around](getting-around.md).
