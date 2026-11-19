@@ -1478,7 +1478,8 @@ mod tests {
     #[test]
     fn key_table_matches_the_structs() {
         let value = serde_json::to_value(LedgerConfig::default()).unwrap();
-        for (section, keys) in crate::keys::KEYS {
+        let table = crate::keys::keys();
+        for (section, keys) in &table {
             let field = match *section {
                 "theme" | "theme.light" | "theme.dark" => continue,
                 other => other,
@@ -1499,9 +1500,7 @@ mod tests {
         // Every serialised section has a table row.
         for field in value.as_object().unwrap().keys() {
             assert!(
-                crate::keys::KEYS
-                    .iter()
-                    .any(|(section, _)| section == field),
+                table.iter().any(|(section, _)| section == field),
                 "LedgerConfig section `{field}` has no row in the key table"
             );
         }
@@ -1510,7 +1509,7 @@ mod tests {
     #[test]
     fn key_table_theme_roles_are_the_colour_roles() {
         let roles = lib_colour_theme::ColourRole::ALL.map(lib_colour_theme::ColourRole::key);
-        for (section, keys) in crate::keys::KEYS {
+        for (section, keys) in crate::keys::keys() {
             if section.starts_with("theme") {
                 assert_eq!(sorted(keys.iter().copied()), sorted(roles));
             }
@@ -1521,7 +1520,8 @@ mod tests {
     fn shipped_conf_holds_exactly_the_tables_keys() {
         let raw = fs::read_to_string(shipped_conf_path()).unwrap();
         let shipped = shipped_keys(&raw);
-        for (section, keys) in crate::keys::KEYS {
+        let table = crate::keys::keys();
+        for (section, keys) in &table {
             let held: Vec<String> = shipped
                 .iter()
                 .filter(|(name, _)| name == section)
@@ -1535,7 +1535,7 @@ mod tests {
         }
         for (name, _) in &shipped {
             assert!(
-                crate::keys::KEYS.iter().any(|(section, _)| section == name),
+                table.iter().any(|(section, _)| section == name),
                 "[{name}] is in the shipped file but not the key table"
             );
         }

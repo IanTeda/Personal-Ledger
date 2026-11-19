@@ -39,47 +39,79 @@ pub trait DeviceFileFactory {
     fn unwritable(&mut self) -> Self::File;
 }
 
+/// Two values for every key, in [`ConfigKey::ALL`]'s order: the first other than its default, the
+/// second other than the first, the Locale's default date style among the seconds.
+fn sample_pairs() -> Vec<(ConfigValue, ConfigValue)> {
+    vec![
+        (
+            ConfigValue::OnStart(OnStart::NoLedger),
+            ConfigValue::OnStart(OnStart::ReopenLastLedger),
+        ),
+        (
+            ConfigValue::StartView(StartView::Noun("bills".into())),
+            ConfigValue::StartView(StartView::Dashboard),
+        ),
+        (ConfigValue::Toasts(false), ConfigValue::Toasts(true)),
+        (
+            ConfigValue::Locale("en-GB".to_string()),
+            ConfigValue::Locale("en-US".to_string()),
+        ),
+        (
+            ConfigValue::Data(PathBuf::from("/home/me/finance")),
+            ConfigValue::Data(PathBuf::from("/home/me/money")),
+        ),
+        (
+            ConfigValue::ColourTheme("nord".to_string()),
+            ConfigValue::ColourTheme("gruvbox".to_string()),
+        ),
+        (
+            ConfigValue::ColourAppearance(ColourAppearance::Light),
+            ConfigValue::ColourAppearance(ColourAppearance::Dark),
+        ),
+        (
+            ConfigValue::DateStyle(Some(DateStyle::Iso)),
+            ConfigValue::DateStyle(None),
+        ),
+        (
+            ConfigValue::RowDensity(RowDensity::Compact),
+            ConfigValue::RowDensity(RowDensity::Roomy),
+        ),
+        (
+            ConfigValue::StatusGlyphs(StatusGlyphs::AsciiFallback),
+            ConfigValue::StatusGlyphs(StatusGlyphs::Unicode),
+        ),
+        (
+            ConfigValue::StartSidebarMinimised(true),
+            ConfigValue::StartSidebarMinimised(false),
+        ),
+        (ConfigValue::HintBar(false), ConfigValue::HintBar(true)),
+        (
+            ConfigValue::TerminalColours(true),
+            ConfigValue::TerminalColours(false),
+        ),
+        (
+            ConfigValue::Log(Levels::DEBUG),
+            ConfigValue::Log(Levels::ERROR),
+        ),
+        (
+            ConfigValue::LogFilePath(PathBuf::from("/home/me/ledger.log")),
+            ConfigValue::LogFilePath(PathBuf::from("/home/me/other.log")),
+        ),
+    ]
+}
+
 /// A value for every key, each other than its default, in [`ConfigKey::ALL`]'s order.
 pub fn first_values() -> Vec<ConfigValue> {
-    vec![
-        ConfigValue::OnStart(OnStart::NoLedger),
-        ConfigValue::StartView(StartView::Noun("bills".into())),
-        ConfigValue::Toasts(false),
-        ConfigValue::Locale("en-GB".to_string()),
-        ConfigValue::Data(PathBuf::from("/home/me/finance")),
-        ConfigValue::ColourTheme("nord".to_string()),
-        ConfigValue::ColourAppearance(ColourAppearance::Light),
-        ConfigValue::DateStyle(Some(DateStyle::Iso)),
-        ConfigValue::RowDensity(RowDensity::Compact),
-        ConfigValue::StatusGlyphs(StatusGlyphs::AsciiFallback),
-        ConfigValue::StartSidebarMinimised(true),
-        ConfigValue::HintBar(false),
-        ConfigValue::TerminalColours(true),
-        ConfigValue::Log(Levels::DEBUG),
-        ConfigValue::LogFilePath(PathBuf::from("/home/me/ledger.log")),
-    ]
+    sample_pairs().into_iter().map(|(first, _)| first).collect()
 }
 
 /// A second value for every key, each other than [`first_values`]', the Locale's default date
 /// style among them.
 pub fn second_values() -> Vec<ConfigValue> {
-    vec![
-        ConfigValue::OnStart(OnStart::ReopenLastLedger),
-        ConfigValue::StartView(StartView::Dashboard),
-        ConfigValue::Toasts(true),
-        ConfigValue::Locale("en-US".to_string()),
-        ConfigValue::Data(PathBuf::from("/home/me/money")),
-        ConfigValue::ColourTheme("gruvbox".to_string()),
-        ConfigValue::ColourAppearance(ColourAppearance::Dark),
-        ConfigValue::DateStyle(None),
-        ConfigValue::RowDensity(RowDensity::Roomy),
-        ConfigValue::StatusGlyphs(StatusGlyphs::Unicode),
-        ConfigValue::StartSidebarMinimised(false),
-        ConfigValue::HintBar(true),
-        ConfigValue::TerminalColours(false),
-        ConfigValue::Log(Levels::ERROR),
-        ConfigValue::LogFilePath(PathBuf::from("/home/me/other.log")),
-    ]
+    sample_pairs()
+        .into_iter()
+        .map(|(_, second)| second)
+        .collect()
 }
 
 /// What `device`'s file holds, as its read says.
@@ -98,12 +130,22 @@ fn held(file: &impl DeviceFile) -> StoredDevice {
     StoredDevice(file.stored_all().into_iter().collect())
 }
 
-/// The sample values cover every key, once each, so the checks below reach a new key.
+/// The sample pairs cover every key, once each, so the checks below reach a new key, and each
+/// pair is two different values of the one key, so a later write is seen to replace the first.
 pub fn the_sample_values_cover_every_key() {
-    for values in [first_values(), second_values()] {
-        assert_eq!(
-            values.iter().map(ConfigValue::key).collect::<Vec<_>>(),
-            ConfigKey::ALL
+    let pairs = sample_pairs();
+    assert_eq!(
+        pairs
+            .iter()
+            .map(|(first, _)| first.key())
+            .collect::<Vec<_>>(),
+        ConfigKey::ALL
+    );
+    for (first, second) in &pairs {
+        assert_eq!(first.key(), second.key(), "{first:?} and {second:?}");
+        assert_ne!(
+            first, second,
+            "{first:?}: the pair's two values are the same"
         );
     }
 }

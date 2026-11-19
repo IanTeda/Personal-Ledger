@@ -3,9 +3,9 @@
 //! and writes the file, and `lib-settings`, whose Presenters may not depend on it, name the same
 //! keys and values.
 //!
-//! Only the catalogue lives here. How a key is spelt in the file, read from a parsed
-//! Configuration and set from the environment is `lib-config`'s, beside its `KEYS` table, whose
-//! tests fail until the two agree.
+//! A key is one row of the `config_keys!` table below, which generates every per-key arm here.
+//! How a key is spelt in the file, read from a parsed Configuration and set from the environment
+//! is `lib-config`'s, which derives the written sections of its key table, `keys()`, from [`ConfigKey::ALL`].
 
 use std::path::PathBuf;
 
@@ -37,148 +37,103 @@ impl Section {
     }
 }
 
-/// The keys Settings writes, each in its page's [`Section`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ConfigKey {
-    /// `on_start`: `reopen` or `none`.
-    OnStart,
-    /// `start_view`: `dashboard`, `last`, `settings` or a noun.
-    StartView,
-    /// `toasts`: whether non-Error Toasts show.
-    Toasts,
-    /// `locale`: the Locale's BCP-47 tag; removed for System, the operating system's.
-    Locale,
-    /// `data`: the folder `:open` and `:new` start in.
-    Data,
-    /// `colour_theme`: the Colour Theme's id.
-    ColourTheme,
-    /// `colour_appearance`: `light`, `dark` or `system`.
-    ColourAppearance,
-    /// `date_style`: `default`, `short`, `medium`, `long` or `iso`.
-    DateStyle,
-    /// `row_density`: `compact`, `regular` or `roomy`.
-    RowDensity,
-    /// `status_glyphs`: `unicode` or `ascii`.
-    StatusGlyphs,
-    /// `start_sidebar_minimised`: whether the Desktop starts with the primary rail collapsed.
-    StartSidebarMinimised,
-    /// `hint_bar`: whether the footer shows the key hints.
-    HintBar,
-    /// `terminal_colours`: draw with the terminal's own colours (ADR-0024).
-    TerminalColours,
-    /// `log`: the tracing level.
-    Log,
-    /// `log_file_path`: a file the logs are also written to.
-    LogFilePath,
-}
-
-impl ConfigKey {
-    /// Every key Settings writes, in the order the file's sections and keys are documented.
-    pub const ALL: [ConfigKey; 15] = [
-        Self::OnStart,
-        Self::StartView,
-        Self::Toasts,
-        Self::Locale,
-        Self::Data,
-        Self::ColourTheme,
-        Self::ColourAppearance,
-        Self::DateStyle,
-        Self::RowDensity,
-        Self::StatusGlyphs,
-        Self::StartSidebarMinimised,
-        Self::HintBar,
-        Self::TerminalColours,
-        Self::Log,
-        Self::LogFilePath,
-    ];
-
-    /// The key as it is written in the file.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::OnStart => "on_start",
-            Self::StartView => "start_view",
-            Self::Toasts => "toasts",
-            Self::Locale => "locale",
-            Self::Data => "data",
-            Self::ColourTheme => "colour_theme",
-            Self::ColourAppearance => "colour_appearance",
-            Self::DateStyle => "date_style",
-            Self::RowDensity => "row_density",
-            Self::StatusGlyphs => "status_glyphs",
-            Self::StartSidebarMinimised => "start_sidebar_minimised",
-            Self::HintBar => "hint_bar",
-            Self::TerminalColours => "terminal_colours",
-            Self::Log => "log",
-            Self::LogFilePath => "log_file_path",
+/// The catalogue's one table: each row, `Variant => (Section, "file_name", ValueType)`, generates
+/// the [`ConfigKey`] variant, its place in [`ConfigKey::ALL`], its [`ConfigKey::name`] and
+/// [`ConfigKey::section`], and the [`ConfigValue`] variant holding `ValueType` with its
+/// [`ConfigValue::key`]. A row's doc comment documents both variants. Rows are in the order the
+/// file's sections and keys are documented, which is [`ConfigKey::ALL`]'s.
+macro_rules! config_keys {
+    ($(
+        $(#[doc = $doc:literal])*
+        $variant:ident => ($section:ident, $name:literal, $value:ty),
+    )*) => {
+        /// The keys Settings writes, each in its page's [`Section`].
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum ConfigKey {
+            $(
+                $(#[doc = $doc])*
+                $variant,
+            )*
         }
-    }
 
-    /// The section the key lives in, its Settings page's.
-    pub fn section(self) -> Section {
-        match self {
-            Self::OnStart | Self::StartView | Self::Toasts | Self::Locale | Self::Data => {
-                Section::General
+        impl ConfigKey {
+            /// Every key Settings writes, in the order the file's sections and keys are
+            /// documented.
+            pub const ALL: [ConfigKey; [$(stringify!($variant)),*].len()] =
+                [$(Self::$variant),*];
+
+            /// The key as it is written in the file.
+            pub fn name(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $name,)*
+                }
             }
-            Self::ColourTheme
-            | Self::ColourAppearance
-            | Self::DateStyle
-            | Self::RowDensity
-            | Self::StatusGlyphs
-            | Self::StartSidebarMinimised
-            | Self::HintBar
-            | Self::TerminalColours => Section::Display,
-            Self::Log | Self::LogFilePath => Section::Logs,
+
+            /// The section the key lives in, its Settings page's.
+            pub fn section(self) -> Section {
+                match self {
+                    $(Self::$variant => Section::$section,)*
+                }
+            }
         }
-    }
+
+        /// A value Settings writes, typed by its key, so a value the parser would refuse can't be
+        /// spelt: the variant names the [`ConfigKey`] and holds the type the parser reads it into.
+        /// The Locale and the Colour Theme are the open-ended two: a Locale tag is checked as it
+        /// is written, and a Colour Theme id is kept raw, as the parser keeps it (ADR-0023).
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub enum ConfigValue {
+            $(
+                $(#[doc = $doc])*
+                $variant($value),
+            )*
+        }
+
+        impl ConfigValue {
+            /// The key the value is written under.
+            pub fn key(&self) -> ConfigKey {
+                match self {
+                    $(Self::$variant(_) => ConfigKey::$variant,)*
+                }
+            }
+        }
+    };
 }
 
-/// A value Settings writes, typed by its key, so a value the parser would refuse can't be spelt:
-/// the variant names the [`ConfigKey`] and holds the type the parser reads it into. The Locale and
-/// the Colour Theme are the open-ended two: a Locale tag is checked as it is written, and a Colour
-/// Theme id is kept raw, as the parser keeps it (ADR-0023).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ConfigValue {
-    OnStart(OnStart),
-    StartView(StartView),
-    Toasts(bool),
-    /// A BCP-47 tag, since this crate can't name `lib_locale::Locale`; `lib_locale::Locale::choice`
+config_keys! {
+    /// `on_start`: `reopen` or `none`.
+    OnStart => (General, "on_start", OnStart),
+    /// `start_view`: `dashboard`, `last`, `settings` or a noun.
+    StartView => (General, "start_view", StartView),
+    /// `toasts`: whether non-Error Toasts show.
+    Toasts => (General, "toasts", bool),
+    /// `locale`: the Locale's BCP-47 tag; removed for System, the operating system's. The value is
+    /// the tag, since this crate can't name `lib_locale::Locale`; `lib_locale::Locale::choice`
     /// turns it into one. **System** is no value: the key is removed instead.
-    Locale(String),
-    Data(PathBuf),
-    ColourTheme(String),
-    ColourAppearance(ColourAppearance),
-    /// `None` is the Locale's default, written `default`.
-    DateStyle(Option<DateStyle>),
-    RowDensity(RowDensity),
-    StatusGlyphs(StatusGlyphs),
-    StartSidebarMinimised(bool),
-    HintBar(bool),
-    TerminalColours(bool),
-    Log(Levels),
-    LogFilePath(PathBuf),
-}
-
-impl ConfigValue {
-    /// The key the value is written under.
-    pub fn key(&self) -> ConfigKey {
-        match self {
-            Self::OnStart(_) => ConfigKey::OnStart,
-            Self::StartView(_) => ConfigKey::StartView,
-            Self::Toasts(_) => ConfigKey::Toasts,
-            Self::Locale(_) => ConfigKey::Locale,
-            Self::Data(_) => ConfigKey::Data,
-            Self::ColourTheme(_) => ConfigKey::ColourTheme,
-            Self::ColourAppearance(_) => ConfigKey::ColourAppearance,
-            Self::DateStyle(_) => ConfigKey::DateStyle,
-            Self::RowDensity(_) => ConfigKey::RowDensity,
-            Self::StatusGlyphs(_) => ConfigKey::StatusGlyphs,
-            Self::StartSidebarMinimised(_) => ConfigKey::StartSidebarMinimised,
-            Self::HintBar(_) => ConfigKey::HintBar,
-            Self::TerminalColours(_) => ConfigKey::TerminalColours,
-            Self::Log(_) => ConfigKey::Log,
-            Self::LogFilePath(_) => ConfigKey::LogFilePath,
-        }
-    }
+    Locale => (General, "locale", String),
+    /// `data`: the folder `:open` and `:new` start in.
+    Data => (General, "data", PathBuf),
+    /// `colour_theme`: the Colour Theme's id.
+    ColourTheme => (Display, "colour_theme", String),
+    /// `colour_appearance`: `light`, `dark` or `system`.
+    ColourAppearance => (Display, "colour_appearance", ColourAppearance),
+    /// `date_style`: `default`, `short`, `medium`, `long` or `iso`. A `None` value is the Locale's
+    /// default, written `default`.
+    DateStyle => (Display, "date_style", Option<DateStyle>),
+    /// `row_density`: `compact`, `regular` or `roomy`.
+    RowDensity => (Display, "row_density", RowDensity),
+    /// `status_glyphs`: `unicode` or `ascii`.
+    StatusGlyphs => (Display, "status_glyphs", StatusGlyphs),
+    /// `start_sidebar_minimised`: whether the Desktop starts with the primary rail collapsed.
+    StartSidebarMinimised => (Display, "start_sidebar_minimised", bool),
+    /// `hint_bar`: whether the footer shows the key hints.
+    HintBar => (Display, "hint_bar", bool),
+    /// `terminal_colours`: draw with the terminal's own colours (ADR-0024).
+    TerminalColours => (Display, "terminal_colours", bool),
+    /// `log`: the tracing level.
+    Log => (Logs, "log", Levels),
+    /// `log_file_path`: a file the logs are also written to.
+    LogFilePath => (Logs, "log_file_path", PathBuf),
 }
 
 #[cfg(test)]

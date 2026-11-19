@@ -5,7 +5,7 @@
 We're moving the catalogue's types into `lib-core`, which every crate may depend on, so `lib-config` and `lib-settings` name the same keys and values and nothing maps between them:
 
 - **What moves:** `ConfigKey` (its name and section), `Section` (its header) and `ConfigValue` (its key), in `lib_core::configuration`.
-- **What stays in `lib-config`:** everything about the file and the parse: the `KEYS` table, how a value is spelt in the file, how it is read from a parsed `Config`, and its environment variable.
+- **What stays in `lib-config`:** everything about the file and the parse: the key table (`keys()`, its written sections derived from `ConfigKey::ALL` since #1280, where one `config_keys!` table in `lib-core` generates the catalogue), how a value is spelt in the file, how it is read from a parsed `Config`, and its environment variable.
 - **Payload types follow:** a type a `ConfigValue` holds must be in `lib-core` too, since `lib-core` depends on no other workspace crate. `ColourAppearance` moves from `lib-colour-theme` and `Levels` from `lib-tracing`, each re-exported from its old crate. The orphan rule then forbids `lib-tracing`'s `From<Levels> for LevelFilter`, which becomes a function.
 - **The Locale stays a tag:** `ConfigValue::Locale` holds a BCP-47 string, since `lib-core` can't name `lib_locale::Locale`; one rule in `lib-locale` turns a tag into a Locale choice.
 

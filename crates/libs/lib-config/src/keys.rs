@@ -1,40 +1,41 @@
 //! The Configuration key catalogue's file side (#1153, ADR-0058): every `(section, key)`
-//! `lib-config` parses ([`KEYS`]), and for each key Settings writes, `lib_core::configuration`'s
+//! `lib-config` parses ([`keys`]), and for each key Settings writes, `lib_core::configuration`'s
 //! [`ConfigKey`], its environment variable and, for its [`ConfigValue`], how the value is spelt in
 //! the file and read back.
 //!
-//! A key Settings writes is added to `lib_core::configuration`'s [`ConfigKey`] and [`ConfigValue`],
-//! and here beside its struct field in `general.rs`, `display.rs` or `logs.rs`: its row in
-//! [`KEYS`], its spelling in [`spelt`] and its read in [`read_value`]; the tests below fail until
-//! they agree. Neither Client spells a value: each hands [`crate::ConfigWriter::set`] a typed
-//! [`ConfigValue`].
+//! A key Settings writes is a row of `lib_core::configuration`'s `config_keys!` table, which
+//! names its [`ConfigKey`], section and [`ConfigValue`]; [`keys`] lists it from there. Here, beside
+//! its struct field in `general.rs`, `display.rs` or `logs.rs`, it adds only its spelling in
+//! [`spelt`] and its read in [`read_value`], whose matches won't compile without them. Neither
+//! Client spells a value: each hands [`crate::ConfigWriter::set`] a typed [`ConfigValue`].
 //!
-//! [`KEYS`]' section names are the normalised spelling (lower case, `_` for `-`). `[Keybindings]`'
+//! [`keys`]' section names are the normalised spelling (lower case, `_` for `-`). `[Keybindings]`'
 //! command bindings are an open-ended map and are not listed: only `super_key` is a fixed key.
 
 use lib_core::configuration::{ConfigKey, ConfigValue, Section};
 
 /// The keys of each section, beside the structs that read them: a struct field added without a
-/// row here fails `table_matches_the_structs`.
-pub(crate) const KEYS: &[(&str, &[&str])] = &[
-    (
-        "general",
-        &["on_start", "start_view", "toasts", "locale", "data", "file"],
-    ),
-    (
-        "display",
-        &[
-            "colour_theme",
-            "colour_appearance",
-            "date_style",
-            "row_density",
-            "status_glyphs",
-            "start_sidebar_minimised",
-            "hint_bar",
-            "terminal_colours",
-        ],
-    ),
-    ("logs", &["log", "log_file_path"]),
+/// row here fails `ledger.rs`' `key_table_matches_the_structs`. The sections Settings writes are
+/// derived, their [`ConfigKey`]s and then their [`NOT_WRITTEN`] keys; the rest are [`HAND_WRITTEN`].
+pub(crate) fn keys() -> Vec<(&'static str, Vec<&'static str>)> {
+    Section::ALL
+        .into_iter()
+        .map(|section| {
+            (
+                normalised(section),
+                in_section(section).map(|(_, name)| name).collect(),
+            )
+        })
+        .chain(
+            HAND_WRITTEN
+                .iter()
+                .map(|(section, keys)| (*section, keys.to_vec())),
+        )
+        .collect()
+}
+
+/// The keys of the sections Settings never writes, edited only by hand.
+const HAND_WRITTEN: &[(&str, &[&str])] = &[
     ("keybindings", &["super_key"]),
     ("sync_server", &["bind_address", "database_uri"]),
     ("theme", THEME_ROLES),
@@ -44,7 +45,7 @@ pub(crate) const KEYS: &[(&str, &[&str])] = &[
 
 /// The keys of the sections Settings writes that it never writes: `file` is set only by hand or
 /// `--file`. Every other key of those sections is a [`ConfigKey`].
-const NOT_WRITTEN: &[(&str, &str)] = &[("general", "file")];
+const NOT_WRITTEN: &[KeyId] = &[FILE];
 
 /// A key of a section Settings writes, as `(section, name)`: a [`ConfigKey`]'s, or [`FILE`]. What
 /// the overrides report ([`crate::Overrides`]) is kept by, so a flag on a key Settings never writes
@@ -54,13 +55,19 @@ pub(crate) type KeyId = (Section, &'static str);
 /// `[General]`'s `file`, which only a hand or `--file` sets.
 pub(crate) const FILE: KeyId = (Section::General, "file");
 
-/// Every key [`KEYS`] lists in a section Settings writes: the keys the overrides report covers.
+/// The keys of `section`: its [`ConfigKey`]s in [`ConfigKey::ALL`]'s order, then its
+/// [`NOT_WRITTEN`] keys.
+fn in_section(section: Section) -> impl Iterator<Item = KeyId> {
+    ConfigKey::ALL
+        .into_iter()
+        .map(id)
+        .chain(NOT_WRITTEN.iter().copied())
+        .filter(move |(of, _)| *of == section)
+}
+
+/// Every key of the sections Settings writes: the keys the overrides report covers.
 pub(crate) fn reported() -> impl Iterator<Item = KeyId> {
-    Section::ALL.into_iter().flat_map(|section| {
-        KEYS.iter()
-            .filter(move |(name, _)| *name == normalised(section))
-            .flat_map(move |(_, keys)| keys.iter().map(move |key| (section, *key)))
-    })
+    Section::ALL.into_iter().flat_map(in_section)
 }
 
 /// `id`'s dotted path, as the parser keys a value: `general.toasts`.
@@ -79,7 +86,7 @@ const THEME_ROLES: &[&str] = &[
     "negative",
 ];
 
-/// `section`'s name as `normalise_ini` reads its header, as [`KEYS`] spells it, and as its
+/// `section`'s name as `normalise_ini` reads its header, as [`keys`] spells it, and as its
 /// environment variables spell it, upper-cased.
 pub(crate) fn normalised(section: Section) -> &'static str {
     match section {
@@ -151,14 +158,6 @@ pub fn read_value(key: ConfigKey, config: &crate::Config) -> Option<ConfigValue>
 mod tests {
     use super::*;
 
-    /// The keys [`KEYS`] lists for `section`.
-    fn listed(section: Section) -> &'static [&'static str] {
-        KEYS.iter()
-            .find(|(name, _)| *name == normalised(section))
-            .map(|(_, keys)| *keys)
-            .unwrap_or_else(|| panic!("[{}] has no row in KEYS", section.header()))
-    }
-
     #[test]
     fn every_key_names_its_section_and_its_environment_variable() {
         assert_eq!(
@@ -209,32 +208,12 @@ mod tests {
     }
 
     #[test]
-    fn every_written_key_is_one_the_table_lists_in_its_section() {
+    fn no_key_is_both_written_and_not_written() {
         for key in ConfigKey::ALL {
             assert!(
-                listed(key.section()).contains(&key.name()),
-                "{key:?} writes `{}` in [{}], which KEYS doesn't list there",
-                key.name(),
-                key.section().header()
+                !NOT_WRITTEN.contains(&id(key)),
+                "{key:?} is a ConfigKey and in NOT_WRITTEN, so the table would list it twice"
             );
-        }
-    }
-
-    #[test]
-    fn every_key_the_table_lists_in_a_written_section_is_written_or_named_as_not() {
-        for section in Section::ALL {
-            for name in listed(section) {
-                let written = ConfigKey::ALL
-                    .iter()
-                    .any(|key| key.section() == section && key.name() == *name);
-                let excused = NOT_WRITTEN.contains(&(normalised(section), *name));
-                assert!(
-                    written != excused,
-                    "[{}] {name}: a key the table lists is either a ConfigKey or in NOT_WRITTEN, \
-                     never both or neither",
-                    section.header()
-                );
-            }
         }
     }
 
