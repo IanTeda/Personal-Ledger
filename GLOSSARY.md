@@ -274,6 +274,9 @@ rejected idea.
 One of the two fixed classifications a Category carries: Expense (money going out) or Income (money coming in). Assets and liabilities are held by Accounts, not classified by Category, so the asset, liability and equity types once listed here were dropped.
 _Avoid_: Account type.
 
+**Tree order**:
+The order Categories are listed in: Expense before Income, each parent before its children, and siblings A–Z by name, ignoring case.
+
 **Uncategorised**:
 The system-provided leaf Category, one per Category Type, that a deleted Category's Splits are re-pointed to, so deleting a Category never deletes a Split. Created the first time it is needed. Fixed once made: it cannot be renamed, moved, given another Category Type or have a Category nested under it.
 _Avoid_: Unknown, Other — those read as user-made Categories.
