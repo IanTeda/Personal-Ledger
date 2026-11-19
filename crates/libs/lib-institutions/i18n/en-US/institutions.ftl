@@ -63,7 +63,7 @@ institutions-error-not-found = That institution is no longer on the ledger
 
 institutions-delete-title = Delete institution — { $name }
 institutions-delete-submit = Delete institution
-institutions-delete-warning = No account uses this institution. Deleting it cannot be undone.
+institutions-delete-warning = No account uses this institution.
 institutions-delete-confirm-label = Type { $name } to confirm
 institutions-delete-toast = Deleted { $name }
 

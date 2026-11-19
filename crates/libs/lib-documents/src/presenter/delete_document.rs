@@ -198,7 +198,10 @@ mod tests {
                 document.path.display()
             )
         );
-        assert_eq!(plain(&view.warning), "Deleting it cannot be undone.");
+        assert_eq!(
+            plain(&view.warning),
+            "Deleting it removes the Document and its Links."
+        );
         let strong: Vec<_> = view
             .warning
             .iter()

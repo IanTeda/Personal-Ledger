@@ -25,7 +25,7 @@ pub enum DeletePriceSourceEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeletePriceSourceViewModel {
     pub frame: DialogFrame,
-    /// `This price source values 1 unit. Deleting it cannot be undone.`
+    /// `This price source values 1 unit.`
     pub warning: String,
     /// `1 unit falls back to Manual entry and keeps its last price: btc.`; `None` while no Unit uses it.
     pub fallback: Option<String>,
@@ -204,10 +204,7 @@ mod tests {
             DeletePriceSourcePresenter::new(shared, source.id, DialogKeys::default()).unwrap();
         let view = dialog.view_model();
         assert_eq!(view.frame.title, "Delete price source — Broker");
-        assert_eq!(
-            view.warning,
-            "This price source values 1 unit. Deleting it cannot be undone."
-        );
+        assert_eq!(view.warning, "This price source values 1 unit.");
         assert_eq!(
             view.fallback.as_deref(),
             Some("1 unit falls back to Manual entry and keeps its last price: btc.")

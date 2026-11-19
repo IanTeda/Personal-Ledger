@@ -102,8 +102,7 @@ fn render(view: &DeleteAccountViewModel, actions: &Clicks, cx: &App) -> AnyEleme
     dialog::overlay(WIDTH, true, card, cx)
 }
 
-/// `This account has a balance of **−2,318.44 aud** and **204 transactions.** Deleting it cannot
-/// be undone.`, the two figures bold, as in the mockup.
+/// `This account has a balance of **−2,318.44 aud** and **204 transactions.**`, the two figures bold, as in the mockup.
 fn warning(view: &DeleteAccountViewModel) -> AnyElement {
     div()
         .flex()

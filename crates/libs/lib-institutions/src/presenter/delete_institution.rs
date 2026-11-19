@@ -368,10 +368,7 @@ mod tests {
         assert_eq!(view.frame.submit, "Delete institution");
         assert!(view.frame.destructive);
         assert!(!view.frame.can_confirm);
-        assert_eq!(
-            view.notice,
-            "No account uses this institution. Deleting it cannot be undone."
-        );
+        assert_eq!(view.notice, "No account uses this institution.");
         let confirm = view.confirm.expect("a typed-back field");
         assert_eq!(confirm.label, "Type American Express to confirm");
         assert_eq!(confirm.placeholder, "American Express");

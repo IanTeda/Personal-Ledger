@@ -10,7 +10,7 @@ categories-delete-submit = Delete category
 categories-delete-warning = This category has <strong>{ $count ->
     [one] { $count } transaction
    *[other] { $count } transactions
-}.</strong> Deleting it cannot be undone.
+}.</strong>
 categories-delete-reference = Splits will be moved to Uncategorised · { $budgets ->
     [0] no budget attached
     [one] { $budgets } budget attached

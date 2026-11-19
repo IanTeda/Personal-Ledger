@@ -355,7 +355,7 @@ documents-dialog-delete-body = { $links ->
     [one] Its { $links } link goes with it; the record it names stays. The file stays on disk at { $path }.
    *[other] Its { $links } links go with it; the records they name stay. The file stays on disk at { $path }.
 }
-documents-dialog-delete-warning = Deleting it <strong>cannot be undone.</strong>
+documents-dialog-delete-warning = Deleting it <strong>removes the Document and its Links.</strong>
 documents-dialog-delete-submit = Delete document
 documents-dialog-delete-refused = This document has since been deleted.
 documents-dialog-toast-deleted = Deleted "{ $title }". The file is still on disk.

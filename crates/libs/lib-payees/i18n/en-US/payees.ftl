@@ -66,7 +66,7 @@ payees-edit-usage-callout = { $count ->
 
 payees-delete-title = Delete payee — { $name }
 payees-delete-submit = Delete payee
-payees-delete-warning = This payee isn't used by any transaction. Deleting it <strong>cannot be undone.</strong>
+payees-delete-warning = This payee isn't used by <strong>any transaction.</strong>
 payees-delete-callout = { $rules ->
     [0] It has no match rules.
     [one] Deleting also removes its { $rules } match rule.

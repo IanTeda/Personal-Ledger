@@ -1,5 +1,5 @@
 //! The Delete document confirm on the shared `crate::dialog` frame, destructive: what goes (the
-//! Document and its Links), what stays (the file and the records), and that it cannot be undone.
+//! Document and its Links), what stays (the file and the records).
 //! What each key means is the Presenter's: `select` and `submit` confirm and every other input is
 //! swallowed.
 

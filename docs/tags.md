@@ -47,8 +47,8 @@ The Add and Edit dialogs ask for a name and an optional colour: pick none, one o
 
 - A transaction can have as many tags as you like, or none at all.
 - Tags are case-insensitive ("Japan-trip" and "japan-trip" are the same tag), and spaces and punctuation don't count either: "work trip" is refused while "work-trip" exists.
-- Removing a tag takes it off every transaction and deletes it. The transactions themselves keep their amount, category and payee. It can't be undone.
-- Merging moves every transaction from one tag to the other, then deletes the first. The tag you keep keeps its own name, colour and active setting. It can't be undone.
+- Removing a tag takes it off every transaction and deletes it. The transactions themselves keep their amount, category and payee. Press `u` to undo it while the app stays open (see [Undo and redo](getting-around.md#undo-and-redo)).
+- Merging moves every transaction from one tag to the other, then deletes the first. The tag you keep keeps its own name, colour and active setting. Press `u` to undo it while the app stays open (see [Undo and redo](getting-around.md#undo-and-redo)).
 - An inactive tag isn't offered when you tag a transaction, but its name is still taken and it still shows on transactions that already carry it.
 - A transaction counts once for a tag even if several of its splits carry it.
 - The running total when filtering by tag shows only if everything on screen is in the same currency — mixed units displays "mixed units" instead.

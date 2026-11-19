@@ -324,7 +324,7 @@ units-price-source-usage = { $count ->
 units-price-source-delete-warning = This price source values { $count ->
     [one] { $count } unit
    *[other] { $count } units
-}. Deleting it cannot be undone.
+}.
 units-price-source-delete-fallback = { $count ->
     [one] { $count } unit falls back to Manual entry and keeps its last price: { $codes }.
    *[other] { $count } units fall back to Manual entry and keep their last prices: { $codes }.

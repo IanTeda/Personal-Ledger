@@ -11,7 +11,7 @@ tags-remove-unused = No transactions use <strong>{ $name }</strong>. Removing it
 tags-remove-used = This removes <strong>{ $name }</strong> from <strong>{ $count ->
     [one] { $count } transaction
    *[other] { $count } transactions
-}</strong> and deletes the tag. The transactions keep their amount, category and payee. This can't be undone.
+}</strong> and deletes the tag. The transactions keep their amount, category and payee.
 tags-remove-confirm-label = Type { $name } to confirm
 
 ## The Merge tags dialog (7e, #354). `$name` is a Tag's name and `$count` how many Transactions
@@ -28,11 +28,11 @@ tags-merge-option = { $name } ({ $count ->
 tags-merge-callout = All <strong>{ $count ->
     [one] { $count } transaction
    *[other] { $count } transactions
-}</strong> tagged "{ $source }" will be retagged "{ $target }" instead, using { $target }'s colour. "{ $source }" is then deleted. This can't be undone, but the transactions themselves are never touched beyond their tag.
+}</strong> tagged "{ $source }" will be retagged "{ $target }" instead, using { $target }'s colour. "{ $source }" is then deleted. The transactions themselves are never touched beyond their tag.
 tags-merge-callout-no-colour = All <strong>{ $count ->
     [one] { $count } transaction
    *[other] { $count } transactions
-}</strong> tagged "{ $source }" will be retagged "{ $target }" instead, which has no colour. "{ $source }" is then deleted. This can't be undone, but the transactions themselves are never touched beyond their tag.
+}</strong> tagged "{ $source }" will be retagged "{ $target }" instead, which has no colour. "{ $source }" is then deleted. The transactions themselves are never touched beyond their tag.
 tags-merge-choose = Choose the tag to merge and the tag to keep.
 tags-merge-submit = Merge into "{ $target }"
 tags-merge-submit-empty = Merge

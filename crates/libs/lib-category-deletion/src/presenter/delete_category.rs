@@ -238,10 +238,7 @@ mod tests {
         assert_eq!(view.frame.submit, "Delete category");
         assert!(view.frame.destructive);
         assert!(!view.frame.can_confirm);
-        assert_eq!(
-            plain(&view.warning),
-            "This category has 2 transactions. Deleting it cannot be undone."
-        );
+        assert_eq!(plain(&view.warning), "This category has 2 transactions.");
         assert_eq!(
             view.reference,
             "Splits will be moved to Uncategorised \u{b7} 2 budgets attached"

@@ -38,7 +38,7 @@ To edit a category, press `e` to rename it, move it to a different parent, or ch
 
 Uncategorised is fixed. You can't rename it, move it, change its type or add a sub-category under it, and it isn't offered as a parent. Its edit box shows the name, parent and type read-only, and only the monthly budget can change. Choosing add sub-category on its row says so on the status line.
 
-To delete, press `d` and confirm by typing the category name. The delete box says how many transactions use the category and how many budgets are attached, and warns that it can't be undone. Its transactions and bills move to Uncategorised, and any payee that defaulted to the category loses that default. A category with sub-categories can't be deleted until you delete or move its children first, and Uncategorised can't be deleted while transactions or bills still use it.
+To delete, press `d` and confirm by typing the category name. The delete box says how many transactions use the category and how many budgets are attached. Press `u` to undo a delete while the app stays open (see [Undo and redo](getting-around.md#undo-and-redo)). Its transactions and bills move to Uncategorised, and any payee that defaulted to the category loses that default. A category with sub-categories can't be deleted until you delete or move its children first, and Uncategorised can't be deleted while transactions or bills still use it.
 
 In the desktop app the add, edit and delete boxes save in one step with the rest of what you changed, and a name another category under the same parent already has is refused as you type.
 

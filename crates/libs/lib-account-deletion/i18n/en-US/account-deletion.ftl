@@ -9,7 +9,7 @@ account-deletion-submit = Delete account
 account-deletion-warning = This account has a balance of <strong>{ $balance }</strong> and <strong>{ $count ->
     [one] { $count } transaction
    *[other] { $count } transactions
-}.</strong> Deleting it cannot be undone.
+}.</strong>
 
 account-deletion-reference = { $transactions ->
     [one] { $transactions } transaction

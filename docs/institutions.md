@@ -58,7 +58,7 @@ The desktop app's Institutions page lists every institution in the order you add
 - An institution can have a usual unit, the unit its accounts are normally held in. Pick one from the active units, or None, which most institutions keep. It is only a hint: in the desktop app a new account with that institution starts on its usual unit instead of the base unit, and you can pick another unit before saving. It never changes an existing account, and your base unit stays the one default unit.
 - In the desktop app, deleting a unit that institutions name as their usual unit asks which unit each of them uses instead, starting on None (see [Units](units.md)). In the TUI, such a unit can't be deleted: clear or change those institutions' usual unit first.
 - A new ledger starts with the Personal institution, named in your language. A cash account can name any institution; Personal is only where it starts.
-- An institution an account names can't be deleted, the Personal institution included. Deleting is permanent and can't be undone.
+- An institution an account names can't be deleted, the Personal institution included. Press `u` to undo a delete while the app stays open (see [Undo and redo](getting-around.md#undo-and-redo)).
 
 ## Scope
 

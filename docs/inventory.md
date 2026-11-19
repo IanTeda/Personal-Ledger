@@ -55,7 +55,7 @@ Rows have no buttons. Double-click a row to edit it, and right-click it for its 
 - A Location's Unit is fixed when you add it, and it must be a fiat currency.
 - An Area never moves to another Location.
 - Removing an Area that holds Items moves them to another Area of the same Location, and you choose which. A Location's last Area can't be removed while it holds Items.
-- Removing a Location removes its Areas and Items and drops the Document Links to those Items. The Documents themselves, and the Transactions that bought the Items, are kept. It can't be undone.
+- Removing a Location removes its Areas and Items and drops the Document Links to those Items. The Documents themselves, and the Transactions that bought the Items, are kept. Press `u` to undo it while the app stays open (see [Undo and redo](getting-around.md#undo-and-redo)).
 - A Location may have no Areas, but then it holds no Items.
 - An insurance Cover needs an insurer and a sum insured above zero. A single-item limit must be above zero and no more than the sum insured.
 - An Item needs a name, and its replacement value can't be below zero.
