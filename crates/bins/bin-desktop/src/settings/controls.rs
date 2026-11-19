@@ -61,7 +61,7 @@ pub(super) fn hint(text: impl Into<SharedString>, cx: &App) -> gpui::Div {
 /// change won't take.
 pub(super) fn shadowed(view: &FieldView, cx: &App) -> Option<gpui::Div> {
     let note = view.shadowed_note()?;
-    Some(shadowed_note(view.key?, note, cx))
+    Some(shadowed_note(view.key, note, cx))
 }
 
 /// The note under `key`'s control while a source above the file sets it.

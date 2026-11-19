@@ -22,15 +22,13 @@ use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
 use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceSnapshot};
 
-/// A field's value: one its key holds, none (the key taken out of the file, as the Locale's
-/// **System**), or a remembered checkbox's, which no key holds.
+/// A field's value: one its key holds, or none (the key taken out of the file, as the Locale's
+/// **System**).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldValue {
     Set(ConfigValue),
     /// No value: choosing it removes the key from the file.
     Unset,
-    /// A remembered checkbox's state, which the Client keeps, not the file.
-    Flag(bool),
 }
 
 /// How a field is drawn and which keys it takes.
@@ -54,9 +52,8 @@ pub(crate) type OwnNote = Rc<dyn Fn(&FieldValue, Option<&str>) -> Option<String>
 #[derive(Clone)]
 pub(crate) struct FieldDecl<F> {
     field: F,
-    /// The key the field writes; `None` for a remembered field, which nothing is written for, a
-    /// change being answered to the page as [`FormAnswer::Changed`].
-    key: Option<ConfigKey>,
+    /// The key the field writes.
+    key: ConfigKey,
     label: String,
     choices: Vec<Choice<FieldValue>>,
     presentation: Presentation,
@@ -81,7 +78,7 @@ impl<F> FieldDecl<F> {
     ) -> Self {
         Self {
             field,
-            key: Some(key),
+            key,
             label,
             choices,
             presentation,
@@ -91,31 +88,6 @@ impl<F> FieldDecl<F> {
             hint: None,
             own_note: None,
             when_unset: FieldValue::Unset,
-            read: |value| FieldValue::Set(value.clone()),
-        }
-    }
-
-    /// A remembered field holding `value`, which the Client hands the page: no key, so nothing is
-    /// written.
-    pub fn remembered(
-        field: F,
-        label: String,
-        presentation: Presentation,
-        choices: Vec<Choice<FieldValue>>,
-        value: FieldValue,
-    ) -> Self {
-        Self {
-            field,
-            key: None,
-            label,
-            choices,
-            presentation,
-            in_walk: true,
-            step_from: None,
-            change_hint: None,
-            hint: None,
-            own_note: None,
-            when_unset: value,
             read: |value| FieldValue::Set(value.clone()),
         }
     }
@@ -206,8 +178,6 @@ pub(crate) enum FormInput<F> {
 pub(crate) enum FormAnswer<F> {
     /// The field's value was written and is now shown.
     Saved(F, FieldValue),
-    /// A remembered field's value changed; nothing was written.
-    Changed(F, FieldValue),
     /// An action was pressed.
     Activated(F),
     /// `j`/`k` past the first or last field in the walk: focus stays where it was.
@@ -217,8 +187,8 @@ pub(crate) enum FormAnswer<F> {
 /// One field as drawn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldView {
-    /// The key the field writes, `None` for a remembered one: the stock shadowed note's selector.
-    pub key: Option<ConfigKey>,
+    /// The key the field writes: the stock shadowed note's selector.
+    pub key: ConfigKey,
     pub label: String,
     /// Each choice's label, in order.
     pub options: Vec<String>,
@@ -326,16 +296,14 @@ impl<F: Copy + Eq> DeviceForm<F> {
         let fields = fields
             .into_iter()
             .map(|decl| {
-                let (value, shadow, in_file) = match decl.key {
-                    None => (decl.when_unset.clone(), None, false),
-                    Some(key) => (
-                        snapshot
-                            .shown(key)
-                            .map_or_else(|| decl.when_unset.clone(), decl.read),
-                        snapshot.get(key).shadow.clone(),
-                        snapshot.get(key).stored.is_some(),
-                    ),
-                };
+                let key = decl.key;
+                let value = snapshot
+                    .shown(key)
+                    .map_or_else(|| decl.when_unset.clone(), decl.read);
+                let (shadow, in_file) = (
+                    snapshot.get(key).shadow.clone(),
+                    snapshot.get(key).stored.is_some(),
+                );
                 Field {
                     decl,
                     value,
@@ -358,9 +326,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
     pub fn reload(&mut self, snapshot: &DeviceSnapshot) {
         self.close_list();
         for entry in &mut self.fields {
-            let Some(key) = entry.decl.key else {
-                continue;
-            };
+            let key = entry.decl.key;
             let state = snapshot.get(key);
             let read = match (&state.shadow, &state.stored) {
                 (None, Some(stored)) => Some(stored),
@@ -394,13 +360,6 @@ impl<F: Copy + Eq> DeviceForm<F> {
     /// The field's value now.
     pub(crate) fn value(&self, field: F) -> Option<&FieldValue> {
         self.get(field).map(|field| &field.value)
-    }
-
-    /// Sets a remembered field's value, as the Client hands it back, answering nothing.
-    pub fn set_value(&mut self, field: F, value: FieldValue) {
-        if let Some(field) = self.get_mut(field) {
-            field.value = value;
-        }
     }
 
     pub fn list_open(&self) -> bool {
@@ -505,7 +464,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
     }
 
     /// Writes `value` to `field` even when it is the value shown, as a Command does. The field
-    /// shows it only once saved; a remembered field changes without a write.
+    /// shows it only once saved.
     pub fn write(
         &mut self,
         field: F,
@@ -514,10 +473,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
     ) -> Option<FormAnswer<F>> {
         let device = Rc::clone(&self.device);
         let entry = self.get_mut(field)?;
-        let Some(key) = entry.decl.key else {
-            entry.value = value.clone();
-            return Some(FormAnswer::Changed(field, value));
-        };
+        let key = entry.decl.key;
         let saved = match value {
             FieldValue::Set(value) => {
                 settle(device.write(value), key, notify).map(|saved| (entry.decl.read)(&saved))
@@ -525,8 +481,6 @@ impl<F: Copy + Eq> DeviceForm<F> {
             FieldValue::Unset => {
                 settle(device.remove(key), key, notify).map(|()| FieldValue::Unset)
             }
-            // A flag has no key to write it under.
-            FieldValue::Flag(_) => None,
         }?;
         entry.in_file = saved != FieldValue::Unset;
         entry.value = saved.clone();
@@ -824,7 +778,6 @@ mod tests {
         Lang,
         Hints,
         Folder,
-        Sidebar,
     }
 
     const TOY_BINDINGS: &[Binding<FormInput<Toy>>] = &[
@@ -928,16 +881,6 @@ mod tests {
                 Vec::new(),
             )
             .change_hint("pick".to_string()),
-            FieldDecl::remembered(
-                Toy::Sidebar,
-                "Sidebar".to_string(),
-                Presentation::Checkbox,
-                vec![
-                    choice(FieldValue::Flag(false), "off"),
-                    choice(FieldValue::Flag(true), "on"),
-                ],
-                FieldValue::Flag(false),
-            ),
         ]
     }
 
@@ -1018,17 +961,17 @@ mod tests {
         assert_eq!(form.focused(), Some(Toy::Start), "Appearance is skipped");
         send(
             &mut form,
-            std::iter::repeat_n(FormInput::Move(Step::Next), 4),
+            std::iter::repeat_n(FormInput::Move(Step::Next), 3),
         );
-        assert_eq!(form.focused(), Some(Toy::Sidebar));
+        assert_eq!(form.focused(), Some(Toy::Folder));
 
         let (answer, _) = send(&mut form, [FormInput::Move(Step::Next)]);
         assert_eq!(answer, Some(FormAnswer::LeftEnd(Step::Next)));
-        assert_eq!(form.focused(), Some(Toy::Sidebar), "focus stays");
+        assert_eq!(form.focused(), Some(Toy::Folder), "focus stays");
 
         send(
             &mut form,
-            std::iter::repeat_n(FormInput::Move(Step::Prev), 5),
+            std::iter::repeat_n(FormInput::Move(Step::Prev), 4),
         );
         assert_eq!(form.focused(), Some(Toy::Density));
         let (answer, _) = send(&mut form, [FormInput::Move(Step::Prev)]);
@@ -1283,29 +1226,6 @@ mod tests {
     }
 
     #[test]
-    fn a_remembered_field_answers_its_change_and_writes_nothing() {
-        let (device, mut form) = writable();
-        focused_on(&mut form, Toy::Sidebar);
-
-        let (answer, statuses) = send(&mut form, [FormInput::Toggle]);
-
-        assert_eq!(
-            answer,
-            Some(FormAnswer::Changed(Toy::Sidebar, FieldValue::Flag(true)))
-        );
-        assert!(statuses.is_empty());
-        assert_eq!(device.stored(), StoredDevice::default());
-        assert_eq!(chosen(&form, Toy::Sidebar), Some(1));
-
-        form.set_value(Toy::Sidebar, FieldValue::Flag(false));
-        assert_eq!(
-            chosen(&form, Toy::Sidebar),
-            Some(0),
-            "as the Client hands it back"
-        );
-    }
-
-    #[test]
     fn a_shadowed_field_is_noted_and_a_refused_write_keeps_what_was_shown() {
         let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
             ConfigKey::RowDensity,
@@ -1551,7 +1471,7 @@ mod tests {
         assert_eq!(
             view,
             Some(FieldView {
-                key: Some(ConfigKey::RowDensity),
+                key: ConfigKey::RowDensity,
                 label: "Density".to_string(),
                 options: vec![
                     "Compact".to_string(),

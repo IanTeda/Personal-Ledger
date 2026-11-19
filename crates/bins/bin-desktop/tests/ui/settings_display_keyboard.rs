@@ -154,6 +154,70 @@ fn the_sidebar_checkbox_takes_l_h_enter_and_space(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn the_sidebar_checkbox_is_written_to_the_conf_file_and_named_on_the_status_line(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_display(app);
+
+    ui.press("j j j l");
+
+    assert_eq!(ui.conf(), "[Display]\nstart_sidebar_minimised = true\n");
+    let status = ui.read(bin_desktop::shell::router::Root::status_message);
+    assert!(status.is_some_and(|text| text.starts_with("start_sidebar_minimised saved to")));
+}
+
+#[gpui::test]
+fn a_variable_overrides_the_sidebar_checkbox_and_nothing_is_written(app: &mut TestAppContext) {
+    let mut config = lib_config::Config::default();
+    config.display.start_sidebar_minimised = true;
+    let mut ui = Harness::with_configuration(
+        app,
+        &config,
+        &[("PERSONAL_LEDGER_DISPLAY__START_SIDEBAR_MINIMISED", "true")],
+    );
+    ui.press("g s");
+    ui.press("j");
+    ui.press("l");
+    ui.press("j j j");
+
+    ui.press("h");
+
+    assert!(
+        ui.settings::<SettingsDisplaySnapshot>()
+            .start_sidebar_minimised,
+        "the variable still sets it"
+    );
+    assert_eq!(ui.conf(), "");
+}
+
+#[gpui::test]
+fn u_undoes_the_sidebar_checkbox_and_ctrl_r_redoes_it_without_moving_the_rail(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_display(app);
+    let before = ui.rail();
+    ui.press("j j j l");
+    assert_eq!(ui.rail(), before, "the rail applies at the next start");
+    assert_eq!(ui.conf(), "[Display]\nstart_sidebar_minimised = true\n");
+
+    ui.press("u");
+    assert_eq!(ui.conf(), "[Display]\n");
+    assert!(
+        !ui.settings::<SettingsDisplaySnapshot>()
+            .start_sidebar_minimised
+    );
+    assert_eq!(ui.rail(), before);
+
+    ui.press("ctrl-r");
+    assert_eq!(ui.conf(), "[Display]\nstart_sidebar_minimised = true\n");
+    assert!(
+        ui.settings::<SettingsDisplaySnapshot>()
+            .start_sidebar_minimised
+    );
+    assert_eq!(ui.rail(), before);
+}
+
+#[gpui::test]
 fn j_past_the_last_control_enters_the_grid_and_k_climbs_back(app: &mut TestAppContext) {
     let mut ui = in_display(app);
 

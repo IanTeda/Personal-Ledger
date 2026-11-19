@@ -75,7 +75,7 @@ key3 = true
 Configuration sections group related settings together. The application currently supports:
 
 * [General]: the keys Settings › General shows: on_start, start_view, toasts, locale, data and file.
-* [Display]: the keys Settings › Display shows: colour_theme, colour_appearance, date_style, row_density, status_glyphs, hint_bar and terminal_colours.
+* [Display]: the keys Settings › Display shows: colour_theme, colour_appearance, date_style, row_density, status_glyphs, start_sidebar_minimised, hint_bar and terminal_colours.
 * [Logs]: the keys Settings › Logs shows: log and log_file_path. Read by all three binaries, the Sync Server included.
 * [Keybindings]: Navigation and action keybindings.
 * [Theme]: Colour Role overrides laid over the chosen Colour Theme, with [Theme.Light] and [Theme.Dark] for one Colour Variant. Read by bin-tui and bin-desktop.
@@ -240,6 +240,14 @@ __status_glyphs:__
 * Default: unicode
 * Environment Variable: PERSONAL_LEDGER_DISPLAY__STATUS_GLYPHS
 
+__start_sidebar_minimised:__
+
+Desktop only. When true, the Desktop starts with the primary rail collapsed at Large and X-Large window sizes, where it is otherwise expanded. Settings › Display in the Desktop app writes it, and it applies the next time the app starts: changing it, or undoing the change, leaves the rail as it is now. `b` still opens or collapses the rail for the current window size. The TUI ignores it.
+
+* Type: Boolean
+* Default: false
+* Environment Variable: PERSONAL_LEDGER_DISPLAY__START_SIDEBAR_MINIMISED
+
 __hint_bar:__
 
 TUI only. When false, the footer shows only the mode (`NORMAL`, `INSERT` …) and not the keys the screen takes. Settings › Display in the TUI changes it at once and writes it. The Desktop ignores it.
@@ -359,12 +367,12 @@ A change you make on General or Display is one entry in History, and so is every
 
 ### What the Desktop's Settings write to personal-ledger.conf
 
-On start, Start view, Toasts, Language and region and Data folder on General, and Date format, Row density, Status glyphs, Appearance and Colour Theme on Display, belong to this device, so the Desktop saves each to your `personal-ledger.conf` as you choose it, as `on_start`, `start_view`, `toasts`, `locale`, `data`, `date_style`, `row_density`, `status_glyphs`, `colour_appearance` and `colour_theme` (see the Personal Ledger Section), and starts on them next time. The `toasts`, `theme` and `appearance` commands save too. It is the same file and the same keys the TUI writes, so a change in either app is the other's the next time it starts. Only the TUI ignores `row_density`, since it has no row spacing to choose.
+On start, Start view, Toasts, Language and region and Data folder on General, and Date format, Row density, Status glyphs, Start Sidebar minimised, Appearance and Colour Theme on Display, belong to this device, so the Desktop saves each to your `personal-ledger.conf` as you choose it, as `on_start`, `start_view`, `toasts`, `locale`, `data`, `date_style`, `row_density`, `status_glyphs`, `start_sidebar_minimised`, `colour_appearance` and `colour_theme` (see the Personal Ledger Section), and starts on them next time. The `toasts`, `theme` and `appearance` commands save too. It is the same file and the same keys the TUI writes, so a change in either app is the other's the next time it starts. Only the TUI ignores `row_density`, since it has no row spacing to choose, and `start_sidebar_minimised`, since it has no collapsible rail.
 
 - The change applies at once, and the status line names the file it saved to: the one the THIS DEVICE box names. A save changes only that key's line and leaves the rest of the file as you wrote it.
 - An environment variable, or a file that comes after yours in the Configuration Hierarchy, wins over your file. When one sets a key, the control says `Set by` and names it, and choosing another option changes nothing: the status line says what sets it, so change it there. Language and region and Data folder are the exceptions: they still write your file, and a note names the override.
 - With no home folder to keep the file in, these settings can't be changed, and trying says so on the status line.
-- Start Sidebar minimised is not in the file: the Desktop remembers it itself.
+- Start Sidebar minimised is the exception to "applies at once": it saves and undoes at once, but the rail changes only the next time the app starts.
 
 ### Documents page
 
@@ -784,6 +792,7 @@ data = "~/Documents/Personal-Ledger"
 # date_style = default
 # row_density = regular
 # status_glyphs = unicode
+# start_sidebar_minimised = false
 # hint_bar = true
 # terminal_colours = false
 

@@ -609,12 +609,7 @@ impl GeneralPresenter {
             }
             Some(FormAnswer::Activated(GeneralField::DataFolder)) => router.pick_data_folder(),
             // General's walk stops at either end, and remembers nothing.
-            Some(
-                FormAnswer::Saved(..)
-                | FormAnswer::Activated(_)
-                | FormAnswer::Changed(..)
-                | FormAnswer::LeftEnd(_),
-            )
+            Some(FormAnswer::Saved(..) | FormAnswer::Activated(_) | FormAnswer::LeftEnd(_))
             | None => {}
         }
     }

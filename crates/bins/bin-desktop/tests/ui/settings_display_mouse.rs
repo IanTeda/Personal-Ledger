@@ -78,7 +78,7 @@ fn clicking_a_status_glyph_radio_a_higher_file_or_variable_sets_changes_nothing(
 }
 
 #[gpui::test]
-fn clicking_the_sidebar_checkbox_toggles_it(app: &mut TestAppContext) {
+fn clicking_the_sidebar_checkbox_toggles_and_writes_it(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 
     ui.click("display-start-sidebar-minimised");
@@ -86,11 +86,55 @@ fn clicking_the_sidebar_checkbox_toggles_it(app: &mut TestAppContext) {
         ui.settings::<SettingsDisplaySnapshot>()
             .start_sidebar_minimised
     );
+    assert_eq!(ui.conf(), "[Display]\nstart_sidebar_minimised = true\n");
     ui.click("display-start-sidebar-minimised");
     assert!(
         !ui.settings::<SettingsDisplaySnapshot>()
             .start_sidebar_minimised
     );
+    assert_eq!(ui.conf(), "[Display]\nstart_sidebar_minimised = false\n");
+}
+
+#[gpui::test]
+fn a_clicked_sidebar_checkbox_is_undone_and_redone(app: &mut TestAppContext) {
+    let mut ui = on_display(app);
+    ui.click("display-start-sidebar-minimised");
+
+    ui.press("u");
+    assert_eq!(ui.conf(), "[Display]\n");
+    assert!(
+        !ui.settings::<SettingsDisplaySnapshot>()
+            .start_sidebar_minimised
+    );
+
+    ui.press("ctrl-r");
+    assert_eq!(ui.conf(), "[Display]\nstart_sidebar_minimised = true\n");
+    assert!(
+        ui.settings::<SettingsDisplaySnapshot>()
+            .start_sidebar_minimised
+    );
+}
+
+#[gpui::test]
+fn clicking_a_shadowed_sidebar_checkbox_changes_nothing(app: &mut TestAppContext) {
+    let mut config = lib_config::Config::default();
+    config.display.start_sidebar_minimised = true;
+    let mut ui = Harness::with_configuration(
+        app,
+        &config,
+        &[("PERSONAL_LEDGER_DISPLAY__START_SIDEBAR_MINIMISED", "true")],
+    );
+    ui.press("g s");
+    ui.click("settings-index-Display");
+    assert!(ui.is_drawn("shadowed-start_sidebar_minimised"));
+
+    ui.click("display-start-sidebar-minimised");
+
+    assert!(
+        ui.settings::<SettingsDisplaySnapshot>()
+            .start_sidebar_minimised
+    );
+    assert_eq!(ui.conf(), "");
 }
 
 #[gpui::test]

@@ -143,7 +143,7 @@ impl ShellRouter for RootRouter<'_, '_> {
     /// shape.
     fn toggle_rail(&mut self) -> (WindowSize, bool) {
         self.state.collapsed_rail_tooltip = None;
-        let start_hidden = self.display_output().start_sidebar_minimised;
+        let start_hidden = self.state.start_sidebar_minimised;
         (self.window_size, start_hidden)
     }
 

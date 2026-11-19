@@ -90,6 +90,7 @@ pub(super) fn page(
                     .children(field(DisplayField::StartSidebar).map(|view| {
                         focus_mark(view.focused, cx)
                             .child(start_sidebar_minimised_toggle(view, clicks, cx))
+                            .children(shadowed(view, cx))
                     })),
             )
             .child(preview_column(&model.preview, cx));

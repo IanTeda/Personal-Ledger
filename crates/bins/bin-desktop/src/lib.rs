@@ -476,7 +476,6 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                         };
                     let state = PersistedState {
                         noun,
-                        start_sidebar_minimised: shell.start_sidebar_minimised(cx),
                         settings_page: Some(settings_page_at_quit(
                             shell.ledger_open(),
                             shell.settings_page(cx),

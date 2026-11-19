@@ -35,7 +35,7 @@ impl Render for Root {
         // A `b` override lasts only until the window crosses a Breakpoint (ADR-0042); dropped
         // here, so coming back to the Window Size it was set at draws that size's default.
         self.presenter.window_drawn_at(window_size);
-        let rail_mode = self.primary_rail(window_size, cx);
+        let rail_mode = self.primary_rail(window_size);
         self.place_budgets_switcher(rail_mode, cx);
         let focus = self.nav().focus();
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file

@@ -60,6 +60,8 @@ pub enum ConfigKey {
     RowDensity,
     /// `status_glyphs`: `unicode` or `ascii`.
     StatusGlyphs,
+    /// `start_sidebar_minimised`: whether the Desktop starts with the primary rail collapsed.
+    StartSidebarMinimised,
     /// `hint_bar`: whether the footer shows the key hints.
     HintBar,
     /// `terminal_colours`: draw with the terminal's own colours (ADR-0024).
@@ -72,7 +74,7 @@ pub enum ConfigKey {
 
 impl ConfigKey {
     /// Every key Settings writes, in the order the file's sections and keys are documented.
-    pub const ALL: [ConfigKey; 14] = [
+    pub const ALL: [ConfigKey; 15] = [
         Self::OnStart,
         Self::StartView,
         Self::Toasts,
@@ -83,6 +85,7 @@ impl ConfigKey {
         Self::DateStyle,
         Self::RowDensity,
         Self::StatusGlyphs,
+        Self::StartSidebarMinimised,
         Self::HintBar,
         Self::TerminalColours,
         Self::Log,
@@ -102,6 +105,7 @@ impl ConfigKey {
             Self::DateStyle => "date_style",
             Self::RowDensity => "row_density",
             Self::StatusGlyphs => "status_glyphs",
+            Self::StartSidebarMinimised => "start_sidebar_minimised",
             Self::HintBar => "hint_bar",
             Self::TerminalColours => "terminal_colours",
             Self::Log => "log",
@@ -120,6 +124,7 @@ impl ConfigKey {
             | Self::DateStyle
             | Self::RowDensity
             | Self::StatusGlyphs
+            | Self::StartSidebarMinimised
             | Self::HintBar
             | Self::TerminalColours => Section::Display,
             Self::Log | Self::LogFilePath => Section::Logs,
@@ -146,6 +151,7 @@ pub enum ConfigValue {
     DateStyle(Option<DateStyle>),
     RowDensity(RowDensity),
     StatusGlyphs(StatusGlyphs),
+    StartSidebarMinimised(bool),
     HintBar(bool),
     TerminalColours(bool),
     Log(Levels),
@@ -166,6 +172,7 @@ impl ConfigValue {
             Self::DateStyle(_) => ConfigKey::DateStyle,
             Self::RowDensity(_) => ConfigKey::RowDensity,
             Self::StatusGlyphs(_) => ConfigKey::StatusGlyphs,
+            Self::StartSidebarMinimised(_) => ConfigKey::StartSidebarMinimised,
             Self::HintBar(_) => ConfigKey::HintBar,
             Self::TerminalColours(_) => ConfigKey::TerminalColours,
             Self::Log(_) => ConfigKey::Log,

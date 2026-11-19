@@ -29,6 +29,7 @@ pub(crate) const KEYS: &[(&str, &[&str])] = &[
             "date_style",
             "row_density",
             "status_glyphs",
+            "start_sidebar_minimised",
             "hint_bar",
             "terminal_colours",
         ],
@@ -105,9 +106,10 @@ pub(crate) fn spelt(value: &ConfigValue) -> String {
     match value {
         ConfigValue::OnStart(on_start) => crate::on_start_key(*on_start).to_string(),
         ConfigValue::StartView(start_view) => start_view.key().to_string(),
-        ConfigValue::Toasts(on) | ConfigValue::HintBar(on) | ConfigValue::TerminalColours(on) => {
-            on.to_string()
-        }
+        ConfigValue::Toasts(on)
+        | ConfigValue::StartSidebarMinimised(on)
+        | ConfigValue::HintBar(on)
+        | ConfigValue::TerminalColours(on) => on.to_string(),
         ConfigValue::Locale(tag) | ConfigValue::ColourTheme(tag) => tag.clone(),
         ConfigValue::Data(path) | ConfigValue::LogFilePath(path) => path.display().to_string(),
         ConfigValue::ColourAppearance(appearance) => appearance.key().to_string(),
@@ -135,6 +137,9 @@ pub fn read_value(key: ConfigKey, config: &crate::Config) -> Option<ConfigValue>
         ConfigKey::DateStyle => ConfigValue::DateStyle(display.date_style()),
         ConfigKey::RowDensity => ConfigValue::RowDensity(display.row_density()),
         ConfigKey::StatusGlyphs => ConfigValue::StatusGlyphs(display.status_glyphs()),
+        ConfigKey::StartSidebarMinimised => {
+            ConfigValue::StartSidebarMinimised(display.start_sidebar_minimised())
+        }
         ConfigKey::HintBar => ConfigValue::HintBar(display.hint_bar()),
         ConfigKey::TerminalColours => ConfigValue::TerminalColours(display.terminal_colours()),
         ConfigKey::Log => ConfigValue::Log(logs.log()),
@@ -169,6 +174,7 @@ mod tests {
                 (Section::Display, "date_style"),
                 (Section::Display, "row_density"),
                 (Section::Display, "status_glyphs"),
+                (Section::Display, "start_sidebar_minimised"),
                 (Section::Display, "hint_bar"),
                 (Section::Display, "terminal_colours"),
                 (Section::Logs, "log"),

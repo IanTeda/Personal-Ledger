@@ -634,7 +634,7 @@ impl<'a> Harness<'a> {
     pub fn rail(&mut self) -> RailMode {
         let shell = self.shell.clone();
         self.cx
-            .update(|window, cx| shell.read(cx).primary_rail(WindowSize::of(window), cx))
+            .update(|window, cx| shell.read(cx).primary_rail(WindowSize::of(window)))
     }
 
     /// Moves the executor's clock on, firing any timer it passes (a pending `g`'s timeout).

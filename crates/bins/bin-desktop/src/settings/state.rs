@@ -555,15 +555,6 @@ impl SettingsView {
         self.pages.display.read(cx).presenter().output()
     }
 
-    /// Start Sidebar minimised as the state file remembered it, at launch.
-    pub fn set_start_sidebar_minimised(&mut self, minimised: bool, cx: &mut Context<'_, Self>) {
-        self.pages.display.update(cx, |page, cx| {
-            page.update_presenter(cx, |presenter| {
-                presenter.set_start_sidebar_minimised(minimised);
-            });
-        });
-    }
-
     /// `theme` or `appearance` from the palette, saved and applied as Display's own choice is.
     pub fn choose_colour(&mut self, colour: ColourChoice, cx: &mut Context<'_, Self>) {
         self.pages.display.update(cx, |page, cx| {

@@ -492,6 +492,7 @@ back = \"esc\"
         for on in [true, false] {
             values.extend([
                 ConfigValue::Toasts(on),
+                ConfigValue::StartSidebarMinimised(on),
                 ConfigValue::HintBar(on),
                 ConfigValue::TerminalColours(on),
             ]);

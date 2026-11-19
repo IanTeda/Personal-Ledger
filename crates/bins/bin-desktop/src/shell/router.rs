@@ -182,7 +182,7 @@ pub fn build(
     if let Some(ledger) = ledger {
         shell.open_ledger(ledger, cx);
     }
-    shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
+    shell.state.start_sidebar_minimised = shell.display_output(cx).start_sidebar_minimised;
     shell.restore_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
     shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
@@ -290,6 +290,7 @@ impl Root {
                 explorer_folder: None,
                 collapsed_rail_tooltip: None,
                 hover_generation: 0,
+                start_sidebar_minimised: false,
                 hosted: None,
                 undo_menu_open: false,
                 undo_hover: None,
@@ -476,19 +477,15 @@ impl Root {
 
     /// The primary rail drawn at `window_size`: a `b` override made at that Window Size, or the
     /// Window Size's own default.
-    pub fn primary_rail(&self, window_size: WindowSize, cx: &App) -> RailMode {
+    pub fn primary_rail(&self, window_size: WindowSize) -> RailMode {
         self.presenter
-            .rail_mode(window_size, self.start_sidebar_minimised(cx))
+            .rail_mode(window_size, self.start_sidebar_minimised())
     }
 
-    pub fn start_sidebar_minimised(&self, cx: &App) -> bool {
-        self.display_output(cx).start_sidebar_minimised
-    }
-
-    pub fn set_start_sidebar_minimised(&mut self, minimised: bool, cx: &mut App) {
-        self.settings.update(cx, |view, cx| {
-            view.set_start_sidebar_minimised(minimised, cx)
-        });
+    /// Whether the primary rail starts collapsed: `[Display]`'s `start_sidebar_minimised` as the
+    /// configuration held it at launch, not what Settings has written since.
+    pub fn start_sidebar_minimised(&self) -> bool {
+        self.state.start_sidebar_minimised
     }
 
     /// Shows `last_ledger` on Settings › General: the Ledger file the state file will remember at

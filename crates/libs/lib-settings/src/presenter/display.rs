@@ -1,7 +1,7 @@
 //! Settings › Display's Presenter: the date style, Row density, Status glyphs, Colour Theme and
 //! Appearance, Configuration in the user's configuration file (ADR-0053) written through
-//! [`DeviceConfiguration`]; and Start Sidebar minimised, which the Client remembers in its own
-//! state file. Beside them a PREVIEW re-renders three seeded rows under the choices made.
+//! [`DeviceConfiguration`], Start Sidebar minimised too. Beside them a PREVIEW re-renders three
+//! seeded rows under the choices made.
 //!
 //! The fields are the device settings form's ([`DeviceForm`]), which walks them, steps them and
 //! writes each change, showing it only once saved. Display declares them ([`DisplayField`]) and
@@ -155,6 +155,8 @@ pub struct DisplaySettings {
     /// The `colour_theme` key raw, so an id from a newer release survives; `None` is the default.
     pub colour_theme: Option<String>,
     pub colour_appearance: ColourAppearance,
+    /// Whether the Desktop starts with its primary rail collapsed, read at launch.
+    pub start_sidebar_minimised: bool,
 }
 
 impl DisplaySettings {
@@ -164,6 +166,9 @@ impl DisplaySettings {
             ConfigValue::DateStyle(style) => self.date_style = *style,
             ConfigValue::RowDensity(density) => self.row_density = *density,
             ConfigValue::StatusGlyphs(glyphs) => self.status_glyphs = *glyphs,
+            ConfigValue::StartSidebarMinimised(minimised) => {
+                self.start_sidebar_minimised = *minimised;
+            }
             ConfigValue::ColourTheme(id) => self.colour_theme = Some(id.clone()),
             ConfigValue::ColourAppearance(appearance) => self.colour_appearance = *appearance,
             _ => {}
@@ -285,12 +290,6 @@ impl DisplayPresenter {
         }
     }
 
-    /// Start Sidebar minimised as the Client remembered it from its last run.
-    pub fn set_start_sidebar_minimised(&mut self, minimised: bool) {
-        self.form
-            .set_value(DisplayField::StartSidebar, FieldValue::Flag(minimised));
-    }
-
     /// The Display output the fields show.
     pub fn output(&self) -> DisplayOutput {
         let settings = self.settings();
@@ -300,10 +299,7 @@ impl DisplayPresenter {
                 glyphs: settings.status_glyphs,
                 density: settings.row_density,
             },
-            start_sidebar_minimised: matches!(
-                self.form.value(DisplayField::StartSidebar),
-                Some(FieldValue::Flag(true))
-            ),
+            start_sidebar_minimised: settings.start_sidebar_minimised,
         }
     }
 
@@ -407,21 +403,13 @@ impl Presenter for DisplayPresenter {
                 router.notify(Notice::Changed(self.change_label(field, &value)));
                 self.saved(&value, router);
             }
-            Some(FormAnswer::Changed(DisplayField::StartSidebar, FieldValue::Flag(_))) => {
-                router.display_changed(self.output());
-            }
             // `j` past the last field enters the grid, on the Colour Theme drawn now.
             Some(FormAnswer::LeftEnd(Step::Next)) => {
                 self.form.set_focused(false);
                 self.grid = Some(self.chosen_theme());
             }
             // The walk stops at the top, and Display has no action.
-            Some(
-                FormAnswer::Saved(..)
-                | FormAnswer::Changed(..)
-                | FormAnswer::LeftEnd(_)
-                | FormAnswer::Activated(_),
-            )
+            Some(FormAnswer::Saved(..) | FormAnswer::LeftEnd(_) | FormAnswer::Activated(_))
             | None => {}
         }
     }
@@ -546,8 +534,7 @@ impl PagePresenter for DisplayPresenter {
 impl DisplayPresenter {
     /// Shows what `snapshot` reads after Undo or Redo put a Display key back (#1246): an open list
     /// and the grid's focus close, and the fields' values, notes, in-file flags and the Colour Theme
-    /// are read again. Start Sidebar minimised, which the file never holds, keeps its value.
-    /// Nothing is written, and nothing raised.
+    /// are read again. Nothing is written, and nothing raised.
     ///
     /// The Display output, the Colour Theme and the Appearance take effect at once, so each goes
     /// to `router` when what is in effect differs from before the read, the output once however
@@ -555,11 +542,7 @@ impl DisplayPresenter {
     pub fn reload(&mut self, snapshot: DeviceSnapshot, router: &mut dyn DeviceRouter) {
         let output = self.output();
         let before = self.settings();
-        let sidebar = self.form.value(DisplayField::StartSidebar).cloned();
         self.form.reload(&snapshot);
-        if let Some(sidebar) = sidebar {
-            self.form.set_value(DisplayField::StartSidebar, sidebar);
-        }
         self.grid = None;
         self.colour_theme_shadowed =
             shadowed_note(snapshot.get(ConfigKey::ColourTheme).shadow.as_deref());
@@ -590,8 +573,16 @@ impl DisplayPresenter {
             .as_ref()
             .map(|view| view.label.clone())
             .unwrap_or_default();
+        // A checkbox draws no choice labels, so its value reads as on or off.
         let value = view
-            .and_then(|view| view.chosen.and_then(|at| view.options.get(at).cloned()))
+            .and_then(|view| match view.presentation {
+                Presentation::Checkbox => Some(if view.checked() {
+                    lib_locale::msg::toast_setting_on()
+                } else {
+                    lib_locale::msg::toast_setting_off()
+                }),
+                _ => view.chosen.and_then(|at| view.options.get(at).cloned()),
+            })
             .unwrap_or_default();
         msg::settings_changed(&name, &value)
     }
@@ -714,21 +705,24 @@ fn declare(field: DisplayField) -> FieldDecl<DisplayField> {
                 .collect(),
             ConfigValue::StatusGlyphs(defaults.status_glyphs),
         ),
-        // The Client remembers it in its state file and hands it back at start-up. A checkbox
-        // draws its own label, not its choices'.
-        DisplayField::StartSidebar => FieldDecl::remembered(
+        // A checkbox draws its own label, not its choices'. It applies at the next start, so the
+        // Shell reads the output it routes only once, at launch.
+        DisplayField::StartSidebar => FieldDecl::configuration(
             field,
+            ConfigKey::StartSidebarMinimised,
             msg::settings_display_start_minimised(),
             Presentation::Checkbox,
             [false, true]
                 .into_iter()
                 .map(|minimised| Choice {
-                    value: FieldValue::Flag(minimised),
+                    value: set(ConfigValue::StartSidebarMinimised(minimised)),
                     label: String::new(),
                 })
                 .collect(),
-            FieldValue::Flag(false),
-        ),
+        )
+        .when_unset(set(ConfigValue::StartSidebarMinimised(
+            defaults.start_sidebar_minimised,
+        ))),
         DisplayField::Appearance => segmented(
             ConfigKey::ColourAppearance,
             msg::settings_display_colour_appearance(),
@@ -1011,7 +1005,7 @@ mod tests {
     }
 
     #[test]
-    fn the_sidebar_is_the_display_output_unwritten() {
+    fn the_sidebar_is_a_key_saved_and_named_for_history_but_never_routed() {
         let (device, mut display) = writable();
 
         let router = send(
@@ -1020,26 +1014,52 @@ mod tests {
         );
 
         assert!(display.output().start_sidebar_minimised);
-        assert_eq!(router.displays(), [display.output()]);
-        assert!(router.statuses().is_empty());
-        assert_eq!(device.stored(), Default::default());
+        assert_eq!(
+            device.stored().get(ConfigKey::StartSidebarMinimised),
+            Some(&ConfigValue::StartSidebarMinimised(true))
+        );
+        assert_eq!(router.statuses().len(), 1, "the write is reported");
+        assert_eq!(changes(&router), ["Start Sidebar minimised: On"]);
+        assert!(
+            router.displays().is_empty(),
+            "the rail changes at the next start, not now"
+        );
         assert_eq!(chosen(&display, DisplayField::StartSidebar), Some(1));
-    }
 
-    #[test]
-    fn the_sidebar_shows_what_the_client_remembered() {
-        let (_, mut display) = writable();
-
-        display.set_start_sidebar_minimised(true);
-
-        assert!(display.output().start_sidebar_minimised);
-        assert_eq!(chosen(&display, DisplayField::StartSidebar), Some(1));
         let router = send(
             &mut display,
             [DisplayEvent::Press(DisplayField::StartSidebar)],
         );
         assert!(!display.output().start_sidebar_minimised);
-        assert_eq!(router.displays(), [display.output()]);
+        assert_eq!(changes(&router), ["Start Sidebar minimised: Off"]);
+    }
+
+    #[test]
+    fn the_sidebar_shows_what_the_file_holds_and_a_variable_overrides_it() {
+        let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
+            ConfigKey::StartSidebarMinimised,
+            "PERSONAL_LEDGER_DISPLAY__START_SIDEBAR_MINIMISED",
+        ));
+        let mut display = display_on(device.clone());
+
+        let router = send(
+            &mut display,
+            [DisplayEvent::Press(DisplayField::StartSidebar)],
+        );
+
+        assert!(!display.output().start_sidebar_minimised);
+        assert!(changes(&router).is_empty());
+        assert_eq!(device.stored(), Default::default(), "nothing is written");
+        let note = display
+            .view_model()
+            .fields
+            .view(DisplayField::StartSidebar)
+            .and_then(|view| view.shadowed_note().map(str::to_string));
+        assert!(
+            note.is_some_and(
+                |note| note.contains("PERSONAL_LEDGER_DISPLAY__START_SIDEBAR_MINIMISED")
+            )
+        );
     }
 
     #[test]
@@ -1427,7 +1447,7 @@ mod tests {
         assert_eq!(settings.colour_theme, None);
         assert!(
             display.output().start_sidebar_minimised,
-            "the sidebar is the client's, not the file's"
+            "the file still holds the sidebar, so reload keeps it"
         );
     }
     /// What `display` routes reloading what `device` reads now.

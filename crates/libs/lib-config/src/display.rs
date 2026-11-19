@@ -36,6 +36,10 @@ pub struct DisplayConfig {
     #[serde(with = "status_glyphs")]
     pub status_glyphs: StatusGlyphs,
 
+    /// Whether the Desktop starts with the primary rail collapsed, read once at launch. Read only
+    /// by the Desktop: the TUI has no collapsible rail.
+    pub start_sidebar_minimised: bool,
+
     /// Whether the TUI's footer shows the key hints. Read only by the TUI.
     pub hint_bar: bool,
 
@@ -149,6 +153,7 @@ impl Default for DisplayConfig {
             date_style: None,
             row_density: RowDensity::Regular,
             status_glyphs: StatusGlyphs::Unicode,
+            start_sidebar_minimised: false,
             hint_bar: true,
             terminal_colours: false,
         }
@@ -179,6 +184,11 @@ impl DisplayConfig {
     /// How status glyphs are drawn.
     pub fn status_glyphs(&self) -> StatusGlyphs {
         self.status_glyphs
+    }
+
+    /// Whether the Desktop starts with the primary rail collapsed.
+    pub fn start_sidebar_minimised(&self) -> bool {
+        self.start_sidebar_minimised
     }
 
     /// Whether the TUI's footer shows the key hints.
@@ -214,8 +224,21 @@ mod tests {
         assert_eq!(section.date_style(), None);
         assert_eq!(section.row_density(), RowDensity::Regular);
         assert_eq!(section.status_glyphs(), StatusGlyphs::Unicode);
+        assert!(!section.start_sidebar_minimised());
         assert!(section.hint_bar());
         assert!(!section.terminal_colours());
+    }
+
+    #[test]
+    fn start_sidebar_minimised_reads_from_the_file_and_the_environment() {
+        let section = parsed("[Display]\nstart_sidebar_minimised = true\n", &[]);
+        assert!(section.start_sidebar_minimised());
+
+        let section = parsed(
+            "[Display]\nstart_sidebar_minimised = true\n",
+            &[("PERSONAL_LEDGER_DISPLAY__START_SIDEBAR_MINIMISED", "false")],
+        );
+        assert!(!section.start_sidebar_minimised());
     }
 
     #[test]

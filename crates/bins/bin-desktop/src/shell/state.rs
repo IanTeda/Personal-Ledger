@@ -29,6 +29,9 @@ pub(crate) struct ShellState {
     /// it captured before applying, so hovering a second row (or leaving the rail entirely)
     /// before the first row's delay elapses can't reveal the wrong tooltip.
     pub(crate) hover_generation: u64,
+    /// Start Sidebar minimised as the configuration held it at launch: the primary rail reads it
+    /// once, so a write, an undo or a redo of the key waits for the next start (#1279).
+    pub(crate) start_sidebar_minimised: bool,
     /// The open module Dialog, an Entity holding its Presenter (`crate::shell::view::dialog_entity`),
     /// and the subscription that closes it once its Presenter does. Only `Root::host_dialog` and
     /// `Root::close_dialog` change it, so `NavState::mode` is `InputMode::Dialog` for exactly as

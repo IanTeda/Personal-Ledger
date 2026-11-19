@@ -7,7 +7,8 @@
 //! It is also where the Desktop keeps the Ledger open when it last quit (ADR-0051), read before any
 //! window opens. A device's settings (Toasts, the Colour Theme and Appearance, the date style and
 //! On start) are not here: they are Configuration in the user's `personal-ledger.conf` (ADR-0053),
-//! and a `preferences` object an older state file still holds is read and ignored.
+//! and a `preferences` object an older state file still holds is read and ignored, as is an
+//! older `start_sidebar_minimised` (now `[Display]`'s key): that toggle is lost once.
 
 use std::{
     io,
@@ -44,10 +45,6 @@ pub struct WindowGeometry {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct PersistedState {
     pub noun: Noun,
-    /// The Display section's "Start Sidebar minimised" toggle: when set, the primary rail is
-    /// collapsed by default at Large and X-Large.
-    #[serde(default)]
-    pub start_sidebar_minimised: bool,
     /// The Settings page last visited, as [`crate::settings::SettingsPage::id`]. A stale or
     /// unknown id loads as the default page.
     #[serde(default)]
@@ -182,7 +179,6 @@ mod tests {
         let path = dir.path().join("nested").join(STATE_FILE_NAME);
         let state = PersistedState {
             noun: Noun::Cash,
-            start_sidebar_minimised: true,
             settings_page: Some("tags".to_string()),
             explorer_filters: ExplorerFilters {
                 pldb_only: true,
@@ -207,12 +203,29 @@ mod tests {
     }
 
     #[test]
+    fn a_state_file_still_holding_start_sidebar_minimised_loads_and_ignores_it() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+        let path = dir.path().join(STATE_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"{"noun":"Bills","start_sidebar_minimised":true,"window":null}"#,
+        )
+        .expect("write should succeed");
+
+        let state = load_from(&path);
+
+        assert_eq!(state.noun, Noun::Bills);
+        let saved = serde_json::to_string(&state).expect("state should serialise");
+        assert!(!saved.contains("start_sidebar_minimised"), "{saved}");
+        assert_eq!(state.window, None);
+    }
+
+    #[test]
     fn save_then_load_round_trips_a_window_less_state() {
         let dir = tempfile::tempdir().expect("tempdir should be creatable");
         let path = dir.path().join(STATE_FILE_NAME);
         let state = PersistedState {
             noun: Noun::Settings,
-            start_sidebar_minimised: false,
             settings_page: None,
             explorer_filters: ExplorerFilters::default(),
             documents_mode: None,

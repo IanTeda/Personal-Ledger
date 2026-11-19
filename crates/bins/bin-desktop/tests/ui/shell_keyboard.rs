@@ -246,12 +246,9 @@ fn b_holds_only_until_the_window_crosses_a_breakpoint(app: &mut TestAppContext) 
 
 #[gpui::test]
 fn start_with_the_rail_hidden_applies_at_large_and_x_large(app: &mut TestAppContext) {
-    let mut ui = Harness::new(app);
-    let shell = ui.shell.clone();
-    shell.update(ui.cx, |shell, cx| {
-        shell.set_start_sidebar_minimised(true, cx);
-        cx.notify();
-    });
+    let mut config = lib_config::Config::default();
+    config.display.start_sidebar_minimised = true;
+    let mut ui = Harness::with_configuration(app, &config, &[]);
 
     for window_size in [WindowSize::XLarge, WindowSize::Large, WindowSize::Medium] {
         ui.resize_to(window_size);

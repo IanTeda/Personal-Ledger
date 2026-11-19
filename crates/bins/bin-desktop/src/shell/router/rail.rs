@@ -15,15 +15,15 @@ impl Root {
         window_size: WindowSize,
         cx: &mut Context<'_, Self>,
     ) {
-        self.toggle_rail(window_size, cx);
+        self.toggle_rail(window_size);
         cx.notify();
     }
 
     /// `b`, the TopBar's toggle and the status line's hint: flips the rail drawn at this Window
     /// Size until the window crosses a Breakpoint. Clears any settled collapsed-rail tooltip, which
     /// is meaningless once the rail that anchors it changes shape.
-    pub(super) fn toggle_rail(&mut self, window_size: WindowSize, cx: &gpui::App) {
-        let start_hidden = self.start_sidebar_minimised(cx);
+    pub(super) fn toggle_rail(&mut self, window_size: WindowSize) {
+        let start_hidden = self.start_sidebar_minimised();
         self.presenter.toggle_rail(window_size, start_hidden);
         self.state.collapsed_rail_tooltip = None;
     }
