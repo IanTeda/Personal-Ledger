@@ -100,23 +100,10 @@ pub trait ReadsFactory<Row> {
     fn reload(&mut self, reads: Self::Reads) -> Self::Reads;
 }
 
-/// The in-memory reads are their own storage, so a reload hands them back as they are. They hold
-/// the rows as answered, so the Categories are put in tree order as they are stored.
+/// The in-memory reads are their own storage, so a reload hands them back as they are. They keep
+/// the Categories as given and put them in tree order when read.
 #[derive(Debug, Default)]
 pub struct InMemoryReadsFactory;
-
-/// `categories` depth-first from each top-level one, siblings in the order given.
-fn tree_order(categories: &[CategoryRef]) -> Vec<CategoryRef> {
-    fn walk(categories: &[CategoryRef], parent: Option<CategoryId>, out: &mut Vec<CategoryRef>) {
-        for category in categories.iter().filter(|row| row.parent == parent) {
-            out.push(category.clone());
-            walk(categories, Some(category.id), out);
-        }
-    }
-    let mut out = Vec::with_capacity(categories.len());
-    walk(categories, None, &mut out);
-    out
-}
 
 impl ReadsFactory<AccountRef> for InMemoryReadsFactory {
     type Reads = InMemoryTransactionReads;
@@ -138,7 +125,7 @@ impl ReadsFactory<CategoryRef> for InMemoryReadsFactory {
 
     fn create(&mut self, rows: Vec<CategoryRef>) -> InMemoryTransactionReads {
         InMemoryTransactionReads {
-            categories: tree_order(&rows),
+            categories: rows,
             ..InMemoryTransactionReads::default()
         }
     }

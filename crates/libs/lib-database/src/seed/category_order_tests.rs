@@ -27,6 +27,25 @@ fn assert_in_tree_order(name: &str, ids: Vec<CategoryId>) {
 }
 
 #[test]
+fn the_transactions_fake_lists_the_sample_categories_in_tree_order_from_any_order() {
+    use lib_transactions::TransactionCategories;
+
+    let mut rows = crate::adapter::categories::category_refs(&lib_categories::sample_categories());
+    rows.reverse();
+    let reads = lib_transactions::fake::InMemoryTransactionReads {
+        categories: rows,
+        ..Default::default()
+    };
+
+    let ids: Vec<CategoryId> = reads
+        .transaction_categories()
+        .into_iter()
+        .map(|category| category.id)
+        .collect();
+    assert_eq!(ids, tree_order_ids());
+}
+
+#[test]
 fn the_bills_budgets_and_payees_sample_categories_list_their_ids_in_tree_order() {
     assert_in_tree_order(
         "lib-bills",

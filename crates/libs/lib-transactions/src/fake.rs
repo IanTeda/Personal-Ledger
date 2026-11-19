@@ -70,26 +70,49 @@ impl TransactionAccounts for InMemoryTransactionReads {
 
 impl TransactionCategories for InMemoryTransactionReads {
     fn transaction_categories(&self) -> Vec<CategoryRef> {
-        let mut categories = self.categories.clone();
-        categories.sort_by_cached_key(tree_order_key);
-        categories
+        tree_order(&self.categories)
     }
 }
 
-/// The order `lib_categories::paths_in_tree_order` gives, which this crate cannot call: Expense
-/// before Income, then each path segment lowercased and compared in turn, so a child follows its
-/// parent and "Housing Extra" does not sort among Housing's children. The id breaks ties.
-fn tree_order_key(category: &CategoryRef) -> (bool, Vec<String>, CategoryId) {
-    let segments = category
-        .path
-        .split(" \u{203a} ")
-        .map(str::to_lowercase)
-        .collect();
-    (
-        category.category_type == CategoryTypes::Income,
-        segments,
-        category.id,
-    )
+/// The order `lib_categories::tree_order` gives, which this crate cannot call: depth-first from each
+/// top-level Category, siblings Expense before Income, then by name lowercased, ties by id. Walking
+/// the `parent` links keeps each child under its own parent even when two siblings' names differ
+/// only in case. A row the walk cannot reach (a missing parent or a cycle) follows the reachable
+/// rows in its stored order, so none is dropped.
+fn tree_order(categories: &[CategoryRef]) -> Vec<CategoryRef> {
+    fn walk(
+        categories: &[CategoryRef],
+        parent: Option<CategoryId>,
+        placed: &mut [bool],
+        out: &mut Vec<CategoryRef>,
+    ) {
+        let mut siblings: Vec<usize> = (0..categories.len())
+            .filter(|&index| !placed[index] && categories[index].parent == parent)
+            .collect();
+        siblings.sort_by_cached_key(|&index| {
+            let row = &categories[index];
+            (
+                row.category_type == CategoryTypes::Income,
+                row.name.to_lowercase(),
+                row.id,
+            )
+        });
+        for index in siblings {
+            placed[index] = true;
+            out.push(categories[index].clone());
+            walk(categories, Some(categories[index].id), placed, out);
+        }
+    }
+
+    let mut placed = vec![false; categories.len()];
+    let mut out = Vec::with_capacity(categories.len());
+    walk(categories, None, &mut placed, &mut out);
+    for (index, row) in categories.iter().enumerate() {
+        if !placed[index] {
+            out.push(row.clone());
+        }
+    }
+    out
 }
 
 impl TransactionPayees for InMemoryTransactionReads {
@@ -169,13 +192,18 @@ impl TransactionUnits for InMemoryPorts {
 mod tests {
     use super::*;
 
-    fn category(id: u32, path: &str, category_type: CategoryTypes) -> CategoryRef {
-        let name = path.rsplit(" \u{203a} ").next().unwrap_or(path).to_string();
+    fn category(
+        id: u32,
+        path: &str,
+        parent: Option<u32>,
+        category_type: CategoryTypes,
+    ) -> CategoryRef {
+        let name = path.rsplit(" › ").next().unwrap_or(path).to_string();
         CategoryRef {
             id: CategoryId::seed(id),
             name,
             path: path.into(),
-            parent: None,
+            parent: parent.map(CategoryId::seed),
             category_type,
             is_leaf: true,
         }
@@ -185,9 +213,9 @@ mod tests {
     fn child_sorts_before_a_top_level_name_it_only_shares_a_prefix_with() {
         let reads = InMemoryTransactionReads {
             categories: vec![
-                category(2, "Housing Extra", CategoryTypes::Expense),
-                category(1, "Housing", CategoryTypes::Expense),
-                category(3, "Housing \u{203a} Rent", CategoryTypes::Expense),
+                category(2, "Housing Extra", None, CategoryTypes::Expense),
+                category(1, "Housing", None, CategoryTypes::Expense),
+                category(3, "Housing › Rent", Some(1), CategoryTypes::Expense),
             ],
             ..Default::default()
         };
@@ -198,9 +226,27 @@ mod tests {
             .map(|category| category.path)
             .collect();
 
-        assert_eq!(
-            paths,
-            vec!["Housing", "Housing \u{203a} Rent", "Housing Extra"]
-        );
+        assert_eq!(paths, vec!["Housing", "Housing › Rent", "Housing Extra"]);
+    }
+
+    #[test]
+    fn a_child_follows_its_own_parent_when_sibling_names_differ_only_in_case() {
+        let reads = InMemoryTransactionReads {
+            categories: vec![
+                category(4, "food › b", Some(2), CategoryTypes::Expense),
+                category(2, "food", None, CategoryTypes::Expense),
+                category(3, "Food › a", Some(1), CategoryTypes::Expense),
+                category(1, "Food", None, CategoryTypes::Expense),
+            ],
+            ..Default::default()
+        };
+
+        let paths: Vec<String> = reads
+            .transaction_categories()
+            .into_iter()
+            .map(|category| category.path)
+            .collect();
+
+        assert_eq!(paths, vec!["Food", "Food › a", "food", "food › b",]);
     }
 }
