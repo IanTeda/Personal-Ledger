@@ -6,11 +6,12 @@ mod seed;
 
 use lib_core::AccountRef;
 use lib_core::CategoryRef;
+use lib_core::CategoryTypes;
 use lib_core::PayeeRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_core::{TransactionId, UnitId, UnitRef};
+use lib_core::{CategoryId, TransactionId, UnitId, UnitRef};
 
 pub use booked::{
     FIRST_BOOKED, bill_transactions, booked_sample_transactions, document_transactions,
@@ -69,8 +70,26 @@ impl TransactionAccounts for InMemoryTransactionReads {
 
 impl TransactionCategories for InMemoryTransactionReads {
     fn transaction_categories(&self) -> Vec<CategoryRef> {
-        self.categories.clone()
+        let mut categories = self.categories.clone();
+        categories.sort_by_cached_key(tree_order_key);
+        categories
     }
+}
+
+/// The order `lib_categories::paths_in_tree_order` gives, which this crate cannot call: Expense
+/// before Income, then each path segment lowercased and compared in turn, so a child follows its
+/// parent and "Housing Extra" does not sort among Housing's children. The id breaks ties.
+fn tree_order_key(category: &CategoryRef) -> (bool, Vec<String>, CategoryId) {
+    let segments = category
+        .path
+        .split(" \u{203a} ")
+        .map(str::to_lowercase)
+        .collect();
+    (
+        category.category_type == CategoryTypes::Income,
+        segments,
+        category.id,
+    )
 }
 
 impl TransactionPayees for InMemoryTransactionReads {
@@ -143,5 +162,45 @@ impl TransactionTags for InMemoryPorts {
 impl TransactionUnits for InMemoryPorts {
     fn transaction_unit_code(&self, id: UnitId) -> Option<String> {
         self.reads.transaction_unit_code(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn category(id: u32, path: &str, category_type: CategoryTypes) -> CategoryRef {
+        let name = path.rsplit(" \u{203a} ").next().unwrap_or(path).to_string();
+        CategoryRef {
+            id: CategoryId::seed(id),
+            name,
+            path: path.into(),
+            parent: None,
+            category_type,
+            is_leaf: true,
+        }
+    }
+
+    #[test]
+    fn child_sorts_before_a_top_level_name_it_only_shares_a_prefix_with() {
+        let reads = InMemoryTransactionReads {
+            categories: vec![
+                category(2, "Housing Extra", CategoryTypes::Expense),
+                category(1, "Housing", CategoryTypes::Expense),
+                category(3, "Housing \u{203a} Rent", CategoryTypes::Expense),
+            ],
+            ..Default::default()
+        };
+
+        let paths: Vec<String> = reads
+            .transaction_categories()
+            .into_iter()
+            .map(|category| category.path)
+            .collect();
+
+        assert_eq!(
+            paths,
+            vec!["Housing", "Housing \u{203a} Rent", "Housing Extra"]
+        );
     }
 }
