@@ -800,9 +800,9 @@ impl DocumentsPagePresenter {
         }
         let filed = batch.len();
         self.inbox_selected = 0;
-        router.notify(Notice::Changed(msg::documents_changed_filed_many(
-            &filed.to_string(),
-        )));
+        router.notify(Notice::Changed(msg::documents_changed_filed_many(count(
+            filed,
+        ))));
         router.notify(Notice::Toast(
             ToastKind::Success,
             msg::documents_toast_filed_many(&filed.to_string()),
@@ -1705,6 +1705,29 @@ mod tests {
         );
 
         assert!(page.stored(STRONG).is_filed());
+    }
+
+    #[test]
+    fn accept_all_of_one_names_the_history_entry_in_the_singular() {
+        let mut page = page();
+        page.send(DocumentsPageEvent::ShowInbox);
+        page.send(DocumentsPageEvent::AcceptAll);
+        page.router.take();
+
+        page.send(DocumentsPageEvent::DialogClosed(Some(
+            DocumentsOutcome::AcceptAll,
+        )));
+
+        let changed: Vec<String> = page
+            .router
+            .take()
+            .into_iter()
+            .filter_map(|call| match call {
+                DocumentsCall::Notice(Notice::Changed(text)) => Some(text),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(changed, ["File 1 document".to_string()]);
     }
 
     #[test]

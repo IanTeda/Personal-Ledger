@@ -376,7 +376,10 @@ documents-dialog-toast-linked = Linked { $record }.
 
 ## What History calls each Documents change, for Undo, Redo and the header's list (#1248).
 documents-changed-filed = File document { $title }
-documents-changed-filed-many = File { $count } documents
+documents-changed-filed-many = { $count ->
+    [one] File { $count } document
+   *[other] File { $count } documents
+}
 documents-changed-deleted = Delete document { $title }
 documents-changed-added = Add document { $title }
 documents-changed-edited = Edit document { $title }
