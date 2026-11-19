@@ -4,14 +4,17 @@
 //! `LedgerRouter` for Ledger. Each goes through its Entity's gpui context, which is why a Router is
 //! built for each `handle` call. A page change reaches the root Router as [`PageChanged`], which
 //! feeds the Shell's history; the picker's mode is the View's own (`ViewEvent::EnterMode`); Toasts
-//! and the Display output reach the root Router as [`ViewEvent`]s; a colour change is applied once
+//! the Display output and a Data folder put back reach the root Router as [`ViewEvent`]s; a colour change is applied once
 //! the current update ends; a Notice goes onto the bin's queue (`crate::notices`), which the
 //! input's `send` drains.
 
+use std::path::PathBuf;
+
 use gpui::{Context, ScrollHandle};
+use lib_colour_theme::ColourAppearance;
 use lib_settings::{
-    ClearLogsPresenter, ColourChoice, DisplayOutput, DisplayPresenter, GeneralPresenter,
-    LedgerPresenter, LogListChange, LogScroll, SettingsPage, SettingsRouter, TracingPresenter,
+    ClearLogsPresenter, DisplayOutput, DisplayPresenter, GeneralPresenter, LedgerPresenter,
+    LogListChange, LogScroll, SettingsPage, SettingsRouter, TracingPresenter,
 };
 use lib_toast::{Notice, Notify};
 
@@ -111,10 +114,21 @@ impl<P: DevicePage> lib_settings::DeviceRouter for PageRouter<'_, '_, P> {
         self.cx.emit(ViewEvent::PickDataFolder);
     }
 
+    fn data_folder_changed(&mut self, folder: PathBuf) {
+        self.cx.emit(ViewEvent::DataFolderChanged(folder));
+    }
+
     /// A colour change refreshes every window, which must wait until the Shell's update ends.
-    fn colour_changed(&mut self, colour: ColourChoice) {
+    fn colour_theme_changed(&mut self, colour_theme: Option<String>) {
         self.cx
-            .defer(move |cx| crate::theme::colours::apply(colour, cx));
+            .defer(move |cx| crate::theme::colours::set_colour_theme(colour_theme, cx));
+    }
+
+    /// As [`Self::colour_theme_changed`], waiting until the Shell's update ends.
+    fn colour_appearance_changed(&mut self, appearance: ColourAppearance) {
+        self.cx.defer(move |cx| {
+            crate::theme::colours::set_colour_appearance(Some(appearance), cx);
+        });
     }
 }
 

@@ -144,16 +144,6 @@ pub fn set_device_colours(config: &lib_config::Config, cx: &mut App) {
     });
 }
 
-/// Applies a Colour Theme or Appearance Settings › Display saved, from a click or the palette.
-pub fn apply(choice: lib_settings::ColourChoice, cx: &mut App) {
-    match choice {
-        lib_settings::ColourChoice::Theme(id) => set_colour_theme(Some(id.to_string()), cx),
-        lib_settings::ColourChoice::Appearance(appearance) => {
-            set_colour_appearance(Some(appearance), cx);
-        }
-    }
-}
-
 /// The Global, for Settings, which shows the inputs as well as the colours.
 pub fn colours(cx: &App) -> &Colours {
     cx.global::<Colours>()

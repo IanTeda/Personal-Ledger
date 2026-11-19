@@ -11,8 +11,8 @@
 //! The date style, Row density, Status glyphs and Start Sidebar minimised are the Display output,
 //! which the Presenter hands the Shell on each change ([`DeviceRouter::display_changed`]) for the
 //! Views that draw with it. A saved Colour Theme or Appearance goes to the Shell to apply
-//! ([`DeviceRouter::colour_changed`]); how each theme's card looks, and what the Client's own
-//! `[theme]` overrides and the system's light or dark setting make of it, is the Client's to draw.
+//! ([`DeviceRouter::colour_theme_changed`], [`DeviceRouter::colour_appearance_changed`]); how
+//! each theme's card looks, and what the Client's own `[theme]` overrides and the system's light or dark setting make of it, is the Client's to draw.
 
 use std::convert::Infallible;
 use std::rc::Rc;
@@ -546,10 +546,15 @@ impl PagePresenter for DisplayPresenter {
 impl DisplayPresenter {
     /// Shows what `snapshot` reads after Undo or Redo put a Display key back (#1246): an open list
     /// and the grid's focus close, and the fields' values, notes, in-file flags and the Colour Theme
-    /// are read again. Start Sidebar minimised, which the file never holds, keeps its value. The
-    /// Client applies the Display output and the colours, as a write would. Nothing is written, and
-    /// nothing raised.
-    pub fn reload(&mut self, snapshot: DeviceSnapshot) {
+    /// are read again. Start Sidebar minimised, which the file never holds, keeps its value.
+    /// Nothing is written, and nothing raised.
+    ///
+    /// The Display output, the Colour Theme and the Appearance take effect at once, so each goes
+    /// to `router` when what is in effect differs from before the read, the output once however
+    /// many of its fields changed: a read that changes nothing routes nothing.
+    pub fn reload(&mut self, snapshot: DeviceSnapshot, router: &mut dyn DeviceRouter) {
+        let output = self.output();
+        let before = self.settings();
         let sidebar = self.form.value(DisplayField::StartSidebar).cloned();
         self.form.reload(&snapshot);
         if let Some(sidebar) = sidebar {
@@ -566,6 +571,16 @@ impl DisplayPresenter {
                 _ => None,
             },
         };
+        if self.output() != output {
+            router.display_changed(self.output());
+        }
+        let after = self.settings();
+        if after.colour_theme != before.colour_theme {
+            router.colour_theme_changed(after.colour_theme);
+        }
+        if after.colour_appearance != before.colour_appearance {
+            router.colour_appearance_changed(after.colour_appearance);
+        }
     }
 
     /// What History calls a saved change of `field` to `value`, as the page shows it.
@@ -625,8 +640,7 @@ impl DisplayPresenter {
         self.form.focus(DisplayField::StartSidebar);
     }
 
-    /// Saves a Colour Theme, which the Shell applies only once saved. The built-in id chosen goes
-    /// to the Shell, not the saved copy, since the Shell applies a built-in.
+    /// Saves a Colour Theme, which the Shell applies only once saved.
     fn choose_theme(&mut self, id: &'static str, router: &mut dyn DeviceRouter) {
         if let Some(ConfigValue::ColourTheme(saved)) = self
             .form
@@ -637,7 +651,7 @@ impl DisplayPresenter {
                 &msg::settings_display_colour_theme(),
                 &colour_theme_name(id),
             )));
-            router.colour_changed(ColourChoice::Theme(id));
+            router.colour_theme_changed(self.colour_theme.clone());
         }
     }
 
@@ -648,7 +662,7 @@ impl DisplayPresenter {
             | ConfigValue::RowDensity(_)
             | ConfigValue::StatusGlyphs(_) => router.display_changed(self.output()),
             ConfigValue::ColourAppearance(appearance) => {
-                router.colour_changed(ColourChoice::Appearance(appearance));
+                router.colour_appearance_changed(appearance);
             }
             _ => {}
         }
@@ -1040,12 +1054,10 @@ mod tests {
             ],
         );
 
-        assert!(
-            !router
-                .routed
-                .iter()
-                .any(|routed| matches!(routed, Routed::ColourChanged(_)))
-        );
+        assert!(!router.routed.iter().any(|routed| matches!(
+            routed,
+            Routed::ColourThemeChanged(_) | Routed::ColourAppearanceChanged(_)
+        )));
         assert_eq!(router.statuses().len(), 2);
         assert!(router.statuses()[0].contains("colour_theme can't be saved"));
     }
@@ -1068,7 +1080,7 @@ mod tests {
         assert!(
             router
                 .routed
-                .contains(&Routed::ColourChanged(ColourChoice::Appearance(shown)))
+                .contains(&Routed::ColourAppearanceChanged(shown))
         );
         assert_eq!(
             device.read().get(ConfigKey::ColourAppearance).stored,
@@ -1096,12 +1108,15 @@ mod tests {
             router
                 .routed
                 .iter()
-                .filter(|routed| matches!(routed, Routed::ColourChanged(_)))
+                .filter(|routed| matches!(
+                    routed,
+                    Routed::ColourThemeChanged(_) | Routed::ColourAppearanceChanged(_)
+                ))
                 .collect::<Vec<_>>(),
             [
-                &Routed::ColourChanged(ColourChoice::Theme("nord")),
-                &Routed::ColourChanged(ColourChoice::Appearance(ColourAppearance::Light)),
-                &Routed::ColourChanged(ColourChoice::Appearance(ColourAppearance::Dark)),
+                &Routed::ColourThemeChanged(Some("nord".to_string())),
+                &Routed::ColourAppearanceChanged(ColourAppearance::Light),
+                &Routed::ColourAppearanceChanged(ColourAppearance::Dark),
             ]
         );
         assert!(router.displays().is_empty(), "colours aren't the output");
@@ -1222,13 +1237,9 @@ mod tests {
         send(&mut display, [RIGHT]);
         assert_eq!(display.view_model().grid, Some(1));
         let router = send(&mut display, [DisplayEvent::Select]);
-        assert!(
-            router
-                .routed
-                .contains(&Routed::ColourChanged(ColourChoice::Theme(
-                    ColourTheme::built_in()[1].id
-                )))
-        );
+        assert!(router.routed.contains(&Routed::ColourThemeChanged(Some(
+            ColourTheme::built_in()[1].id.to_string()
+        ))));
 
         send(&mut display, [DisplayEvent::Back]);
         let view = display.view_model();
@@ -1409,7 +1420,7 @@ mod tests {
             stored.0.remove(&ConfigKey::ColourTheme);
         }
 
-        display.reload(device.read());
+        display.reload(device.read(), &mut RecordingRouter::default());
 
         let settings = display.settings();
         assert_eq!(settings.row_density, RowDensity::default());
@@ -1418,5 +1429,108 @@ mod tests {
             display.output().start_sidebar_minimised,
             "the sidebar is the client's, not the file's"
         );
+    }
+    /// What `display` routes reloading what `device` reads now.
+    fn reloaded(
+        display: &mut DisplayPresenter,
+        device: &InMemoryDeviceConfiguration,
+    ) -> Vec<Routed> {
+        let mut router = RecordingRouter::default();
+        display.reload(device.read(), &mut router);
+        router.routed
+    }
+
+    #[test]
+    fn reload_routes_the_display_output_once_for_its_changed_fields() {
+        let (device, mut display) = writable();
+        send(
+            &mut display,
+            [
+                DisplayEvent::Choose {
+                    field: DisplayField::RowDensity,
+                    index: 0,
+                },
+                DisplayEvent::Choose {
+                    field: DisplayField::StatusGlyphs,
+                    index: 1,
+                },
+            ],
+        );
+        let before = display.output();
+        {
+            let mut stored = device.stored.borrow_mut();
+            stored.0.remove(&ConfigKey::RowDensity);
+            stored.0.remove(&ConfigKey::StatusGlyphs);
+        }
+
+        let routed = reloaded(&mut display, &device);
+
+        assert_eq!(routed, [Routed::DisplayChanged(display.output())]);
+        assert_ne!(display.output(), before);
+    }
+
+    #[test]
+    fn reload_routes_the_colour_theme_back_to_none() {
+        let (device, mut display) = writable();
+        send(&mut display, [DisplayEvent::ClickColourTheme("nord")]);
+        device.stored.borrow_mut().0.remove(&ConfigKey::ColourTheme);
+
+        assert_eq!(
+            reloaded(&mut display, &device),
+            [Routed::ColourThemeChanged(None)]
+        );
+    }
+
+    #[test]
+    fn reload_routes_a_colour_theme_put_back() {
+        let (device, mut display) = writable();
+        device.stored.borrow_mut().0.insert(
+            ConfigKey::ColourTheme,
+            ConfigValue::ColourTheme("from-a-newer-release".to_string()),
+        );
+
+        assert_eq!(
+            reloaded(&mut display, &device),
+            [Routed::ColourThemeChanged(Some(
+                "from-a-newer-release".to_string()
+            ))]
+        );
+    }
+
+    #[test]
+    fn reload_routes_the_appearance_put_back() {
+        let (device, mut display) = writable();
+        send(
+            &mut display,
+            [DisplayEvent::ChooseColour(ColourChoice::Appearance(
+                ColourAppearance::Dark,
+            ))],
+        );
+        device.stored.borrow_mut().0.insert(
+            ConfigKey::ColourAppearance,
+            ConfigValue::ColourAppearance(ColourAppearance::Light),
+        );
+
+        assert_eq!(
+            reloaded(&mut display, &device),
+            [Routed::ColourAppearanceChanged(ColourAppearance::Light)]
+        );
+    }
+
+    #[test]
+    fn reload_routes_nothing_for_a_snapshot_that_changes_nothing() {
+        let (device, mut display) = writable();
+        send(
+            &mut display,
+            [
+                DisplayEvent::ClickColourTheme("nord"),
+                DisplayEvent::Choose {
+                    field: DisplayField::RowDensity,
+                    index: 0,
+                },
+            ],
+        );
+
+        assert_eq!(reloaded(&mut display, &device), []);
     }
 }

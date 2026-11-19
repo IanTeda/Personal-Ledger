@@ -36,7 +36,7 @@ pub use crate::presenter::{
     LedgerViewModel, LocaleLine, LogChange, LogListChange, LogScroll, PickerGroup, PickerRow,
     PickerView, SettingsFocus, SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup,
     SettingsFrameViewModel, SyncServerEvent, SyncServerPresenter, SyncServerViewModel,
-    TracingEvent, TracingPresenter, TracingSetup, TracingViewModel,
+    TracingEvent, TracingPresenter, TracingSetup, TracingViewModel, device_status,
 };
 pub use crate::protocols::{
     BaseUnitAnswer, ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceRouter,

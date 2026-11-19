@@ -58,8 +58,18 @@ pub trait DeviceRouter: Notify {
     /// The Display output changed, so the Shell hands it to every View that draws with it.
     fn display_changed(&mut self, display: DisplayOutput);
 
-    /// A Colour Theme or Appearance was saved, so the Client applies it to every window.
-    fn colour_changed(&mut self, colour: ColourChoice);
+    /// The Colour Theme in effect changed, saved or put back by Undo or Redo, so the Client
+    /// applies it to every window. Raw, so `None` is the default and an id this release doesn't
+    /// know stays as written.
+    fn colour_theme_changed(&mut self, colour_theme: Option<String>);
+
+    /// The Appearance in effect changed, saved or put back, so the Client applies it to every
+    /// window.
+    fn colour_appearance_changed(&mut self, appearance: ColourAppearance);
+
+    /// The Data folder in effect changed by Undo or Redo, so `:open` and `:new` start there. A
+    /// pick through `GeneralPresenter::set_data_folder` answers its outcome instead.
+    fn data_folder_changed(&mut self, folder: PathBuf);
 
     /// General's **Test** asked for the Toasts test, which the Shell's Toasts raise (DESKTOP-184).
     fn test_toasts(&mut self);

@@ -368,9 +368,15 @@ impl GeneralPresenter {
 
     /// Shows what `snapshot` reads after Undo or Redo put a General key back (#1244), whichever
     /// page shows: an open list closes, and the fields' values, notes and in-file flags are read
-    /// again. The Data folder in effect follows the file's unless a source above it sets it; the
-    /// Client applies it, and Toasts, as a write would. Nothing is written, and nothing raised.
-    pub fn reload(&mut self, snapshot: DeviceSnapshot) {
+    /// again. The Data folder in effect follows the file's unless a source above it sets it.
+    /// Nothing is written, and nothing raised.
+    ///
+    /// Toasts and the Data folder take effect at once, so each goes to `router` when its value in
+    /// effect differs from before the read, whatever keys the snapshot holds: a read that changes
+    /// nothing routes nothing, so this never needs to know it is a restore.
+    pub fn reload(&mut self, snapshot: DeviceSnapshot, router: &mut dyn DeviceRouter) {
+        let toasts_on = self.settings().toasts_on;
+        let data_folder = self.data_folder.clone();
         self.form.reload(&snapshot);
         let data = snapshot.get(ConfigKey::Data);
         if data.shadow.is_none() {
@@ -383,6 +389,13 @@ impl GeneralPresenter {
             };
         }
         self.snapshot = snapshot;
+        let now_on = self.settings().toasts_on;
+        if now_on != toasts_on {
+            router.toasts_changed(now_on);
+        }
+        if self.data_folder != data_folder {
+            router.data_folder_changed(self.data_folder.clone());
+        }
     }
 
     /// The folder the picker picked, from **Change…** or `:data`, written as the Data folder: the
@@ -1475,7 +1488,7 @@ mod tests {
             );
         }
 
-        general.reload(device.read());
+        general.reload(device.read(), &mut RecordingRouter::default());
 
         let view = general.view_model();
         assert!(!view.fields.list_open());
@@ -1504,7 +1517,7 @@ mod tests {
             .0
             .insert(ConfigKey::Toasts, ConfigValue::Toasts(false));
 
-        general.reload(device.read());
+        general.reload(device.read(), &mut RecordingRouter::default());
 
         assert!(!general.settings().toasts_on);
     }
@@ -1516,7 +1529,7 @@ mod tests {
         pick(&mut general, "/home/me/finance");
         device.stored.borrow_mut().0.remove(&ConfigKey::Data);
 
-        general.reload(device.read());
+        general.reload(device.read(), &mut RecordingRouter::default());
 
         assert_eq!(general.data_folder(), Path::new("/home/me/ledgers"));
         assert_eq!(general.view_model().data_folder.value, "/home/me/ledgers");
@@ -1531,7 +1544,7 @@ mod tests {
             ConfigValue::Data(PathBuf::from("/home/me/finance")),
         );
 
-        general.reload(shadowed.read());
+        general.reload(shadowed.read(), &mut RecordingRouter::default());
 
         assert_eq!(general.data_folder(), Path::new("/home/me/ledgers"));
         assert_eq!(general.view_model().data_folder.value, "/home/me/finance");
@@ -1550,7 +1563,7 @@ mod tests {
             .0
             .insert(ConfigKey::Locale, ConfigValue::Locale("en-GB".to_string()));
 
-        general.reload(device.read());
+        general.reload(device.read(), &mut RecordingRouter::default());
 
         assert_eq!(general.settings().locale, Some(Locale::EnGb));
         assert!(
@@ -1561,5 +1574,69 @@ mod tests {
                 .and_then(|view| view.own_note().map(str::to_string))
                 .is_some_and(|note| note.contains("--locale en-US"))
         );
+    }
+    /// What `general` routes reloading what `device` reads now.
+    fn reloaded(
+        general: &mut GeneralPresenter,
+        device: &InMemoryDeviceConfiguration,
+    ) -> Vec<Routed> {
+        let mut router = RecordingRouter::default();
+        general.reload(device.read(), &mut router);
+        router.routed
+    }
+
+    #[test]
+    fn reload_routes_toasts_turned_back() {
+        let device =
+            Rc::new(InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(true)]));
+        let mut general = general_on(device.clone());
+        device
+            .stored
+            .borrow_mut()
+            .0
+            .insert(ConfigKey::Toasts, ConfigValue::Toasts(false));
+
+        assert_eq!(
+            reloaded(&mut general, &device),
+            [Routed::ToastsChanged(false)]
+        );
+    }
+
+    #[test]
+    fn reload_routes_the_data_folder_moved_back() {
+        let device = with_data_folder(InMemoryDeviceConfiguration::writable());
+        let mut general = general_on(device.clone());
+        pick(&mut general, "/home/me/finance");
+        device.stored.borrow_mut().0.remove(&ConfigKey::Data);
+
+        assert_eq!(
+            reloaded(&mut general, &device),
+            [Routed::DataFolderChanged(PathBuf::from("/home/me/ledgers"))]
+        );
+    }
+
+    #[test]
+    fn reload_routes_nothing_for_a_snapshot_that_changes_nothing() {
+        let device = with_data_folder(
+            InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(false)]),
+        );
+        let mut general = general_on(device.clone());
+
+        assert_eq!(reloaded(&mut general, &device), []);
+    }
+
+    #[test]
+    fn reload_routes_nothing_for_a_data_folder_a_source_above_sets() {
+        let shadowed = with_data_folder(InMemoryDeviceConfiguration::shadowing(
+            ConfigKey::Data,
+            "--data",
+        ));
+        let mut general = general_on(shadowed.clone());
+        shadowed.stored.borrow_mut().0.insert(
+            ConfigKey::Data,
+            ConfigValue::Data(PathBuf::from("/home/me/finance")),
+        );
+
+        assert_eq!(reloaded(&mut general, &shadowed), []);
     }
 }

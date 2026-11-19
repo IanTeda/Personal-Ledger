@@ -17,10 +17,10 @@ use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::view::{Choice, Hint, SelectList};
 
-use super::device::shadowed_note;
+use super::device::{device_status, shadowed_note};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
-use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceSnapshot};
+use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceSnapshot};
 
 /// A field's value: one its key holds, none (the key taken out of the file, as the Locale's
 /// **System**), or a remembered checkbox's, which no key holds.
@@ -799,19 +799,11 @@ fn walk_hint<E: Clone>(keymap: &Keymap<E>) -> Hint {
 /// Says on the status line how the write of `key` went, and hands back the value saved, `None`
 /// when it wasn't, so the field keeps what it showed.
 fn settle<T>(answer: DeviceAnswer<T>, key: ConfigKey, notify: &mut dyn Notify) -> Option<T> {
-    let name = key.name();
-    let (status, saved) = match answer {
-        DeviceAnswer::Saved { value, file } => {
-            (msg::settings_device_saved(name, &file), Some(value))
-        }
-        DeviceAnswer::Shadowed { source } => (msg::settings_device_shadowed(name, &source), None),
-        DeviceAnswer::Refused(DeviceRefusal::NoFile) => (msg::settings_device_no_file(name), None),
-        DeviceAnswer::Refused(DeviceRefusal::WriteFailed) => {
-            (msg::settings_device_write_failed(name), None)
-        }
-    };
-    notify.notify(Notice::Status(status));
-    saved
+    notify.notify(Notice::Status(device_status(&answer, key)));
+    match answer {
+        DeviceAnswer::Saved { value, .. } => Some(value),
+        DeviceAnswer::Shadowed { .. } | DeviceAnswer::Refused(_) => None,
+    }
 }
 
 #[cfg(test)]

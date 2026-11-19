@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::SystemTime;
 
+use lib_colour_theme::ColourAppearance;
 use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_core::{UnitId, UnitRef};
 use lib_toast::{Notice, Notify};
@@ -19,8 +20,8 @@ use crate::protocols::{
     LedgerUnits,
 };
 use crate::protocols::{
-    ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceRouter, DeviceSnapshot,
-    KeyState, SettingsRouter, TracingLog, TracingRouter, writes_when_shadowed,
+    DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceRouter, DeviceSnapshot, KeyState,
+    SettingsRouter, TracingLog, TracingRouter, writes_when_shadowed,
 };
 
 /// One thing a Presenter asked of the Shell, in the order asked.
@@ -35,7 +36,9 @@ pub enum Routed {
     IndexRevealed(SettingsPage),
     ToastsChanged(bool),
     DisplayChanged(DisplayOutput),
-    ColourChanged(ColourChoice),
+    ColourThemeChanged(Option<String>),
+    ColourAppearanceChanged(ColourAppearance),
+    DataFolderChanged(PathBuf),
     TestToasts,
     PickDataFolder,
     LogScrolled(LogScroll),
@@ -163,8 +166,17 @@ impl DeviceRouter for RecordingRouter {
         self.routed.push(Routed::DisplayChanged(display));
     }
 
-    fn colour_changed(&mut self, colour: ColourChoice) {
-        self.routed.push(Routed::ColourChanged(colour));
+    fn colour_theme_changed(&mut self, colour_theme: Option<String>) {
+        self.routed.push(Routed::ColourThemeChanged(colour_theme));
+    }
+
+    fn colour_appearance_changed(&mut self, appearance: ColourAppearance) {
+        self.routed
+            .push(Routed::ColourAppearanceChanged(appearance));
+    }
+
+    fn data_folder_changed(&mut self, folder: PathBuf) {
+        self.routed.push(Routed::DataFolderChanged(folder));
     }
 
     fn test_toasts(&mut self) {

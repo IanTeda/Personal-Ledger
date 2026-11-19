@@ -67,6 +67,10 @@ impl Root {
             ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
             ViewEvent::ToastsChanged(on) => self.push_toasts_on(on),
             ViewEvent::TestToasts => self.test_toasts(),
+            ViewEvent::DataFolderChanged(folder) => {
+                self.presenter
+                    .set_explorer_start(Some(folder), dirs::home_dir());
+            }
             ViewEvent::PickDataFolder => {
                 self.with_router(WindowSize::Large, cx, |presenter, router| {
                     presenter.command(ShellCommand::ChangeDataFolder, router)

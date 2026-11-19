@@ -590,8 +590,8 @@ impl SettingsView {
     }
 
     /// Undo or Redo of a Settings › General or Display change (#1244, #1246): puts each key back in
-    /// the file, in order, then hands both pages what the file now reads, whichever shows. Whether every key
-    /// went back; the first that didn't, shadowed or refused, says why on the status line and stops
+    /// the file, in order, then hands both pages what the file now reads, whichever shows, and each
+    /// routes what changed in effect through the events a write sends. Whether every key went back; the first that didn't, shadowed or refused, says why on the status line and stops
     /// the rest. With none back, the page is left as it was.
     pub fn restore_device(
         &mut self,
@@ -612,30 +612,15 @@ impl SettingsView {
         if restored > 0 {
             let snapshot = self.device.read();
             self.pages.general.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| presenter.reload(snapshot.clone()));
+                page.answer(cx, |presenter, router| {
+                    presenter.reload(snapshot.clone(), router);
+                });
             });
             self.pages.display.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| presenter.reload(snapshot));
+                page.answer(cx, |presenter, router| presenter.reload(snapshot, router));
             });
         }
         restored == changes.len()
-    }
-
-    /// The Display settings as Settings › Display holds them: what a restore applies at once, as a
-    /// write would.
-    pub fn display_in_effect(&self, cx: &App) -> (DisplayOutput, lib_settings::DisplaySettings) {
-        let display = self.pages.display.read(cx).presenter();
-        (display.output(), display.settings())
-    }
-
-    /// Whether non-Error Toasts show and the Data folder in effect, as Settings › General holds
-    /// them: what a restore applies at once, as a write would.
-    pub fn general_in_effect(&self, cx: &App) -> (bool, PathBuf) {
-        let general = self.pages.general.read(cx).presenter();
-        (
-            general.settings().toasts_on,
-            general.data_folder().to_path_buf(),
-        )
     }
 
     /// The folder the Data folder picker picked, written by General's Presenter, the one place
@@ -659,15 +644,9 @@ fn refused(
     answer: lib_settings::DeviceAnswer<()>,
     key: lib_core::configuration::ConfigKey,
 ) -> Option<String> {
-    use lib_settings::{DeviceAnswer, DeviceRefusal, msg};
-    let name = key.name();
     match answer {
-        DeviceAnswer::Saved { .. } => None,
-        DeviceAnswer::Shadowed { source } => Some(msg::settings_device_shadowed(name, &source)),
-        DeviceAnswer::Refused(DeviceRefusal::NoFile) => Some(msg::settings_device_no_file(name)),
-        DeviceAnswer::Refused(DeviceRefusal::WriteFailed) => {
-            Some(msg::settings_device_write_failed(name))
-        }
+        lib_settings::DeviceAnswer::Saved { .. } => None,
+        answer => Some(lib_settings::device_status(&answer, key)),
     }
 }
 

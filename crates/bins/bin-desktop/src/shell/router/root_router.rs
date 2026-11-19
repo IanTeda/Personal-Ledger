@@ -69,9 +69,6 @@ pub(super) struct RootRouter<'a, 'b> {
     clock: Clock,
     /// The Window Size the window is drawn at, which the rail toggle flips the rail for.
     window_size: WindowSize,
-    /// The Configuration keys Undo or Redo put back during the call, which `with_router` applies
-    /// once the Shell's Presenter is its own again, as a write would apply them.
-    restored: &'a mut Vec<ConfigKey>,
     pub(super) cx: &'a mut Context<'b, Root>,
 }
 
@@ -417,14 +414,12 @@ impl RootRouter<'_, '_> {
         self.restore(&changes)
     }
 
-    /// Puts `changes` back in the configuration file through Settings, which repaints General from
-    /// what the file then reads. Whether they all went back.
+    /// Puts `changes` back in the configuration file through Settings, whose pages repaint from what
+    /// the file then reads and route what takes effect at once as a write does. Whether they all
+    /// went back.
     fn restore(&mut self, changes: &[(ConfigKey, Option<String>)]) -> bool {
-        let restored = self
-            .settings
-            .update(self.cx, |view, cx| view.restore_device(changes, cx));
-        self.restored.extend(changes.iter().map(|(key, _)| *key));
-        restored
+        self.settings
+            .update(self.cx, |view, cx| view.restore_device(changes, cx))
     }
 
     /// Opens the Ledger file the Create ledger Dialog has just written, in place of the Open
@@ -692,7 +687,6 @@ impl Root {
     ) -> T {
         let palette_was_open = self.presenter.palette_open();
         let mut ledger_swapped = false;
-        let mut restored = Vec::new();
         let Root {
             presenter,
             open,
@@ -719,13 +713,9 @@ impl Root {
             folders,
             clock: presenter.clock().clone(),
             window_size,
-            restored: &mut restored,
             cx,
         };
         let acted = act(presenter, &mut router);
-        if !restored.is_empty() {
-            self.apply_restored(&restored, cx);
-        }
         // The pages a module Command runs on come and go with the Ledger, and a Ledger closed or
         // replaced takes its changes off History, since there is nothing left to undo them in.
         if ledger_swapped {
@@ -737,45 +727,6 @@ impl Root {
         }
         self.keep_explorer_scroll();
         acted
-    }
-
-    /// Applies the Configuration keys Undo or Redo put back that take effect at once, as a write
-    /// would: Toasts on the Shell, the Data folder where `:open` and `:new` start, the Display
-    /// Preferences and the Colour Theme and Appearance. The rest apply at the next start.
-    fn apply_restored(&mut self, restored: &[ConfigKey], cx: &mut Context<'_, Self>) {
-        let (toasts_on, data_folder) = self.settings.read(cx).general_in_effect(cx);
-        if restored.contains(&ConfigKey::Toasts) {
-            self.push_toasts_on(toasts_on);
-        }
-        if restored.contains(&ConfigKey::Data) {
-            self.presenter
-                .set_explorer_start(Some(data_folder), dirs::home_dir());
-        }
-        let display_keys = [
-            ConfigKey::DateStyle,
-            ConfigKey::RowDensity,
-            ConfigKey::StatusGlyphs,
-            ConfigKey::ColourTheme,
-            ConfigKey::ColourAppearance,
-        ];
-        if !restored.iter().any(|key| display_keys.contains(key)) {
-            return;
-        }
-        let (output, settings) = self.settings.read(cx).display_in_effect(cx);
-        if restored.iter().any(|key| {
-            matches!(
-                key,
-                ConfigKey::DateStyle | ConfigKey::RowDensity | ConfigKey::StatusGlyphs
-            )
-        }) {
-            self.push_display_preferences(output, cx);
-        }
-        if restored.contains(&ConfigKey::ColourTheme) {
-            crate::theme::colours::set_colour_theme(settings.colour_theme, cx);
-        }
-        if restored.contains(&ConfigKey::ColourAppearance) {
-            crate::theme::colours::set_colour_appearance(Some(settings.colour_appearance), cx);
-        }
     }
 
     /// [`Self::with_router`] as one input, committed once with its Notices drained.

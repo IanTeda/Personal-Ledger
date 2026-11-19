@@ -42,6 +42,9 @@ pub enum ViewEvent {
     /// General's **Change…** asked for the Data folder picker (DESKTOP-187): `Root` opens the file
     /// explorer to pick it, as `:data` does.
     PickDataFolder,
+    /// Undo or Redo put back a Data folder that takes effect: `Root` starts `:open` and `:new`
+    /// there. No Toast, which belongs to a pick's write.
+    DataFolderChanged(std::path::PathBuf),
 }
 
 /// A mode a View enters for something it has opened itself: the [`InputMode`]s `Root` hands

@@ -16,6 +16,7 @@ pub mod tracing;
 pub use about::{AboutEvent, AboutPresenter, AboutSetup, AboutViewModel};
 pub use clear_logs::{ClearLogsEvent, ClearLogsOutcome, ClearLogsPresenter, ClearLogsViewModel};
 pub use data_backup::{DataBackupEvent, DataBackupPresenter, DataBackupRow, DataBackupViewModel};
+pub use device::device_status;
 pub use display::{
     ColourCardView, ColourThemeView, DisplayEvent, DisplayField, DisplayOutput, DisplayPresenter,
     DisplaySettings, DisplaySetup, DisplayViewModel, PreviewRowView, PreviewView,
