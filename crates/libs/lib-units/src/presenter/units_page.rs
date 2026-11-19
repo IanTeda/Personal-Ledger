@@ -501,11 +501,12 @@ impl UnitsPagePresenter {
         let catalogue = ports.source_catalogue();
         let base = ports.base_unit().base_unit();
         let sources = catalogue.sources();
-        let selection = resolve(Self::rows_of(&units, &sources), self.selected);
+        let by_code = units_by_code(&units);
+        let selection = resolve(Self::rows_of(&by_code, &sources), self.selected);
         let now = (self.clock)();
 
-        let unit_lines = units_by_code(&units)
-            .into_iter()
+        let unit_lines = by_code
+            .iter()
             .map(|unit| {
                 let base_flag = (unit.id == base).then(msg::units_flag_base);
                 let inactive_tag = (!unit.is_active).then(msg::units_inactive);
@@ -668,9 +669,10 @@ impl PagePresenter for UnitsPagePresenter {
 }
 
 impl UnitsPagePresenter {
-    fn rows_of(units: &[UnitRow], sources: &[PriceSource<'_>]) -> Vec<UnitsRow> {
-        units_by_code(units)
-            .into_iter()
+    /// `units` are already in code order (see [`units_by_code`]), so the caller sorts once.
+    fn rows_of(units: &[&UnitRow], sources: &[PriceSource<'_>]) -> Vec<UnitsRow> {
+        units
+            .iter()
             .map(|unit| UnitsRow::Unit(unit.id))
             .chain(sources.iter().map(|source| UnitsRow::Source(source.id)))
             .collect()
@@ -680,7 +682,7 @@ impl UnitsPagePresenter {
     fn rows(&self) -> Vec<UnitsRow> {
         let ports = self.ports.borrow();
         let units = ports.units().units();
-        Self::rows_of(&units, &ports.source_catalogue().sources())
+        Self::rows_of(&units_by_code(&units), &ports.source_catalogue().sources())
     }
 
     /// The selected row, or the first while nothing (or a removed row) is selected.

@@ -93,7 +93,7 @@ Intended features for Categories. Ticked means built in at least one app; the ta
 - [x] CAT-008 (desktop): Keep categories after the app closes
 - [x] CAT-009 (desktop): Deleting a category moves its transactions and bills to Uncategorised and clears it as a payee's default category
 - [x] CAT-010 (desktop): Uncategorised is fixed: it can't be renamed, moved, retyped or given sub-categories, and a category with sub-categories can't be moved under a category that holds transactions, bills or payee defaults
-- [x] CAT-011 (TUI, desktop): List sub-categories A-Z by name within each parent and type, so a category that Undo restores returns to its place
+- [x] CAT-011 (desktop): List sub-categories A-Z by name within each parent and type, so a category that Undo restores returns to its place
 
 ## For developers
 
