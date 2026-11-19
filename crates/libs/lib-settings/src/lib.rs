@@ -44,6 +44,5 @@ pub use crate::protocols::{
     BaseUnitAnswer, ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceRouter,
     DeviceSnapshot, HeadlineAmount, KeyState, LedgerCounts, LedgerPreferences, LedgerRouter,
     LedgerSummaries, LedgerUnits, SettingsLedger, SettingsRouter, TracingLog, TracingRouter,
-    writes_when_shadowed,
 };
 pub use crate::summary::{PageRows, PageSummary, SummaryRow, SummarySources, summarise};

@@ -18,7 +18,7 @@ use crate::fake::{InMemoryDeviceConfiguration, StoredDevice};
 use crate::log::LogLevel;
 use crate::protocols::{
     BaseUnitAnswer, DeviceAnswer, DeviceConfiguration, DeviceRefusal, LedgerPreferences,
-    LedgerUnits, TracingLog, writes_when_shadowed,
+    LedgerUnits, TracingLog,
 };
 
 /// Builds the raw file a [`DeviceFile`] contract check runs on, each on a file of its own.
@@ -261,7 +261,7 @@ pub fn a_later_write_replaces_the_value() {
 
 /// A key a source above the file sets reads that source, answers shadowed naming it, and is not
 /// written; the other keys are not shadowed. The Locale and the Data folder are named too, but
-/// still written ([`writes_when_shadowed`]).
+/// still written ([`ConfigKey::writes_when_shadowed`]).
 pub fn a_shadowed_key_reads_its_source_and_is_left_unwritten() {
     for value in first_values() {
         let key = value.key();
@@ -278,7 +278,7 @@ pub fn a_shadowed_key_reads_its_source_and_is_left_unwritten() {
             assert_eq!(snapshot.get(other).shadow, None, "{other:?} under {key:?}");
         }
 
-        if writes_when_shadowed(key) {
+        if key.writes_when_shadowed() {
             assert_saved(device.write(value.clone()), &value);
             assert_eq!(
                 stored(&device),

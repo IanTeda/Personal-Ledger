@@ -100,6 +100,33 @@ macro_rules! config_keys {
     };
 }
 
+impl ConfigKey {
+    /// Whether a write of the key goes to the file even while an Override sets it: the Locale and
+    /// the Data folder (DESKTOP-186), whose choice is kept for when the Override is gone. Every
+    /// other key refuses. A Settings rule, not the file's, so both Clients and every
+    /// `DeviceConfiguration` read the one answer.
+    ///
+    /// Exhaustive with no wildcard arm, so a new key won't compile until it decides.
+    pub fn writes_when_shadowed(self) -> bool {
+        match self {
+            Self::Locale | Self::Data => true,
+            Self::OnStart
+            | Self::StartView
+            | Self::Toasts
+            | Self::ColourTheme
+            | Self::ColourAppearance
+            | Self::DateStyle
+            | Self::RowDensity
+            | Self::StatusGlyphs
+            | Self::StartSidebarMinimised
+            | Self::HintBar
+            | Self::TerminalColours
+            | Self::Log
+            | Self::LogFilePath => false,
+        }
+    }
+}
+
 config_keys! {
     /// `on_start`: `reopen` or `none`.
     OnStart => (General, "on_start", OnStart),
@@ -148,5 +175,14 @@ mod tests {
             ConfigKey::Locale
         );
         assert_eq!(ConfigValue::Log(Levels::INFO).key(), ConfigKey::Log);
+    }
+
+    #[test]
+    fn only_the_locale_and_the_data_folder_are_written_while_shadowed() {
+        let written: Vec<_> = ConfigKey::ALL
+            .into_iter()
+            .filter(|key| key.writes_when_shadowed())
+            .collect();
+        assert_eq!(written, [ConfigKey::Locale, ConfigKey::Data]);
     }
 }

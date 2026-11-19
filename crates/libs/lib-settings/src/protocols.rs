@@ -87,14 +87,6 @@ pub enum ColourChoice {
     Appearance(ColourAppearance),
 }
 
-/// Whether a write of `key` goes to the file even while a source above it sets the key: the
-/// Locale and the Data folder (DESKTOP-186), whose choice is kept for when the override is gone.
-/// Every other key refuses. A Settings rule, not the file's, so every [`DeviceConfiguration`] keeps
-/// it and every page shows by it ([`DeviceSnapshot::shown`]).
-pub fn writes_when_shadowed(key: ConfigKey) -> bool {
-    matches!(key, ConfigKey::Locale | ConfigKey::Data)
-}
-
 /// What a device holds of one key.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KeyState {
@@ -131,11 +123,11 @@ impl DeviceSnapshot {
     }
 
     /// The value `key`'s control shows: the file's for a key that [writes when
-    /// shadowed](writes_when_shadowed), since that is what a write changes, else the value in
-    /// force.
+    /// shadowed](ConfigKey::writes_when_shadowed), since that is what a write changes, else the
+    /// value in force.
     pub fn shown(&self, key: ConfigKey) -> Option<&ConfigValue> {
         let state = self.get(key);
-        if writes_when_shadowed(key) {
+        if key.writes_when_shadowed() {
             state.stored.as_ref()
         } else {
             state.effective.as_ref()
@@ -179,7 +171,7 @@ pub enum DeviceAnswer<T> {
     Saved { value: T, file: String },
     /// Not written, since a source above the file sets the key: a flag, an environment variable or
     /// a higher configuration file, named by `source`. Never the answer for a key that
-    /// [writes when shadowed](writes_when_shadowed).
+    /// [writes when shadowed](ConfigKey::writes_when_shadowed).
     Shadowed { source: String },
     /// Not written, for the reason given.
     Refused(DeviceRefusal),
@@ -202,7 +194,7 @@ pub trait DeviceConfiguration {
     fn read(&self) -> DeviceSnapshot;
 
     /// Writes `value` under its key, unless a source above the file sets a key that doesn't
-    /// [write when shadowed](writes_when_shadowed).
+    /// [write when shadowed](ConfigKey::writes_when_shadowed).
     fn write(&self, value: ConfigValue) -> DeviceAnswer<ConfigValue>;
 
     /// Takes `key` out of the file, so the sources below it decide at the next start: the
@@ -367,15 +359,6 @@ mod tests {
             DeviceSnapshot::default().toasts_on(),
             GeneralSettings::default().toasts_on
         );
-    }
-
-    #[test]
-    fn only_the_locale_and_the_data_folder_are_written_while_shadowed() {
-        let written: Vec<_> = ConfigKey::ALL
-            .into_iter()
-            .filter(|key| writes_when_shadowed(*key))
-            .collect();
-        assert_eq!(written, [ConfigKey::Locale, ConfigKey::Data]);
     }
 
     #[test]

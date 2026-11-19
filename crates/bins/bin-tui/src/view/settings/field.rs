@@ -245,29 +245,31 @@ impl Configuration {
 
     /// A Configuration row's note when a source above the file sets its key, else `None`.
     pub fn shadowed_note(&self, field: SettingField) -> Option<String> {
-        if matches!(field, SettingField::Locale | SettingField::LedgerFolder) {
-            return None;
-        }
-        field
-            .config_key()
-            .and_then(|key| self.shadow(key))
-            .map(|source| msg::tui_settings_config_shadowed_note(&source))
-    }
-
-    /// Why `field`'s Configuration row can't be written: there's no file to write, or a source
-    /// above it sets the key. `None` for any other field.
-    pub fn refusal(&self, field: SettingField) -> Option<String> {
         let key = field.config_key()?;
-        if self.path.is_none() {
-            return Some(msg::tui_settings_read_only_config(field.command_name()));
-        }
-        // The Locale and the Data folder write under anything above them and say so on their rows
-        // instead.
-        if matches!(field, SettingField::Locale | SettingField::LedgerFolder) {
+        if key.writes_when_shadowed() {
             return None;
         }
         self.shadow(key)
-            .map(|source| msg::tui_settings_set_shadowed(field.command_name(), &source))
+            .map(|source| msg::tui_settings_config_shadowed_note(&source))
+    }
+
+    /// Why `field`'s Configuration row can't be written: a source above it sets the key, or
+    /// there's no file to write, in `lib_settings::Policed`'s order. `None` for any other field.
+    pub fn refusal(&self, field: SettingField) -> Option<String> {
+        let key = field.config_key()?;
+        // The Locale and the Data folder write under anything above them and say so on their rows
+        // instead.
+        if !key.writes_when_shadowed()
+            && let Some(source) = self.shadow(key)
+        {
+            return Some(msg::tui_settings_set_shadowed(
+                field.command_name(),
+                &source,
+            ));
+        }
+        self.path
+            .is_none()
+            .then(|| msg::tui_settings_read_only_config(field.command_name()))
     }
 
     /// The typed value `field` writes for the value `:set` takes, which `lib-config` spells in the
@@ -548,6 +550,27 @@ mod tests {
             Some("ascii")
         );
         assert_eq!(values.get(SettingField::HintBar).as_deref(), Some("off"));
+    }
+
+    #[test]
+    fn an_overridden_row_names_the_override_before_the_missing_file() {
+        crate::locale::init_for_tests();
+        let configuration = Configuration {
+            path: None,
+            overrides: Overrides::default().with(
+                ConfigKey::HintBar,
+                lib_config::Shadow::Env("PERSONAL_LEDGER_DISPLAY__HINT_BAR".into()),
+            ),
+            ..Configuration::default()
+        };
+        let reason = configuration
+            .refusal(SettingField::HintBar)
+            .expect("an overridden row is refused");
+        assert!(
+            reason.contains("PERSONAL_LEDGER_DISPLAY__HINT_BAR"),
+            "{reason}"
+        );
+        assert!(!reason.contains("no user config directory"), "{reason}");
     }
 
     #[test]

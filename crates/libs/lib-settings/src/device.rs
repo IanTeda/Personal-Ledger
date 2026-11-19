@@ -2,7 +2,7 @@
 //! answers the raw [`DeviceFile`] port, which carries no policy; [`Policed`] wraps it as the
 //! [`DeviceConfiguration`] the Presenters call, and decides in one place whether a write goes
 //! through: a source above the file that sets the key refuses it (except for a key that
-//! [writes when shadowed](writes_when_shadowed)), then no file to write refuses it, then the write
+//! [writes when shadowed](ConfigKey::writes_when_shadowed)), then no file to write refuses it, then the write
 //! itself, whose failure becomes [`DeviceRefusal::WriteFailed`].
 
 use std::fmt;
@@ -13,7 +13,6 @@ use lib_core::configuration::{ConfigKey, ConfigValue};
 
 use crate::protocols::{
     DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceSnapshot, KeyState,
-    writes_when_shadowed,
 };
 
 /// A write the file couldn't take. The adapter logs the cause; the policy only needs to know it
@@ -123,7 +122,7 @@ impl<F: DeviceFile> Policed<F> {
         value: T,
         edit: impl FnOnce(&F) -> Result<(), WriteError>,
     ) -> DeviceAnswer<T> {
-        if !writes_when_shadowed(key)
+        if !key.writes_when_shadowed()
             && let Some(source) = self.file.shadow(key)
         {
             return DeviceAnswer::Shadowed { source };
