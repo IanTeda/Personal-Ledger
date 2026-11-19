@@ -66,13 +66,35 @@ pub struct Image<T> {
     pub after: Option<T>,
 }
 
-/// A row an [`Image`] is taken of: its id, and the [`RowKey`] the journal merges its images by.
-trait Row: Clone + PartialEq + std::fmt::Debug {
+/// A row an [`Image`] is taken of: its id, the [`RowKey`] the journal merges its images by, and how
+/// Undo and Redo read, save and delete it in its store, each written once here.
+pub(crate) trait Row: Clone + PartialEq + std::fmt::Debug {
     type Id: Copy;
+
+    /// What [`check_other_side`] calls the row.
+    const NAME: &'static str;
 
     fn id(&self) -> Self::Id;
 
     fn key(id: Self::Id) -> RowKey;
+
+    /// `image` as the [`RowImage`] of its kind.
+    fn image(image: Image<Self>) -> RowImage;
+
+    /// The row `id` as its store holds it.
+    fn held(stores: &SharedStores, id: Self::Id) -> Option<Self>;
+
+    /// Writes `row` to its store, adding it where absent.
+    fn put(stores: &SharedStores, row: Self);
+
+    /// Deletes the row `id` from its store.
+    fn remove(stores: &SharedStores, id: Self::Id);
+
+    /// The row as [`check_other_side`] compares it: all of it, unless a side of it may differ
+    /// between memory and the file.
+    fn checked(self) -> Self {
+        self
+    }
 }
 
 /// What one step writes to a row: what the row holds now, which the step expects, and what it
@@ -83,7 +105,7 @@ struct Write<T: Row> {
     target: Option<T>,
 }
 
-// Each method bounds `T` itself, since `Row` is private and `Image` public.
+// Each method bounds `T` itself, since `Row` is crate-private and `Image` public.
 impl<T> Image<T> {
     fn key(&self) -> Option<RowKey>
     where
@@ -120,14 +142,61 @@ impl<T> Image<T> {
             target,
         })
     }
+
+    /// Writes the image's side `step` goes to, checking the row holds the other side first.
+    fn apply(&self, step: Step, stores: &SharedStores)
+    where
+        T: Row,
+    {
+        let Some(Write {
+            id,
+            expected,
+            target,
+        }) = self.write(step)
+        else {
+            return;
+        };
+        check_other_side(T::NAME, || {
+            (
+                T::held(stores, id).map(T::checked),
+                expected.map(T::checked),
+            )
+        });
+        match target {
+            Some(row) => T::put(stores, row),
+            None => T::remove(stores, id),
+        }
+    }
+}
+
+/// A row's [`Row::held`], [`Row::put`] and [`Row::remove`]: through its store's repository, by
+/// the store's field, its read and write accessors and the repository's read, upsert and delete,
+/// where the access is uniform, or the three written out where it isn't.
+macro_rules! row_access {
+    (($store:ident, $store_mut:ident, $get:ident, $upsert:ident, $delete:ident)) => {
+        fn held(stores: &SharedStores, id: Self::Id) -> Option<Self> {
+            stores.$store.borrow().$store().$get(id)
+        }
+
+        fn put(stores: &SharedStores, row: Self) {
+            stores.$store.borrow_mut().$store_mut().$upsert(row);
+        }
+
+        fn remove(stores: &SharedStores, id: Self::Id) {
+            stores.$store.borrow_mut().$store_mut().$delete(id);
+        }
+    };
+    ({ $($access:tt)* }) => {
+        $($access)*
+    };
 }
 
 /// Declares [`RowImage`], its [`RowKey`] and each row's [`Row`] from one list, so a new row type
-/// adds a line here and an arm to [`RowImage::domain`] and [`write`], and the merging is generic.
+/// adds a line here and an arm to [`RowImage::domain`], and the merging and writing are generic.
 macro_rules! row_images {
     ($(
         $(#[$attr:meta])*
-        $variant:ident($row:ty) by $id:ty = |$held:ident| $read:expr;
+        $variant:ident($row:ty) by $id:ty = |$held:ident| $read:expr, $name:literal $access:tt;
     )*) => {
         /// One row's [`Image`] before an input and after it, by the kind of row.
         #[derive(Debug, Clone, PartialEq)]
@@ -143,7 +212,7 @@ macro_rules! row_images {
 
         /// Which row an image is of, so a second write to it merges into the first.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        enum RowKey {
+        pub(crate) enum RowKey {
             $($variant($id),)*
             BaseUnit,
             Order(Domain),
@@ -153,6 +222,8 @@ macro_rules! row_images {
             impl Row for $row {
                 type Id = $id;
 
+                const NAME: &'static str = $name;
+
                 fn id(&self) -> $id {
                     let $held = self;
                     $read
@@ -161,6 +232,12 @@ macro_rules! row_images {
                 fn key(id: $id) -> RowKey {
                     RowKey::$variant(id)
                 }
+
+                fn image(image: Image<Self>) -> RowImage {
+                    RowImage::$variant(image)
+                }
+
+                row_access!($access);
             }
         )*
 
@@ -191,30 +268,201 @@ macro_rules! row_images {
                     (image, later) => debug_assert!(false, "{image:?} merged with {later:?}"),
                 }
             }
+
+            /// Writes a by-id row's image the way `step` goes. The base Unit and an order are
+            /// [`write`]'s own.
+            fn apply_row(&self, step: Step, stores: &SharedStores) {
+                match self {
+                    $(Self::$variant(image) => image.apply(step, stores),)*
+                    Self::BaseUnit(..) | Self::Order(..) => {
+                        debug_assert!(false, "{self:?} is not a by-id row");
+                    }
+                }
+            }
         }
     };
 }
 
 row_images! {
-    Unit(UnitRow) by UnitId = |row| row.id;
-    PriceSource(PriceSourceRecord) by PriceSourceId = |row| row.id();
-    Institution(Institution) by InstitutionId = |row| row.id;
+    // Units and Price Sources are written through the store's ports, lent for one write.
+    Unit(UnitRow) by UnitId = |row| row.id, "Unit" {
+        fn held(stores: &SharedStores, id: UnitId) -> Option<Self> {
+            stores.units.borrow().units().unit(id)
+        }
+
+        fn put(stores: &SharedStores, row: Self) {
+            stores
+                .units
+                .borrow_mut()
+                .split_write(&UnitUse::default(), |ports| ports.units.upsert_unit(row));
+        }
+
+        fn remove(stores: &SharedStores, id: UnitId) {
+            stores
+                .units
+                .borrow_mut()
+                .split_write(&UnitUse::default(), |ports| ports.units.delete_unit(id));
+        }
+    };
+    PriceSource(PriceSourceRecord) by PriceSourceId = |row| row.id(), "Price Source" {
+        fn held(stores: &SharedStores, id: PriceSourceId) -> Option<Self> {
+            stores
+                .units
+                .borrow()
+                .price_sources()
+                .price_source_records()
+                .into_iter()
+                .find(|record| record.id() == id)
+        }
+
+        fn put(stores: &SharedStores, row: Self) {
+            stores
+                .units
+                .borrow_mut()
+                .split_write(&UnitUse::default(), |ports| {
+                    ports.price_sources.upsert_price_source(row);
+                });
+        }
+
+        fn remove(stores: &SharedStores, id: PriceSourceId) {
+            stores
+                .units
+                .borrow_mut()
+                .split_write(&UnitUse::default(), |ports| {
+                    ports.price_sources.delete_price_source(id);
+                });
+        }
+    };
+    Institution(Institution) by InstitutionId = |row| row.id, "Institution"
+        (institutions, institutions_mut, institution, upsert_institution, delete_institution);
     /// A whole Transaction with its Splits.
-    Transaction(Transaction) by TransactionId = |row| row.id;
-    BillPlan(BillPlan) by BillPlanId = |row| row.id;
-    BillEntry(BillScheduleEntry) by EntryId = |row| row.id();
+    Transaction(Transaction) by TransactionId = |row| row.id, "Transaction"
+        (transactions, transactions_mut, transaction, upsert_transaction, delete_transaction);
+    // Only Undo deletes a Bill Plan, an entry or a Budget, through the store (#1253).
+    BillPlan(BillPlan) by BillPlanId = |row| row.id, "Bill Plan" {
+        fn held(stores: &SharedStores, id: BillPlanId) -> Option<Self> {
+            stores.bills.borrow().plans().bill_plan(id)
+        }
+
+        fn put(stores: &SharedStores, row: Self) {
+            stores.bills.borrow_mut().plans_mut().upsert_bill_plan(row);
+        }
+
+        fn remove(stores: &SharedStores, id: BillPlanId) {
+            stores.bills.borrow_mut().delete_bill_plan(id);
+        }
+    };
+    BillEntry(BillScheduleEntry) by EntryId = |row| row.id(), "Bill Schedule entry" {
+        fn held(stores: &SharedStores, id: EntryId) -> Option<Self> {
+            stores.bills.borrow().entries().entry(id)
+        }
+
+        fn put(stores: &SharedStores, row: Self) {
+            stores.bills.borrow_mut().entries_mut().upsert_entry(row);
+        }
+
+        fn remove(stores: &SharedStores, id: EntryId) {
+            stores.bills.borrow_mut().delete_entry(id);
+        }
+    };
     /// A whole Budget with its Accounts and every chain.
-    Budget(Budget) by BudgetId = |row| row.id;
+    Budget(Budget) by BudgetId = |row| row.id, "Budget" {
+        fn held(stores: &SharedStores, id: BudgetId) -> Option<Self> {
+            stores.budgets.borrow().budgets().budget(id)
+        }
+
+        fn put(stores: &SharedStores, row: Self) {
+            stores.budgets.borrow_mut().budgets_mut().upsert_budget(&row);
+        }
+
+        fn remove(stores: &SharedStores, id: BudgetId) {
+            stores.budgets.borrow_mut().delete_budget(id);
+        }
+    };
     /// A whole Document with its Intake and Links.
-    Document(Document) by DocumentId = |row| row.id;
-    DocumentType(DocumentTypeRow) by DocumentTypeId = |row| row.id;
-    Account(Account) by AccountId = |row| row.id;
-    Category(Category) by CategoryId = |row| row.id;
-    Tag(Tag) by TagId = |row| row.id;
-    Payee(Payee) by PayeeId = |row| row.id;
+    Document(Document) by DocumentId = |row| row.id, "Document" {
+        fn held(stores: &SharedStores, id: DocumentId) -> Option<Self> {
+            stores
+                .documents
+                .borrow()
+                .documents()
+                .documents()
+                .into_iter()
+                .find(|document| document.id == id)
+        }
+
+        fn put(stores: &SharedStores, row: Self) {
+            stores.documents.borrow_mut().documents_mut().upsert_document(&row);
+        }
+
+        fn remove(stores: &SharedStores, id: DocumentId) {
+            stores.documents.borrow_mut().documents_mut().delete_document(id);
+        }
+
+        /// Without its Links: a cascade changes a Document's Links in the file and not in memory
+        /// until the Client reloads, which the in-memory stores never do.
+        fn checked(self) -> Self {
+            Document {
+                links: Vec::new(),
+                ..self
+            }
+        }
+    };
+    DocumentType(DocumentTypeRow) by DocumentTypeId = |row| row.id, "Document Type" {
+        fn held(stores: &SharedStores, id: DocumentTypeId) -> Option<Self> {
+            stores
+                .documents
+                .borrow()
+                .documents()
+                .document_types()
+                .into_iter()
+                .find(|row| row.id == id)
+        }
+
+        fn put(stores: &SharedStores, row: Self) {
+            stores.documents.borrow_mut().documents_mut().upsert_document_type(&row);
+        }
+
+        fn remove(stores: &SharedStores, id: DocumentTypeId) {
+            stores.documents.borrow_mut().documents_mut().delete_document_type(id);
+        }
+    };
+    Account(Account) by AccountId = |row| row.id, "Account"
+        (accounts, accounts_mut, account, upsert_account, delete_account);
+    // Only Category delete and Tag remove delete a Category or a Tag, through the store.
+    Category(Category) by CategoryId = |row| row.id, "Category" {
+        fn held(stores: &SharedStores, id: CategoryId) -> Option<Self> {
+            stores.categories.borrow().categories().category(id)
+        }
+
+        fn put(stores: &SharedStores, row: Self) {
+            stores.categories.borrow_mut().categories_mut().upsert_category(row);
+        }
+
+        fn remove(stores: &SharedStores, id: CategoryId) {
+            stores.categories.borrow_mut().delete_category(id);
+        }
+    };
+    Tag(Tag) by TagId = |row| row.id, "Tag" {
+        fn held(stores: &SharedStores, id: TagId) -> Option<Self> {
+            stores.tags.borrow().tags().tag(id)
+        }
+
+        fn put(stores: &SharedStores, row: Self) {
+            stores.tags.borrow_mut().tags_mut().upsert_tag(row);
+        }
+
+        fn remove(stores: &SharedStores, id: TagId) {
+            stores.tags.borrow_mut().delete_tag(id);
+        }
+    };
+    Payee(Payee) by PayeeId = |row| row.id, "Payee"
+        (payees, payees_mut, payee, upsert_payee, delete_payee);
     /// A whole Location with its cover and Areas.
-    Location(Location) by LocationId = |row| row.id;
-    Item(Item) by ItemId = |row| row.id;
+    Location(Location) by LocationId = |row| row.id, "Location"
+        (inventory, inventory_mut, location, upsert_location, delete_location);
+    Item(Item) by ItemId = |row| row.id, "Item"
+        (inventory, inventory_mut, item, upsert_item, delete_item);
 }
 
 impl RowImage {
@@ -311,294 +559,17 @@ where
 }
 
 fn write(image: &RowImage, step: Step, stores: &SharedStores) {
-    let unread = UnitUse::default();
     match image {
-        RowImage::Unit(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            stores.units.borrow_mut().split_write(&unread, |ports| {
-                check_other_side("Unit", || (ports.units.unit(id), expected));
-                match target {
-                    Some(unit) => ports.units.upsert_unit(unit),
-                    None => ports.units.delete_unit(id),
-                }
-            });
-        }
-        RowImage::PriceSource(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            stores.units.borrow_mut().split_write(&unread, |ports| {
-                check_other_side("Price Source", || {
-                    let held = ports
-                        .price_sources
-                        .price_source_records()
-                        .into_iter()
-                        .find(|record| record.id() == id);
-                    (held, expected)
-                });
-                match target {
-                    Some(record) => ports.price_sources.upsert_price_source(record),
-                    None => ports.price_sources.delete_price_source(id),
-                }
-            });
-        }
         RowImage::BaseUnit(before, after) => {
             let (expected, target) = match step {
                 Step::Reverse => (*after, *before),
                 Step::Replay => (*before, *after),
             };
+            let unread = UnitUse::default();
             stores.units.borrow_mut().split_write(&unread, |ports| {
                 check_other_side("base Unit", || (ports.base_unit.base_unit(), expected));
                 ports.base_unit.set_base_unit(target);
             });
-        }
-        RowImage::Institution(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.institutions.borrow_mut();
-            let institutions = store.institutions_mut();
-            check_other_side("Institution", || (institutions.institution(id), expected));
-            match target {
-                Some(institution) => institutions.upsert_institution(institution),
-                None => institutions.delete_institution(id),
-            }
-        }
-        RowImage::Transaction(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.transactions.borrow_mut();
-            let transactions = store.transactions_mut();
-            check_other_side("Transaction", || (transactions.transaction(id), expected));
-            match target {
-                Some(transaction) => transactions.upsert_transaction(transaction),
-                None => transactions.delete_transaction(id),
-            }
-        }
-        RowImage::BillPlan(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.bills.borrow_mut();
-            check_other_side("Bill Plan", || (store.plans().bill_plan(id), expected));
-            match target {
-                Some(plan) => store.plans_mut().upsert_bill_plan(plan),
-                None => store.delete_bill_plan(id),
-            }
-        }
-        RowImage::BillEntry(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.bills.borrow_mut();
-            check_other_side("Bill Schedule entry", || {
-                (store.entries().entry(id), expected)
-            });
-            match target {
-                Some(entry) => store.entries_mut().upsert_entry(entry),
-                None => store.delete_entry(id),
-            }
-        }
-        RowImage::Budget(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.budgets.borrow_mut();
-            check_other_side("Budget", || (store.budgets().budget(id), expected));
-            match target {
-                Some(budget) => store.budgets_mut().upsert_budget(&budget),
-                None => store.delete_budget(id),
-            }
-        }
-        RowImage::Document(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.documents.borrow_mut();
-            // Checked without its Links: a cascade changes a Document's Links in the file and
-            // not in memory until the Client reloads, which the in-memory stores never do.
-            check_other_side("Document", || {
-                let unlinked = |document: Document| Document {
-                    links: Vec::new(),
-                    ..document
-                };
-                let held = store
-                    .documents()
-                    .documents()
-                    .into_iter()
-                    .find(|document| document.id == id);
-                (held.map(unlinked), expected.map(unlinked))
-            });
-            match target {
-                Some(document) => store.documents_mut().upsert_document(&document),
-                None => store.documents_mut().delete_document(id),
-            }
-        }
-        RowImage::DocumentType(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.documents.borrow_mut();
-            let documents = store.documents_mut();
-            check_other_side("Document Type", || {
-                let held = documents
-                    .document_types()
-                    .into_iter()
-                    .find(|row| row.id == id);
-                (held, expected)
-            });
-            match target {
-                Some(row) => documents.upsert_document_type(&row),
-                None => documents.delete_document_type(id),
-            }
-        }
-        RowImage::Account(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.accounts.borrow_mut();
-            let accounts = store.accounts_mut();
-            check_other_side("Account", || (accounts.account(id), expected));
-            match target {
-                Some(account) => accounts.upsert_account(account),
-                None => accounts.delete_account(id),
-            }
-        }
-        RowImage::Category(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.categories.borrow_mut();
-            check_other_side("Category", || (store.categories().category(id), expected));
-            match target {
-                Some(category) => store.categories_mut().upsert_category(category),
-                None => store.delete_category(id),
-            }
-        }
-        RowImage::Tag(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.tags.borrow_mut();
-            check_other_side("Tag", || (store.tags().tag(id), expected));
-            match target {
-                Some(tag) => store.tags_mut().upsert_tag(tag),
-                None => store.delete_tag(id),
-            }
-        }
-        RowImage::Payee(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.payees.borrow_mut();
-            let payees = store.payees_mut();
-            check_other_side("Payee", || (payees.payee(id), expected));
-            match target {
-                Some(payee) => payees.upsert_payee(payee),
-                None => payees.delete_payee(id),
-            }
-        }
-        RowImage::Location(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.inventory.borrow_mut();
-            let inventory = store.inventory_mut();
-            check_other_side("Location", || (inventory.location(id), expected));
-            match target {
-                Some(location) => inventory.upsert_location(location),
-                None => inventory.delete_location(id),
-            }
-        }
-        RowImage::Item(image) => {
-            let Some(Write {
-                id,
-                expected,
-                target,
-            }) = image.write(step)
-            else {
-                return;
-            };
-            let mut store = stores.inventory.borrow_mut();
-            let inventory = store.inventory_mut();
-            check_other_side("Item", || (inventory.item(id), expected));
-            match target {
-                Some(item) => inventory.upsert_item(item),
-                None => inventory.delete_item(id),
-            }
         }
         // Not checked: Undo of a delete restores the row before its place, so the list holds
         // the row again, where the store put it, when the order is written back.
@@ -612,6 +583,7 @@ fn write(image: &RowImage, step: Step, stores: &SharedStores) {
                 None => debug_assert!(false, "{domain:?} keeps no stored order"),
             }
         }
+        row => row.apply_row(step, stores),
     }
 }
 
@@ -668,6 +640,24 @@ impl Journal {
                 state.index.insert(key, state.images.len());
                 state.images.push(image);
             }
+        }
+    }
+
+    /// Notes a write of `after` over `before`, the row as its store held it.
+    pub(crate) fn record_upsert<T: Row>(&self, before: Option<T>, after: T) {
+        self.record(T::image(Image {
+            before,
+            after: Some(after),
+        }));
+    }
+
+    /// Notes the delete of `before`, the row as its store held it; nothing where it was absent.
+    pub(crate) fn record_delete<T: Row>(&self, before: Option<T>) {
+        if let Some(before) = before {
+            self.record(T::image(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
     }
 
