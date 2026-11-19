@@ -255,7 +255,7 @@ mod tests {
 
         assert_eq!(summary.rows, rows);
         assert_eq!(summary.name, "General");
-        assert_eq!(summary.scope_note, "this device · never synced");
+        assert_eq!(summary.scope_note, "this device");
         assert_eq!(summary.purpose, SettingsPage::General.purpose());
         assert!(summary.open_enabled);
         assert_eq!(summary.note, None);

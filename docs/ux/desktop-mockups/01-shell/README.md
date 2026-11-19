@@ -324,4 +324,4 @@ fileExplorer
 
 - **1a** says "open", not "load": "Run `:open` to open a Ledger file, or `:new` to start one." Its rail is drawn at 45% and refused with no Ledger open, its header shows `No ledger open` in place of the sync state, and the Notifications badge is gone (`GLOSSARY.md` **Open Ledger**).
 - **1e·new** (DESKTOP-180): `:new`'s explorer in New mode, with a File name field under the listing that adds `.pldb` and refuses an existing name inline.
-- **Settings indexes** (1c, DESKTOP-106, DESKTOP-107, the DESKTOP-119 index page and DESKTOP-120's picker) group the pages under THIS DEVICE and THIS LEDGER, in `../16-settings/`'s v7 order, with no footer. Display reads `this device · never synced` ([ADR-0051](../../../adr/0051-colour-theme-appearance-and-date-style-are-client-scoped.md)).
+- **Settings indexes** (1c, DESKTOP-106, DESKTOP-107, the DESKTOP-119 index page and DESKTOP-120's picker) group the pages under THIS DEVICE and THIS LEDGER, in `../16-settings/`'s v7 order, with no footer. Display reads `this device` ([ADR-0051](../../../adr/0051-colour-theme-appearance-and-date-style-are-client-scoped.md)).

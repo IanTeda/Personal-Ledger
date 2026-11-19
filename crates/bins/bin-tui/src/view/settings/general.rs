@@ -467,7 +467,7 @@ mod tests {
         let text = render_at(&view, 96, 30);
         for needle in [
             "Settings \u{203a} General",
-            "this device \u{b7} never synced",
+            "this device",
             "on start",
             "reopen last ledger",
             "start view",

@@ -313,10 +313,7 @@ mod tests {
     #[test]
     fn each_group_counts_its_own_pages_in_its_scope_line() {
         locale();
-        assert_eq!(
-            ScopeGroup::ThisDevice.scope_line(),
-            "4 pages · never synced"
-        );
+        assert_eq!(ScopeGroup::ThisDevice.scope_line(), "4 pages");
         assert_eq!(
             ScopeGroup::ThisLedger.scope_line(),
             "11 pages · synced with the Ledger"
@@ -327,10 +324,7 @@ mod tests {
     fn scope_notes_keep_the_configuration_and_preference_terms_and_pluralise() {
         locale();
         let facts = ScopeFacts { log_capacity: 500 };
-        assert_eq!(
-            SettingsPage::Display.scope_note(facts),
-            "this device · never synced"
-        );
+        assert_eq!(SettingsPage::Display.scope_note(facts), "this device");
         assert_eq!(
             SettingsPage::Units.scope_note(facts),
             "synced · change sets"

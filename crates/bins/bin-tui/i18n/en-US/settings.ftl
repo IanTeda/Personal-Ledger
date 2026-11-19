@@ -58,8 +58,8 @@ tui-settings-description-about = version, licences and links
 
 ## The scope note on the right of each page's heading.
 
-tui-settings-scope-general = this device · never synced
-tui-settings-scope-display = this device · never synced
+tui-settings-scope-general = this device
+tui-settings-scope-display = this device
 tui-settings-scope-ledger = preferences · synced · ledger identity
 tui-settings-scope-ledger-data = ledger data · synced
 tui-settings-scope-ai-connections = this device

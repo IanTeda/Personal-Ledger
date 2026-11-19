@@ -768,7 +768,7 @@ mod tests {
         assert_eq!(model.selected, SettingsPage::General);
         assert_eq!(model.focus, SettingsFocus::Index);
         assert_eq!(model.heading, "Settings - General");
-        assert_eq!(model.scope_note, "this device · never synced");
+        assert_eq!(model.scope_note, "this device");
         assert!(
             model.index_page,
             "the index is the resting view, docked or not"
@@ -1298,7 +1298,7 @@ mod tests {
         assert!(model.index_page);
         assert_eq!(model.breadcrumb, None);
         assert_eq!(model.index_count, "15 pages");
-        assert_eq!(model.groups[0].scope_line, "4 pages · never synced");
+        assert_eq!(model.groups[0].scope_line, "4 pages");
 
         send(&mut frame, [E::ClickIndexPage(SettingsPage::Display)]);
         let model = frame.view_model();

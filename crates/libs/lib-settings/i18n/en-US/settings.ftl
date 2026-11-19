@@ -8,12 +8,12 @@ settings-group-this-ledger = This ledger
 settings-group-this-device-scope = { $count ->
     [one] { $count } page
    *[other] { $count } pages
-} · never synced
+}
 settings-group-this-ledger-scope = { $count ->
     [one] { $count } page
    *[other] { $count } pages
 } · synced with the Ledger
-settings-group-this-device-description = Stays on this computer and never syncs. Applies whichever Ledger is open, or none.
+settings-group-this-device-description = Stays on this computer, in its configuration file. Applies whichever Ledger is open, or none.
 settings-group-this-ledger-description = Saved in the Ledger and synced with it, so every device that opens it shares them.
 
 # The page heading at Large and X-Large, beside the docked index: `Settings - Display`.
@@ -64,7 +64,7 @@ settings-description-about = version, licences and credits
 ## Each page's scope note, right of its heading. `$unit` and `$size` are the backup's Unit code and
 ## store size, `$entries` how many log entries the capture keeps.
 
-settings-scope-this-device = this device · never synced
+settings-scope-this-device = this device
 settings-scope-ledger = preferences · synced · ledger identity
 settings-scope-synced-change-sets = synced · change sets
 settings-scope-ledger-data = ledger data · synced
