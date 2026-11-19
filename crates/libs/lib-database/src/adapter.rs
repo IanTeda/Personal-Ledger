@@ -15,6 +15,7 @@ pub mod fake_fails;
 pub mod institutions;
 pub mod inventory;
 pub mod ledger_creation;
+pub mod ordered;
 pub mod payees;
 pub mod settings;
 pub mod tag_removal;

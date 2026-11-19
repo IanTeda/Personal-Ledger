@@ -13,7 +13,7 @@ use lib_accounts::AccountRepository;
 use lib_bills::{BillPlanRepository, BillScheduleRepository};
 use lib_budgets::BudgetRepository;
 use lib_categories::CategoryRepository;
-use lib_core::{AccountId, CategoryId, InstitutionId, PayeeId, TagId, UnitId};
+use lib_core::{AccountId, CategoryId, PayeeId, RowID, TagId, UnitId};
 use lib_documents::DocumentRepository;
 use lib_institutions::InstitutionRepository;
 use lib_inventory::InventoryRepository;
@@ -22,6 +22,7 @@ use lib_tags::TagRepository;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::{BaseUnitRepository, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage};
 
+use super::ordered::Ordered;
 use super::store::{
     AccountsStore, BillsStore, BudgetsStore, CategoriesStore, DocumentsStore, InstitutionsStore,
     InventoryStore, PayeesStore, TagsStore, TransactionsStore, UnitsStore,
@@ -161,6 +162,17 @@ impl Commit for FailingCommit {
     }
 }
 
+/// The order placed in the live rows, as any write is.
+impl<T: Ordered + Clone> Ordered for Switched<T> {
+    fn order(&self) -> Vec<RowID> {
+        self.live.order()
+    }
+
+    fn place(&mut self, order: &[RowID]) {
+        self.live_mut().place(order);
+    }
+}
+
 impl<T: UnitsStore + Clone> UnitsStore for Switched<T> {
     fn units(&self) -> &dyn UnitRepository {
         self.live.units()
@@ -196,10 +208,6 @@ impl<T: InstitutionsStore + Clone> InstitutionsStore for Switched<T> {
         self.live_mut().institutions_mut()
     }
 
-    fn place_institutions(&mut self, order: &[InstitutionId]) {
-        self.live_mut().place_institutions(order);
-    }
-
     fn reload(&mut self) -> Result<()> {
         self.reload_snapshot()
     }
@@ -212,10 +220,6 @@ impl<T: AccountsStore + Clone> AccountsStore for Switched<T> {
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         self.live_mut().accounts_mut()
-    }
-
-    fn place_accounts(&mut self, order: &[AccountId]) {
-        self.live_mut().place_accounts(order);
     }
 
     fn reload(&mut self) -> Result<()> {

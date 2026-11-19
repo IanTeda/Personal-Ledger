@@ -17,12 +17,13 @@
 use chrono::NaiveDate;
 use lib_accounts::{Account, AccountRepository};
 use lib_core::AccountRef;
-use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
+use lib_core::{AccountId, AccountType, InstitutionId, Money, RowID, UnitId};
 
 use lib_transaction_import::ImportAccount;
 use lib_units::Holding;
 use sqlx::SqliteConnection;
 
+use super::ordered::{Ordered, PlaceRows, place_by};
 use crate::Result;
 use crate::commit::PendingWrites;
 use crate::writer::{BoxFuture, Change, Domain, Writer};
@@ -32,8 +33,6 @@ use crate::writer::{BoxFuture, Change, Domain, Writer};
 enum AccountsChange {
     Upsert(Account),
     Delete(AccountId),
-    /// Every Account's place, as Undo writes it back (#1262).
-    Place(Vec<AccountId>),
 }
 
 /// The Accounts domain, held in memory and saved through the shared writer.
@@ -106,21 +105,31 @@ impl AccountsAdapter {
         Ok(())
     }
 
-    /// Puts the held Accounts in `order`, any not named after those that are, and saves each
-    /// one's place. For Undo and Redo of a delete, which put a row back where it was (#1262).
-    pub fn place(&mut self, order: &[AccountId]) {
-        let rows = &mut self.accounts.rows;
-        super::store::place_by(rows, order, |row| row.id);
-        let placed = rows.iter().map(|row| row.id).collect();
-        self.accounts.pending.push(AccountsChange::Place(placed));
-    }
-
     pub fn accounts(&self) -> &dyn AccountRepository {
         &self.accounts
     }
 
     pub fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         &mut self.accounts
+    }
+}
+
+/// Saves each Account's place as well as memory's, for Undo and Redo of a delete (#1262).
+impl Ordered for AccountsAdapter {
+    fn order(&self) -> Vec<RowID> {
+        self.accounts
+            .rows
+            .iter()
+            .map(|row| row.id.row_id())
+            .collect()
+    }
+
+    fn place(&mut self, order: &[RowID]) {
+        place_by(&mut self.accounts.rows, order, |row| row.id.row_id());
+        self.accounts.pending.push(PlaceRows {
+            domain: Domain::Accounts,
+            ids: self.order(),
+        });
     }
 }
 
@@ -234,7 +243,7 @@ impl Change for AccountsChange {
     fn cascades_to(&self) -> &'static [Domain] {
         match self {
             Self::Delete(_) => &[Domain::Documents, Domain::Budgets],
-            Self::Upsert(_) | Self::Place(_) => &[],
+            Self::Upsert(_) => &[],
         }
     }
 
@@ -243,15 +252,6 @@ impl Change for AccountsChange {
             match *self {
                 Self::Upsert(account) => upsert(conn, &account).await,
                 Self::Delete(id) => delete(conn, id).await,
-                Self::Place(order) => {
-                    for (place, id) in order.into_iter().enumerate() {
-                        let place = i64::try_from(place).unwrap_or(i64::MAX);
-                        sqlx::query!("UPDATE accounts SET position = ? WHERE id = ?", place, id)
-                            .execute(&mut *conn)
-                            .await?;
-                    }
-                    Ok(())
-                }
             }
         })
     }
@@ -713,7 +713,7 @@ mod tests {
                     "INSERT INTO balance_checks (id, account_id, date, asserted_balance)
                      VALUES (?, ?, '2026-09-01', '100')",
                 )
-                .bind(lib_core::RowID::new())
+                .bind(RowID::new())
                 .bind(checked)
                 .execute(&pool)
                 .await?;

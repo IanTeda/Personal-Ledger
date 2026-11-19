@@ -17,7 +17,7 @@
 
 use chrono::NaiveDate;
 use lib_core::{
-    AccountId, BillPlanId, DocumentId, DocumentTypeId, ItemId, Money, PayeeId, TransactionId,
+    AccountId, BillPlanId, DocumentId, DocumentTypeId, ItemId, Money, PayeeId, RowID, TransactionId,
 };
 use lib_documents::protocols::move_type_to;
 use lib_documents::types::{DocumentTypeRow, RemindLead, TracksDate};
@@ -27,6 +27,7 @@ use lib_documents::{
 };
 use sqlx::SqliteConnection;
 
+use super::ordered::{Ordered, PlaceRows, place_by};
 use crate::commit::PendingWrites;
 use crate::writer::{BoxFuture, Change, Domain, Writer};
 use crate::{Error, Result};
@@ -40,8 +41,6 @@ enum DocumentsChange {
     /// A type's row, with its place in the order should it be new.
     UpsertType(DocumentTypeRow, usize),
     DeleteType(DocumentTypeId),
-    /// Every type's place, after one moved or went.
-    Order(Vec<DocumentTypeId>),
 }
 
 /// The Documents domain, held in memory and saved through the shared writer.
@@ -142,9 +141,24 @@ impl DocumentsAdapter {
         Ok(())
     }
 
+    /// Every type's place, after one moved or went.
     fn push_order(&mut self) {
-        let order = self.types.iter().map(|row| row.id).collect();
-        self.pending.push(DocumentsChange::Order(order));
+        self.pending.push(PlaceRows {
+            domain: Domain::DocumentTypes,
+            ids: self.order(),
+        });
+    }
+}
+
+/// The Document Types' order, saved as well as held, for Undo and Redo of a move or a delete.
+impl Ordered for DocumentsAdapter {
+    fn order(&self) -> Vec<RowID> {
+        self.types.iter().map(|row| row.id.row_id()).collect()
+    }
+
+    fn place(&mut self, order: &[RowID]) {
+        place_by(&mut self.types, order, |row| row.id.row_id());
+        self.push_order();
     }
 }
 
@@ -203,7 +217,7 @@ impl Change for DocumentsChange {
     fn domain(&self) -> Domain {
         match self {
             Self::UpsertDocument(_) | Self::DeleteDocument(_) => Domain::Documents,
-            Self::UpsertType(..) | Self::DeleteType(_) | Self::Order(_) => Domain::DocumentTypes,
+            Self::UpsertType(..) | Self::DeleteType(_) => Domain::DocumentTypes,
         }
     }
 
@@ -217,19 +231,6 @@ impl Change for DocumentsChange {
                     sqlx::query!("DELETE FROM document_types WHERE id = ?", id)
                         .execute(&mut *conn)
                         .await?;
-                    Ok(())
-                }
-                Self::Order(order) => {
-                    for (position, id) in order.into_iter().enumerate() {
-                        let position = i64::try_from(position).unwrap_or(i64::MAX);
-                        sqlx::query!(
-                            "UPDATE document_types SET position = ? WHERE id = ?",
-                            position,
-                            id,
-                        )
-                        .execute(&mut *conn)
-                        .await?;
-                    }
                     Ok(())
                 }
             }
@@ -355,7 +356,7 @@ fn source_of(text: &str) -> Result<Source> {
 }
 
 /// Writes the type's row, at `position` should it be new; an existing type keeps its place, which
-/// only [`DocumentsChange::Order`] rewrites.
+/// only a [`PlaceRows`] rewrites.
 async fn upsert_type(
     conn: &mut SqliteConnection,
     row: &DocumentTypeRow,

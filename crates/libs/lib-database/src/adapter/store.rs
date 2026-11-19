@@ -35,28 +35,22 @@
 //! bundle adds a field rather than an argument (#866).
 
 use lib_core::PayeeRef;
-use lib_core::{AccountRef, CategoryRef};
-use std::cell::{Cell, RefCell};
+use lib_core::{AccountRef, CategoryRef, RowID};
+use std::cell::{Cell, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc;
 
-/// Sorts `rows` by where `id_of` finds them in `order`, rows it doesn't name going last.
-pub(crate) fn place_by<T, I: PartialEq>(rows: &mut [T], order: &[I], id_of: impl Fn(&T) -> I) {
-    rows.sort_by_key(|row| {
-        let id = id_of(row);
-        order
-            .iter()
-            .position(|held| *held == id)
-            .unwrap_or(usize::MAX)
-    });
+/// Notes a list in a stored order as it was before a delete or a move and as it is after (#1267).
+/// A delete notes it before the row's own image, so Undo, which goes newest first, restores the
+/// row before its place.
+fn record_order(journal: &Journal, domain: Domain, before: Vec<RowID>, after: Vec<RowID>) {
+    journal.record(RowImage::Order(domain, before, after));
 }
 
-/// The order before and after deleting `id`, for the recorders that note the order before the row.
-fn order_pair<I: Copy + PartialEq>(held: impl Iterator<Item = I>, id: I) -> (Vec<I>, Vec<I>) {
-    let before: Vec<I> = held.collect();
-    let after = before.iter().copied().filter(|kept| *kept != id).collect();
-    (before, after)
+/// `order` without `id`: the order a delete leaves.
+fn without(order: &[RowID], id: RowID) -> Vec<RowID> {
+    order.iter().copied().filter(|kept| *kept != id).collect()
 }
 
 use chrono::NaiveDate;
@@ -111,6 +105,7 @@ use lib_units::{
     UnitUsage, UnitUse, UnitsPorts,
 };
 
+use crate::adapter::ordered::{Ordered, place_by};
 use crate::adapter::payees::payee_refs;
 use crate::adapter::{
     accounts, bills, categories, institutions, inventory, tags, transactions, units,
@@ -192,16 +187,9 @@ impl<S: InstitutionsStore + ?Sized> InstitutionRepository for Journaled<S> {
     fn delete_institution(&mut self, id: InstitutionId) {
         if let Some(before) = self.store.institutions().institution(id) {
             let journal = self.written.journal();
-            // The order first, so Undo, which goes newest first, restores the row before its place.
-            let (before_order, order) = order_pair(
-                self.store
-                    .institutions()
-                    .institutions()
-                    .iter()
-                    .map(|held| held.id),
-                id,
-            );
-            journal.record(RowImage::InstitutionOrder(before_order, order));
+            let order = self.store.order();
+            let after = without(&order, id.row_id());
+            record_order(journal, Domain::Institutions, order, after);
             journal.record(RowImage::Institution(Some(before), None));
         }
         self.store.institutions_mut().delete_institution(id);
@@ -319,12 +307,9 @@ impl<S: AccountsStore + ?Sized> AccountRepository for Journaled<S> {
         let journal = self.written.journal();
         journal.unlink_account(id);
         if let Some(before) = self.store.accounts().account(id) {
-            // The order first, so Undo, which goes newest first, restores the row before its place.
-            let (before_order, order) = order_pair(
-                self.store.accounts().accounts().iter().map(|held| held.id),
-                id,
-            );
-            journal.record(RowImage::AccountOrder(before_order, order));
+            let order = self.store.order();
+            let after = without(&order, id.row_id());
+            record_order(journal, Domain::Accounts, order, after);
             journal.record(RowImage::Account(Some(before), None));
         }
         self.store.accounts_mut().delete_account(id);
@@ -577,17 +562,17 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
 
     fn upsert_document_type(&mut self, row: &lib_documents::types::DocumentTypeRow) {
         self.store.written.note(Domain::DocumentTypes);
-        let types = self.store.documents().document_types();
-        let before = types.iter().find(|held| held.id == row.id).cloned();
-        let journal = self.store.written.journal();
-        // The order first, so Undo, which goes newest first, restores the type before its place.
-        let mut order: Vec<_> = types.iter().map(|held| held.id).collect();
-        let before_order = order.clone();
-        if before.is_none() {
-            order.push(row.id);
-        }
-        journal.record(RowImage::DocumentTypeOrder(before_order, order));
-        journal.record(RowImage::DocumentType(before, Some(row.clone())));
+        // A new type goes to the end, so Undo of the add only removes it: no order is noted.
+        let before = self
+            .store
+            .documents()
+            .document_types()
+            .into_iter()
+            .find(|held| held.id == row.id);
+        self.store
+            .written
+            .journal()
+            .record(RowImage::DocumentType(before, Some(row.clone())));
         self.store.documents_mut().upsert_document_type(row);
     }
 
@@ -595,14 +580,10 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
         self.store.written.note(Domain::DocumentTypes);
         let types = self.store.documents().document_types();
         let journal = self.store.written.journal();
-        let before_order: Vec<_> = types.iter().map(|held| held.id).collect();
-        let order = before_order
-            .iter()
-            .copied()
-            .filter(|held| *held != id)
-            .collect();
-        journal.record(RowImage::DocumentTypeOrder(before_order, order));
         if let Some(before) = types.into_iter().find(|held| held.id == id) {
+            let order = self.store.store.order();
+            let after = without(&order, id.row_id());
+            record_order(journal, Domain::DocumentTypes, order, after);
             journal.record(RowImage::DocumentType(Some(before), None));
         }
         self.store.documents_mut().delete_document_type(id);
@@ -610,25 +591,15 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
 
     fn move_document_type(&mut self, id: lib_core::DocumentTypeId, to: usize) {
         self.store.written.note(Domain::DocumentTypes);
-        let before: Vec<_> = self
-            .store
-            .documents()
-            .document_types()
-            .iter()
-            .map(|held| held.id)
-            .collect();
+        let before = self.store.store.order();
         self.store.documents_mut().move_document_type(id, to);
-        let after: Vec<_> = self
-            .store
-            .documents()
-            .document_types()
-            .iter()
-            .map(|held| held.id)
-            .collect();
-        self.store
-            .written
-            .journal()
-            .record(RowImage::DocumentTypeOrder(before, after));
+        let after = self.store.store.order();
+        record_order(
+            self.store.written.journal(),
+            Domain::DocumentTypes,
+            before,
+            after,
+        );
     }
 }
 
@@ -731,15 +702,11 @@ impl UnitsStore for InMemoryPorts {
     }
 }
 
-/// The Institutions repository port, wherever it is kept.
-pub trait InstitutionsStore {
+/// The Institutions repository port, wherever it is kept, and their stored order.
+pub trait InstitutionsStore: Ordered {
     fn institutions(&self) -> &dyn InstitutionRepository;
 
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository;
-
-    /// Puts the held Institutions in `order`, those it doesn't name after the rest: Undo and Redo
-    /// of a delete restoring a row's place (#1262).
-    fn place_institutions(&mut self, order: &[InstitutionId]);
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
@@ -757,10 +724,6 @@ impl InstitutionsStore for InstitutionsAdapter {
         self
     }
 
-    fn place_institutions(&mut self, order: &[InstitutionId]) {
-        self.place(order);
-    }
-
     fn reload(&mut self) -> Result<()> {
         InstitutionsAdapter::reload(self)
     }
@@ -776,12 +739,21 @@ impl InstitutionsStore for InMemoryInstitutions {
         self
     }
 
-    fn place_institutions(&mut self, order: &[InstitutionId]) {
-        place_by(&mut self.institutions, order, |row| row.id);
-    }
-
     fn reload(&mut self) -> Result<()> {
         Ok(())
+    }
+}
+
+impl Ordered for InMemoryInstitutions {
+    fn order(&self) -> Vec<RowID> {
+        self.institutions
+            .iter()
+            .map(|row| row.id.row_id())
+            .collect()
+    }
+
+    fn place(&mut self, order: &[RowID]) {
+        place_by(&mut self.institutions, order, |row| row.id.row_id());
     }
 }
 
@@ -832,6 +804,43 @@ impl SharedStores {
             #[cfg(test)]
             StoreKey::Test => Ok(()),
         }
+    }
+}
+
+impl SharedStores {
+    /// The store holding `domain`'s list in a stored order, for Undo and Redo to place its rows
+    /// (#1267); `None` for a domain with no stored order. A new list adds its arm here and in
+    /// [`ordered_table`](crate::adapter::ordered::ordered_table).
+    pub(crate) fn ordered_mut(&self, domain: Domain) -> Option<RefMut<'_, dyn Ordered>> {
+        Some(match domain {
+            Domain::Institutions => RefMut::map(self.institutions.borrow_mut(), |store| {
+                store as &mut dyn Ordered
+            }),
+            Domain::Accounts => RefMut::map(self.accounts.borrow_mut(), |store| {
+                store as &mut dyn Ordered
+            }),
+            Domain::DocumentTypes => RefMut::map(self.documents.borrow_mut(), |store| {
+                store as &mut dyn Ordered
+            }),
+            _ => return None,
+        })
+    }
+}
+
+/// The order, noting its domain written when the rows are placed. The Documents store's order is
+/// the Document Types', so it notes them rather than the Documents.
+impl<S: Ordered + ?Sized> Ordered for Recorded<S> {
+    fn order(&self) -> Vec<RowID> {
+        self.store.store.order()
+    }
+
+    fn place(&mut self, order: &[RowID]) {
+        let domain = match self.domain {
+            Domain::Documents => Domain::DocumentTypes,
+            other => other,
+        };
+        self.store.written.note(domain);
+        self.store.store.place(order);
     }
 }
 
@@ -959,11 +968,6 @@ impl<S: InstitutionsStore + ?Sized> InstitutionsStore for Recorded<S> {
         &mut self.store
     }
 
-    fn place_institutions(&mut self, order: &[InstitutionId]) {
-        self.store.written.note(self.domain);
-        self.store.store.place_institutions(order);
-    }
-
     fn reload(&mut self) -> Result<()> {
         self.store.store.reload()
     }
@@ -976,14 +980,10 @@ pub type SharedAccountsStore = Rc<RefCell<dyn AccountsStore>>;
 /// The Accounts repository port, wherever it is kept. What names an Account is other domains'
 /// rows, which [`StoredAccountReads`] counts in their stores (#993); the reading modules map the
 /// Accounts' own rows themselves (#994).
-pub trait AccountsStore {
+pub trait AccountsStore: Ordered {
     fn accounts(&self) -> &dyn AccountRepository;
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository;
-
-    /// Puts the held Accounts in `order`, those it doesn't name after the rest: Undo and Redo of a
-    /// delete restoring a row's place (#1262).
-    fn place_accounts(&mut self, order: &[AccountId]);
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
@@ -999,10 +999,6 @@ impl AccountsStore for AccountsAdapter {
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         AccountsAdapter::accounts_mut(self)
-    }
-
-    fn place_accounts(&mut self, order: &[AccountId]) {
-        self.place(order);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1022,11 +1018,6 @@ impl<S: AccountsStore + ?Sized> AccountsStore for Recorded<S> {
         &mut self.store
     }
 
-    fn place_accounts(&mut self, order: &[AccountId]) {
-        self.store.written.note(self.domain);
-        self.store.store.place_accounts(order);
-    }
-
     fn reload(&mut self) -> Result<()> {
         self.store.reload()
     }
@@ -1044,12 +1035,22 @@ impl AccountsStore for lib_accounts::fake::InMemoryPorts {
         &mut self.accounts
     }
 
-    fn place_accounts(&mut self, order: &[AccountId]) {
-        place_by(&mut self.accounts.accounts, order, |row| row.id);
-    }
-
     fn reload(&mut self) -> Result<()> {
         Ok(())
+    }
+}
+
+impl Ordered for lib_accounts::fake::InMemoryPorts {
+    fn order(&self) -> Vec<RowID> {
+        self.accounts
+            .accounts
+            .iter()
+            .map(|row| row.id.row_id())
+            .collect()
+    }
+
+    fn place(&mut self, order: &[RowID]) {
+        place_by(&mut self.accounts.accounts, order, |row| row.id.row_id());
     }
 }
 
@@ -2259,8 +2260,9 @@ impl PayeeCategories for StoredPayeeReads {
 /// Links. Single-threaded, as the ports are.
 pub type SharedDocumentsStore = Rc<RefCell<dyn DocumentsStore>>;
 
-/// The Documents repository port, wherever it is kept.
-pub trait DocumentsStore {
+/// The Documents repository port, wherever it is kept. Its [`Ordered`] side is the Document
+/// Types', the store's one list in a stored order.
+pub trait DocumentsStore: Ordered {
     fn documents(&self) -> &dyn DocumentRepository;
 
     fn documents_mut(&mut self) -> &mut dyn DocumentRepository;
@@ -2320,6 +2322,16 @@ impl<S: DocumentsStore + ?Sized> DocumentsStore for Recorded<S> {
 
     fn reload(&mut self) -> Result<()> {
         self.store.reload()
+    }
+}
+
+impl Ordered for InMemoryDocuments {
+    fn order(&self) -> Vec<RowID> {
+        self.types.iter().map(|row| row.id.row_id()).collect()
+    }
+
+    fn place(&mut self, order: &[RowID]) {
+        place_by(&mut self.types, order, |row| row.id.row_id());
     }
 }
 

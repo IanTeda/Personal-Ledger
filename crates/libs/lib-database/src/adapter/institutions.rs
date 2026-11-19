@@ -8,10 +8,11 @@
 //! Institution an Account names; the `accounts` foreign key (no cascade) backs it, so a delete that
 //! skips the rule fails in the file, is reported against the Institutions domain and is reloaded.
 
-use lib_core::{InstitutionId, UnitId};
+use lib_core::{InstitutionId, RowID, UnitId};
 use lib_institutions::{Institution, InstitutionRepository};
 use sqlx::SqliteConnection;
 
+use super::ordered::{Ordered, PlaceRows, place_by};
 use crate::Result;
 use crate::commit::PendingWrites;
 use crate::writer::{BoxFuture, Change, Domain, Writer};
@@ -19,10 +20,6 @@ use crate::writer::{BoxFuture, Change, Domain, Writer};
 /// One port write.
 #[derive(Debug, Clone)]
 struct UpsertInstitution(Institution);
-
-/// Every Institution's place, as Undo writes it back.
-#[derive(Debug, Clone)]
-struct PlaceInstitutions(Vec<InstitutionId>);
 
 /// One port delete.
 #[derive(Debug, Clone)]
@@ -110,13 +107,18 @@ impl InstitutionsAdapter {
     }
 }
 
-impl InstitutionsAdapter {
-    /// Puts the held Institutions in `order`, any not named after those that are, and saves each
-    /// one's place. For Undo and Redo of a delete, which put a row back where it was (#1262).
-    pub fn place(&mut self, order: &[InstitutionId]) {
-        super::store::place_by(&mut self.rows, order, |row| row.id);
-        let placed = self.rows.iter().map(|row| row.id).collect();
-        self.pending.push(PlaceInstitutions(placed));
+/// Saves each Institution's place as well as memory's, for Undo and Redo of a delete (#1262).
+impl Ordered for InstitutionsAdapter {
+    fn order(&self) -> Vec<RowID> {
+        self.rows.iter().map(|row| row.id.row_id()).collect()
+    }
+
+    fn place(&mut self, order: &[RowID]) {
+        place_by(&mut self.rows, order, |row| row.id.row_id());
+        self.pending.push(PlaceRows {
+            domain: Domain::Institutions,
+            ids: self.order(),
+        });
     }
 }
 
@@ -149,28 +151,6 @@ impl Change for UpsertInstitution {
 
     fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>> {
         Box::pin(async move { upsert(conn, &self.0).await })
-    }
-}
-
-impl Change for PlaceInstitutions {
-    fn domain(&self) -> Domain {
-        Domain::Institutions
-    }
-
-    fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>> {
-        Box::pin(async move {
-            for (place, id) in self.0.into_iter().enumerate() {
-                let place = i64::try_from(place).unwrap_or(i64::MAX);
-                sqlx::query!(
-                    "UPDATE institutions SET position = ? WHERE id = ?",
-                    place,
-                    id,
-                )
-                .execute(&mut *conn)
-                .await?;
-            }
-            Ok(())
-        })
     }
 }
 

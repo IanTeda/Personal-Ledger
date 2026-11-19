@@ -40,7 +40,7 @@ use lib_budgets::Budget;
 use lib_categories::Category;
 use lib_core::{
     AccountId, BillPlanId, BudgetId, CategoryId, DocumentId, DocumentTypeId, InstitutionId, ItemId,
-    LocationId, PayeeId, PriceSourceId, TagId, TransactionId, UnitId,
+    LocationId, PayeeId, PriceSourceId, RowID, TagId, TransactionId, UnitId,
 };
 use lib_documents::types::DocumentTypeRow;
 use lib_documents::{Document, DocumentLink};
@@ -80,12 +80,9 @@ pub enum RowImage {
     /// A whole Location with its cover and Areas.
     Location(Option<Location>, Option<Location>),
     Item(Option<Item>, Option<Item>),
-    /// Every Document Type's place, before and after one was added, moved or removed.
-    DocumentTypeOrder(Vec<DocumentTypeId>, Vec<DocumentTypeId>),
-    /// Every Institution's place, before and after one was removed.
-    InstitutionOrder(Vec<InstitutionId>, Vec<InstitutionId>),
-    /// Every Account's place, before and after one was removed.
-    AccountOrder(Vec<AccountId>, Vec<AccountId>),
+    /// A list in a stored order ([`crate::adapter::ordered`]): every row's place before and after
+    /// one was moved or removed.
+    Order(Domain, Vec<RowID>, Vec<RowID>),
 }
 
 /// Which row an image is of, so a second write to it merges into the first.
@@ -101,9 +98,7 @@ enum RowKey {
     Budget(BudgetId),
     Document(DocumentId),
     DocumentType(DocumentTypeId),
-    DocumentTypeOrder,
-    InstitutionOrder,
-    AccountOrder,
+    Order(Domain),
     Account(AccountId),
     Category(CategoryId),
     Tag(TagId),
@@ -139,9 +134,7 @@ impl RowImage {
             Self::DocumentType(before, after) => {
                 RowKey::DocumentType(before.as_ref().or(after.as_ref())?.id)
             }
-            Self::DocumentTypeOrder(..) => RowKey::DocumentTypeOrder,
-            Self::InstitutionOrder(..) => RowKey::InstitutionOrder,
-            Self::AccountOrder(..) => RowKey::AccountOrder,
+            Self::Order(domain, ..) => RowKey::Order(*domain),
             Self::Account(before, after) => RowKey::Account(before.as_ref().or(after.as_ref())?.id),
             Self::Category(before, after) => {
                 RowKey::Category(before.as_ref().or(after.as_ref())?.id)
@@ -170,13 +163,14 @@ impl RowImage {
     pub fn domain(&self) -> Domain {
         match self {
             Self::Unit(..) | Self::PriceSource(..) | Self::BaseUnit(..) => Domain::Units,
-            Self::Institution(..) | Self::InstitutionOrder(..) => Domain::Institutions,
+            Self::Order(domain, ..) => *domain,
+            Self::Institution(..) => Domain::Institutions,
             Self::Transaction(..) => Domain::Transactions,
             Self::BillPlan(..) | Self::BillEntry(..) => Domain::Bills,
             Self::Budget(..) => Domain::Budgets,
             Self::Document(..) => Domain::Documents,
-            Self::DocumentType(..) | Self::DocumentTypeOrder(..) => Domain::DocumentTypes,
-            Self::Account(..) | Self::AccountOrder(..) => Domain::Accounts,
+            Self::DocumentType(..) => Domain::DocumentTypes,
+            Self::Account(..) => Domain::Accounts,
             Self::Category(..) => Domain::Categories,
             Self::Tag(..) => Domain::Tags,
             Self::Payee(..) => Domain::Payees,
@@ -197,9 +191,7 @@ impl RowImage {
             Self::Budget(before, after) => before == after,
             Self::Document(before, after) => before == after,
             Self::DocumentType(before, after) => before == after,
-            Self::DocumentTypeOrder(before, after) => before == after,
-            Self::InstitutionOrder(before, after) => before == after,
-            Self::AccountOrder(before, after) => before == after,
+            Self::Order(_, before, after) => before == after,
             Self::Account(before, after) => before == after,
             Self::Category(before, after) => before == after,
             Self::Tag(before, after) => before == after,
@@ -222,11 +214,7 @@ impl RowImage {
             (Self::Budget(_, after), Self::Budget(_, later)) => *after = later,
             (Self::Document(_, after), Self::Document(_, later)) => *after = later,
             (Self::DocumentType(_, after), Self::DocumentType(_, later)) => *after = later,
-            (Self::DocumentTypeOrder(_, after), Self::DocumentTypeOrder(_, later)) => {
-                *after = later
-            }
-            (Self::InstitutionOrder(_, after), Self::InstitutionOrder(_, later)) => *after = later,
-            (Self::AccountOrder(_, after), Self::AccountOrder(_, later)) => *after = later,
+            (Self::Order(_, _, after), Self::Order(_, _, later)) => *after = later,
             (Self::Account(_, after), Self::Account(_, later)) => *after = later,
             (Self::Category(_, after), Self::Category(_, later)) => *after = later,
             (Self::Tag(_, after), Self::Tag(_, later)) => *after = later,
@@ -534,32 +522,14 @@ fn write(image: &RowImage, step: Step, stores: &SharedStores) {
                 None => inventory.delete_item(id),
             }
         }
-        RowImage::InstitutionOrder(before, after) => {
-            let (_, target) = sides(&Some(before.clone()), &Some(after.clone()), step);
-            stores
-                .institutions
-                .borrow_mut()
-                .place_institutions(&target.unwrap_or_default());
-        }
-        RowImage::AccountOrder(before, after) => {
-            let (_, target) = sides(&Some(before.clone()), &Some(after.clone()), step);
-            stores
-                .accounts
-                .borrow_mut()
-                .place_accounts(&target.unwrap_or_default());
-        }
-        RowImage::DocumentTypeOrder(before, after) => {
-            let (_, target) = sides(&Some(before.clone()), &Some(after.clone()), step);
-            let mut store = stores.documents.borrow_mut();
-            let documents = store.documents_mut();
-            let held: Vec<DocumentTypeId> = documents
-                .document_types()
-                .into_iter()
-                .map(|row| row.id)
-                .collect();
-            let present = target.into_iter().flatten().filter(|id| held.contains(id));
-            for (place, id) in present.enumerate() {
-                documents.move_document_type(id, place);
+        RowImage::Order(domain, before, after) => {
+            let target = match step {
+                Step::Reverse => before,
+                Step::Replay => after,
+            };
+            match stores.ordered_mut(*domain) {
+                Some(mut ordered) => ordered.place(target),
+                None => debug_assert!(false, "{domain:?} keeps no stored order"),
             }
         }
     }
@@ -1201,6 +1171,97 @@ mod tests {
             assert_eq!(reversal.domains(), [Domain::DocumentTypes]);
             undone_and_redone(&ports, &reversal, types, &before, &after);
         }
+    }
+
+    fn type_ids(ports: &crate::LedgerPorts) -> Vec<DocumentTypeId> {
+        let store = ports.stores().documents.clone();
+        let store = store.borrow();
+        store
+            .documents()
+            .document_types()
+            .iter()
+            .map(|row| row.id)
+            .collect()
+    }
+
+    #[test]
+    fn adding_a_document_type_records_only_its_row_and_undo_removes_it() {
+        let ports = ports();
+        let before = type_ids(&ports);
+        let mut added = ports
+            .stores()
+            .documents
+            .borrow()
+            .documents()
+            .document_types()[0]
+            .clone();
+        added.id = DocumentTypeId::new();
+        added.is_default = false;
+        added.name = "Warranty".into();
+
+        ports
+            .stores()
+            .documents
+            .borrow_mut()
+            .documents_mut()
+            .upsert_document_type(&added);
+        let reversal = ports.take_reversal().expect("the add was recorded");
+
+        assert_eq!(
+            reversal.images(),
+            [RowImage::DocumentType(None, Some(added.clone()))],
+            "an add appends, so it records no order"
+        );
+        ports.reverse(&reversal);
+        assert_eq!(type_ids(&ports), before);
+    }
+
+    #[test]
+    fn a_document_type_move_is_undone_to_its_order_and_redone_through_the_file() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let ports = crate::ports::test_support::file(dir.path());
+        let before = type_ids(&ports);
+        assert!(before.len() > 2, "the Ledger has types to reorder");
+        let moved = before[0];
+
+        ports
+            .stores()
+            .documents
+            .borrow_mut()
+            .documents_mut()
+            .move_document_type(moved, 2);
+        ports.commit().commit();
+        let after = type_ids(&ports);
+        assert_eq!(after[2], moved);
+        let reversal = ports.take_reversal().expect("the move was recorded");
+        assert_eq!(
+            reversal.images(),
+            [RowImage::Order(
+                Domain::DocumentTypes,
+                before.iter().map(DocumentTypeId::row_id).collect(),
+                after.iter().map(DocumentTypeId::row_id).collect(),
+            )]
+        );
+
+        ports.reverse(&reversal);
+        ports.commit().commit();
+        assert_eq!(type_ids(&ports), before);
+        ports
+            .reload(Domain::DocumentTypes)
+            .expect("the types read back");
+        assert_eq!(
+            type_ids(&ports),
+            before,
+            "in its order after reloading the file"
+        );
+        assert_eq!(ports.take_reversal(), None, "Undo records nothing");
+
+        ports.replay(&reversal);
+        ports.commit().commit();
+        ports
+            .reload(Domain::DocumentTypes)
+            .expect("the types read back");
+        assert_eq!(type_ids(&ports), after, "moved again");
     }
 
     /// One write to the ports, for the tests that run each in turn.
