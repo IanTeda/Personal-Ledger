@@ -109,6 +109,10 @@ impl InstitutionsAdapter {
 
 /// Saves each Institution's place as well as memory's, for Undo and Redo of a delete (#1262).
 impl Ordered for InstitutionsAdapter {
+    fn ordered_domain(&self) -> Domain {
+        Domain::Institutions
+    }
+
     fn order(&self) -> Vec<RowID> {
         self.rows.iter().map(|row| row.id.row_id()).collect()
     }

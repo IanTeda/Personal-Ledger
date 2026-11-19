@@ -9,6 +9,9 @@
 //! (`MAX(position) + 1`, or the end of memory), so it records no order. The file's side is one
 //! writer change, [`PlaceRows`], which finds the table by [`ordered_table`].
 
+use std::collections::HashMap;
+use std::hash::Hash;
+
 use lib_core::RowID;
 use sqlx::SqliteConnection;
 
@@ -19,6 +22,9 @@ use crate::writer::{BoxFuture, Change, Domain};
 pub trait Ordered {
     /// The rows' ids, in their order.
     fn order(&self) -> Vec<RowID>;
+
+    /// The domain whose order this store keeps.
+    fn ordered_domain(&self) -> Domain;
 
     /// Puts the rows `order` names first, in that order, and any it doesn't name after them, as
     /// Undo and Redo of a delete or a move do.
@@ -37,14 +43,9 @@ pub(crate) fn ordered_table(domain: Domain) -> Option<&'static str> {
 }
 
 /// Sorts `rows` by where `id_of` finds them in `order`, rows it doesn't name going last.
-pub(crate) fn place_by<T, I: PartialEq>(rows: &mut [T], order: &[I], id_of: impl Fn(&T) -> I) {
-    rows.sort_by_key(|row| {
-        let id = id_of(row);
-        order
-            .iter()
-            .position(|held| *held == id)
-            .unwrap_or(usize::MAX)
-    });
+pub(crate) fn place_by<T, I: Hash + Eq>(rows: &mut [T], order: &[I], id_of: impl Fn(&T) -> I) {
+    let places: HashMap<&I, usize> = order.iter().enumerate().map(|(at, id)| (id, at)).collect();
+    rows.sort_by_cached_key(|row| places.get(&id_of(row)).copied().unwrap_or(usize::MAX));
 }
 
 /// Every row's place in `domain`'s list, written as its `position`.
@@ -91,6 +92,15 @@ mod tests {
         place_by(&mut rows, &[3, 1], |row| *row);
 
         assert_eq!(rows, [3, 1, 2, 4]);
+    }
+
+    #[test]
+    fn unnamed_rows_keep_their_old_order_after_the_named_ones() {
+        let mut rows = vec![5, 4, 3, 2, 1];
+
+        place_by(&mut rows, &[2, 9], |row| *row);
+
+        assert_eq!(rows, [2, 5, 4, 3, 1]);
     }
 
     #[test]

@@ -41,18 +41,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc;
 
-/// Notes a list in a stored order as it was before a delete or a move and as it is after (#1267).
-/// A delete notes it before the row's own image, so Undo, which goes newest first, restores the
-/// row before its place.
-fn record_order(journal: &Journal, domain: Domain, before: Vec<RowID>, after: Vec<RowID>) {
-    journal.record(RowImage::Order(domain, before, after));
-}
-
-/// `order` without `id`: the order a delete leaves.
-fn without(order: &[RowID], id: RowID) -> Vec<RowID> {
-    order.iter().copied().filter(|kept| *kept != id).collect()
-}
-
 use chrono::NaiveDate;
 use lib_account_deletion::DeletionReads;
 use lib_accounts::{
@@ -124,6 +112,18 @@ use lib_documents::DocumentLink;
 /// write: a mutable borrow that writes nothing costs one extra repaint. A reload notes nothing,
 /// since it puts memory back as stored rather than writing.
 ///
+/// Notes a list in a stored order as it was before a delete or a move and as it is after (#1267).
+/// A delete notes it before the row's own image, so Undo, which goes newest first, restores the
+/// row before its place.
+fn record_order(journal: &Journal, domain: Domain, before: Vec<RowID>, after: Vec<RowID>) {
+    journal.record(RowImage::Order(domain, before, after));
+}
+
+/// `order` without `id`: the order a delete leaves.
+fn without(order: &[RowID], id: RowID) -> Vec<RowID> {
+    order.iter().copied().filter(|kept| *kept != id).collect()
+}
+
 /// Where the domain records onto History (#1247), its `*_mut()` hands out a recording wrapper
 /// around the repository, which notes each row's image before and after a write in the
 /// [`Journal`] `written` shares ([`crate::reversal`]). Every domain records (#1247-#1249).
@@ -580,8 +580,8 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
         self.store.written.note(Domain::DocumentTypes);
         let types = self.store.documents().document_types();
         let journal = self.store.written.journal();
+        let order: Vec<RowID> = types.iter().map(|held| held.id.row_id()).collect();
         if let Some(before) = types.into_iter().find(|held| held.id == id) {
-            let order = self.store.store.order();
             let after = without(&order, id.row_id());
             record_order(journal, Domain::DocumentTypes, order, after);
             journal.record(RowImage::DocumentType(Some(before), None));
@@ -591,9 +591,9 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
 
     fn move_document_type(&mut self, id: lib_core::DocumentTypeId, to: usize) {
         self.store.written.note(Domain::DocumentTypes);
-        let before = self.store.store.order();
+        let before = Ordered::order(self);
         self.store.documents_mut().move_document_type(id, to);
-        let after = self.store.store.order();
+        let after = Ordered::order(self);
         record_order(
             self.store.written.journal(),
             Domain::DocumentTypes,
@@ -745,6 +745,10 @@ impl InstitutionsStore for InMemoryInstitutions {
 }
 
 impl Ordered for InMemoryInstitutions {
+    fn ordered_domain(&self) -> Domain {
+        Domain::Institutions
+    }
+
     fn order(&self) -> Vec<RowID> {
         self.institutions
             .iter()
@@ -827,19 +831,18 @@ impl SharedStores {
     }
 }
 
-/// The order, noting its domain written when the rows are placed. The Documents store's order is
-/// the Document Types', so it notes them rather than the Documents.
+/// The order, noting the store's ordered domain written when the rows are placed.
 impl<S: Ordered + ?Sized> Ordered for Recorded<S> {
     fn order(&self) -> Vec<RowID> {
-        self.store.store.order()
+        Box::as_ref(&self.store.store).order()
+    }
+
+    fn ordered_domain(&self) -> Domain {
+        self.store.store.ordered_domain()
     }
 
     fn place(&mut self, order: &[RowID]) {
-        let domain = match self.domain {
-            Domain::Documents => Domain::DocumentTypes,
-            other => other,
-        };
-        self.store.written.note(domain);
+        self.store.written.note(self.ordered_domain());
         self.store.store.place(order);
     }
 }
@@ -1041,6 +1044,10 @@ impl AccountsStore for lib_accounts::fake::InMemoryPorts {
 }
 
 impl Ordered for lib_accounts::fake::InMemoryPorts {
+    fn ordered_domain(&self) -> Domain {
+        Domain::Accounts
+    }
+
     fn order(&self) -> Vec<RowID> {
         self.accounts
             .accounts
@@ -2326,6 +2333,10 @@ impl<S: DocumentsStore + ?Sized> DocumentsStore for Recorded<S> {
 }
 
 impl Ordered for InMemoryDocuments {
+    fn ordered_domain(&self) -> Domain {
+        Domain::DocumentTypes
+    }
+
     fn order(&self) -> Vec<RowID> {
         self.types.iter().map(|row| row.id.row_id()).collect()
     }

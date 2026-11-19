@@ -152,6 +152,10 @@ impl DocumentsAdapter {
 
 /// The Document Types' order, saved as well as held, for Undo and Redo of a move or a delete.
 impl Ordered for DocumentsAdapter {
+    fn ordered_domain(&self) -> Domain {
+        Domain::DocumentTypes
+    }
+
     fn order(&self) -> Vec<RowID> {
         self.types.iter().map(|row| row.id.row_id()).collect()
     }

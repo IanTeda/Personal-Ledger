@@ -168,6 +168,10 @@ impl<T: Ordered + Clone> Ordered for Switched<T> {
         self.live.order()
     }
 
+    fn ordered_domain(&self) -> Domain {
+        self.live.ordered_domain()
+    }
+
     fn place(&mut self, order: &[RowID]) {
         self.live_mut().place(order);
     }

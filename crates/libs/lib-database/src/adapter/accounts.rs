@@ -116,6 +116,10 @@ impl AccountsAdapter {
 
 /// Saves each Account's place as well as memory's, for Undo and Redo of a delete (#1262).
 impl Ordered for AccountsAdapter {
+    fn ordered_domain(&self) -> Domain {
+        Domain::Accounts
+    }
+
     fn order(&self) -> Vec<RowID> {
         self.accounts
             .rows
