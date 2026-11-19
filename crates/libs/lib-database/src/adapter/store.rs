@@ -98,7 +98,7 @@ use crate::adapter::payees::payee_refs;
 use crate::adapter::{
     accounts, bills, categories, institutions, inventory, tags, transactions, units,
 };
-use crate::reversal::{Journal, RowImage};
+use crate::reversal::{Image, Journal, RowImage};
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
     Domain, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter,
@@ -169,9 +169,10 @@ impl<S: InstitutionsStore + ?Sized> InstitutionRepository for Journaled<S> {
 
     fn upsert_institution(&mut self, institution: lib_institutions::Institution) {
         let before = self.store.institutions().institution(institution.id);
-        self.written
-            .journal()
-            .record(RowImage::Institution(before, Some(institution.clone())));
+        self.written.journal().record(RowImage::Institution(Image {
+            before,
+            after: Some(institution.clone()),
+        }));
         self.store
             .institutions_mut()
             .upsert_institution(institution);
@@ -183,7 +184,10 @@ impl<S: InstitutionsStore + ?Sized> InstitutionRepository for Journaled<S> {
             let order = self.store.order();
             let after = without(&order, id.row_id());
             journal.record(RowImage::Order(Domain::Institutions, order, after));
-            journal.record(RowImage::Institution(Some(before), None));
+            journal.record(RowImage::Institution(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
         self.store.institutions_mut().delete_institution(id);
     }
@@ -202,9 +206,10 @@ impl<S: TransactionsStore + ?Sized> TransactionRepository for Journaled<S> {
 
     fn upsert_transaction(&mut self, transaction: Transaction) {
         let before = self.store.transactions().transaction(transaction.id);
-        self.written
-            .journal()
-            .record(RowImage::Transaction(before, Some(transaction.clone())));
+        self.written.journal().record(RowImage::Transaction(Image {
+            before,
+            after: Some(transaction.clone()),
+        }));
         self.store
             .transactions_mut()
             .upsert_transaction(transaction);
@@ -214,7 +219,10 @@ impl<S: TransactionsStore + ?Sized> TransactionRepository for Journaled<S> {
         let journal = self.written.journal();
         journal.unlink(DocumentLink::Transaction(id));
         if let Some(before) = self.store.transactions().transaction(id) {
-            journal.record(RowImage::Transaction(Some(before), None));
+            journal.record(RowImage::Transaction(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
         self.store.transactions_mut().delete_transaction(id);
     }
@@ -232,9 +240,10 @@ impl<S: BillsStore + ?Sized> BillPlanRepository for Journaled<S> {
 
     fn upsert_bill_plan(&mut self, plan: lib_bills::BillPlan) {
         let before = self.store.plans().bill_plan(plan.id);
-        self.written
-            .journal()
-            .record(RowImage::BillPlan(before, Some(plan.clone())));
+        self.written.journal().record(RowImage::BillPlan(Image {
+            before,
+            after: Some(plan.clone()),
+        }));
         self.store.plans_mut().upsert_bill_plan(plan);
     }
 }
@@ -251,9 +260,10 @@ impl<S: BillsStore + ?Sized> BillScheduleRepository for Journaled<S> {
 
     fn upsert_entry(&mut self, entry: lib_bills::BillScheduleEntry) {
         let before = self.store.entries().entry(entry.id());
-        self.written
-            .journal()
-            .record(RowImage::BillEntry(before, Some(entry.clone())));
+        self.written.journal().record(RowImage::BillEntry(Image {
+            before,
+            after: Some(entry.clone()),
+        }));
         self.store.entries_mut().upsert_entry(entry);
     }
 }
@@ -270,9 +280,10 @@ impl<S: BudgetsStore + ?Sized> BudgetRepository for Journaled<S> {
 
     fn upsert_budget(&mut self, budget: &lib_budgets::Budget) {
         let before = self.store.budgets().budget(budget.id);
-        self.written
-            .journal()
-            .record(RowImage::Budget(before, Some(budget.clone())));
+        self.written.journal().record(RowImage::Budget(Image {
+            before,
+            after: Some(budget.clone()),
+        }));
         self.store.budgets_mut().upsert_budget(budget);
     }
 }
@@ -290,9 +301,10 @@ impl<S: AccountsStore + ?Sized> AccountRepository for Journaled<S> {
 
     fn upsert_account(&mut self, account: lib_accounts::Account) {
         let before = self.store.accounts().account(account.id);
-        self.written
-            .journal()
-            .record(RowImage::Account(before, Some(account.clone())));
+        self.written.journal().record(RowImage::Account(Image {
+            before,
+            after: Some(account.clone()),
+        }));
         self.store.accounts_mut().upsert_account(account);
     }
 
@@ -303,7 +315,10 @@ impl<S: AccountsStore + ?Sized> AccountRepository for Journaled<S> {
             let order = self.store.order();
             let after = without(&order, id.row_id());
             journal.record(RowImage::Order(Domain::Accounts, order, after));
-            journal.record(RowImage::Account(Some(before), None));
+            journal.record(RowImage::Account(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
         self.store.accounts_mut().delete_account(id);
     }
@@ -322,9 +337,10 @@ impl<S: PayeesStore + ?Sized> PayeeRepository for Journaled<S> {
 
     fn upsert_payee(&mut self, payee: lib_payees::Payee) {
         let before = self.store.payees().payee(payee.id);
-        self.written
-            .journal()
-            .record(RowImage::Payee(before, Some(payee.clone())));
+        self.written.journal().record(RowImage::Payee(Image {
+            before,
+            after: Some(payee.clone()),
+        }));
         self.store.payees_mut().upsert_payee(payee);
     }
 
@@ -332,7 +348,10 @@ impl<S: PayeesStore + ?Sized> PayeeRepository for Journaled<S> {
         let journal = self.written.journal();
         journal.unlink(DocumentLink::Payee(id));
         if let Some(before) = self.store.payees().payee(id) {
-            journal.record(RowImage::Payee(Some(before), None));
+            journal.record(RowImage::Payee(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
         self.store.payees_mut().delete_payee(id);
     }
@@ -359,17 +378,19 @@ impl<S: InventoryStore + ?Sized> InventoryRepository for Journaled<S> {
 
     fn upsert_location(&mut self, location: lib_inventory::Location) {
         let before = self.store.inventory().location(location.id);
-        self.written
-            .journal()
-            .record(RowImage::Location(before, Some(location.clone())));
+        self.written.journal().record(RowImage::Location(Image {
+            before,
+            after: Some(location.clone()),
+        }));
         self.store.inventory_mut().upsert_location(location);
     }
 
     fn upsert_item(&mut self, item: lib_inventory::Item) {
         let before = self.store.inventory().item(item.id);
-        self.written
-            .journal()
-            .record(RowImage::Item(before, Some(item.clone())));
+        self.written.journal().record(RowImage::Item(Image {
+            before,
+            after: Some(item.clone()),
+        }));
         self.store.inventory_mut().upsert_item(item);
     }
 
@@ -377,7 +398,10 @@ impl<S: InventoryStore + ?Sized> InventoryRepository for Journaled<S> {
         let journal = self.written.journal();
         journal.unlink(DocumentLink::InventoryItem(id));
         if let Some(before) = self.store.inventory().item(id) {
-            journal.record(RowImage::Item(Some(before), None));
+            journal.record(RowImage::Item(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
         self.store.inventory_mut().delete_item(id);
     }
@@ -390,11 +414,17 @@ impl<S: InventoryStore + ?Sized> InventoryRepository for Journaled<S> {
         for item in self.store.inventory().items() {
             if item.location == id {
                 journal.unlink(DocumentLink::InventoryItem(item.id));
-                journal.record(RowImage::Item(Some(item), None));
+                journal.record(RowImage::Item(Image {
+                    before: Some(item),
+                    after: None,
+                }));
             }
         }
         if let Some(before) = location {
-            journal.record(RowImage::Location(Some(before), None));
+            journal.record(RowImage::Location(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
         self.store.inventory_mut().delete_location(id);
     }
@@ -408,9 +438,10 @@ impl<S: CategoriesStore + ?Sized> CategoryRepository for Journaled<S> {
 
     fn upsert_category(&mut self, category: lib_categories::Category) {
         let before = self.store.categories().category(category.id);
-        self.written
-            .journal()
-            .record(RowImage::Category(before, Some(category.clone())));
+        self.written.journal().record(RowImage::Category(Image {
+            before,
+            after: Some(category.clone()),
+        }));
         self.store.categories_mut().upsert_category(category);
     }
 }
@@ -423,9 +454,10 @@ impl<S: TagsStore + ?Sized> TagRepository for Journaled<S> {
 
     fn upsert_tag(&mut self, tag: lib_tags::Tag) {
         let before = self.store.tags().tag(tag.id);
-        self.written
-            .journal()
-            .record(RowImage::Tag(before, Some(tag.clone())));
+        self.written.journal().record(RowImage::Tag(Image {
+            before,
+            after: Some(tag.clone()),
+        }));
         self.store.tags_mut().upsert_tag(tag);
     }
 }
@@ -443,14 +475,19 @@ impl UnitRepository for RecordingUnits<'_> {
 
     fn upsert_unit(&mut self, unit: lib_units::UnitRow) {
         let before = self.units.unit(unit.id);
-        self.journal
-            .record(RowImage::Unit(before, Some(unit.clone())));
+        self.journal.record(RowImage::Unit(Image {
+            before,
+            after: Some(unit.clone()),
+        }));
         self.units.upsert_unit(unit);
     }
 
     fn delete_unit(&mut self, id: UnitId) {
         if let Some(before) = self.units.unit(id) {
-            self.journal.record(RowImage::Unit(Some(before), None));
+            self.journal.record(RowImage::Unit(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
         self.units.delete_unit(id);
     }
@@ -478,15 +515,19 @@ impl PriceSourceRepository for RecordingPriceSources<'_> {
 
     fn upsert_price_source(&mut self, record: lib_units::PriceSourceRecord) {
         let before = self.record(record.id());
-        self.journal
-            .record(RowImage::PriceSource(before, Some(record.clone())));
+        self.journal.record(RowImage::PriceSource(Image {
+            before,
+            after: Some(record.clone()),
+        }));
         self.sources.upsert_price_source(record);
     }
 
     fn delete_price_source(&mut self, id: lib_core::PriceSourceId) {
         if let Some(before) = self.record(id) {
-            self.journal
-                .record(RowImage::PriceSource(Some(before), None));
+            self.journal.record(RowImage::PriceSource(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
         self.sources.delete_price_source(id);
     }
@@ -532,7 +573,10 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
         self.store
             .written
             .journal()
-            .record(RowImage::Document(before, Some(document.clone())));
+            .record(RowImage::Document(Image {
+                before,
+                after: Some(document.clone()),
+            }));
         self.store.documents_mut().upsert_document(document);
     }
 
@@ -548,7 +592,10 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
             self.store
                 .written
                 .journal()
-                .record(RowImage::Document(Some(before), None));
+                .record(RowImage::Document(Image {
+                    before: Some(before),
+                    after: None,
+                }));
         }
         self.store.documents_mut().delete_document(id);
     }
@@ -565,7 +612,10 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
         self.store
             .written
             .journal()
-            .record(RowImage::DocumentType(before, Some(row.clone())));
+            .record(RowImage::DocumentType(Image {
+                before,
+                after: Some(row.clone()),
+            }));
         self.store.documents_mut().upsert_document_type(row);
     }
 
@@ -577,7 +627,10 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
         if let Some(before) = types.into_iter().find(|held| held.id == id) {
             let after = without(&order, id.row_id());
             journal.record(RowImage::Order(Domain::DocumentTypes, order, after));
-            journal.record(RowImage::DocumentType(Some(before), None));
+            journal.record(RowImage::DocumentType(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
         self.store.documents_mut().delete_document_type(id);
     }
@@ -1111,7 +1164,10 @@ impl<S: CategoriesStore + ?Sized> CategoriesStore for Recorded<S> {
             self.store
                 .written
                 .journal()
-                .record(RowImage::Category(Some(before), None));
+                .record(RowImage::Category(Image {
+                    before: Some(before),
+                    after: None,
+                }));
         }
         self.store.store.delete_category(id);
     }
@@ -1196,10 +1252,10 @@ impl<S: TagsStore + ?Sized> TagsStore for Recorded<S> {
     fn delete_tag(&mut self, id: TagId) {
         self.store.written.note(self.domain);
         if let Some(before) = self.store.store.tags().tag(id) {
-            self.store
-                .written
-                .journal()
-                .record(RowImage::Tag(Some(before), None));
+            self.store.written.journal().record(RowImage::Tag(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
         self.store.store.delete_tag(id);
     }
@@ -1449,7 +1505,10 @@ impl<S: BillsStore + ?Sized> BillsStore for Recorded<S> {
             self.store
                 .written
                 .journal()
-                .record(RowImage::BillPlan(Some(before), None));
+                .record(RowImage::BillPlan(Image {
+                    before: Some(before),
+                    after: None,
+                }));
         }
         self.store.store.delete_bill_plan(id);
     }
@@ -1460,7 +1519,10 @@ impl<S: BillsStore + ?Sized> BillsStore for Recorded<S> {
             self.store
                 .written
                 .journal()
-                .record(RowImage::BillEntry(Some(before), None));
+                .record(RowImage::BillEntry(Image {
+                    before: Some(before),
+                    after: None,
+                }));
         }
         self.store.store.delete_entry(id);
     }
@@ -1651,10 +1713,10 @@ impl<S: BudgetsStore + ?Sized> BudgetsStore for Recorded<S> {
     fn delete_budget(&mut self, id: BudgetId) {
         self.store.written.note(self.domain);
         if let Some(before) = self.store.store.budgets().budget(id) {
-            self.store
-                .written
-                .journal()
-                .record(RowImage::Budget(Some(before), None));
+            self.store.written.journal().record(RowImage::Budget(Image {
+                before: Some(before),
+                after: None,
+            }));
         }
         self.store.store.delete_budget(id);
     }

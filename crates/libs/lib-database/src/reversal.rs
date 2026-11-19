@@ -13,7 +13,8 @@
 //! ([`crate::LedgerPorts::reverse`], [`crate::LedgerPorts::replay`]). Both write through the same
 //! stores with the journal paused, the non-recording mark, so stepping through History records
 //! nothing. History is linear, so the rows always hold what the entry left them as: there is no
-//! conflict check, only a `debug_assert!`.
+//! conflict check, only [`check_other_side`]'s `debug_assert!` that each row holds the image's
+//! other side.
 //!
 //! Every store records: the Units, the Institutions (whose rows Unit delete reassigns), the
 //! Transactions, Bills, Budgets and Documents (#1248), with the Document Types beside the
@@ -33,6 +34,7 @@
 //! them before the Plan.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 use lib_accounts::Account;
@@ -59,97 +61,163 @@ use crate::adapter::store::{
 
 /// One row's image before an input and after it; `None` where the row was absent.
 #[derive(Debug, Clone, PartialEq)]
-pub enum RowImage {
-    Unit(Option<UnitRow>, Option<UnitRow>),
-    PriceSource(Option<PriceSourceRecord>, Option<PriceSourceRecord>),
-    /// The base Unit is one value rather than a row, so it is never absent.
-    BaseUnit(UnitId, UnitId),
-    Institution(Option<Institution>, Option<Institution>),
-    /// A whole Transaction with its Splits.
-    Transaction(Option<Transaction>, Option<Transaction>),
-    BillPlan(Option<BillPlan>, Option<BillPlan>),
-    BillEntry(Option<BillScheduleEntry>, Option<BillScheduleEntry>),
-    /// A whole Budget with its Accounts and every chain.
-    Budget(Option<Budget>, Option<Budget>),
-    /// A whole Document with its Intake and Links.
-    Document(Option<Document>, Option<Document>),
-    DocumentType(Option<DocumentTypeRow>, Option<DocumentTypeRow>),
-    Account(Option<Account>, Option<Account>),
-    Category(Option<Category>, Option<Category>),
-    Tag(Option<Tag>, Option<Tag>),
-    Payee(Option<Payee>, Option<Payee>),
-    /// A whole Location with its cover and Areas.
-    Location(Option<Location>, Option<Location>),
-    Item(Option<Item>, Option<Item>),
-    /// A list in a stored order ([`crate::adapter::ordered`]): every row's place before and after
-    /// one was moved or removed. A delete records it before the row's own image, so Undo, which
-    /// goes newest first, restores the row before its place.
-    Order(Domain, Vec<RowID>, Vec<RowID>),
+pub struct Image<T> {
+    pub before: Option<T>,
+    pub after: Option<T>,
 }
 
-/// Which row an image is of, so a second write to it merges into the first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RowKey {
-    Unit(UnitId),
-    PriceSource(PriceSourceId),
-    BaseUnit,
-    Institution(InstitutionId),
-    Transaction(TransactionId),
-    BillPlan(BillPlanId),
-    BillEntry(EntryId),
-    Budget(BudgetId),
-    Document(DocumentId),
-    DocumentType(DocumentTypeId),
-    Order(Domain),
-    Account(AccountId),
-    Category(CategoryId),
-    Tag(TagId),
-    Payee(PayeeId),
-    Location(LocationId),
-    Item(ItemId),
+/// A row an [`Image`] is taken of: its id, and the [`RowKey`] the journal merges its images by.
+trait Row: Clone + PartialEq + std::fmt::Debug {
+    type Id: Copy;
+
+    fn id(&self) -> Self::Id;
+
+    fn key(id: Self::Id) -> RowKey;
+}
+
+/// What one step writes to a row: what the row holds now, which the step expects, and what it
+/// becomes.
+struct Write<T: Row> {
+    id: T::Id,
+    expected: Option<T>,
+    target: Option<T>,
+}
+
+// Each method bounds `T` itself, since `Row` is private and `Image` public.
+impl<T> Image<T> {
+    fn key(&self) -> Option<RowKey>
+    where
+        T: Row,
+    {
+        let row = self.before.as_ref().or(self.after.as_ref())?;
+        Some(T::key(row.id()))
+    }
+
+    fn unchanged(&self) -> bool
+    where
+        T: PartialEq,
+    {
+        self.before == self.after
+    }
+
+    fn merge(&mut self, later: Self) {
+        self.after = later.after;
+    }
+
+    /// `None` where the row is absent on both sides, which no write makes.
+    fn write(&self, step: Step) -> Option<Write<T>>
+    where
+        T: Row,
+    {
+        let (expected, target) = match step {
+            Step::Reverse => (self.after.clone(), self.before.clone()),
+            Step::Replay => (self.before.clone(), self.after.clone()),
+        };
+        let id = target.as_ref().or(expected.as_ref())?.id();
+        Some(Write {
+            id,
+            expected,
+            target,
+        })
+    }
+}
+
+/// Declares [`RowImage`], its [`RowKey`] and each row's [`Row`] from one list, so a new row type
+/// adds a line here and an arm to [`RowImage::domain`] and [`write`], and the merging is generic.
+macro_rules! row_images {
+    ($(
+        $(#[$attr:meta])*
+        $variant:ident($row:ty) by $id:ty = |$held:ident| $read:expr;
+    )*) => {
+        /// One row's [`Image`] before an input and after it, by the kind of row.
+        #[derive(Debug, Clone, PartialEq)]
+        pub enum RowImage {
+            $($(#[$attr])* $variant(Image<$row>),)*
+            /// The base Unit is one value rather than a row, so it is never absent.
+            BaseUnit(UnitId, UnitId),
+            /// A list in a stored order ([`crate::adapter::ordered`]): every row's place before
+            /// and after one was moved or removed. A delete records it before the row's own image,
+            /// so Undo, which goes newest first, restores the row before its place.
+            Order(Domain, Vec<RowID>, Vec<RowID>),
+        }
+
+        /// Which row an image is of, so a second write to it merges into the first.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        enum RowKey {
+            $($variant($id),)*
+            BaseUnit,
+            Order(Domain),
+        }
+
+        $(
+            impl Row for $row {
+                type Id = $id;
+
+                fn id(&self) -> $id {
+                    let $held = self;
+                    $read
+                }
+
+                fn key(id: $id) -> RowKey {
+                    RowKey::$variant(id)
+                }
+            }
+        )*
+
+        impl RowImage {
+            fn key(&self) -> Option<RowKey> {
+                match self {
+                    $(Self::$variant(image) => image.key(),)*
+                    Self::BaseUnit(..) => Some(RowKey::BaseUnit),
+                    Self::Order(domain, ..) => Some(RowKey::Order(*domain)),
+                }
+            }
+
+            /// Whether the input left the row as it found it, as an add then a delete does.
+            fn unchanged(&self) -> bool {
+                match self {
+                    $(Self::$variant(image) => image.unchanged(),)*
+                    Self::BaseUnit(before, after) => before == after,
+                    Self::Order(_, before, after) => before == after,
+                }
+            }
+
+            /// Keeps this image's `before` and takes `later`'s `after`.
+            fn merge(&mut self, later: Self) {
+                match (self, later) {
+                    $((Self::$variant(image), Self::$variant(later)) => image.merge(later),)*
+                    (Self::BaseUnit(_, after), Self::BaseUnit(_, later)) => *after = later,
+                    (Self::Order(_, _, after), Self::Order(_, _, later)) => *after = later,
+                    (image, later) => debug_assert!(false, "{image:?} merged with {later:?}"),
+                }
+            }
+        }
+    };
+}
+
+row_images! {
+    Unit(UnitRow) by UnitId = |row| row.id;
+    PriceSource(PriceSourceRecord) by PriceSourceId = |row| row.id();
+    Institution(Institution) by InstitutionId = |row| row.id;
+    /// A whole Transaction with its Splits.
+    Transaction(Transaction) by TransactionId = |row| row.id;
+    BillPlan(BillPlan) by BillPlanId = |row| row.id;
+    BillEntry(BillScheduleEntry) by EntryId = |row| row.id();
+    /// A whole Budget with its Accounts and every chain.
+    Budget(Budget) by BudgetId = |row| row.id;
+    /// A whole Document with its Intake and Links.
+    Document(Document) by DocumentId = |row| row.id;
+    DocumentType(DocumentTypeRow) by DocumentTypeId = |row| row.id;
+    Account(Account) by AccountId = |row| row.id;
+    Category(Category) by CategoryId = |row| row.id;
+    Tag(Tag) by TagId = |row| row.id;
+    Payee(Payee) by PayeeId = |row| row.id;
+    /// A whole Location with its cover and Areas.
+    Location(Location) by LocationId = |row| row.id;
+    Item(Item) by ItemId = |row| row.id;
 }
 
 impl RowImage {
-    fn key(&self) -> Option<RowKey> {
-        Some(match self {
-            Self::Unit(before, after) => RowKey::Unit(before.as_ref().or(after.as_ref())?.id),
-            Self::PriceSource(before, after) => {
-                RowKey::PriceSource(before.as_ref().or(after.as_ref())?.id())
-            }
-            Self::BaseUnit(..) => RowKey::BaseUnit,
-            Self::Institution(before, after) => {
-                RowKey::Institution(before.as_ref().or(after.as_ref())?.id)
-            }
-            Self::Transaction(before, after) => {
-                RowKey::Transaction(before.as_ref().or(after.as_ref())?.id)
-            }
-            Self::BillPlan(before, after) => {
-                RowKey::BillPlan(before.as_ref().or(after.as_ref())?.id)
-            }
-            Self::BillEntry(before, after) => {
-                RowKey::BillEntry(before.as_ref().or(after.as_ref())?.id())
-            }
-            Self::Budget(before, after) => RowKey::Budget(before.as_ref().or(after.as_ref())?.id),
-            Self::Document(before, after) => {
-                RowKey::Document(before.as_ref().or(after.as_ref())?.id)
-            }
-            Self::DocumentType(before, after) => {
-                RowKey::DocumentType(before.as_ref().or(after.as_ref())?.id)
-            }
-            Self::Order(domain, ..) => RowKey::Order(*domain),
-            Self::Account(before, after) => RowKey::Account(before.as_ref().or(after.as_ref())?.id),
-            Self::Category(before, after) => {
-                RowKey::Category(before.as_ref().or(after.as_ref())?.id)
-            }
-            Self::Tag(before, after) => RowKey::Tag(before.as_ref().or(after.as_ref())?.id),
-            Self::Payee(before, after) => RowKey::Payee(before.as_ref().or(after.as_ref())?.id),
-            Self::Location(before, after) => {
-                RowKey::Location(before.as_ref().or(after.as_ref())?.id)
-            }
-            Self::Item(before, after) => RowKey::Item(before.as_ref().or(after.as_ref())?.id),
-        })
-    }
-
     /// The store the row is kept in.
     pub fn domain(&self) -> Domain {
         match self {
@@ -166,53 +234,6 @@ impl RowImage {
             Self::Tag(..) => Domain::Tags,
             Self::Payee(..) => Domain::Payees,
             Self::Location(..) | Self::Item(..) => Domain::Inventory,
-        }
-    }
-
-    /// Whether the input left the row as it found it, as an add then a delete does.
-    fn unchanged(&self) -> bool {
-        match self {
-            Self::Unit(before, after) => before == after,
-            Self::PriceSource(before, after) => before == after,
-            Self::BaseUnit(before, after) => before == after,
-            Self::Institution(before, after) => before == after,
-            Self::Transaction(before, after) => before == after,
-            Self::BillPlan(before, after) => before == after,
-            Self::BillEntry(before, after) => before == after,
-            Self::Budget(before, after) => before == after,
-            Self::Document(before, after) => before == after,
-            Self::DocumentType(before, after) => before == after,
-            Self::Order(_, before, after) => before == after,
-            Self::Account(before, after) => before == after,
-            Self::Category(before, after) => before == after,
-            Self::Tag(before, after) => before == after,
-            Self::Payee(before, after) => before == after,
-            Self::Location(before, after) => before == after,
-            Self::Item(before, after) => before == after,
-        }
-    }
-
-    /// Keeps this image's `before` and takes `later`'s `after`.
-    fn merge(&mut self, later: Self) {
-        match (self, later) {
-            (Self::Unit(_, after), Self::Unit(_, later)) => *after = later,
-            (Self::PriceSource(_, after), Self::PriceSource(_, later)) => *after = later,
-            (Self::BaseUnit(_, after), Self::BaseUnit(_, later)) => *after = later,
-            (Self::Institution(_, after), Self::Institution(_, later)) => *after = later,
-            (Self::Transaction(_, after), Self::Transaction(_, later)) => *after = later,
-            (Self::BillPlan(_, after), Self::BillPlan(_, later)) => *after = later,
-            (Self::BillEntry(_, after), Self::BillEntry(_, later)) => *after = later,
-            (Self::Budget(_, after), Self::Budget(_, later)) => *after = later,
-            (Self::Document(_, after), Self::Document(_, later)) => *after = later,
-            (Self::DocumentType(_, after), Self::DocumentType(_, later)) => *after = later,
-            (Self::Order(_, _, after), Self::Order(_, _, later)) => *after = later,
-            (Self::Account(_, after), Self::Account(_, later)) => *after = later,
-            (Self::Category(_, after), Self::Category(_, later)) => *after = later,
-            (Self::Tag(_, after), Self::Tag(_, later)) => *after = later,
-            (Self::Payee(_, after), Self::Payee(_, later)) => *after = later,
-            (Self::Location(_, after), Self::Location(_, later)) => *after = later,
-            (Self::Item(_, after), Self::Item(_, later)) => *after = later,
-            (image, later) => debug_assert!(false, "{image:?} merged with {later:?}"),
         }
     }
 }
@@ -276,56 +297,57 @@ pub(crate) fn apply(
     });
 }
 
-/// `(expected, target)`: what the row holds now and what it is written to.
-fn sides<T>(before: &Option<T>, after: &Option<T>, step: Step) -> (Option<T>, Option<T>)
+/// Checks the row holds the image's other side before a step writes it, the only conflict check
+/// linear History needs (`debug_assert!`). `sides` gives what the row holds and what it is
+/// expected to hold, read only in a debug build.
+fn check_other_side<T>(row: &str, sides: impl FnOnce() -> (T, T))
 where
-    T: Clone,
+    T: PartialEq + std::fmt::Debug,
 {
-    match step {
-        Step::Reverse => (after.clone(), before.clone()),
-        Step::Replay => (before.clone(), after.clone()),
+    if cfg!(debug_assertions) {
+        let (held, expected) = sides();
+        debug_assert_eq!(held, expected, "the {row} as History left it");
     }
 }
 
 fn write(image: &RowImage, step: Step, stores: &SharedStores) {
     let unread = UnitUse::default();
     match image {
-        RowImage::Unit(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|unit| unit.id) else {
+        RowImage::Unit(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             stores.units.borrow_mut().split_write(&unread, |ports| {
-                debug_assert_eq!(
-                    ports.units.unit(id),
-                    expected,
-                    "the Unit as History left it"
-                );
+                check_other_side("Unit", || (ports.units.unit(id), expected));
                 match target {
                     Some(unit) => ports.units.upsert_unit(unit),
                     None => ports.units.delete_unit(id),
                 }
             });
         }
-        RowImage::PriceSource(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target
-                .as_ref()
-                .or(expected.as_ref())
-                .map(PriceSourceRecord::id)
+        RowImage::PriceSource(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
             else {
                 return;
             };
             stores.units.borrow_mut().split_write(&unread, |ports| {
-                debug_assert_eq!(
-                    ports
+                check_other_side("Price Source", || {
+                    let held = ports
                         .price_sources
                         .price_source_records()
                         .into_iter()
-                        .find(|record| record.id() == id),
-                    expected,
-                    "the Price Source as History left it"
-                );
+                        .find(|record| record.id() == id);
+                    (held, expected)
+                });
                 match target {
                     Some(record) => ports.price_sources.upsert_price_source(record),
                     None => ports.price_sources.delete_price_source(id),
@@ -338,195 +360,248 @@ fn write(image: &RowImage, step: Step, stores: &SharedStores) {
                 Step::Replay => (*before, *after),
             };
             stores.units.borrow_mut().split_write(&unread, |ports| {
-                debug_assert_eq!(
-                    ports.base_unit.base_unit(),
-                    expected,
-                    "the base as History left it"
-                );
+                check_other_side("base Unit", || (ports.base_unit.base_unit(), expected));
                 ports.base_unit.set_base_unit(target);
             });
         }
-        RowImage::Institution(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::Institution(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.institutions.borrow_mut();
             let institutions = store.institutions_mut();
-            debug_assert_eq!(
-                institutions.institution(id),
-                expected,
-                "the Institution as History left it"
-            );
+            check_other_side("Institution", || (institutions.institution(id), expected));
             match target {
                 Some(institution) => institutions.upsert_institution(institution),
                 None => institutions.delete_institution(id),
             }
         }
-        RowImage::Transaction(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::Transaction(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.transactions.borrow_mut();
             let transactions = store.transactions_mut();
-            debug_assert_eq!(
-                transactions.transaction(id),
-                expected,
-                "the Transaction as History left it"
-            );
+            check_other_side("Transaction", || (transactions.transaction(id), expected));
             match target {
                 Some(transaction) => transactions.upsert_transaction(transaction),
                 None => transactions.delete_transaction(id),
             }
         }
-        RowImage::BillPlan(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::BillPlan(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.bills.borrow_mut();
-            debug_assert_eq!(
-                store.plans().bill_plan(id),
-                expected,
-                "the Bill Plan as History left it"
-            );
+            check_other_side("Bill Plan", || (store.plans().bill_plan(id), expected));
             match target {
                 Some(plan) => store.plans_mut().upsert_bill_plan(plan),
                 None => store.delete_bill_plan(id),
             }
         }
-        RowImage::BillEntry(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target
-                .as_ref()
-                .or(expected.as_ref())
-                .map(BillScheduleEntry::id)
+        RowImage::BillEntry(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
             else {
                 return;
             };
             let mut store = stores.bills.borrow_mut();
-            debug_assert_eq!(
-                store.entries().entry(id),
-                expected,
-                "the Bill Schedule entry as History left it"
-            );
+            check_other_side("Bill Schedule entry", || {
+                (store.entries().entry(id), expected)
+            });
             match target {
                 Some(entry) => store.entries_mut().upsert_entry(entry),
                 None => store.delete_entry(id),
             }
         }
-        RowImage::Budget(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::Budget(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.budgets.borrow_mut();
-            debug_assert_eq!(
-                store.budgets().budget(id),
-                expected,
-                "the Budget as History left it"
-            );
+            check_other_side("Budget", || (store.budgets().budget(id), expected));
             match target {
                 Some(budget) => store.budgets_mut().upsert_budget(&budget),
                 None => store.delete_budget(id),
             }
         }
-        // Not checked against the row: a cascade changes a Document's Links in the file and not
-        // in memory until the Client reloads, which the in-memory stores never do.
-        RowImage::Document(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::Document(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.documents.borrow_mut();
+            // Checked without its Links: a cascade changes a Document's Links in the file and
+            // not in memory until the Client reloads, which the in-memory stores never do.
+            check_other_side("Document", || {
+                let unlinked = |document: Document| Document {
+                    links: Vec::new(),
+                    ..document
+                };
+                let held = store
+                    .documents()
+                    .documents()
+                    .into_iter()
+                    .find(|document| document.id == id);
+                (held.map(unlinked), expected.map(unlinked))
+            });
             match target {
                 Some(document) => store.documents_mut().upsert_document(&document),
                 None => store.documents_mut().delete_document(id),
             }
         }
-        RowImage::DocumentType(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::DocumentType(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.documents.borrow_mut();
             let documents = store.documents_mut();
+            check_other_side("Document Type", || {
+                let held = documents
+                    .document_types()
+                    .into_iter()
+                    .find(|row| row.id == id);
+                (held, expected)
+            });
             match target {
                 Some(row) => documents.upsert_document_type(&row),
                 None => documents.delete_document_type(id),
             }
         }
-        RowImage::Account(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::Account(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.accounts.borrow_mut();
             let accounts = store.accounts_mut();
+            check_other_side("Account", || (accounts.account(id), expected));
             match target {
                 Some(account) => accounts.upsert_account(account),
                 None => accounts.delete_account(id),
             }
         }
-        RowImage::Category(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::Category(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.categories.borrow_mut();
+            check_other_side("Category", || (store.categories().category(id), expected));
             match target {
                 Some(category) => store.categories_mut().upsert_category(category),
                 None => store.delete_category(id),
             }
         }
-        RowImage::Tag(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::Tag(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.tags.borrow_mut();
+            check_other_side("Tag", || (store.tags().tag(id), expected));
             match target {
                 Some(tag) => store.tags_mut().upsert_tag(tag),
                 None => store.delete_tag(id),
             }
         }
-        RowImage::Payee(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::Payee(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.payees.borrow_mut();
             let payees = store.payees_mut();
+            check_other_side("Payee", || (payees.payee(id), expected));
             match target {
                 Some(payee) => payees.upsert_payee(payee),
                 None => payees.delete_payee(id),
             }
         }
-        RowImage::Location(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::Location(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.inventory.borrow_mut();
             let inventory = store.inventory_mut();
+            check_other_side("Location", || (inventory.location(id), expected));
             match target {
                 Some(location) => inventory.upsert_location(location),
                 None => inventory.delete_location(id),
             }
         }
-        RowImage::Item(before, after) => {
-            let (expected, target) = sides(before, after, step);
-            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+        RowImage::Item(image) => {
+            let Some(Write {
+                id,
+                expected,
+                target,
+            }) = image.write(step)
+            else {
                 return;
             };
             let mut store = stores.inventory.borrow_mut();
             let inventory = store.inventory_mut();
+            check_other_side("Item", || (inventory.item(id), expected));
             match target {
                 Some(item) => inventory.upsert_item(item),
                 None => inventory.delete_item(id),
             }
         }
+        // Not checked: Undo of a delete restores the row before its place, so the list holds
+        // the row again, where the store put it, when the order is written back.
         RowImage::Order(domain, before, after) => {
             let target = match step {
                 Step::Reverse => before,
@@ -540,9 +615,22 @@ fn write(image: &RowImage, step: Step, stores: &SharedStores) {
     }
 }
 
+/// A cascade's rows can't be read while their store is written, so the input's entry won't restore
+/// them on Undo: no write is meant to delete through a store that is mid-write.
+fn busy_cascade(cascade: &str) {
+    tracing::warn!(
+        cascade,
+        "A delete's cascade went unrecorded: its store was busy"
+    );
+    debug_assert!(false, "the {cascade} cascade's store was busy");
+}
+
 #[derive(Debug, Default)]
 struct JournalState {
     images: Vec<RowImage>,
+    /// Where each row's image sits in `images`, so recording and reading one is O(1) however
+    /// many rows the input writes (an Import writes one per Transaction).
+    index: HashMap<RowKey, usize>,
     /// The non-recording mark: set while Undo or Redo writes, so stepping makes no entry.
     paused: bool,
     /// The stores a delete's cascade reads the rows it will change from.
@@ -569,14 +657,17 @@ impl Journal {
         if state.paused {
             return;
         }
-        let key = image.key();
-        match state
-            .images
-            .iter_mut()
-            .find(|earlier| key.is_some() && earlier.key() == key)
-        {
-            Some(earlier) => earlier.merge(image),
-            None => state.images.push(image),
+        let state = &mut *state;
+        let Some(key) = image.key() else {
+            state.images.push(image);
+            return;
+        };
+        match state.index.get(&key) {
+            Some(&at) => state.images[at].merge(image),
+            None => {
+                state.index.insert(key, state.images.len());
+                state.images.push(image);
+            }
         }
     }
 
@@ -598,7 +689,7 @@ impl Journal {
         };
         for document in documents {
             let latest = self.latest(&RowKey::Document(document.id), |image| match image {
-                RowImage::Document(_, after) => Some(after.clone()),
+                RowImage::Document(image) => Some(image.after.clone()),
                 _ => None,
             });
             // A Document an earlier write in the input deleted has no Links left to lose.
@@ -610,7 +701,10 @@ impl Journal {
             }
             let mut after = base;
             after.links.retain(|held| *held != link);
-            self.record(RowImage::Document(Some(document), Some(after)));
+            self.record(RowImage::Document(Image {
+                before: Some(document),
+                after: Some(after),
+            }));
         }
     }
 
@@ -623,7 +717,7 @@ impl Journal {
         };
         for budget in budgets {
             let latest = self.latest(&RowKey::Budget(budget.id), |image| match image {
-                RowImage::Budget(_, after) => Some(after.clone()),
+                RowImage::Budget(image) => Some(image.after.clone()),
                 _ => None,
             });
             let Some(base) = latest.unwrap_or_else(|| Some(budget.clone())) else {
@@ -634,18 +728,18 @@ impl Journal {
             }
             let mut after = base;
             after.account_ids.retain(|held| *held != account);
-            self.record(RowImage::Budget(Some(budget), Some(after)));
+            self.record(RowImage::Budget(Image {
+                before: Some(budget),
+                after: Some(after),
+            }));
         }
     }
 
     /// What the input's image of the row `key` names says about it now, from `read`.
     fn latest<T>(&self, key: &RowKey, read: impl Fn(&RowImage) -> Option<T>) -> Option<T> {
         let state = self.0.borrow();
-        state
-            .images
-            .iter()
-            .find(|image| image.key().as_ref() == Some(key))
-            .and_then(read)
+        let at = *state.index.get(key)?;
+        state.images.get(at).and_then(read)
     }
 
     /// The Documents as stored now, unless nothing is to be recorded or the store is busy.
@@ -655,7 +749,10 @@ impl Journal {
             return None;
         }
         let store = state.cascades.as_ref()?.documents.upgrade()?;
-        let store = store.try_borrow().ok()?;
+        let Ok(store) = store.try_borrow() else {
+            busy_cascade("Document Links");
+            return None;
+        };
         Some(store.documents().documents())
     }
 
@@ -666,13 +763,18 @@ impl Journal {
             return None;
         }
         let store = state.cascades.as_ref()?.budgets.upgrade()?;
-        let store = store.try_borrow().ok()?;
+        let Ok(store) = store.try_borrow() else {
+            busy_cascade("Budget Accounts");
+            return None;
+        };
         Some(store.budgets().budgets())
     }
 
     /// The images noted since the last take, leaving none: `None` where the input changed no row.
     pub fn take(&self) -> Option<LedgerReversal> {
-        let images: Vec<RowImage> = std::mem::take(&mut self.0.borrow_mut().images)
+        let mut state = self.0.borrow_mut();
+        state.index.clear();
+        let images: Vec<RowImage> = std::mem::take(&mut state.images)
             .into_iter()
             .filter(|image| !image.unchanged())
             .collect();
@@ -711,14 +813,23 @@ mod tests {
     fn a_row_written_twice_keeps_its_first_before_and_its_last_after() {
         let journal = Journal::default();
 
-        journal.record(RowImage::Unit(Some(unit("aud")), Some(unit("audx"))));
+        journal.record(RowImage::Unit(Image {
+            before: Some(unit("aud")),
+            after: Some(unit("audx")),
+        }));
         journal.record(RowImage::BaseUnit(UnitId::SEED_AUD, UnitId::SEED_BTC));
-        journal.record(RowImage::Unit(Some(unit("audx")), Some(unit("audy"))));
+        journal.record(RowImage::Unit(Image {
+            before: Some(unit("audx")),
+            after: Some(unit("audy")),
+        }));
 
         assert_eq!(
             journal.take().map(|reversal| reversal.images),
             Some(vec![
-                RowImage::Unit(Some(unit("aud")), Some(unit("audy"))),
+                RowImage::Unit(Image {
+                    before: Some(unit("aud")),
+                    after: Some(unit("audy"))
+                }),
                 RowImage::BaseUnit(UnitId::SEED_AUD, UnitId::SEED_BTC),
             ])
         );
@@ -726,11 +837,46 @@ mod tests {
     }
 
     #[test]
+    fn a_row_written_many_times_in_one_input_is_one_image() {
+        let journal = Journal::default();
+        let codes: Vec<String> = (0..500).map(|step| format!("u{step}")).collect();
+
+        journal.record(RowImage::Unit(Image {
+            before: Some(unit("aud")),
+            after: Some(unit(&codes[0])),
+        }));
+        for written in codes.windows(2) {
+            journal.record(RowImage::BaseUnit(UnitId::SEED_AUD, UnitId::SEED_BTC));
+            journal.record(RowImage::Unit(Image {
+                before: Some(unit(&written[0])),
+                after: Some(unit(&written[1])),
+            }));
+        }
+
+        assert_eq!(
+            journal.take().map(|reversal| reversal.images),
+            Some(vec![
+                RowImage::Unit(Image {
+                    before: Some(unit("aud")),
+                    after: Some(unit("u499")),
+                }),
+                RowImage::BaseUnit(UnitId::SEED_AUD, UnitId::SEED_BTC),
+            ])
+        );
+    }
+
+    #[test]
     fn a_row_left_as_found_is_no_change() {
         let journal = Journal::default();
 
-        journal.record(RowImage::Unit(None, Some(unit("nzd"))));
-        journal.record(RowImage::Unit(Some(unit("nzd")), None));
+        journal.record(RowImage::Unit(Image {
+            before: None,
+            after: Some(unit("nzd")),
+        }));
+        journal.record(RowImage::Unit(Image {
+            before: Some(unit("nzd")),
+            after: None,
+        }));
 
         assert_eq!(journal.take(), None);
     }
@@ -739,7 +885,12 @@ mod tests {
     fn nothing_is_recorded_while_unrecorded() {
         let journal = Journal::default();
 
-        journal.unrecorded(|| journal.record(RowImage::Unit(None, Some(unit("nzd")))));
+        journal.unrecorded(|| {
+            journal.record(RowImage::Unit(Image {
+                before: None,
+                after: Some(unit("nzd")),
+            }))
+        });
 
         assert_eq!(journal.take(), None);
     }
@@ -783,7 +934,10 @@ mod tests {
         assert_eq!(
             ports.take_reversal().map(|reversal| reversal.images),
             Some(vec![
-                RowImage::Unit(None, Some(renamed)),
+                RowImage::Unit(Image {
+                    before: None,
+                    after: Some(renamed)
+                }),
                 RowImage::BaseUnit(UnitId::SEED_AUD, nzd.id),
             ])
         );
@@ -1389,7 +1543,10 @@ mod tests {
 
         assert_eq!(
             reversal.images(),
-            [RowImage::DocumentType(None, Some(added.clone()))],
+            [RowImage::DocumentType(Image {
+                before: None,
+                after: Some(added.clone())
+            })],
             "an add appends, so it records no order"
         );
         ports.reverse(&reversal);
@@ -1480,9 +1637,18 @@ mod tests {
         let reversal = ports.take_reversal().expect("the deletes were recorded");
 
         let [
-            RowImage::Document(Some(before), Some(after)),
-            RowImage::Transaction(Some(_), None),
-            RowImage::Transaction(Some(_), None),
+            RowImage::Document(Image {
+                before: Some(before),
+                after: Some(after),
+            }),
+            RowImage::Transaction(Image {
+                before: Some(_),
+                after: None,
+            }),
+            RowImage::Transaction(Image {
+                before: Some(_),
+                after: None,
+            }),
         ] = reversal.images()
         else {
             panic!("the Document's cascade first, then each Transaction: {reversal:?}");

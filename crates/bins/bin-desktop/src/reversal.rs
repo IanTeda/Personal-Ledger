@@ -187,8 +187,10 @@ mod tests {
     fn a_ledger_change_to_any_recording_domain_makes_an_entry_named_by_it() {
         close(Vec::new(), None);
         let institutions = LedgerReversal::from(vec![lib_database::RowImage::Institution(
-            None,
-            Some(lib_institutions::personal_institution("Personal")),
+            lib_database::Image {
+                before: None,
+                after: Some(lib_institutions::personal_institution("Personal")),
+            },
         )]);
 
         let entry = close(Vec::new(), Some(institutions)).expect("one change recorded");

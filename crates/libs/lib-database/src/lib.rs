@@ -120,7 +120,7 @@ pub use commit::{Commit, Committed, InMemoryCommit, PendingWrites, Written};
 
 /// What undoes and redoes one input's Ledger change: the row images the stores record (#1247).
 pub mod reversal;
-pub use reversal::{Journal, LedgerReversal, RowImage};
+pub use reversal::{Image, Journal, LedgerReversal, RowImage};
 
 /// The one writer thread every adapter saves through (ADR-0046).
 pub mod writer;
