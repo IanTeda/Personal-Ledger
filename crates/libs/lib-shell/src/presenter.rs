@@ -29,7 +29,7 @@ use crate::explorer::{
     ExplorerViewModel, LedgerFolders,
 };
 use crate::help::HelpPresenter;
-use crate::history::{Entry, History, HistoryViewModel};
+use crate::history::{Entry, History, HistoryViewModel, Step as HistoryStep};
 use crate::keymap::{HELP, OPEN_COMMAND_POPUP, SEARCH, ShellCommand, TOGGLE_RAIL, global_keymap};
 use crate::nav::{ContextSelection, FocusZone, InputMode, NavState};
 use crate::navigation::{Movement, Noun};
@@ -161,13 +161,6 @@ const HINTS: [(&str, ShellCommand, Label); 4] = [
         msg::hint_toggle_sidebar,
     ),
 ];
-
-/// Which way History steps: Undo reverses the newest entries, Redo replays the last undone.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Direction {
-    Undo,
-    Redo,
-}
 
 /// The Shell's Presenter. `P` is the Client's Settings page, which the Back history steps between,
 /// `E` what one of the Client's own palette Commands does, which its Router acts on, and `H` what
@@ -601,7 +594,7 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
         count: usize,
         router: &mut R,
     ) {
-        self.step_through(Direction::Undo, count, router);
+        self.step_through(HistoryStep::Undo, count, router);
     }
 
     /// Redoes the next `count` entries as one input, as [`Self::undo_through`] undoes them.
@@ -610,47 +603,47 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
         count: usize,
         router: &mut R,
     ) {
-        self.step_through(Direction::Redo, count, router);
+        self.step_through(HistoryStep::Redo, count, router);
     }
 
     /// Steps `count` entries one way as one input, then says what it came to on the status line:
     /// how many stepped, and why the next didn't if one failed.
     fn step_through<R: ShellRouter<Reversal = H> + ?Sized>(
         &mut self,
-        direction: Direction,
+        step: HistoryStep,
         count: usize,
         router: &mut R,
     ) {
         let mut failure = None;
-        let mut step = |result: crate::Result<()>| match result {
+        let mut apply = |reversal: &H| match router.step(reversal, step) {
             Ok(()) => true,
             Err(error) => {
                 failure = Some(error);
                 false
             }
         };
-        let steps = match direction {
-            Direction::Undo => self
-                .history
-                .undo_through(count, |reversal| step(router.reverse(reversal))),
-            Direction::Redo => self
-                .history
-                .redo_through(count, |reversal| step(router.replay(reversal))),
+        let steps = match step {
+            HistoryStep::Undo => self.history.undo_through(count, &mut apply),
+            HistoryStep::Redo => self.history.redo_through(count, &mut apply),
         };
         let stepped = count_of(&steps.done);
         let status = match (failure, steps.done.last()) {
             (Some(error), None) => failure_message(&error),
-            (Some(error), Some(_)) => match direction {
-                Direction::Undo => msg::status_undid_then_failed(stepped, &failure_message(&error)),
-                Direction::Redo => msg::status_redid_then_failed(stepped, &failure_message(&error)),
+            (Some(error), Some(_)) => match step {
+                HistoryStep::Undo => {
+                    msg::status_undid_then_failed(stepped, &failure_message(&error))
+                }
+                HistoryStep::Redo => {
+                    msg::status_redid_then_failed(stepped, &failure_message(&error))
+                }
             },
-            (None, None) => match direction {
-                Direction::Undo => msg::status_nothing_to_undo(),
-                Direction::Redo => msg::status_nothing_to_redo(),
+            (None, None) => match step {
+                HistoryStep::Undo => msg::status_nothing_to_undo(),
+                HistoryStep::Redo => msg::status_nothing_to_redo(),
             },
-            (None, Some(label)) => match direction {
-                Direction::Undo => msg::status_undid(stepped, label),
-                Direction::Redo => msg::status_redid(stepped, label),
+            (None, Some(label)) => match step {
+                HistoryStep::Undo => msg::status_undid(stepped, label),
+                HistoryStep::Redo => msg::status_redid(stepped, label),
             },
         };
         router.notify(Notice::Status(status));

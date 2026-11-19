@@ -5,7 +5,7 @@
 //! `lib_config` spell every key and value. The pages' Presenters (`lib-settings`) decide what a
 //! write's answer means; this only reads and writes.
 
-use crate::reversal::{ConfigChange, ConfigJournal};
+use crate::reversal::{ConfigJournal, ConfigReversal};
 use lib_config::{ConfigWriter, Shadow};
 use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_settings::{
@@ -46,7 +46,7 @@ impl DeviceConfigFile {
     }
 
     /// The changes recorded since the last take, in the order written.
-    pub(crate) fn take(&self) -> Vec<ConfigChange> {
+    pub(crate) fn take(&self) -> ConfigReversal {
         self.journal.take()
     }
 
@@ -139,6 +139,7 @@ mod tests {
     use lib_settings::contract::{self, DeviceFactory};
 
     use super::*;
+    use crate::reversal::ConfigChange;
 
     fn writing_to(path: &Path, env: &[(String, String)]) -> DeviceConfigFile {
         DeviceConfigFile::new(
@@ -265,11 +266,11 @@ mod tests {
 
         assert_eq!(
             device.take(),
-            [(
-                ConfigKey::StartView,
-                Some("cash".to_string()),
-                Some("dashboard".to_string())
-            )],
+            ConfigReversal::from(vec![ConfigChange {
+                key: ConfigKey::StartView,
+                before: Some("cash".to_string()),
+                after: Some("dashboard".to_string()),
+            }]),
             "a repeat and a removal of nothing change nothing"
         );
 
@@ -277,7 +278,7 @@ mod tests {
             device.restore(ConfigKey::StartView, Some("cash")),
             DeviceAnswer::Saved { .. }
         ));
-        assert_eq!(device.take(), []);
+        assert_eq!(device.take(), ConfigReversal::default());
         assert_eq!(
             std::fs::read_to_string(&path).unwrap_or_default(),
             "[General]\nstart_view = cash\n"

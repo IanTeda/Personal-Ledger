@@ -10,9 +10,8 @@
 //!
 //! Undo applies the images newest first, writing each `before` back (deleting the row where it was
 //! absent), which keeps foreign keys valid; Redo applies them in the order written, with `after`
-//! ([`crate::LedgerPorts::reverse`], [`crate::LedgerPorts::replay`]). Both write through the same
-//! stores with the journal paused, the non-recording mark, so stepping through History records
-//! nothing. History is linear, so the rows always hold what the entry left them as: there is no
+//! ([`crate::LedgerPorts::step`]). Both write through the same stores with the journal paused,
+//! the non-recording mark, so stepping through History records nothing. History is linear, so the rows always hold what the entry left them as: there is no
 //! conflict check, only [`check_other_side`]'s `debug_assert!` that each row holds the image's
 //! other side.
 //!
@@ -53,6 +52,7 @@ use lib_documents::types::DocumentTypeRow;
 use lib_institutions::Institution;
 use lib_inventory::{Item, Location};
 use lib_payees::Payee;
+use lib_shell::Step;
 use lib_tags::Tag;
 use lib_transactions::Transaction;
 use lib_units::{PriceSourceRecord, UnitRow, UnitUse};
@@ -136,8 +136,8 @@ impl<T> Image<T> {
         T: Row,
     {
         let (expected, target) = match step {
-            Step::Reverse => (self.after.clone(), self.before.clone()),
-            Step::Replay => (self.before.clone(), self.after.clone()),
+            Step::Undo => (self.after.clone(), self.before.clone()),
+            Step::Redo => (self.before.clone(), self.after.clone()),
         };
         let id = target.as_ref().or(expected.as_ref())?.id();
         Some(Write {
@@ -528,17 +528,10 @@ impl From<Vec<RowImage>> for LedgerReversal {
     }
 }
 
-/// Which way a [`LedgerReversal`] is applied.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Step {
-    /// Undo: newest image first, each row back to its `before`.
-    Reverse,
-    /// Redo: in the order written, each row to its `after`.
-    Replay,
-}
-
-/// Writes `reversal`'s images to `stores` the way `step` goes, unrecorded in `journal`. Each row
-/// is expected to hold the image's other side, which linear History guarantees (`debug_assert!`).
+/// Writes `reversal`'s images to `stores` the way `step` goes, unrecorded in `journal`: Undo the
+/// newest image first, each row back to its `before`, and Redo in the order written, each row to
+/// its `after`. Each row is expected to hold the image's other side, which linear History
+/// guarantees (`debug_assert!`).
 pub(crate) fn apply(
     reversal: &LedgerReversal,
     step: Step,
@@ -546,8 +539,8 @@ pub(crate) fn apply(
     journal: &Journal,
 ) {
     let images: Box<dyn Iterator<Item = &RowImage>> = match step {
-        Step::Reverse => Box::new(reversal.images.iter().rev()),
-        Step::Replay => Box::new(reversal.images.iter()),
+        Step::Undo => Box::new(reversal.images.iter().rev()),
+        Step::Redo => Box::new(reversal.images.iter()),
     };
     journal.unrecorded(|| {
         for image in images {
@@ -573,8 +566,8 @@ fn write(image: &RowImage, step: Step, stores: &SharedStores) {
     match image {
         RowImage::BaseUnit(before, after) => {
             let (expected, target) = match step {
-                Step::Reverse => (*after, *before),
-                Step::Replay => (*before, *after),
+                Step::Undo => (*after, *before),
+                Step::Redo => (*before, *after),
             };
             let unread = UnitUse::default();
             stores.units.borrow_mut().split_write(&unread, |ports| {
@@ -586,8 +579,8 @@ fn write(image: &RowImage, step: Step, stores: &SharedStores) {
         // the row again, where the store put it, when the order is written back.
         RowImage::Order(domain, before, after) => {
             let target = match step {
-                Step::Reverse => before,
-                Step::Replay => after,
+                Step::Undo => before,
+                Step::Redo => after,
             };
             match stores.ordered_mut(*domain) {
                 Some(mut ordered) => ordered.place(target),
@@ -861,11 +854,11 @@ mod tests {
         let after = units(&ports);
         let reversal = ports.take_reversal().expect("the writes were recorded");
 
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
         assert_eq!(units(&ports), before, "every row back under its own id");
         assert_eq!(ports.take_reversal(), None, "Undo records nothing");
 
-        ports.replay(&reversal);
+        ports.step(&reversal, Step::Redo);
         assert_eq!(units(&ports), after);
         assert_eq!(ports.take_reversal(), None, "Redo records nothing");
     }
@@ -901,7 +894,7 @@ mod tests {
             "the Institutions first, then the Unit"
         );
 
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
 
         assert_eq!((units(&ports), institutions(&ports)), before);
     }
@@ -918,7 +911,7 @@ mod tests {
         commit.commit();
         let reversal = ports.take_reversal().expect("the delete was recorded");
 
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
 
         assert_eq!(commit.commit().wrote, [Domain::Units]);
     }
@@ -947,10 +940,10 @@ mod tests {
         before: &T,
         after: &T,
     ) {
-        ports.reverse(reversal);
+        ports.step(reversal, Step::Undo);
         assert_eq!(&rows(ports), before, "every row back under its own id");
         assert_eq!(ports.take_reversal(), None, "Undo records nothing");
-        ports.replay(reversal);
+        ports.step(reversal, Step::Redo);
         assert_eq!(&rows(ports), after);
         assert_eq!(ports.take_reversal(), None, "Redo records nothing");
     }
@@ -1041,9 +1034,9 @@ mod tests {
             rows.1.sort_by_key(|entry| entry.id());
             rows
         };
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
         assert_eq!(sorted(rows(&ports)), sorted(before.clone()));
-        ports.replay(&reversal);
+        ports.step(&reversal, Step::Redo);
         assert_eq!(sorted(rows(&ports)), sorted(after));
     }
 
@@ -1151,14 +1144,14 @@ mod tests {
         before: &T,
         after: &T,
     ) {
-        ports.reverse(reversal);
+        ports.step(reversal, Step::Undo);
         ports.commit().commit();
         assert_eq!(&rows(ports), before, "undone in memory");
         ports.reload(domain).expect("the rows read back");
         assert_eq!(&rows(ports), before, "undone in the file");
         assert_eq!(ports.take_reversal(), None, "Undo records nothing");
 
-        ports.replay(reversal);
+        ports.step(reversal, Step::Redo);
         ports.commit().commit();
         assert_eq!(&rows(ports), after, "redone in memory");
         ports.reload(domain).expect("the rows read back");
@@ -1287,7 +1280,7 @@ mod tests {
             &before,
             &after,
         );
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
         ports.commit().commit();
         ports.reload(Domain::Bills).expect("the rows read back");
         assert!(
@@ -1451,7 +1444,7 @@ mod tests {
             })],
             "an add appends, so it records no order"
         );
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
         assert_eq!(type_ids(&ports), before);
     }
 
@@ -1482,7 +1475,7 @@ mod tests {
             )]
         );
 
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
         ports.commit().commit();
         assert_eq!(type_ids(&ports), before);
         ports
@@ -1495,7 +1488,7 @@ mod tests {
         );
         assert_eq!(ports.take_reversal(), None, "Undo records nothing");
 
-        ports.replay(&reversal);
+        ports.step(&reversal, Step::Redo);
         ports.commit().commit();
         ports
             .reload(Domain::DocumentTypes)
@@ -1558,7 +1551,7 @@ mod tests {
         assert_eq!(before, &document);
         assert!(after.links.is_empty(), "both links go with their records");
 
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
         assert_eq!(
             documents(&ports)
                 .into_iter()
@@ -1593,7 +1586,7 @@ mod tests {
         assert!(!trimmed.links.contains(&DocumentLink::Transaction(linked)));
         let reversal = ports.take_reversal().expect("the delete was recorded");
 
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
         ports.commit().commit();
         ports
             .reload(Domain::Documents)
@@ -1657,7 +1650,7 @@ mod tests {
         let reversal = ports.take_reversal().expect("the delete was recorded");
         assert!(reversal.domains().contains(&Domain::Budgets));
 
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
         ports.commit().commit();
         for domain in [
             Domain::Budgets,
@@ -1939,9 +1932,9 @@ mod tests {
             "the home and the moved rows are written before the delete"
         );
 
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
         assert_eq!(rows(&ports), before);
-        ports.replay(&reversal);
+        ports.step(&reversal, Step::Redo);
         assert_eq!(rows(&ports), after);
     }
 
@@ -1973,7 +1966,7 @@ mod tests {
                 }
                 // A merge that moved no Split is undone by hand so the next pair starts clean.
                 if let Some(reversal) = ports.take_reversal() {
-                    ports.reverse(&reversal);
+                    ports.step(&reversal, Step::Undo);
                 }
             }
         }
@@ -1982,9 +1975,9 @@ mod tests {
         assert_eq!(after.0.len(), before.0.len() - 1);
         let reversal = ports.take_reversal().expect("the merge was recorded");
 
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
         assert_eq!(rows(&ports), before);
-        ports.replay(&reversal);
+        ports.step(&reversal, Step::Redo);
         assert_eq!(rows(&ports), after);
     }
 
@@ -2001,9 +1994,9 @@ mod tests {
         }
         ports.commit().commit();
         let added = ports.take_reversal().expect("the add was recorded");
-        ports.reverse(&added);
+        ports.step(&added, Step::Undo);
         ports.commit().commit();
-        ports.replay(&added);
+        ports.step(&added, Step::Redo);
         ports.commit().commit();
 
         ports.reload(Domain::Units).expect("the Units read back");
@@ -2033,13 +2026,13 @@ mod tests {
         let without = ids(&ports);
         assert_eq!(without.len() + 1, with.len());
 
-        ports.reverse(&reversal);
+        ports.step(&reversal, Step::Undo);
         ports.commit().commit();
         assert_eq!(ids(&ports).iter().position(|id| *id == middle), Some(index));
         ports.reload(domain).expect("the rows read back");
         assert_eq!(ids(&ports), with, "in its place after reloading the file");
 
-        ports.replay(&reversal);
+        ports.step(&reversal, Step::Redo);
         ports.commit().commit();
         ports.reload(domain).expect("the rows read back");
         assert_eq!(ids(&ports), without, "removed again");

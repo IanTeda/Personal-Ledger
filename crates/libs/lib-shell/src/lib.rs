@@ -20,7 +20,7 @@
 //! behind `:open` and `:new` ([`explorer`]), reading folders through [`LedgerFolders`]. A Notice from a View not
 //! yet a module and a failed write pass through it to the Router. It holds the rail's badge counts, read through [`ShellRailCounts`]
 //! after each input while a Ledger is open. It holds the [`History`] the global `undo` and `redo` step
-//! through, reaching the Client through [`ShellRouter::reverse`] and [`ShellRouter::replay`]. No module depends on it; only the bins and the adapter
+//! through, reaching the Client through [`ShellRouter::step`] with a [`Step`]. No module depends on it; only the bins and the adapter
 //! answering that port do.
 
 pub mod dialog;
@@ -46,7 +46,7 @@ pub use explorer::{
     ExplorerViewModel, FolderEntry, FolderUnreadable, LedgerFolders,
 };
 pub use help::{HelpEvent, HelpGroup, HelpPresenter, HelpViewModel};
-pub use history::{Entry, History, HistoryRow, HistoryViewModel, Stepped, Steps};
+pub use history::{Entry, History, HistoryRow, HistoryViewModel, Step, Stepped, Steps};
 pub use keymap::{ShellCommand, global_keymap};
 pub use nav::{ContextSelection, FocusZone, InputMode, NavState};
 pub use navigation::{ActiveView, Movement, Noun};

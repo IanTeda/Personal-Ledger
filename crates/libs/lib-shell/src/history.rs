@@ -1,7 +1,6 @@
 //! History: what Undo and Redo step through (#1238). It is generic over the reversal payload `R`,
 //! since `lib-database` depends on `lib-shell` and so the Shell can't name what reverses a Ledger
-//! change; the Client's root Router reverses and replays it ([`crate::ShellRouter::reverse`],
-//! [`crate::ShellRouter::replay`]).
+//! change; the Client's root Router steps it either way ([`crate::ShellRouter::step`], [`Step`]).
 //!
 //! Two lists: `undo`, newest first and capped at [`DEPTH`], and `redo`. Undo moves an entry to
 //! `redo` and Redo moves it back, so neither ever loses one; a new entry clears `redo`, since what
@@ -19,6 +18,15 @@ use lib_locale::msg;
 
 /// How many entries Undo reaches back through; a new entry past it drops the oldest.
 pub const DEPTH: usize = 50;
+
+/// Which way History steps an entry, the one direction every layer below the Shell takes too:
+/// Undo puts back what the entry changed, the newest change first, and Redo makes it again, in
+/// the order first made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    Undo,
+    Redo,
+}
 
 /// One input's change: what the person is told was undone or redone, and what reverses it.
 #[derive(Debug, Clone, PartialEq, Eq)]

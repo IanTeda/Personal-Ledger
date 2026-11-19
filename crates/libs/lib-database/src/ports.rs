@@ -67,12 +67,13 @@ use crate::adapter::store::{
     StoredPayeeReads, StoredShellReads, StoredTagReads, StoredTagRemovalReads,
     StoredTransactionReads, StoredUnitReads,
 };
-use crate::reversal::{Journal, LedgerReversal, Step};
+use crate::reversal::{Journal, LedgerReversal};
 use crate::{
     AccountDeletionAdapter, BillPaymentsAdapter, CategoryDeletionAdapter, Commit, Domain,
     LedgerPreferencesAdapter, Result, SharedLedger, StoredCategoryRows, StoredSettingsReads,
     Stores, TagRemovalAdapter, TransactionImportAdapter, UnitDeletionAdapter, WriteFailure,
 };
+use lib_shell::Step;
 
 /// A Ledger as a Client holds it: every domain's ports over the shared stores, the cross-domain
 /// adapters and the commit every input ends in. The channel a failed commit is reported on is
@@ -545,16 +546,11 @@ impl LedgerPorts {
         self.journal.take()
     }
 
-    /// Undo: writes `reversal`'s rows back as they were before it, the newest first, recording
-    /// nothing. The writes wait for the input's commit like any other.
-    pub fn reverse(&self, reversal: &LedgerReversal) {
-        crate::reversal::apply(reversal, Step::Reverse, &self.stores, &self.journal);
-    }
-
-    /// Redo: writes `reversal`'s rows as it left them again, in the order first written,
-    /// recording nothing.
-    pub fn replay(&self, reversal: &LedgerReversal) {
-        crate::reversal::apply(reversal, Step::Replay, &self.stores, &self.journal);
+    /// Writes `reversal`'s rows the way `step` goes, recording nothing: Undo puts them back as they
+    /// were before it, the newest first, and Redo writes them as it left them again, in the order
+    /// first written. The writes wait for the input's commit like any other.
+    pub fn step(&self, reversal: &LedgerReversal, step: Step) {
+        crate::reversal::apply(reversal, step, &self.stores, &self.journal);
     }
 
     /// Reads `domain`'s rows back as stored and drops its writes not yet committed: after a failed

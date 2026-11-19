@@ -36,14 +36,7 @@ use lib_core::configuration::ConfigKey;
 use lib_settings::DisplayOutput;
 
 use crate::reversal::Reversal;
-
-/// Which way a History step puts a change: [`Direction::Back`] undoes it, [`Direction::Forward`]
-/// replays it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Direction {
-    Back,
-    Forward,
-}
+use lib_shell::Step;
 
 /// The Documents mode, Library scope and sort a Ledger's Documents page opens on.
 type DocumentsState = (DocumentsMode, LibraryScope, LibrarySort);
@@ -116,16 +109,16 @@ impl ShellRouter for RootRouter<'_, '_> {
         }
     }
 
-    /// Puts back each key's raw value from before the change, the last written first, and the
-    /// Ledger's rows as they were before it.
-    fn reverse(&mut self, reversal: &Reversal) -> lib_shell::Result<()> {
-        self.apply_reversal(reversal, Direction::Back)
-    }
-
-    /// Writes each key's raw value from after the change again, in the order first written, and
-    /// the Ledger's rows as the change left them.
-    fn replay(&mut self, reversal: &Reversal) -> lib_shell::Result<()> {
-        self.apply_reversal(reversal, Direction::Forward)
+    /// Steps the Ledger's rows through the ports, then each Configuration key to its raw value on
+    /// that side of the change ([`ConfigReversal::writes`]): Undo puts both back as they were
+    /// before it, Redo writes them again as it left them.
+    ///
+    /// [`ConfigReversal::writes`]: crate::reversal::ConfigReversal::writes
+    fn step(&mut self, reversal: &Reversal, step: Step) -> lib_shell::Result<()> {
+        if let Some(ledger) = &reversal.ledger {
+            self.step_ledger(|ports| ports.step(ledger, step))?;
+        }
+        self.restore(&reversal.configuration.writes(step))
     }
 
     /// The handoff: "`g` + an unbound key is a no-op: clear the pending prefix and flash the hint
@@ -391,35 +384,6 @@ impl RootRouter<'_, '_> {
         } else {
             Ok(())
         }
-    }
-
-    /// Steps `reversal` one way: the Ledger's rows through the ports, then each Configuration key
-    /// to its value on that side of the change.
-    fn apply_reversal(
-        &mut self,
-        reversal: &Reversal,
-        direction: Direction,
-    ) -> lib_shell::Result<()> {
-        if let Some(ledger) = &reversal.ledger {
-            self.step_ledger(|ports| match direction {
-                Direction::Back => ports.reverse(ledger),
-                Direction::Forward => ports.replay(ledger),
-            })?;
-        }
-        let changes: Vec<_> = match direction {
-            Direction::Back => reversal
-                .configuration
-                .iter()
-                .rev()
-                .map(|(key, before, _)| (*key, before.clone()))
-                .collect(),
-            Direction::Forward => reversal
-                .configuration
-                .iter()
-                .map(|(key, _, after)| (*key, after.clone()))
-                .collect(),
-        };
-        self.restore(&changes)
     }
 
     /// Puts `changes` back in the configuration file through Settings, whose pages repaint from what

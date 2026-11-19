@@ -14,17 +14,63 @@ use std::rc::Rc;
 
 use lib_core::configuration::{ConfigKey, Section};
 use lib_database::{Domain, LedgerReversal};
-use lib_shell::Entry;
+use lib_shell::{Entry, Step};
 
 /// One key's change to the user's configuration file: its raw value before and after, `None`
 /// where the file didn't hold it.
-pub(crate) type ConfigChange = (ConfigKey, Option<String>, Option<String>);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ConfigChange {
+    pub(crate) key: ConfigKey,
+    pub(crate) before: Option<String>,
+    pub(crate) after: Option<String>,
+}
 
-/// What reverses one History entry: the Configuration it changed, in the order written, and the
-/// Open Ledger's rows it changed (#1240).
+/// The Configuration part of one History entry: the keys an input changed, in the order written,
+/// as [`LedgerReversal`] is the Ledger's part. It holds the order a step puts them back in.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ConfigReversal(Vec<ConfigChange>);
+
+impl ConfigReversal {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// The keys changed, in the order written.
+    pub(crate) fn keys(&self) -> impl Iterator<Item = ConfigKey> + '_ {
+        self.0.iter().map(|change| change.key)
+    }
+
+    /// What `step` writes to the file, each key with its raw value on that side of the change:
+    /// for Undo each `before`, the last written first, so a key changed twice ends as it first
+    /// was; for Redo each `after`, in the order written.
+    pub(crate) fn writes(&self, step: Step) -> Vec<(ConfigKey, Option<String>)> {
+        match step {
+            Step::Undo => self
+                .0
+                .iter()
+                .rev()
+                .map(|change| (change.key, change.before.clone()))
+                .collect(),
+            Step::Redo => self
+                .0
+                .iter()
+                .map(|change| (change.key, change.after.clone()))
+                .collect(),
+        }
+    }
+}
+
+impl From<Vec<ConfigChange>> for ConfigReversal {
+    fn from(changes: Vec<ConfigChange>) -> Self {
+        Self(changes)
+    }
+}
+
+/// What reverses one History entry: the Configuration it changed and the Open Ledger's rows it
+/// changed (#1240).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Reversal {
-    pub configuration: Vec<ConfigChange>,
+    pub configuration: ConfigReversal,
     pub ledger: Option<LedgerReversal>,
 }
 
@@ -50,12 +96,14 @@ impl ConfigJournal {
         if before == after || !matches!(key.section(), Section::General | Section::Display) {
             return;
         }
-        self.0.borrow_mut().push((key, before, after));
+        self.0
+            .borrow_mut()
+            .push(ConfigChange { key, before, after });
     }
 
     /// Every change recorded since the last take, in the order written.
-    pub(crate) fn take(&self) -> Vec<ConfigChange> {
-        std::mem::take(&mut *self.0.borrow_mut())
+    pub(crate) fn take(&self) -> ConfigReversal {
+        ConfigReversal(std::mem::take(&mut *self.0.borrow_mut()))
     }
 }
 
@@ -65,7 +113,7 @@ impl ConfigJournal {
 /// domains stand in for one.
 pub(crate) fn close(
     labels: Vec<String>,
-    configuration: Vec<ConfigChange>,
+    configuration: ConfigReversal,
     ledger: Option<LedgerReversal>,
 ) -> Option<Entry<Reversal>> {
     if configuration.is_empty() && ledger.is_none() {
@@ -73,8 +121,8 @@ pub(crate) fn close(
     }
     let label = if labels.is_empty() {
         let mut names: Vec<String> = configuration
-            .iter()
-            .map(|(key, _, _)| key.name().to_string())
+            .keys()
+            .map(|key| key.name().to_string())
             .collect();
         if let Some(ledger) = &ledger {
             let domains: Vec<String> = ledger.domains().into_iter().map(domain_name).collect();
@@ -121,6 +169,55 @@ mod tests {
         Some(value.to_string())
     }
 
+    fn change(key: ConfigKey, before: Option<String>, after: Option<String>) -> ConfigReversal {
+        ConfigReversal::from(vec![ConfigChange { key, before, after }])
+    }
+
+    /// Start view changed, then Toasts, then Start view again, as one input.
+    fn two_keys() -> ConfigReversal {
+        ConfigReversal::from(vec![
+            ConfigChange {
+                key: ConfigKey::StartView,
+                before: some("cash"),
+                after: some("dashboard"),
+            },
+            ConfigChange {
+                key: ConfigKey::Toasts,
+                before: None,
+                after: some("false"),
+            },
+            ConfigChange {
+                key: ConfigKey::StartView,
+                before: some("dashboard"),
+                after: some("last"),
+            },
+        ])
+    }
+
+    #[test]
+    fn undo_writes_each_before_the_last_written_first() {
+        assert_eq!(
+            two_keys().writes(Step::Undo),
+            [
+                (ConfigKey::StartView, some("dashboard")),
+                (ConfigKey::Toasts, None),
+                (ConfigKey::StartView, some("cash")),
+            ]
+        );
+    }
+
+    #[test]
+    fn redo_writes_each_after_in_the_order_written() {
+        assert_eq!(
+            two_keys().writes(Step::Redo),
+            [
+                (ConfigKey::StartView, some("dashboard")),
+                (ConfigKey::Toasts, some("false")),
+                (ConfigKey::StartView, some("last")),
+            ]
+        );
+    }
+
     #[test]
     fn an_input_that_changed_nothing_closes_no_entry() {
         let journal = ConfigJournal::default();
@@ -148,12 +245,12 @@ mod tests {
             Some(Entry {
                 label: "Start view: Dashboard".to_string(),
                 reversal: Reversal {
-                    configuration: vec![(ConfigKey::StartView, some("cash"), some("dashboard"))],
+                    configuration: change(ConfigKey::StartView, some("cash"), some("dashboard")),
                     ledger: None,
                 },
             })
         );
-        assert_eq!(journal.take(), [], "taken");
+        assert_eq!(journal.take(), ConfigReversal::default(), "taken");
     }
 
     #[test]
@@ -163,7 +260,7 @@ mod tests {
 
         assert_eq!(
             close(Vec::new(), journal.take(), None).map(|entry| entry.reversal.configuration),
-            Some(vec![(ConfigKey::ColourTheme, None, some("nord"))])
+            Some(change(ConfigKey::ColourTheme, None, some("nord")))
         );
     }
 
@@ -183,7 +280,7 @@ mod tests {
         let journal = ConfigJournal::default();
         journal.record(ConfigKey::Log, None, some("debug"));
 
-        assert_eq!(journal.take(), []);
+        assert_eq!(journal.take(), ConfigReversal::default());
     }
 
     fn units_change() -> LedgerReversal {
@@ -195,8 +292,8 @@ mod tests {
 
     #[test]
     fn a_ledger_change_closes_into_an_entry_named_by_its_domains_without_a_label() {
-        let entry =
-            close(Vec::new(), Vec::new(), Some(units_change())).expect("one change recorded");
+        let entry = close(Vec::new(), ConfigReversal::default(), Some(units_change()))
+            .expect("one change recorded");
 
         assert_eq!(entry.label, "Change units");
         assert_eq!(entry.reversal.ledger, Some(units_change()));
@@ -211,7 +308,8 @@ mod tests {
             },
         )]);
 
-        let entry = close(Vec::new(), Vec::new(), Some(institutions)).expect("one change recorded");
+        let entry = close(Vec::new(), ConfigReversal::default(), Some(institutions))
+            .expect("one change recorded");
 
         assert_eq!(entry.label, "Change institutions");
     }
@@ -219,11 +317,11 @@ mod tests {
     #[test]
     fn dropping_the_ledger_part_keeps_an_entry_only_with_configuration_left() {
         let mut ledger_only = Reversal {
-            configuration: Vec::new(),
+            configuration: ConfigReversal::default(),
             ledger: Some(units_change()),
         };
         let mut mixed = Reversal {
-            configuration: vec![(ConfigKey::Toasts, None, some("false"))],
+            configuration: change(ConfigKey::Toasts, None, some("false")),
             ledger: Some(units_change()),
         };
 

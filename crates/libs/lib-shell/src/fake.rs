@@ -58,8 +58,8 @@ pub struct RecordingRouter {
     /// What [`ShellRouter::set_data_folder`] answers: whether the folder picked is now in effect.
     pub data_folder_applies: bool,
     pub folders: FakeLedgerFolders,
-    /// The step whose reversal matches this is refused by [`ShellRouter::reverse`] and
-    /// [`ShellRouter::replay`], with [`Self::refusal`]; every other step applies.
+    /// The step whose reversal matches this is refused by [`ShellRouter::step`], either
+    /// way, with [`Self::refusal`]; every other step applies.
     pub refuses: Option<&'static str>,
 }
 
@@ -72,7 +72,7 @@ impl RecordingRouter {
         }
     }
 
-    fn step(&self, reversal: &'static str) -> crate::Result<()> {
+    fn answer(&self, reversal: &'static str) -> crate::Result<()> {
         if self.refuses == Some(reversal) {
             Err(Self::refusal())
         } else {
@@ -121,14 +121,12 @@ impl ShellRouter for RecordingRouter {
         self.routed.push(Routed::WriteFailed(failure));
     }
 
-    fn reverse(&mut self, reversal: &&'static str) -> crate::Result<()> {
-        self.routed.push(Routed::Reversed(reversal));
-        self.step(reversal)
-    }
-
-    fn replay(&mut self, reversal: &&'static str) -> crate::Result<()> {
-        self.routed.push(Routed::Replayed(reversal));
-        self.step(reversal)
+    fn step(&mut self, reversal: &&'static str, step: crate::Step) -> crate::Result<()> {
+        self.routed.push(match step {
+            crate::Step::Undo => Routed::Reversed(reversal),
+            crate::Step::Redo => Routed::Replayed(reversal),
+        });
+        self.answer(reversal)
     }
 
     fn not_a_jump(&mut self, sequence: String) {
