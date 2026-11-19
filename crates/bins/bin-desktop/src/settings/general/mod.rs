@@ -2,21 +2,20 @@
 //! `ModulePage` hosts (ADR-0056), which the Settings View hosts as any other page. It names the
 //! page's Router and how it draws the view model (`render.rs`); the keymap, the take, send and
 //! handle path and the clicks' path are the generic page's. On start, Start view, Toasts, the Locale and the Data folder are
-//! written through the Presenter's `DeviceConfiguration` (`super::device`); saved Toasts reach the
+//! written through the Presenter's `DevicePorts` (`super::device`); saved Toasts reach the
 //! Shell as `ViewEvent::ToastsChanged` (`super::router`). Each key and click is one input
 //! (`crate::input::send`).
 
 mod render;
 
 use std::path::Path;
-use std::rc::Rc;
 
 use gpui::{AnyElement, App, Context, Window};
 use lib_core::StartView;
 use lib_database::Domain;
 use lib_settings::{
-    DeviceConfiguration, DeviceSnapshot, GeneralEvent, GeneralField, GeneralPresenter,
-    GeneralSetup, GeneralViewModel, LocaleLine,
+    DevicePorts, DeviceSnapshot, GeneralEvent, GeneralField, GeneralPresenter, GeneralSetup,
+    GeneralViewModel, LocaleLine,
 };
 use lib_viper::keymap::KeyBindingConfig;
 use lib_viper::view::Choice;
@@ -38,7 +37,7 @@ pub type GeneralPage = ModulePage<GeneralPresenter>;
 /// Start view's choices are the Desktop's own Views. General reads no Ledger, so it stands before
 /// one is open.
 pub fn general_page(
-    device: Rc<dyn DeviceConfiguration>,
+    device: DevicePorts,
     snapshot: DeviceSnapshot,
     config: &KeyBindingConfig,
     cx: &mut Context<'_, GeneralPage>,

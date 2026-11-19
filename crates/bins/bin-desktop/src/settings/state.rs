@@ -32,8 +32,8 @@ use crate::{
 use gpui::{AnyView, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_list_cursor::Step;
 use lib_settings::{
-    ColourChoice, DataFolderOutcome, DeviceConfiguration, DeviceSnapshot, DisplayEvent,
-    DisplayOutput, GeneralEvent, LedgerSummaries, PageRows, PageSummary, ScopeFacts, ScopeGroup,
+    ColourChoice, DataFolderOutcome, DevicePorts, DeviceSnapshot, DisplayEvent, DisplayOutput,
+    GeneralEvent, LedgerSummaries, PageRows, PageSummary, RestoreSetting, ScopeFacts, ScopeGroup,
     SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,
     SummarySources, TracingLevel, TracingLog, summarise,
 };
@@ -51,7 +51,7 @@ impl EventEmitter<PageChanged> for SettingsView {}
 /// leaving and re-entering Settings, which lands on the index.
 pub struct SettingsView {
     /// The configuration file the This device pages write, which Undo and Redo put keys back in.
-    device: Rc<dyn DeviceConfiguration>,
+    device: DevicePorts,
     pages: SettingsPages,
     frame: SettingsFramePresenter,
     /// The page body's scroll.
@@ -76,14 +76,14 @@ impl SettingsView {
     /// arrives later, through `Root::set_log_capture`, and a `[keybindings]` change through
     /// [`PageHandle::rebind`].
     pub fn new(
-        device: Rc<dyn DeviceConfiguration>,
+        device: DevicePorts,
         snapshot: &DeviceSnapshot,
         config: &KeyBindingConfig,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         // Not yet drawn: the Window Size the View starts at, until `Root` tells it the window's.
         let window_size = WindowSize::Large;
-        let pages = SettingsPages::new(Rc::clone(&device), snapshot, config, window_size, cx);
+        let pages = SettingsPages::new(device.clone(), snapshot, config, window_size, cx);
         let _page_subscriptions = subscribe_pages(&pages, cx);
         let frame = SettingsFramePresenter::new(
             SettingsFrameSetup {
@@ -593,14 +593,21 @@ impl SettingsView {
         let mut restored = 0;
         let mut outcome = Ok(());
         for (key, value) in changes {
-            if let Err(error) = refused(self.device.restore(*key, value.as_deref()), *key) {
+            if let Err(error) = refused(
+                RestoreSetting {
+                    key: *key,
+                    value: value.clone(),
+                }
+                .run(&self.device),
+                *key,
+            ) {
                 outcome = Err(error);
                 break;
             }
             restored += 1;
         }
         if restored > 0 {
-            let snapshot = self.device.read();
+            let snapshot = self.device.snapshot();
             self.pages.general.update(cx, |page, cx| {
                 page.answer(cx, |presenter, router| {
                     presenter.reload(snapshot.clone(), router);
@@ -828,7 +835,7 @@ mod tests {
         let announcer = cx.new(|_| Announcer::default());
         let view = cx.new(|cx| {
             SettingsView::new(
-                Rc::new(lib_settings::fake::InMemoryDeviceConfiguration::default()),
+                DevicePorts::new(Rc::new(lib_settings::fake::InMemoryDeviceFile::default())),
                 &DeviceSnapshot::default(),
                 &KeyBindingConfig::default(),
                 cx,

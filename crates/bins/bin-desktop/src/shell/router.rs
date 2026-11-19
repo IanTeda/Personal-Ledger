@@ -98,7 +98,7 @@ use crate::{
     shell::state::ShellState,
     shell::view::window_size::WindowSize,
 };
-use lib_settings::{DeviceConfiguration, DisplayOutput};
+use lib_settings::{DevicePorts, DisplayOutput};
 use std::rc::Rc;
 
 /// The collapsed rail's own hover-reveal delay (`docs/ux/desktop-mockups/01-shell/README.md`'s
@@ -172,7 +172,7 @@ pub fn build(
         nav,
         focus_handle,
         clock,
-        device,
+        device.ports(),
         &bindings.keybindings,
         creation,
         folders,
@@ -266,13 +266,13 @@ impl Root {
         nav: NavState,
         focus_handle: FocusHandle,
         clock: lib_core::Clock,
-        device: Rc<dyn DeviceConfiguration>,
+        device: DevicePorts,
         keybindings: &lib_config::KeyBindingConfig,
         creation: SharedLedgerCreation,
         folders: Rc<dyn LedgerFolders>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let snapshot = device.read();
+        let snapshot = device.snapshot();
         let settings = cx.new(|cx| SettingsView::new(device, &snapshot, keybindings, cx));
         let mut _settings_subscriptions = settings.subscribe(&Self::page_signals(cx), cx);
         // The frame's Router says which page the person moved to, for Back and Forward.

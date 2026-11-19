@@ -1,8 +1,8 @@
 //! What the Settings module asks of the Shell and of the device, through ports each Client
 //! implements. [`SettingsRouter`] is the frame's and [`DeviceRouter`] the This device pages', each
 //! lent to every `handle` call; a refusal or a saved setting goes to the status line through
-//! [`Notify`] (ADR-0048). [`DeviceConfiguration`] reads and writes a device's settings,
-//! Configuration in the user's configuration file (ADR-0053), which the Client answers over its own
+//! [`Notify`] (ADR-0048). A device's settings, Configuration in the user's configuration file (ADR-0053), are
+//! reached through [`DeviceFile`](crate::DeviceFile), which the Client answers over its own
 //! configuration writer.
 
 use std::path::PathBuf;
@@ -184,28 +184,6 @@ pub enum DeviceRefusal {
     NoFile,
     /// The file or its folder couldn't be written; the Client logs the cause.
     WriteFailed,
-}
-
-/// A device's settings, Configuration in the user's configuration file: read all at once, and
-/// written or removed a key at a time by value, so a new key needs no method here. Every
-/// [`ConfigKey`] is taken, including those no page writes yet.
-pub trait DeviceConfiguration {
-    /// Every key's value in the file, the value in force and what sets it above the file.
-    fn read(&self) -> DeviceSnapshot;
-
-    /// Writes `value` under its key, unless a source above the file sets a key that doesn't
-    /// [write when shadowed](ConfigKey::writes_when_shadowed).
-    fn write(&self, value: ConfigValue) -> DeviceAnswer<ConfigValue>;
-
-    /// Takes `key` out of the file, so the sources below it decide at the next start: the
-    /// Locale's **System**. Shadowed as [`Self::write`] is.
-    fn remove(&self, key: ConfigKey) -> DeviceAnswer<()>;
-
-    /// Puts `key` back as the file held it, `value` being its raw text as read before or after a
-    /// change, or `None` for a key the file didn't hold: Undo and Redo (#1244). Whatever the file
-    /// holds now is overwritten, and a value the parser refuses goes back as it was. Shadowed as
-    /// [`Self::write`] is, and never recorded as a change of its own.
-    fn restore(&self, key: ConfigKey, value: Option<&str>) -> DeviceAnswer<()>;
 }
 
 /// What only the Shell does for Settings › Tracing: the log box's list is the Client's, and Clear

@@ -254,7 +254,7 @@ impl Configuration {
     }
 
     /// Why `field`'s Configuration row can't be written: a source above it sets the key, or
-    /// there's no file to write, in `lib_settings::Policed`'s order. `None` for any other field.
+    /// there's no file to write, in the Interactors' order. `None` for any other field.
     pub fn refusal(&self, field: SettingField) -> Option<String> {
         let key = field.config_key()?;
         // The Locale and the Data folder write under anything above them and say so on their rows

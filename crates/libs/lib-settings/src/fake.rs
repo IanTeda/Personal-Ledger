@@ -12,7 +12,7 @@ use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_core::{UnitId, UnitRef};
 use lib_toast::{Notice, Notify};
 
-use crate::device::{DeviceFile, Policed, WriteError};
+use crate::device::{ChangeLog, DeviceFile, WriteError, snapshot};
 use crate::log::{LogLevel, LogLine};
 use crate::page::SettingsPage;
 use crate::presenter::{ClearLogsPresenter, DisplayOutput, LogListChange, LogScroll};
@@ -20,7 +20,7 @@ use crate::protocols::{
     BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerRouter, LedgerSummaries,
     LedgerUnits,
 };
-use crate::protocols::{DeviceRouter, SettingsRouter, TracingLog, TracingRouter};
+use crate::protocols::{DeviceRouter, DeviceSnapshot, SettingsRouter, TracingLog, TracingRouter};
 
 /// One thing a Presenter asked of the Shell, in the order asked.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -284,7 +284,7 @@ impl TracingRouter for RecordingRouter {
     }
 }
 
-/// What a [`DeviceConfiguration`]'s file holds, a value per key it sets.
+/// What a [`DeviceFile`] holds, a value per key it sets.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StoredDevice(pub HashMap<ConfigKey, ConfigValue>);
 
@@ -306,7 +306,7 @@ impl StoredDevice {
 
 /// A configuration file in memory, with no policy: the settings written, the values start-up read,
 /// the keys a source above it sets, and whether there is a file to write at all or writes fail.
-/// Presenter tests use it through [`InMemoryDeviceConfiguration`], so they run the real policy.
+/// Presenter tests hand it to the real Interactors through [`DevicePorts`](crate::DevicePorts).
 #[derive(Debug, Default)]
 pub struct InMemoryDeviceFile {
     /// The file a write names; `None` is no home folder.
@@ -423,64 +423,66 @@ impl InMemoryDeviceFile {
             ..Self::writable()
         }
     }
-}
-
-/// The in-memory file under the real write-through policy: what the Presenters' tests write to.
-pub type InMemoryDeviceConfiguration = Policed<InMemoryDeviceFile>;
-
-impl InMemoryDeviceConfiguration {
-    /// A file that takes every write.
-    pub fn writable() -> Self {
-        Self::new(InMemoryDeviceFile::writable())
-    }
-
-    /// [`Self::writable`], with `key` set by `source` above the file.
-    pub fn shadowing(key: ConfigKey, source: &str) -> Self {
-        Self::new(InMemoryDeviceFile::shadowing(key, source))
-    }
-
-    /// [`Self::writable`], but every write fails.
-    pub fn unwritable() -> Self {
-        Self::new(InMemoryDeviceFile::unwritable())
-    }
 
     /// `self`, writing to `path`.
     #[must_use]
-    pub fn at(self, path: PathBuf) -> Self {
-        Self::edited(self, |file| file.file = Some(path))
+    pub fn at(mut self, path: PathBuf) -> Self {
+        self.file = Some(path);
+        self
     }
 
     /// `self`, with start-up having read each of `values`.
     #[must_use]
-    pub fn reading(self, values: impl IntoIterator<Item = ConfigValue>) -> Self {
-        Self::edited(self, |file| file.effective = StoredDevice::of(values))
+    pub fn reading(mut self, values: impl IntoIterator<Item = ConfigValue>) -> Self {
+        self.effective = StoredDevice::of(values);
+        self
     }
 
     /// `self`, with the file holding each of `values`.
     #[must_use]
-    pub fn storing(self, values: impl IntoIterator<Item = ConfigValue>) -> Self {
-        Self::edited(self, |file| {
-            file.stored = RefCell::new(StoredDevice::of(values));
-        })
+    pub fn storing(mut self, values: impl IntoIterator<Item = ConfigValue>) -> Self {
+        self.stored = RefCell::new(StoredDevice::of(values));
+        self
     }
 
+    /// What the file holds.
     pub fn stored(&self) -> StoredDevice {
-        self.file().stored.borrow().clone()
+        self.stored.borrow().clone()
     }
 
     /// The file's rows, for a test to change under a Presenter.
     pub fn stored_mut(&self) -> std::cell::RefMut<'_, StoredDevice> {
-        self.file().stored.borrow_mut()
+        self.stored.borrow_mut()
     }
 
     /// Each restore that went to the file, in order.
     pub fn restored(&self) -> Vec<(ConfigKey, Option<String>)> {
-        self.file().restored.borrow().clone()
+        self.restored.borrow().clone()
     }
 
-    fn edited(mut self, edit: impl FnOnce(&mut InMemoryDeviceFile)) -> Self {
-        edit(self.file_mut());
-        self
+    /// What the file reads, as a Presenter's setup takes it.
+    pub fn read(&self) -> DeviceSnapshot {
+        snapshot(self)
+    }
+}
+
+/// A [`ChangeLog`] that keeps what it is told, for the Interactors' tests.
+#[derive(Debug, Default)]
+pub struct JournalFake(RefCell<Vec<Recorded>>);
+
+/// A change a [`JournalFake`] was told of: the key, then its raw value before and after.
+pub type Recorded = (ConfigKey, Option<String>, Option<String>);
+
+impl JournalFake {
+    /// Each change noted, in order, as key, raw value before and raw value after.
+    pub fn recorded(&self) -> Vec<Recorded> {
+        self.0.borrow().clone()
+    }
+}
+
+impl ChangeLog for JournalFake {
+    fn record(&self, key: ConfigKey, before: Option<String>, after: Option<String>) {
+        self.0.borrow_mut().push((key, before, after));
     }
 }
 

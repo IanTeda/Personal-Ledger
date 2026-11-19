@@ -1,9 +1,9 @@
-//! `impl DeviceConfiguration` for the Desktop (ADR-0053): a device's settings live in the
+//! `impl DeviceFile` for the Desktop (ADR-0053): a device's settings live in the
 //! `[General]`, `[Display]` and `[Logs]` sections (ADR-0057) of the user's `personal-ledger.conf`,
 //! which Settings reads and writes through `lib_config`'s [`ConfigWriter`], the TUI's file and
 //! spellings included. Nothing here is per key: the catalogue (`lib_core::configuration`) and
-//! `lib_config` spell every key and value. The pages' Presenters (`lib-settings`) decide what a
-//! write's answer means; this only reads and writes.
+//! `lib_config` spell every key and value. The Interactors (`lib-settings`) decide whether a write goes
+//! through and the pages' Presenters what its answer means; this only reads and writes.
 
 use std::path::Path;
 use std::rc::Rc;
@@ -11,13 +11,11 @@ use std::rc::Rc;
 use crate::reversal::{ConfigJournal, ConfigReversal};
 use lib_config::ConfigWriter;
 use lib_core::configuration::{ConfigKey, ConfigValue};
-use lib_settings::{
-    DeviceAnswer, DeviceConfiguration, DeviceFile, DeviceSnapshot, Policed, WriteError,
-};
+use lib_settings::{DeviceFile, DevicePorts, WriteError};
 
 /// Where a device's settings are written, what outranks the file, as start-up's parse recorded it
 /// in the writer's overrides report, and each key's value in force from that parse. The default
-/// has no file. No policy lives here: [`Policed`] decides what a write may do.
+/// has no file. No policy lives here: the Interactors decide what a write may do.
 #[derive(Debug, Clone, Default)]
 pub struct DeviceConfigFile {
     writer: ConfigWriter,
@@ -88,11 +86,11 @@ impl DeviceFile for DeviceConfigFile {
     }
 }
 
-/// The device Settings writes through: the configuration file under the write-through policy,
-/// recording each saved change in the [`ConfigJournal`] the Shell's root Router takes each input's
-/// History entry from, as `lib-database`'s journal is for the Ledger's rows.
+/// The ports Settings' Interactors write the device through: the configuration file, recording each
+/// saved change in the [`ConfigJournal`] the Shell's root Router takes each input's History entry
+/// from, as `lib-database`'s journal is for the Ledger's rows.
 pub struct ConfiguredDevice {
-    device: Policed<DeviceConfigFile>,
+    ports: DevicePorts,
     /// What the running input changed in the file, shared with `Root`, whose `send` takes it.
     journal: ConfigJournal,
 }
@@ -102,13 +100,18 @@ impl ConfiguredDevice {
         Self::over(DeviceConfigFile::new(config, writer))
     }
 
-    /// `file` under the policy, journalling into a journal of its own.
+    /// `file` journalling into a journal of its own.
     pub fn over(file: DeviceConfigFile) -> Self {
         let journal = ConfigJournal::default();
         Self {
-            device: Policed::new(file).logging(Rc::new(journal.clone())),
+            ports: DevicePorts::new(Rc::new(file)).logging(Rc::new(journal.clone())),
             journal,
         }
+    }
+
+    /// The ports the This device pages' Presenters write through.
+    pub(crate) fn ports(&self) -> DevicePorts {
+        self.ports.clone()
     }
 
     /// The journal this device records into, for the Shell's root Router to take each input's
@@ -123,32 +126,13 @@ impl ConfiguredDevice {
     }
 }
 
-impl DeviceConfiguration for ConfiguredDevice {
-    fn read(&self) -> DeviceSnapshot {
-        self.device.read()
-    }
-
-    fn write(&self, value: ConfigValue) -> DeviceAnswer<ConfigValue> {
-        self.device.write(value)
-    }
-
-    fn remove(&self, key: ConfigKey) -> DeviceAnswer<()> {
-        self.device.remove(key)
-    }
-
-    /// Undo and Redo's write, which records nothing, so stepping through History makes no entry.
-    fn restore(&self, key: ConfigKey, value: Option<&str>) -> DeviceAnswer<()> {
-        self.device.restore(key, value)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
 
     use lib_core::{ColourAppearance, DateStyle, OnStart, RowDensity, StartView, StatusGlyphs};
-    use lib_settings::DeviceRefusal;
     use lib_settings::contract::{self, DeviceFileFactory};
+    use lib_settings::{DeviceAnswer, DeviceRefusal, RemoveSetting, RestoreSetting, WriteSetting};
 
     use super::*;
     use crate::reversal::ConfigChange;
@@ -161,6 +145,14 @@ mod tests {
                 lib_config::Overrides::environment(env.iter().cloned()),
             ),
         )
+    }
+
+    fn restore(device: &ConfiguredDevice, key: ConfigKey, value: Option<&str>) -> DeviceAnswer<()> {
+        RestoreSetting {
+            key,
+            value: value.map(str::to_string),
+        }
+        .run(&device.ports())
     }
 
     fn writing_to(path: &Path, env: &[(String, String)]) -> ConfiguredDevice {
@@ -217,6 +209,15 @@ mod tests {
     }
 
     #[test]
+    fn the_conf_file_keeps_the_write_through_policy() {
+        let mut files = ConfFiles {
+            dir: tempfile::tempdir().expect("a temporary directory"),
+            made: 0,
+        };
+        contract::run_all_policy(&mut files);
+    }
+
+    #[test]
     fn the_value_in_force_is_start_ups_parse_whatever_the_file_holds() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("personal-ledger.conf");
@@ -226,9 +227,9 @@ mod tests {
             ConfigWriter::new(Some(path.clone()), lib_config::Overrides::default()),
         );
 
-        device.write(ConfigValue::RowDensity(RowDensity::Roomy));
+        WriteSetting(ConfigValue::RowDensity(RowDensity::Roomy)).run(&device.ports());
 
-        let snapshot = device.read();
+        let snapshot = device.ports().snapshot();
         assert_eq!(snapshot.file, Some(path));
         for key in ConfigKey::ALL {
             assert_eq!(
@@ -259,7 +260,7 @@ mod tests {
             ConfigValue::StatusGlyphs(StatusGlyphs::AsciiFallback),
             ConfigValue::Locale("en-GB".to_string()),
         ] {
-            device.write(value);
+            WriteSetting(value).run(&device.ports());
         }
         assert_eq!(
             std::fs::read_to_string(&path).unwrap_or_default(),
@@ -276,9 +277,9 @@ mod tests {
         std::fs::write(&path, "[General]\nstart_view = cash\n").expect("the file written");
         let device = writing_to(&path, &[]);
 
-        device.write(ConfigValue::StartView(StartView::Dashboard));
-        device.write(ConfigValue::StartView(StartView::Dashboard));
-        device.remove(ConfigKey::Locale);
+        WriteSetting(ConfigValue::StartView(StartView::Dashboard)).run(&device.ports());
+        WriteSetting(ConfigValue::StartView(StartView::Dashboard)).run(&device.ports());
+        RemoveSetting(ConfigKey::Locale).run(&device.ports());
 
         assert_eq!(
             device.take(),
@@ -291,7 +292,7 @@ mod tests {
         );
 
         assert!(matches!(
-            device.restore(ConfigKey::StartView, Some("cash")),
+            restore(&device, ConfigKey::StartView, Some("cash")),
             DeviceAnswer::Saved { .. }
         ));
         assert_eq!(device.take(), ConfigReversal::default());
@@ -312,15 +313,19 @@ mod tests {
         let device = writing_to(&path, &env);
 
         assert!(matches!(
-            device.restore(ConfigKey::Locale, Some("en-GB")),
+            restore(&device, ConfigKey::Locale, Some("en-GB")),
             DeviceAnswer::Saved { .. }
         ));
         assert!(matches!(
-            device.restore(ConfigKey::Toasts, Some("true")),
+            restore(&device, ConfigKey::Toasts, Some("true")),
             DeviceAnswer::Shadowed { .. }
         ));
         assert!(matches!(
-            ConfiguredDevice::over(DeviceConfigFile::default()).restore(ConfigKey::Toasts, None),
+            restore(
+                &ConfiguredDevice::over(DeviceConfigFile::default()),
+                ConfigKey::Toasts,
+                None
+            ),
             DeviceAnswer::Refused(DeviceRefusal::NoFile)
         ));
     }

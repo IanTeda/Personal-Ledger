@@ -104,7 +104,7 @@ impl ConfigKey {
     /// Whether a write of the key goes to the file even while an Override sets it: the Locale and
     /// the Data folder (DESKTOP-186), whose choice is kept for when the Override is gone. Every
     /// other key refuses. A Settings rule, not the file's, so both Clients and every
-    /// `DeviceConfiguration` read the one answer.
+    /// This device Interactor read the one answer.
     ///
     /// Exhaustive with no wildcard arm, so a new key won't compile until it decides.
     pub fn writes_when_shadowed(self) -> bool {

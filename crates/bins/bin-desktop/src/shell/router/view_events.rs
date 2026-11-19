@@ -152,7 +152,9 @@ mod tests {
                 NavState::new(),
                 cx.focus_handle(),
                 lib_core::Clock::fixed(today),
-                std::rc::Rc::new(lib_settings::fake::InMemoryDeviceConfiguration::default()),
+                lib_settings::DevicePorts::new(std::rc::Rc::new(
+                    lib_settings::fake::InMemoryDeviceFile::default(),
+                )),
                 &lib_config::KeyBindingConfig::default(),
                 std::rc::Rc::new(std::cell::RefCell::new(
                     lib_ledger_creation::fake::InMemoryLedgerCreation::default(),

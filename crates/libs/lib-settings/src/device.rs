@@ -1,9 +1,7 @@
-//! The write-through policy for a This device setting, owned once. A Client's configuration file
-//! answers the raw [`DeviceFile`] port, which carries no policy; [`Policed`] wraps it as the
-//! [`DeviceConfiguration`] the Presenters call, and decides in one place whether a write goes
-//! through: a source above the file that sets the key refuses it (except for a key that
-//! [writes when shadowed](ConfigKey::writes_when_shadowed)), then no file to write refuses it, then the write
-//! itself, whose failure becomes [`DeviceRefusal::WriteFailed`].
+//! The ports a This device setting is written through. A Client's configuration file answers the
+//! raw [`DeviceFile`] port, which carries no policy: the [`interactor`](crate::interactor)s decide
+//! whether a write goes through. [`DevicePorts`] is the file and the [`ChangeLog`] the Presenters
+//! hand them.
 
 use std::fmt;
 use std::path::Path;
@@ -11,9 +9,7 @@ use std::rc::Rc;
 
 use lib_core::configuration::{ConfigKey, ConfigValue};
 
-use crate::protocols::{
-    DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceSnapshot, KeyState,
-};
+use crate::protocols::{DeviceSnapshot, KeyState};
 
 /// A write the file couldn't take. The adapter logs the cause; the policy only needs to know it
 /// failed.
@@ -21,7 +17,7 @@ use crate::protocols::{
 pub struct WriteError;
 
 /// A device's configuration file as it is, with no policy: where it is, what outranks it, what it
-/// holds and how to change it. Every write goes through, so [`Policed`] decides first.
+/// holds and how to change it. Every write goes through, so the Interactors decide first.
 pub trait DeviceFile {
     /// The file a write goes to; `None` with no home folder to keep one in.
     fn target(&self) -> Option<&Path>;
@@ -58,21 +54,23 @@ pub trait DeviceFile {
 }
 
 /// Where a saved change is noted for the input's History entry: the key's raw value in the file
-/// just before and just after. Never told of a [`DeviceConfiguration::restore`], so stepping
+/// just before and just after. Never told of a [`RestoreSetting`](crate::interactor::RestoreSetting), so stepping
 /// through History makes no entry.
 pub trait ChangeLog {
     fn record(&self, key: ConfigKey, before: Option<String>, after: Option<String>);
 }
 
-/// A [`DeviceFile`] with the write-through policy on top: the [`DeviceConfiguration`] the
-/// Presenters call.
-pub struct Policed<F> {
-    file: F,
+/// The ports the This device Interactors take: the file they write and the log they note a saved
+/// change in, shared by every This device page's Presenter.
+#[derive(Clone)]
+pub struct DevicePorts {
+    file: Rc<dyn DeviceFile>,
     log: Option<Rc<dyn ChangeLog>>,
 }
 
-impl<F: DeviceFile> Policed<F> {
-    pub fn new(file: F) -> Self {
+impl DevicePorts {
+    /// Ports over `file`, noting no change.
+    pub fn new(file: Rc<dyn DeviceFile>) -> Self {
         Self { file, log: None }
     }
 
@@ -86,99 +84,39 @@ impl<F: DeviceFile> Policed<F> {
     }
 
     /// The raw file underneath.
-    pub fn file(&self) -> &F {
-        &self.file
+    pub fn file(&self) -> &dyn DeviceFile {
+        &*self.file
     }
 
-    /// The raw file underneath, for the fake's builders to change in place, keeping the log.
-    pub(crate) fn file_mut(&mut self) -> &mut F {
-        &mut self.file
+    pub(crate) fn log(&self) -> Option<&dyn ChangeLog> {
+        self.log.as_deref()
     }
 
-    /// [`Self::change`], noting the key's raw value before and after for the input's History entry
-    /// (#1244), even under an override.
-    fn recorded<T>(
-        &self,
-        key: ConfigKey,
-        value: T,
-        edit: impl FnOnce(&F) -> Result<(), WriteError>,
-    ) -> DeviceAnswer<T> {
-        let Some(log) = &self.log else {
-            return self.change(key, value, edit);
-        };
-        let before = self.file.raw(key);
-        let answer = self.change(key, value, edit);
-        if matches!(answer, DeviceAnswer::Saved { .. }) {
-            log.record(key, before, self.file.raw(key));
-        }
-        answer
-    }
-
-    /// Changes `key` in the file with `edit`, answering `value` once saved, unless a source above
-    /// sets a key that refuses then.
-    fn change<T>(
-        &self,
-        key: ConfigKey,
-        value: T,
-        edit: impl FnOnce(&F) -> Result<(), WriteError>,
-    ) -> DeviceAnswer<T> {
-        if !key.writes_when_shadowed()
-            && let Some(source) = self.file.shadow(key)
-        {
-            return DeviceAnswer::Shadowed { source };
-        }
-        let Some(path) = self.file.target() else {
-            return DeviceAnswer::Refused(DeviceRefusal::NoFile);
-        };
-        match edit(&self.file) {
-            Ok(()) => DeviceAnswer::Saved {
-                value,
-                file: path.display().to_string(),
-            },
-            Err(WriteError) => DeviceAnswer::Refused(DeviceRefusal::WriteFailed),
-        }
+    /// Every key's value in the file, the value in force and what sets it above the file.
+    pub fn snapshot(&self) -> DeviceSnapshot {
+        snapshot(&*self.file)
     }
 }
 
-impl<F: Default + DeviceFile> Default for Policed<F> {
-    fn default() -> Self {
-        Self::new(F::default())
-    }
+/// What `file` reads: every key's value in the file, the value in force and what sets it above the
+/// file. The file is read and parsed once for every key, not once per key.
+pub fn snapshot(file: &dyn DeviceFile) -> DeviceSnapshot {
+    let stored = file.stored_all();
+    DeviceSnapshot::new(file.target().map(Path::to_path_buf), |key| KeyState {
+        stored: stored
+            .iter()
+            .find(|(read, _)| *read == key)
+            .map(|(_, value)| value.clone()),
+        effective: file.effective(key),
+        shadow: file.shadow(key),
+    })
 }
 
-impl<F: fmt::Debug> fmt::Debug for Policed<F> {
+impl fmt::Debug for DevicePorts {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Policed")
-            .field("file", &self.file)
+        f.debug_struct("DevicePorts")
+            .field("file", &self.file.target())
             .field("logging", &self.log.is_some())
             .finish()
-    }
-}
-
-impl<F: DeviceFile> DeviceConfiguration for Policed<F> {
-    fn read(&self) -> DeviceSnapshot {
-        // The file is read and parsed once for every key, not once per key.
-        let stored = self.file.stored_all();
-        DeviceSnapshot::new(self.file.target().map(Path::to_path_buf), |key| KeyState {
-            stored: stored
-                .iter()
-                .find(|(read, _)| *read == key)
-                .map(|(_, value)| value.clone()),
-            effective: self.file.effective(key),
-            shadow: self.file.shadow(key),
-        })
-    }
-
-    fn write(&self, value: ConfigValue) -> DeviceAnswer<ConfigValue> {
-        let written = value.clone();
-        self.recorded(value.key(), value, |file| file.set(written))
-    }
-
-    fn remove(&self, key: ConfigKey) -> DeviceAnswer<()> {
-        self.recorded(key, (), |file| file.remove(key))
-    }
-
-    fn restore(&self, key: ConfigKey, value: Option<&str>) -> DeviceAnswer<()> {
-        self.change(key, (), |file| file.restore(key, value))
     }
 }

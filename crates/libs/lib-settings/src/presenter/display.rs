@@ -1,6 +1,6 @@
 //! Settings › Display's Presenter: the date style, Row density, Status glyphs, Colour Theme and
 //! Appearance, Configuration in the user's configuration file (ADR-0053) written through
-//! [`DeviceConfiguration`], Start Sidebar minimised too. Beside them a PREVIEW re-renders three
+//! the This device Interactors, Start Sidebar minimised too. Beside them a PREVIEW re-renders three
 //! seeded rows under the choices made.
 //!
 //! The fields are the device settings form's ([`DeviceForm`]), which walks them, steps them and
@@ -15,7 +15,6 @@
 //! each theme's card looks, and what the Client's own `[theme]` overrides and the system's light or dark setting make of it, is the Client's to draw.
 
 use std::convert::Infallible;
-use std::rc::Rc;
 
 use chrono::NaiveDate;
 use lib_colour_theme::{ColourAppearance, ColourTheme};
@@ -33,9 +32,10 @@ use super::device::shadowed_note;
 use super::form::{
     DeviceForm, FieldDecl, FieldValue, FieldViews, FormAnswer, FormInput, Presentation,
 };
+use crate::device::DevicePorts;
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
-use crate::protocols::{ColourChoice, DeviceConfiguration, DeviceRouter, DeviceSnapshot};
+use crate::protocols::{ColourChoice, DeviceRouter, DeviceSnapshot};
 use crate::summary::SummaryRow;
 
 /// The Date format control's choices: `None` is "Locale default", the Locale picking the form.
@@ -179,7 +179,7 @@ impl DisplaySettings {
 /// What the Client hands Display as it builds it.
 pub struct DisplaySetup {
     /// Where the settings are written: the configuration file start-up read.
-    pub device: Rc<dyn DeviceConfiguration>,
+    pub device: DevicePorts,
     /// What `device` read as the window opened, which the Shell and every This device page share
     /// rather than each reading the file again.
     pub snapshot: DeviceSnapshot,
@@ -874,17 +874,19 @@ pub fn format_preview_amount(amount_cents: i64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use lib_viper::keymap::KeyBindingConfig;
 
     use super::*;
-    use crate::fake::{InMemoryDeviceConfiguration, RecordingRouter, Routed};
+    use crate::fake::{InMemoryDeviceFile, RecordingRouter, Routed};
     use crate::keymap::display_keymap;
 
-    fn display_on(device: Rc<InMemoryDeviceConfiguration>) -> DisplayPresenter {
+    fn display_on(device: Rc<InMemoryDeviceFile>) -> DisplayPresenter {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         let mut display = DisplayPresenter::new(
             DisplaySetup {
-                device: device.clone(),
+                device: DevicePorts::new(device.clone()),
                 snapshot: device.read(),
             },
             &KeyBindingConfig::default(),
@@ -895,9 +897,7 @@ mod tests {
 
     /// Display on a writable device whose start-up read each of `values`.
     fn reading(values: impl IntoIterator<Item = ConfigValue>) -> DisplayPresenter {
-        display_on(Rc::new(
-            InMemoryDeviceConfiguration::writable().reading(values),
-        ))
+        display_on(Rc::new(InMemoryDeviceFile::writable().reading(values)))
     }
 
     #[test]
@@ -918,8 +918,8 @@ mod tests {
         assert_eq!(rows[0].value, "Locale");
     }
 
-    fn writable() -> (Rc<InMemoryDeviceConfiguration>, DisplayPresenter) {
-        let device = Rc::new(InMemoryDeviceConfiguration::writable());
+    fn writable() -> (Rc<InMemoryDeviceFile>, DisplayPresenter) {
+        let device = Rc::new(InMemoryDeviceFile::writable());
         (device.clone(), display_on(device))
     }
 
@@ -986,7 +986,7 @@ mod tests {
 
     #[test]
     fn a_field_not_saved_reaches_no_view() {
-        let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
+        let device = Rc::new(InMemoryDeviceFile::shadowing(
             ConfigKey::DateStyle,
             "PERSONAL_LEDGER_DISPLAY__DATE_STYLE",
         ));
@@ -1036,7 +1036,7 @@ mod tests {
 
     #[test]
     fn the_sidebar_shows_what_the_file_holds_and_a_variable_overrides_it() {
-        let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
+        let device = Rc::new(InMemoryDeviceFile::shadowing(
             ConfigKey::StartSidebarMinimised,
             "PERSONAL_LEDGER_DISPLAY__START_SIDEBAR_MINIMISED",
         ));
@@ -1064,7 +1064,7 @@ mod tests {
 
     #[test]
     fn a_refused_colour_is_not_applied() {
-        let mut display = display_on(Rc::new(InMemoryDeviceConfiguration::default()));
+        let mut display = display_on(Rc::new(InMemoryDeviceFile::default()));
 
         let router = send(
             &mut display,
@@ -1451,10 +1451,7 @@ mod tests {
         );
     }
     /// What `display` routes reloading what `device` reads now.
-    fn reloaded(
-        display: &mut DisplayPresenter,
-        device: &InMemoryDeviceConfiguration,
-    ) -> Vec<Routed> {
+    fn reloaded(display: &mut DisplayPresenter, device: &InMemoryDeviceFile) -> Vec<Routed> {
         let mut router = RecordingRouter::default();
         display.reload(device.read(), &mut router);
         router.routed

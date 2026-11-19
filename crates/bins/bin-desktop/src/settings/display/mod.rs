@@ -4,20 +4,17 @@
 //! itself ([`colour_theme::GridColumns`], through `ModulePage::told`), and draws the view model
 //! (`render.rs`, `colour_theme.rs`); the keymap, the take, send and handle path and the clicks'
 //! path are the generic page's. The date style, Colour Theme and Appearance
-//! are written through the Presenter's `DeviceConfiguration` (`super::device`); the Display output
+//! are written through the Presenter's `DevicePorts` (`super::device`); the Display output
 //! reaches the Shell as `ViewEvent::DisplayChanged` and a saved colour is applied by the page's
 //! Router (`super::router`). Each key and click is one input (`crate::input::send`).
 
 pub mod colour_theme;
 pub(crate) mod render;
 
-use std::rc::Rc;
-
 use gpui::{AnyElement, Context, Window};
 use lib_database::Domain;
 use lib_settings::{
-    DeviceConfiguration, DeviceSnapshot, DisplayEvent, DisplayPresenter, DisplaySetup,
-    DisplayViewModel,
+    DevicePorts, DeviceSnapshot, DisplayEvent, DisplayPresenter, DisplaySetup, DisplayViewModel,
 };
 use lib_viper::keymap::KeyBindingConfig;
 
@@ -37,7 +34,7 @@ pub type DisplayPage = ModulePage<DisplayPresenter>;
 /// Display writing to `device` under `config`'s keys.
 /// Display reads no Ledger, so it stands before one is open.
 pub fn display_page(
-    device: Rc<dyn DeviceConfiguration>,
+    device: DevicePorts,
     snapshot: DeviceSnapshot,
     config: &KeyBindingConfig,
     cx: &mut Context<'_, DisplayPage>,

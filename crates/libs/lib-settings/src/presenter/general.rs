@@ -1,6 +1,6 @@
 //! Settings › General's Presenter (DESKTOP-177, DESKTOP-178): On start, Start view, Toasts, the
 //! Locale and the Data folder, Configuration in the user's configuration file (ADR-0053, ADR-0057)
-//! written through [`DeviceConfiguration`], and the read-only last Ledger and configuration file,
+//! written through the This device Interactors, and the read-only last Ledger and configuration file,
 //! which the Client hands it. Everything here belongs to this device and works with no Ledger open
 //! (ADR-0051).
 //!
@@ -18,7 +18,6 @@
 
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 
 use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_core::{OnStart, StartView};
@@ -32,9 +31,10 @@ use lib_viper::view::{Choice, Hint};
 use super::form::{
     DeviceForm, FieldDecl, FieldValue, FieldViews, FormAnswer, FormInput, Presentation,
 };
+use crate::device::DevicePorts;
 use crate::keymap::TEST_TOASTS;
 use crate::msg;
-use crate::protocols::{DeviceConfiguration, DeviceRouter, DeviceSnapshot};
+use crate::protocols::{DeviceRouter, DeviceSnapshot};
 use crate::summary::SummaryRow;
 
 /// On start's choices, in the segmented control's order.
@@ -212,7 +212,7 @@ impl Default for LocaleLine {
 /// What the Client hands General as it builds it.
 pub struct GeneralSetup {
     /// Where the settings are written: the configuration file start-up read.
-    pub device: Rc<dyn DeviceConfiguration>,
+    pub device: DevicePorts,
     /// What `device` read as the window opened, which the Shell and every This device page share
     /// rather than each reading the file again.
     pub snapshot: DeviceSnapshot,
@@ -813,10 +813,12 @@ fn toasts_label(on: bool) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use lib_viper::keymap::KeyBindingConfig;
 
     use super::*;
-    use crate::fake::{InMemoryDeviceConfiguration, RecordingRouter, Routed, StoredDevice};
+    use crate::fake::{InMemoryDeviceFile, RecordingRouter, Routed, StoredDevice};
 
     fn start_views() -> Vec<Choice<StartView>> {
         ["dashboard", "last", "settings", "bills"]
@@ -828,20 +830,17 @@ mod tests {
             .collect()
     }
 
-    fn general_on(device: Rc<InMemoryDeviceConfiguration>) -> GeneralPresenter {
+    fn general_on(device: Rc<InMemoryDeviceFile>) -> GeneralPresenter {
         general_reading(device, Locale::EnAu)
     }
 
     /// General on `device` in a run reading `effective`, with en-AU the system's Locale.
-    fn general_reading(
-        device: Rc<InMemoryDeviceConfiguration>,
-        effective: Locale,
-    ) -> GeneralPresenter {
+    fn general_reading(device: Rc<InMemoryDeviceFile>, effective: Locale) -> GeneralPresenter {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         GeneralPresenter::new(
             GeneralSetup {
                 snapshot: device.read(),
-                device,
+                device: DevicePorts::new(device),
                 start_views: start_views(),
                 locale: LocaleLine {
                     line: "en-AU, from config".to_string(),
@@ -854,8 +853,8 @@ mod tests {
         )
     }
 
-    fn writable() -> (Rc<InMemoryDeviceConfiguration>, GeneralPresenter) {
-        let device = Rc::new(InMemoryDeviceConfiguration::writable());
+    fn writable() -> (Rc<InMemoryDeviceFile>, GeneralPresenter) {
+        let device = Rc::new(InMemoryDeviceFile::writable());
         (device.clone(), general_on(device))
     }
 
@@ -890,7 +889,7 @@ mod tests {
     #[test]
     fn general_shows_the_values_in_force_but_the_files_locale_and_data_folder() {
         let device = Rc::new(
-            InMemoryDeviceConfiguration::shadowing(ConfigKey::OnStart, "--no-ledger")
+            InMemoryDeviceFile::shadowing(ConfigKey::OnStart, "--no-ledger")
                 .reading([
                     ConfigValue::OnStart(OnStart::NoLedger),
                     ConfigValue::StartView(StartView::Last),
@@ -929,7 +928,7 @@ mod tests {
     #[test]
     fn general_summarises_its_four_fields_with_the_data_folder_in_effect() {
         let device = Rc::new(
-            InMemoryDeviceConfiguration::writable()
+            InMemoryDeviceFile::writable()
                 .reading([
                     ConfigValue::OnStart(OnStart::ReopenLastLedger),
                     ConfigValue::Toasts(false),
@@ -958,8 +957,7 @@ mod tests {
     #[test]
     fn a_files_locale_that_isnt_a_choice_shows_as_system() {
         let device = Rc::new(
-            InMemoryDeviceConfiguration::writable()
-                .storing([ConfigValue::Locale("en-XA".to_string())]),
+            InMemoryDeviceFile::writable().storing([ConfigValue::Locale("en-XA".to_string())]),
         );
 
         let general = general_on(device);
@@ -978,8 +976,7 @@ mod tests {
     #[test]
     fn choosing_system_takes_out_a_files_locale_that_isnt_a_choice() {
         let device = Rc::new(
-            InMemoryDeviceConfiguration::writable()
-                .storing([ConfigValue::Locale("en-XA".to_string())]),
+            InMemoryDeviceFile::writable().storing([ConfigValue::Locale("en-XA".to_string())]),
         );
         let mut general = general_on(device.clone());
 
@@ -995,7 +992,7 @@ mod tests {
     #[test]
     fn an_unlisted_start_view_is_named_under_its_field() {
         let device = Rc::new(
-            InMemoryDeviceConfiguration::writable()
+            InMemoryDeviceFile::writable()
                 .reading([ConfigValue::StartView(StartView::Noun("units".into()))]),
         );
         let mut general = general_on(device);
@@ -1040,7 +1037,7 @@ mod tests {
 
     #[test]
     fn refused_toasts_arent_handed_the_shell() {
-        let mut general = general_on(Rc::new(InMemoryDeviceConfiguration::unwritable()));
+        let mut general = general_on(Rc::new(InMemoryDeviceFile::unwritable()));
         let router = send(&mut general, [GeneralEvent::SetToasts(false)]);
         assert!(general.settings().toasts_on);
         assert!(!router.routed.contains(&Routed::ToastsChanged(false)));
@@ -1193,7 +1190,7 @@ mod tests {
 
     #[test]
     fn a_shadowed_locale_names_the_override_and_reads_back_its_choice() {
-        let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
+        let device = Rc::new(InMemoryDeviceFile::shadowing(
             ConfigKey::Locale,
             "--locale en-GB",
         ));
@@ -1209,7 +1206,7 @@ mod tests {
     }
 
     /// `device` with the Data folder in effect `/home/me/ledgers`.
-    fn with_data_folder(device: InMemoryDeviceConfiguration) -> Rc<InMemoryDeviceConfiguration> {
+    fn with_data_folder(device: InMemoryDeviceFile) -> Rc<InMemoryDeviceFile> {
         Rc::new(device.reading([ConfigValue::Data(PathBuf::from("/home/me/ledgers"))]))
     }
 
@@ -1222,7 +1219,7 @@ mod tests {
 
     #[test]
     fn enter_on_the_data_folder_and_change_ask_for_the_picker() {
-        let mut general = general_on(with_data_folder(InMemoryDeviceConfiguration::writable()));
+        let mut general = general_on(with_data_folder(InMemoryDeviceFile::writable()));
         send(&mut general, [GeneralEvent::Focused(true)]);
         send(
             &mut general,
@@ -1258,7 +1255,7 @@ mod tests {
 
     #[test]
     fn a_picked_data_folder_is_written_applies_at_once_and_raises_a_toast() {
-        let device = with_data_folder(InMemoryDeviceConfiguration::writable());
+        let device = with_data_folder(InMemoryDeviceFile::writable());
         let mut general = general_on(device.clone());
 
         let (outcome, router) = pick(&mut general, "/home/me/finance");
@@ -1284,7 +1281,7 @@ mod tests {
 
     #[test]
     fn picking_the_data_folder_already_set_writes_nothing_and_raises_nothing() {
-        let device = with_data_folder(InMemoryDeviceConfiguration::writable());
+        let device = with_data_folder(InMemoryDeviceFile::writable());
         let mut general = general_on(device.clone());
 
         let (outcome, router) = pick(&mut general, "/home/me/ledgers");
@@ -1296,10 +1293,7 @@ mod tests {
 
     #[test]
     fn the_overridden_data_folder_is_saved_when_the_file_names_none() {
-        let device = with_data_folder(InMemoryDeviceConfiguration::shadowing(
-            ConfigKey::Data,
-            "--data",
-        ));
+        let device = with_data_folder(InMemoryDeviceFile::shadowing(ConfigKey::Data, "--data"));
         let mut general = general_on(device.clone());
 
         let (outcome, _) = pick(&mut general, "/home/me/ledgers");
@@ -1313,7 +1307,7 @@ mod tests {
 
     #[test]
     fn a_refused_data_folder_says_why_and_changes_nothing() {
-        let mut general = general_on(with_data_folder(InMemoryDeviceConfiguration::default()));
+        let mut general = general_on(with_data_folder(InMemoryDeviceFile::default()));
 
         let (outcome, router) = pick(&mut general, "/home/me/finance");
 
@@ -1325,7 +1319,7 @@ mod tests {
 
     #[test]
     fn a_shadowed_data_folder_is_written_and_names_the_override() {
-        let device = with_data_folder(InMemoryDeviceConfiguration::shadowing(
+        let device = with_data_folder(InMemoryDeviceFile::shadowing(
             ConfigKey::Data,
             "PERSONAL_LEDGER_GENERAL__DATA",
         ));
@@ -1373,7 +1367,7 @@ mod tests {
 
     #[test]
     fn the_data_folder_and_this_device_show_what_the_device_reads() {
-        let device = InMemoryDeviceConfiguration::writable()
+        let device = InMemoryDeviceFile::writable()
             .at(PathBuf::from("/home/me/.config/personal-ledger.conf"))
             .reading([ConfigValue::Data(PathBuf::from("/home/me/Ledgers"))]);
         let mut general = general_on(Rc::new(device));
@@ -1447,7 +1441,7 @@ mod tests {
 
     #[test]
     fn a_refused_write_names_no_change() {
-        let mut general = general_on(Rc::new(InMemoryDeviceConfiguration::default()));
+        let mut general = general_on(Rc::new(InMemoryDeviceFile::default()));
 
         let router = send(&mut general, [GeneralEvent::SetToasts(false)]);
         let (_, picked) = pick(&mut general, "/home/me/finance");
@@ -1458,8 +1452,7 @@ mod tests {
 
     #[test]
     fn reload_shows_the_files_values_again_and_closes_an_open_list() {
-        let device =
-            Rc::new(InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(true)]));
+        let device = Rc::new(InMemoryDeviceFile::writable().reading([ConfigValue::Toasts(true)]));
         let mut general = general_on(device.clone());
         send(
             &mut general,
@@ -1498,8 +1491,7 @@ mod tests {
 
     #[test]
     fn reload_shows_the_files_value_over_start_ups_for_a_key_nothing_outranks() {
-        let device =
-            Rc::new(InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(true)]));
+        let device = Rc::new(InMemoryDeviceFile::writable().reading([ConfigValue::Toasts(true)]));
         let mut general = general_on(device.clone());
         device
             .stored_mut()
@@ -1513,7 +1505,7 @@ mod tests {
 
     #[test]
     fn reload_moves_the_data_folder_in_effect_unless_a_source_above_sets_it() {
-        let device = with_data_folder(InMemoryDeviceConfiguration::writable());
+        let device = with_data_folder(InMemoryDeviceFile::writable());
         let mut general = general_on(device.clone());
         pick(&mut general, "/home/me/finance");
         device.stored_mut().0.remove(&ConfigKey::Data);
@@ -1523,10 +1515,7 @@ mod tests {
         assert_eq!(general.data_folder(), Path::new("/home/me/ledgers"));
         assert_eq!(general.view_model().data_folder.value, "/home/me/ledgers");
 
-        let shadowed = with_data_folder(InMemoryDeviceConfiguration::shadowing(
-            ConfigKey::Data,
-            "--data",
-        ));
+        let shadowed = with_data_folder(InMemoryDeviceFile::shadowing(ConfigKey::Data, "--data"));
         let mut general = general_on(shadowed.clone());
         shadowed.stored_mut().0.insert(
             ConfigKey::Data,
@@ -1541,7 +1530,7 @@ mod tests {
 
     #[test]
     fn reload_recomputes_a_shadowed_locales_note_from_the_file() {
-        let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
+        let device = Rc::new(InMemoryDeviceFile::shadowing(
             ConfigKey::Locale,
             "--locale en-US",
         ));
@@ -1564,10 +1553,7 @@ mod tests {
         );
     }
     /// What `general` routes reloading what `device` reads now.
-    fn reloaded(
-        general: &mut GeneralPresenter,
-        device: &InMemoryDeviceConfiguration,
-    ) -> Vec<Routed> {
+    fn reloaded(general: &mut GeneralPresenter, device: &InMemoryDeviceFile) -> Vec<Routed> {
         let mut router = RecordingRouter::default();
         general.reload(device.read(), &mut router);
         router.routed
@@ -1575,8 +1561,7 @@ mod tests {
 
     #[test]
     fn reload_routes_toasts_turned_back() {
-        let device =
-            Rc::new(InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(true)]));
+        let device = Rc::new(InMemoryDeviceFile::writable().reading([ConfigValue::Toasts(true)]));
         let mut general = general_on(device.clone());
         device
             .stored_mut()
@@ -1591,7 +1576,7 @@ mod tests {
 
     #[test]
     fn reload_routes_the_data_folder_moved_back() {
-        let device = with_data_folder(InMemoryDeviceConfiguration::writable());
+        let device = with_data_folder(InMemoryDeviceFile::writable());
         let mut general = general_on(device.clone());
         pick(&mut general, "/home/me/finance");
         device.stored_mut().0.remove(&ConfigKey::Data);
@@ -1604,9 +1589,8 @@ mod tests {
 
     #[test]
     fn reload_routes_nothing_for_a_snapshot_that_changes_nothing() {
-        let device = with_data_folder(
-            InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(false)]),
-        );
+        let device =
+            with_data_folder(InMemoryDeviceFile::writable().reading([ConfigValue::Toasts(false)]));
         let mut general = general_on(device.clone());
 
         assert_eq!(reloaded(&mut general, &device), []);
@@ -1614,10 +1598,7 @@ mod tests {
 
     #[test]
     fn reload_routes_nothing_for_a_data_folder_a_source_above_sets() {
-        let shadowed = with_data_folder(InMemoryDeviceConfiguration::shadowing(
-            ConfigKey::Data,
-            "--data",
-        ));
+        let shadowed = with_data_folder(InMemoryDeviceFile::shadowing(ConfigKey::Data, "--data"));
         let mut general = general_on(shadowed.clone());
         shadowed.stored_mut().0.insert(
             ConfigKey::Data,

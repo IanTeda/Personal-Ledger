@@ -3,7 +3,7 @@
 //! grouping, and the config pages' Presenters as each moves here (General and Display, #1039).
 //! Toolkit-free and I/O-free, it depends on no feature crate, nor on `lib-config`, `lib-tracing`
 //! or `lib-units`: the config pages reach Configuration, the log and the Units through its own
-//! ports, such as [`DeviceConfiguration`] (#1036).
+//! ports, such as [`DeviceFile`] (#1036).
 //!
 //! The domain pages (Units, Institutions, Accounts, …) stay in their own modules; the frame only
 //! chooses which page shows and where focus sits. A page's icon is the Client's (ADR-0037,
@@ -17,6 +17,7 @@
 pub mod contract;
 pub mod device;
 pub mod fake;
+pub mod interactor;
 pub mod keymap;
 pub mod log;
 pub mod msg;
@@ -25,7 +26,8 @@ pub mod presenter;
 pub mod protocols;
 pub mod summary;
 
-pub use crate::device::{ChangeLog, DeviceFile, Policed, WriteError};
+pub use crate::device::{ChangeLog, DeviceFile, DevicePorts, WriteError, snapshot};
+pub use crate::interactor::{RemoveSetting, RestoreSetting, WriteSetting};
 pub use crate::log::{LogLevel, LogLine, TracingLevel};
 pub use crate::page::{ScopeFacts, ScopeGroup, SettingsPage};
 pub use crate::presenter::{
@@ -41,8 +43,8 @@ pub use crate::presenter::{
     TracingEvent, TracingPresenter, TracingSetup, TracingViewModel, device_status,
 };
 pub use crate::protocols::{
-    BaseUnitAnswer, ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceRouter,
-    DeviceSnapshot, HeadlineAmount, KeyState, LedgerCounts, LedgerPreferences, LedgerRouter,
-    LedgerSummaries, LedgerUnits, SettingsLedger, SettingsRouter, TracingLog, TracingRouter,
+    BaseUnitAnswer, ColourChoice, DeviceAnswer, DeviceRefusal, DeviceRouter, DeviceSnapshot,
+    HeadlineAmount, KeyState, LedgerCounts, LedgerPreferences, LedgerRouter, LedgerSummaries,
+    LedgerUnits, SettingsLedger, SettingsRouter, TracingLog, TracingRouter,
 };
 pub use crate::summary::{PageRows, PageSummary, SummaryRow, SummarySources, summarise};

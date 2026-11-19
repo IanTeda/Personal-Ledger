@@ -12,7 +12,7 @@ use gpui::{App, AppContext as _, Context, Entity, Subscription};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_settings::{DeviceConfiguration, DeviceSnapshot, LedgerCounts, LedgerSummaries};
+use lib_settings::{DevicePorts, DeviceSnapshot, LedgerCounts, LedgerSummaries};
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::{
@@ -190,7 +190,7 @@ impl SettingsPages {
     /// showing `snapshot`, what it read as the window opened, their keys built from `config`, each
     /// framed in `window_size`.
     pub fn new(
-        device: Rc<dyn DeviceConfiguration>,
+        device: DevicePorts,
         snapshot: &DeviceSnapshot,
         config: &KeyBindingConfig,
         window_size: WindowSize,

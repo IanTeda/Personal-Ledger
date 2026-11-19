@@ -1,7 +1,7 @@
 //! The device settings form (#1159): what a This device page's fields share, so a page declares
 //! its fields ([`FieldDecl`]) and keeps only what is its own. The form owns the keyboard's focus
 //! by named field, stepping a field's choices, the one open dropdown list, the write to
-//! [`DeviceConfiguration`] and its settling onto the status line, the shadowed note, the legend
+//! the This device Interactors and its settling onto the status line, the shadowed note, the legend
 //! and each field as drawn ([`FieldView`]). Toolkit-free, so the TUI can reuse it (#805).
 //!
 //! The form takes a [`FormInput`] and answers a [`FormAnswer`] rather than calling a router, so
@@ -18,9 +18,11 @@ use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::view::{Choice, Hint, SelectList};
 
 use super::device::{device_status, shadowed_note};
+use crate::device::DevicePorts;
+use crate::interactor::{RemoveSetting, WriteSetting};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
-use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceSnapshot};
+use crate::protocols::{DeviceAnswer, DeviceSnapshot};
 
 /// A field's value: one its key holds, or none (the key taken out of the file, as the Locale's
 /// **System**).
@@ -278,7 +280,7 @@ struct Field<F> {
 
 /// A This device page's fields: their focus, values, open list and writes.
 pub(crate) struct DeviceForm<F> {
-    device: Rc<dyn DeviceConfiguration>,
+    device: DevicePorts,
     fields: Vec<Field<F>>,
     focus: Option<F>,
     /// The one open dropdown and its list.
@@ -288,11 +290,7 @@ pub(crate) struct DeviceForm<F> {
 impl<F: Copy + Eq> DeviceForm<F> {
     /// The form over `fields`, in the walk's order, showing what `snapshot` reads
     /// ([`DeviceSnapshot::shown`]) and writing to `device`.
-    pub fn new(
-        device: Rc<dyn DeviceConfiguration>,
-        snapshot: &DeviceSnapshot,
-        fields: Vec<FieldDecl<F>>,
-    ) -> Self {
+    pub fn new(device: DevicePorts, snapshot: &DeviceSnapshot, fields: Vec<FieldDecl<F>>) -> Self {
         let fields = fields
             .into_iter()
             .map(|decl| {
@@ -471,15 +469,14 @@ impl<F: Copy + Eq> DeviceForm<F> {
         value: FieldValue,
         notify: &mut dyn Notify,
     ) -> Option<FormAnswer<F>> {
-        let device = Rc::clone(&self.device);
+        let device = self.device.clone();
         let entry = self.get_mut(field)?;
         let key = entry.decl.key;
         let saved = match value {
-            FieldValue::Set(value) => {
-                settle(device.write(value), key, notify).map(|saved| (entry.decl.read)(&saved))
-            }
+            FieldValue::Set(value) => settle(WriteSetting(value).run(&device), key, notify)
+                .map(|saved| (entry.decl.read)(&saved)),
             FieldValue::Unset => {
-                settle(device.remove(key), key, notify).map(|()| FieldValue::Unset)
+                settle(RemoveSetting(key).run(&device), key, notify).map(|()| FieldValue::Unset)
             }
         }?;
         entry.in_file = saved != FieldValue::Unset;
@@ -495,7 +492,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
         notify: &mut dyn Notify,
     ) -> Option<ConfigValue> {
         let key = value.key();
-        settle(self.device.write(value), key, notify)
+        settle(WriteSetting(value).run(&self.device), key, notify)
     }
 
     /// `field` as drawn.
@@ -766,7 +763,7 @@ mod tests {
     use lib_viper::keymap::{Binding, KeyBindingConfig};
 
     use super::*;
-    use crate::fake::{InMemoryDeviceConfiguration, StoredDevice};
+    use crate::fake::{InMemoryDeviceFile, StoredDevice};
     use crate::keymap::TOGGLE;
 
     /// A toy page's fields, one of every presentation and kind.
@@ -884,14 +881,14 @@ mod tests {
         ]
     }
 
-    fn form_on(device: Rc<InMemoryDeviceConfiguration>) -> DeviceForm<Toy> {
+    fn form_on(device: Rc<InMemoryDeviceFile>) -> DeviceForm<Toy> {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         let snapshot = device.read();
-        DeviceForm::new(device, &snapshot, toy_fields())
+        DeviceForm::new(DevicePorts::new(device), &snapshot, toy_fields())
     }
 
-    fn writable() -> (Rc<InMemoryDeviceConfiguration>, DeviceForm<Toy>) {
-        let device = Rc::new(InMemoryDeviceConfiguration::writable());
+    fn writable() -> (Rc<InMemoryDeviceFile>, DeviceForm<Toy>) {
+        let device = Rc::new(InMemoryDeviceFile::writable());
         (device.clone(), form_on(device))
     }
 
@@ -1034,7 +1031,7 @@ mod tests {
     #[test]
     fn a_value_that_isnt_a_choice_shows_none_chosen_and_steps_from_step_from() {
         let device = Rc::new(
-            InMemoryDeviceConfiguration::writable()
+            InMemoryDeviceFile::writable()
                 .reading([ConfigValue::StartView(StartView::Noun("units".into()))]),
         );
         let mut form = form_on(device.clone());
@@ -1191,7 +1188,7 @@ mod tests {
         let (device, mut form) = writable();
         focused_on(&mut form, Toy::Hints);
         let hint_bar =
-            |device: &InMemoryDeviceConfiguration| device.stored().get(ConfigKey::HintBar).cloned();
+            |device: &InMemoryDeviceFile| device.stored().get(ConfigKey::HintBar).cloned();
 
         send(&mut form, [FormInput::Change(Step::Next)]);
         assert_eq!(hint_bar(&device), None, "ticked already, so unwritten");
@@ -1227,7 +1224,7 @@ mod tests {
 
     #[test]
     fn a_shadowed_field_is_noted_and_a_refused_write_keeps_what_was_shown() {
-        let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
+        let device = Rc::new(InMemoryDeviceFile::shadowing(
             ConfigKey::RowDensity,
             "--roomy",
         ));
@@ -1251,7 +1248,7 @@ mod tests {
         assert_eq!(device.stored(), StoredDevice::default());
         assert!(statuses[0].contains("--roomy"));
 
-        let mut form = form_on(Rc::new(InMemoryDeviceConfiguration::unwritable()));
+        let mut form = form_on(Rc::new(InMemoryDeviceFile::unwritable()));
         let (answer, statuses) = send(
             &mut form,
             [FormInput::Choose {
@@ -1269,7 +1266,7 @@ mod tests {
 
     #[test]
     fn each_note_answers_its_own_accessor_and_none_from_the_other() {
-        let shadowed = Rc::new(InMemoryDeviceConfiguration::shadowing(
+        let shadowed = Rc::new(InMemoryDeviceFile::shadowing(
             ConfigKey::RowDensity,
             "--roomy",
         ));
@@ -1281,7 +1278,7 @@ mod tests {
         assert_eq!((plain.own_note(), plain.shadowed_note()), (None, None));
 
         let own = Rc::new(
-            InMemoryDeviceConfiguration::shadowing(ConfigKey::Locale, "--locale en-AU")
+            InMemoryDeviceFile::shadowing(ConfigKey::Locale, "--locale en-AU")
                 .reading([ConfigValue::Locale("en-AU".to_string())]),
         );
         let form = form_on(own);
@@ -1293,7 +1290,7 @@ mod tests {
     #[test]
     fn a_key_written_while_shadowed_shows_the_files_value_and_is_written() {
         let device = Rc::new(
-            InMemoryDeviceConfiguration::shadowing(ConfigKey::Locale, "--locale en-AU")
+            InMemoryDeviceFile::shadowing(ConfigKey::Locale, "--locale en-AU")
                 .reading([ConfigValue::Locale("en-AU".to_string())])
                 .storing([ConfigValue::Locale("en-gb".to_string())]),
         );
@@ -1326,8 +1323,7 @@ mod tests {
     #[test]
     fn unset_removes_the_key() {
         let device = Rc::new(
-            InMemoryDeviceConfiguration::writable()
-                .storing([ConfigValue::Locale("en-GB".to_string())]),
+            InMemoryDeviceFile::writable().storing([ConfigValue::Locale("en-GB".to_string())]),
         );
         let mut form = form_on(device.clone());
 
@@ -1389,7 +1385,7 @@ mod tests {
             )]
         );
 
-        let form = form_on(Rc::new(InMemoryDeviceConfiguration::default()));
+        let form = form_on(Rc::new(InMemoryDeviceFile::default()));
         let mut notices = Vec::new();
         assert_eq!(
             form.write_unfielded(ConfigValue::ColourTheme("nord".to_string()), &mut notices),

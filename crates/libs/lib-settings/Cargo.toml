@@ -11,7 +11,7 @@ license.workspace = true
 doctest = false
 
 [features]
-# The port contract suite (`contract`), for a Client to run against its own `DeviceConfiguration`.
+# The port contract suite (`contract`), for a Client to run against its own `DeviceFile`.
 contract-tests = []
 
 [dependencies]
@@ -27,6 +27,7 @@ lib_viper = { path = "../lib-viper" }
 
 ## -- Workspace Dependencies --
 chrono = { workspace = true }
+tracing = { workspace = true }
 
 [build-dependencies]
 lib_locale_build = { path = "../lib-locale-build" }
