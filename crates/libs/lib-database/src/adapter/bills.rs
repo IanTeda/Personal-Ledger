@@ -13,7 +13,7 @@
 
 use chrono::NaiveDate;
 use lib_bills::{
-    AmountKind, BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository,
+    AmountKind, BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository, EntryId,
     Recurrence, Resolution, SplitRef,
 };
 use lib_core::{
@@ -30,6 +30,8 @@ use crate::{Error, Result};
 enum BillsChange {
     UpsertPlan(BillPlan),
     UpsertEntry(BillScheduleEntry),
+    DeletePlan(BillPlanId),
+    DeleteEntry(EntryId),
 }
 
 /// The Bills domain, held in memory and saved through the shared writer.
@@ -114,6 +116,20 @@ impl BillsAdapter {
         self.entries = fresh.entries;
         self.pending.discard(Domain::Bills);
         Ok(())
+    }
+
+    /// Removes Bill Plan `id`, once no entry names it: Undo of the input that added it (#1253).
+    /// Not a `lib-bills` port write, since no Bills intent deletes a Plan.
+    pub fn delete_bill_plan(&mut self, id: BillPlanId) {
+        self.plans.retain(|plan| plan.id != id);
+        self.pending.push(BillsChange::DeletePlan(id));
+    }
+
+    /// Removes entry `id`, unlinking the Split a Paid entry names: Undo of the input that
+    /// generated it (#1253).
+    pub fn delete_entry(&mut self, id: EntryId) {
+        self.entries.retain(|entry| entry.id() != id);
+        self.pending.push(BillsChange::DeleteEntry(id));
     }
 }
 
@@ -220,6 +236,8 @@ impl Change for BillsChange {
             match *self {
                 Self::UpsertPlan(plan) => upsert_plan(conn, &plan).await,
                 Self::UpsertEntry(entry) => upsert_entry(conn, &entry).await,
+                Self::DeletePlan(id) => delete_plan(conn, id).await,
+                Self::DeleteEntry(id) => delete_entry(conn, id).await,
             }
         })
     }
@@ -363,6 +381,35 @@ async fn upsert_entry(conn: &mut SqliteConnection, entry: &BillScheduleEntry) ->
             )));
         }
     }
+    Ok(())
+}
+
+async fn delete_plan(conn: &mut SqliteConnection, id: BillPlanId) -> Result<()> {
+    sqlx::query!("DELETE FROM bill_plans WHERE id = ?", id)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
+
+/// Deletes the entry by its Bill Plan and due date, after taking the Match link off its Split,
+/// which has no cascade.
+async fn delete_entry(conn: &mut SqliteConnection, id: EntryId) -> Result<()> {
+    sqlx::query!(
+        "UPDATE splits SET bill_schedule_entry_id = NULL
+         WHERE bill_schedule_entry_id IN
+             (SELECT id FROM bill_schedule_entries WHERE bill_plan_id = ? AND due = ?)",
+        id.plan_id,
+        id.due,
+    )
+    .execute(&mut *conn)
+    .await?;
+    sqlx::query!(
+        "DELETE FROM bill_schedule_entries WHERE bill_plan_id = ? AND due = ?",
+        id.plan_id,
+        id.due,
+    )
+    .execute(&mut *conn)
+    .await?;
     Ok(())
 }
 

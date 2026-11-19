@@ -27,9 +27,10 @@
 //! the cascade only after the commit, so the recorder reads them from the stores it is attached to
 //! ([`Journal::attach`]), and a second cascade into the same row builds on the first's image.
 //!
-//! A Bill Plan, a Bill Schedule entry or a Budget new to the Ledger has no image before it: the
-//! repositories have no delete, so such a write can't be undone and isn't recorded (the Bill
-//! Schedule's generation writes only these).
+//! A Bill Plan, a Bill Schedule entry or a Budget new to the Ledger is recorded like any other
+//! add, and Undo removes it through its store's delete, which only Undo calls (#1253): no Bills or
+//! Budgets intent deletes one. A Plan's generated entries are written after it, so Undo removes
+//! them before the Plan.
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
@@ -147,17 +148,6 @@ impl RowImage {
             }
             Self::Item(before, after) => RowKey::Item(before.as_ref().or(after.as_ref())?.id),
         })
-    }
-
-    /// Whether Undo could put the row back: a Bill Plan, an entry or a Budget new to the Ledger
-    /// couldn't be removed again, since their repositories have no delete.
-    fn undoable(&self) -> bool {
-        match self {
-            Self::BillPlan(before, _) => before.is_some(),
-            Self::BillEntry(before, _) => before.is_some(),
-            Self::Budget(before, _) => before.is_some(),
-            _ => true,
-        }
     }
 
     /// The store the row is kept in.
@@ -390,42 +380,56 @@ fn write(image: &RowImage, step: Step, stores: &SharedStores) {
                 None => transactions.delete_transaction(id),
             }
         }
-        // A Bill Plan, an entry and a Budget are never deleted, and only ones that existed before
-        // the input are recorded, so every side written is a row.
         RowImage::BillPlan(before, after) => {
             let (expected, target) = sides(before, after, step);
+            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+                return;
+            };
             let mut store = stores.bills.borrow_mut();
-            if let Some(plan) = target {
-                debug_assert_eq!(
-                    store.plans().bill_plan(plan.id),
-                    expected,
-                    "the Bill Plan as History left it"
-                );
-                store.plans_mut().upsert_bill_plan(plan);
+            debug_assert_eq!(
+                store.plans().bill_plan(id),
+                expected,
+                "the Bill Plan as History left it"
+            );
+            match target {
+                Some(plan) => store.plans_mut().upsert_bill_plan(plan),
+                None => store.delete_bill_plan(id),
             }
         }
         RowImage::BillEntry(before, after) => {
             let (expected, target) = sides(before, after, step);
+            let Some(id) = target
+                .as_ref()
+                .or(expected.as_ref())
+                .map(BillScheduleEntry::id)
+            else {
+                return;
+            };
             let mut store = stores.bills.borrow_mut();
-            if let Some(entry) = target {
-                debug_assert_eq!(
-                    store.entries().entry(entry.id()),
-                    expected,
-                    "the Bill Schedule entry as History left it"
-                );
-                store.entries_mut().upsert_entry(entry);
+            debug_assert_eq!(
+                store.entries().entry(id),
+                expected,
+                "the Bill Schedule entry as History left it"
+            );
+            match target {
+                Some(entry) => store.entries_mut().upsert_entry(entry),
+                None => store.delete_entry(id),
             }
         }
         RowImage::Budget(before, after) => {
             let (expected, target) = sides(before, after, step);
+            let Some(id) = target.as_ref().or(expected.as_ref()).map(|row| row.id) else {
+                return;
+            };
             let mut store = stores.budgets.borrow_mut();
-            if let Some(budget) = target {
-                debug_assert_eq!(
-                    store.budgets().budget(budget.id),
-                    expected,
-                    "the Budget as History left it"
-                );
-                store.budgets_mut().upsert_budget(&budget);
+            debug_assert_eq!(
+                store.budgets().budget(id),
+                expected,
+                "the Budget as History left it"
+            );
+            match target {
+                Some(budget) => store.budgets_mut().upsert_budget(&budget),
+                None => store.delete_budget(id),
             }
         }
         // Not checked against the row: a cascade changes a Document's Links in the file and not
@@ -562,7 +566,7 @@ impl Journal {
     /// the last `after` stand. Nothing is noted while paused.
     pub(crate) fn record(&self, image: RowImage) {
         let mut state = self.0.borrow_mut();
-        if state.paused || !image.undoable() {
+        if state.paused {
             return;
         }
         let key = image.key();
@@ -1043,28 +1047,199 @@ mod tests {
         undone_and_redone(&ports, &reversal, budgets, &before, &after);
     }
 
-    #[test]
-    fn a_bill_plan_or_budget_new_to_the_ledger_is_not_recorded() {
-        let ports = ports();
-        let mut plan = ports.stores().bills.borrow().plans().bill_plans()[0].clone();
-        plan.id = BillPlanId::new();
-        let mut budget = budgets(&ports)[0].clone();
-        budget.id = BudgetId::new();
+    /// The Bill Plans and entries, each sorted by id, so memory and a file read afresh compare.
+    fn bills(ports: &crate::LedgerPorts) -> (Vec<BillPlan>, Vec<BillScheduleEntry>) {
+        let store = ports.stores().bills.clone();
+        let store = store.borrow();
+        let mut plans = store.plans().bill_plans();
+        plans.sort_by_key(|plan| plan.id);
+        let mut entries = store.entries().entries();
+        entries.sort_by_key(BillScheduleEntry::id);
+        (plans, entries)
+    }
 
-        ports
-            .stores()
-            .bills
-            .borrow_mut()
-            .plans_mut()
-            .upsert_bill_plan(plan);
+    /// The sample's first active Monthly Plan as a draft due from `first_due`, under `name`.
+    fn monthly_draft(
+        ports: &crate::LedgerPorts,
+        name: &str,
+        first_due: chrono::NaiveDate,
+    ) -> (BillPlanId, lib_bills::BillPlanDraft) {
+        let plan = bills(ports)
+            .0
+            .into_iter()
+            .find(|plan| plan.is_active && plan.recurrence == lib_bills::Recurrence::Monthly)
+            .expect("the sample has an active Monthly Plan");
+        let draft = lib_bills::BillPlanDraft {
+            name: name.into(),
+            category_id: plan.category_id,
+            unit: plan.unit,
+            account_id: plan.account_id,
+            payee_id: plan.payee_id,
+            planned_amount: plan.planned_amount,
+            amount_kind: plan.amount_kind,
+            recurrence: plan.recurrence,
+            first_due,
+            ends_on: None,
+            attention_lead: plan.attention_lead,
+        };
+        (plan.id, draft)
+    }
+
+    /// Undoes and redoes `reversal` on a Ledger file, checking `rows` in memory and read afresh
+    /// from `domain`'s tables after each step.
+    fn undone_and_redone_through_the_file<T: PartialEq + std::fmt::Debug>(
+        ports: &crate::LedgerPorts,
+        reversal: &LedgerReversal,
+        domain: Domain,
+        rows: impl Fn(&crate::LedgerPorts) -> T,
+        before: &T,
+        after: &T,
+    ) {
+        ports.reverse(reversal);
+        ports.commit().commit();
+        assert_eq!(&rows(ports), before, "undone in memory");
+        ports.reload(domain).expect("the rows read back");
+        assert_eq!(&rows(ports), before, "undone in the file");
+        assert_eq!(ports.take_reversal(), None, "Undo records nothing");
+
+        ports.replay(reversal);
+        ports.commit().commit();
+        assert_eq!(&rows(ports), after, "redone in memory");
+        ports.reload(domain).expect("the rows read back");
+        assert_eq!(
+            &rows(ports),
+            after,
+            "redone in the file, under the same ids"
+        );
+        assert_eq!(ports.take_reversal(), None, "Redo records nothing");
+    }
+
+    #[test]
+    fn a_bill_plan_added_is_undone_with_its_schedule_and_redone_under_the_same_ids() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let ports = crate::ports::test_support::file(dir.path());
+        let today = crate::ports::test_support::today();
+        let (_, draft) = monthly_draft(&ports, "Water", today);
+        let before = bills(&ports);
+
+        let id = {
+            let shared = ports.bills();
+            let mut bills = shared.borrow_mut();
+            let write = bills.split_mut();
+            lib_bills::interactor::AddBillPlan { draft, today }
+                .run(write.bills, write.accounts, write.categories)
+                .expect("the draft holds")
+        };
+        ports.commit().commit();
+        let after = bills(&ports);
+        let generated = after.1.iter().filter(|entry| entry.plan_id == id).count();
+        assert!(generated > 0, "the add generated its Schedule");
+        let reversal = ports.take_reversal().expect("the add was recorded");
+
+        assert_eq!(reversal.domains(), [Domain::Bills]);
+        undone_and_redone_through_the_file(
+            &ports,
+            &reversal,
+            Domain::Bills,
+            bills,
+            &before,
+            &after,
+        );
+    }
+
+    #[test]
+    fn a_budget_added_is_undone_and_redone_under_its_own_id() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let ports = crate::ports::test_support::file(dir.path());
+        let before = budgets(&ports);
+        let budget = Budget {
+            id: BudgetId::new(),
+            name: "Holidays".into(),
+            is_default: false,
+            ..before[0].clone()
+        };
+
         ports
             .stores()
             .budgets
             .borrow_mut()
             .budgets_mut()
             .upsert_budget(&budget);
+        ports.commit().commit();
+        let after = budgets(&ports);
+        assert!(after.contains(&budget));
+        let reversal = ports.take_reversal().expect("the add was recorded");
 
-        assert_eq!(ports.take_reversal(), None, "neither can be deleted again");
+        assert_eq!(reversal.domains(), [Domain::Budgets]);
+        undone_and_redone_through_the_file(
+            &ports,
+            &reversal,
+            Domain::Budgets,
+            budgets,
+            &before,
+            &after,
+        );
+    }
+
+    #[test]
+    fn undoing_a_bill_plan_edit_removes_the_entries_it_generated() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let ports = crate::ports::test_support::file(dir.path());
+        let today = crate::ports::test_support::today();
+        let (id, mut draft) = monthly_draft(&ports, "Rescheduled", today);
+        draft.recurrence = lib_bills::Recurrence::Weekly;
+        draft.first_due = today + chrono::Days::new(3);
+        let before = bills(&ports);
+        let dues = |rows: &(Vec<BillPlan>, Vec<BillScheduleEntry>)| -> Vec<chrono::NaiveDate> {
+            rows.1
+                .iter()
+                .filter(|entry| entry.plan_id == id)
+                .map(|entry| entry.due)
+                .collect()
+        };
+
+        {
+            let shared = ports.bills();
+            let mut bills = shared.borrow_mut();
+            let write = bills.split_mut();
+            lib_bills::interactor::EditBillPlan {
+                id,
+                draft,
+                is_active: true,
+                today,
+            }
+            .run(write.bills, write.accounts, write.categories)
+            .expect("the edit holds");
+        }
+        ports.commit().commit();
+        let after = bills(&ports);
+        let new_dates: Vec<chrono::NaiveDate> = dues(&after)
+            .into_iter()
+            .filter(|due| !dues(&before).contains(due))
+            .collect();
+        assert!(
+            !new_dates.is_empty(),
+            "the edit generated new-dated entries"
+        );
+        let reversal = ports.take_reversal().expect("the edit was recorded");
+
+        undone_and_redone_through_the_file(
+            &ports,
+            &reversal,
+            Domain::Bills,
+            bills,
+            &before,
+            &after,
+        );
+        ports.reverse(&reversal);
+        ports.commit().commit();
+        ports.reload(Domain::Bills).expect("the rows read back");
+        assert!(
+            dues(&bills(&ports))
+                .iter()
+                .all(|due| !new_dates.contains(due)),
+            "no generated entry left"
+        );
     }
 
     #[test]

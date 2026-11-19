@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM bill_schedule_entries WHERE bill_plan_id = ? AND due = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "3dd3edff0d98d86a760cae3dd310f6c8e192da147a46187684d481cb962b50cc"
+}

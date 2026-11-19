@@ -490,3 +490,33 @@ fn a_deleted_accounts_paid_entry_shows_unmatched(app: &mut TestAppContext) {
     assert_ne!(row.status, "Paid");
     assert!(row.actionable, "an Unmatched entry can be paid again");
 }
+
+/// An added Plan is undone by the Shell's `u`, its generated Schedule with it, and redone by
+/// `ctrl+r` under the same ids (#1253).
+#[gpui::test]
+fn u_undoes_an_added_plan_with_its_schedule_and_ctrl_r_adds_it_again(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+    let stored = |ui: &mut Harness<'_>| {
+        ui.stores(|stores| {
+            let bills = stores.bills.borrow();
+            (bills.plans().bill_plans(), bills.entries().entries())
+        })
+    };
+    let before = stored(&mut ui);
+    ui.press("n");
+    ui.press("t o l l");
+    ui.press("tab tab tab tab tab");
+    ui.press("4 5");
+    ui.press("enter");
+    let added = stored(&mut ui);
+    assert_eq!(added.0.len(), before.0.len() + 1, "the Plan was added");
+    assert!(added.1.len() > before.1.len(), "with its Schedule");
+
+    ui.press("u");
+    assert_eq!(stored(&mut ui), before);
+    assert!(!ui.bills().plans.contains(&"toll".to_string()));
+
+    ui.press("ctrl-r");
+    assert_eq!(stored(&mut ui), added);
+    assert!(ui.bills().plans.contains(&"toll".to_string()));
+}

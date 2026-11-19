@@ -50,7 +50,7 @@ use lib_accounts::{
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{
     BillAccounts, BillCategories, BillPayees, BillPlanRepository, BillScheduleRepository,
-    BillSplit, BillTransactions, BillUnits, SplitRef,
+    BillSplit, BillTransactions, BillUnits, EntryId, SplitRef,
 };
 use lib_budgets::fake::InMemoryBudgets;
 use lib_budgets::{
@@ -61,8 +61,8 @@ use lib_categories::fake::InMemoryCategories;
 use lib_categories::{CategoryBudgetMonths, CategoryRepository};
 use lib_category_deletion::{CategoryDeletionReads, CategoryInUse};
 use lib_core::{
-    AccountId, CategoryId, InstitutionId, LocationId, PayeeId, TagId, Total, TransactionId, UnitId,
-    UnitKind, UnitRef,
+    AccountId, BillPlanId, BudgetId, CategoryId, InstitutionId, LocationId, PayeeId, TagId, Total,
+    TransactionId, UnitId, UnitKind, UnitRef,
 };
 use lib_dashboard::{
     DashboardBill, DashboardBills, DashboardBudgetBar, DashboardBudgetMonth, DashboardBudgets,
@@ -226,7 +226,7 @@ impl<S: BillsStore + ?Sized> BillPlanRepository for Journaled<S> {
         self.store.plans().bill_plans()
     }
 
-    fn bill_plan(&self, id: lib_core::BillPlanId) -> Option<lib_bills::BillPlan> {
+    fn bill_plan(&self, id: BillPlanId) -> Option<lib_bills::BillPlan> {
         self.store.plans().bill_plan(id)
     }
 
@@ -245,7 +245,7 @@ impl<S: BillsStore + ?Sized> BillScheduleRepository for Journaled<S> {
         self.store.entries().entries()
     }
 
-    fn entry(&self, id: lib_bills::EntryId) -> Option<lib_bills::BillScheduleEntry> {
+    fn entry(&self, id: EntryId) -> Option<lib_bills::BillScheduleEntry> {
         self.store.entries().entry(id)
     }
 
@@ -264,7 +264,7 @@ impl<S: BudgetsStore + ?Sized> BudgetRepository for Journaled<S> {
         self.store.budgets().budgets()
     }
 
-    fn budget(&self, id: lib_core::BudgetId) -> Option<lib_budgets::Budget> {
+    fn budget(&self, id: BudgetId) -> Option<lib_budgets::Budget> {
         self.store.budgets().budget(id)
     }
 
@@ -1377,6 +1377,13 @@ pub trait BillsStore {
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository;
 
+    /// Removes Bill Plan `id`, once no entry names it: only Undo of the input that added it
+    /// deletes one (#1253), so it is not a `lib-bills` port write.
+    fn delete_bill_plan(&mut self, id: BillPlanId);
+
+    /// Removes entry `id`: only Undo of the input that generated it deletes one (#1253).
+    fn delete_entry(&mut self, id: EntryId);
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -1399,6 +1406,14 @@ impl BillsStore for BillsAdapter {
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
         self
+    }
+
+    fn delete_bill_plan(&mut self, id: BillPlanId) {
+        BillsAdapter::delete_bill_plan(self, id);
+    }
+
+    fn delete_entry(&mut self, id: EntryId) {
+        BillsAdapter::delete_entry(self, id);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1428,6 +1443,28 @@ impl<S: BillsStore + ?Sized> BillsStore for Recorded<S> {
         &mut self.store
     }
 
+    fn delete_bill_plan(&mut self, id: BillPlanId) {
+        self.store.written.note(self.domain);
+        if let Some(before) = self.store.store.plans().bill_plan(id) {
+            self.store
+                .written
+                .journal()
+                .record(RowImage::BillPlan(Some(before), None));
+        }
+        self.store.store.delete_bill_plan(id);
+    }
+
+    fn delete_entry(&mut self, id: EntryId) {
+        self.store.written.note(self.domain);
+        if let Some(before) = self.store.store.entries().entry(id) {
+            self.store
+                .written
+                .journal()
+                .record(RowImage::BillEntry(Some(before), None));
+        }
+        self.store.store.delete_entry(id);
+    }
+
     fn reload(&mut self) -> Result<()> {
         self.store.reload()
     }
@@ -1449,6 +1486,14 @@ impl BillsStore for InMemoryBills {
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
         self
+    }
+
+    fn delete_bill_plan(&mut self, id: BillPlanId) {
+        self.plans.retain(|plan| plan.id != id);
+    }
+
+    fn delete_entry(&mut self, id: EntryId) {
+        self.entries.retain(|entry| entry.id() != id);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1562,6 +1607,10 @@ pub trait BudgetsStore {
         Budgets::from_stored(self.budgets().budgets()).limit_count(id)
     }
 
+    /// Removes Budget `id`: only Undo of the input that added it deletes one (#1253), since a
+    /// person archives a Budget, so it is not a `lib-budgets` port write.
+    fn delete_budget(&mut self, id: BudgetId);
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -1576,6 +1625,10 @@ impl BudgetsStore for BudgetsAdapter {
 
     fn budgets_mut(&mut self) -> &mut dyn BudgetRepository {
         self
+    }
+
+    fn delete_budget(&mut self, id: BudgetId) {
+        BudgetsAdapter::delete_budget(self, id);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1595,6 +1648,17 @@ impl<S: BudgetsStore + ?Sized> BudgetsStore for Recorded<S> {
         &mut self.store
     }
 
+    fn delete_budget(&mut self, id: BudgetId) {
+        self.store.written.note(self.domain);
+        if let Some(before) = self.store.store.budgets().budget(id) {
+            self.store
+                .written
+                .journal()
+                .record(RowImage::Budget(Some(before), None));
+        }
+        self.store.store.delete_budget(id);
+    }
+
     fn reload(&mut self) -> Result<()> {
         self.store.reload()
     }
@@ -1608,6 +1672,10 @@ impl BudgetsStore for InMemoryBudgets {
 
     fn budgets_mut(&mut self) -> &mut dyn BudgetRepository {
         self
+    }
+
+    fn delete_budget(&mut self, id: BudgetId) {
+        self.budgets.retain(|budget| budget.id != id);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1845,7 +1913,7 @@ impl BudgetPayees for StoredBudgetReads {
 struct BillsAttention {
     plans: Vec<lib_bills::BillPlan>,
     entries: Vec<lib_bills::BillScheduleEntry>,
-    ids: Vec<lib_bills::EntryId>,
+    ids: Vec<EntryId>,
 }
 
 fn bills_attention(bills: &SharedBillsStore, today: NaiveDate) -> BillsAttention {

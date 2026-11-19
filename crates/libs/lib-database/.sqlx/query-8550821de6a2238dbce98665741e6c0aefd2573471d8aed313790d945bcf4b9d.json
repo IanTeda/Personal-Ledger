@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE splits SET bill_schedule_entry_id = NULL\n         WHERE bill_schedule_entry_id IN\n             (SELECT id FROM bill_schedule_entries WHERE bill_plan_id = ? AND due = ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "8550821de6a2238dbce98665741e6c0aefd2573471d8aed313790d945bcf4b9d"
+}

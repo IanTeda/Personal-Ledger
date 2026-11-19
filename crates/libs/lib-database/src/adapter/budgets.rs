@@ -5,7 +5,8 @@
 //! serves them from there. A write changes memory at once and joins the [`PendingWrites`] every
 //! adapter shares, which the bin commits after each input. Writing a Budget writes it whole: its
 //! row, then its Accounts and records replaced with the ones it holds, so a chain it dropped is
-//! gone. A Budget is archived, never deleted, so there is no delete.
+//! gone. A Budget is archived, never deleted, so the one delete is Undo's of the input that added
+//! it (#1253), which takes its Accounts and records with it by the tables' cascade.
 //!
 //! Deleting an Account cascades to its `budget_accounts` links, but a Budget in memory keeps the
 //! id until it next loads, which `lib-budgets` ignores (`Budget::counts`). Writing such a Budget
@@ -25,6 +26,7 @@ use crate::{Error, Result};
 #[derive(Debug, Clone)]
 enum BudgetsChange {
     Upsert(Box<Budget>),
+    Delete(BudgetId),
 }
 
 /// The Budgets domain, held in memory and saved through the shared writer.
@@ -101,6 +103,13 @@ impl BudgetsAdapter {
         self.pending.discard(Domain::Budgets);
         Ok(())
     }
+
+    /// Removes Budget `id`: Undo of the input that added it (#1253). Not a `lib-budgets` port
+    /// write, since a person archives a Budget rather than deleting it.
+    pub fn delete_budget(&mut self, id: BudgetId) {
+        self.rows.retain(|row| row.id != id);
+        self.pending.push(BudgetsChange::Delete(id));
+    }
 }
 
 impl BudgetRepository for BudgetsAdapter {
@@ -127,6 +136,12 @@ impl Change for BudgetsChange {
         Box::pin(async move {
             match *self {
                 Self::Upsert(budget) => upsert(conn, &budget).await,
+                Self::Delete(id) => {
+                    sqlx::query!("DELETE FROM budgets WHERE id = ?", id)
+                        .execute(&mut *conn)
+                        .await?;
+                    Ok(())
+                }
             }
         })
     }

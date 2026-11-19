@@ -687,3 +687,24 @@ fn u_undoes_a_saved_limit_and_ctrl_r_saves_it_again(app: &mut TestAppContext) {
     ui.press("ctrl-r");
     assert_eq!(stored(&mut ui), saved);
 }
+
+/// A new Budget is undone by the Shell's `u` and redone by `ctrl+r` under its own id (#1253).
+#[gpui::test]
+fn u_undoes_a_new_budget_and_ctrl_r_creates_it_again(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    let stored =
+        |ui: &mut Harness<'_>| ui.stores(|stores| stores.budgets.borrow().budgets().budgets());
+    let before = stored(&mut ui);
+    ui.press("n");
+    ui.press("t r i p enter");
+    let created = stored(&mut ui);
+    assert_eq!(created.len(), before.len() + 1, "the Budget was created");
+
+    ui.press("u");
+    assert_eq!(stored(&mut ui), before);
+    assert!(!budget_names(&mut ui).contains(&"trip".to_string()));
+
+    ui.press("ctrl-r");
+    assert_eq!(stored(&mut ui), created);
+    assert!(budget_names(&mut ui).contains(&"trip".to_string()));
+}

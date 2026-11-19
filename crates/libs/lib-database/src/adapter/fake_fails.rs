@@ -10,10 +10,10 @@
 use std::sync::mpsc;
 
 use lib_accounts::AccountRepository;
-use lib_bills::{BillPlanRepository, BillScheduleRepository};
+use lib_bills::{BillPlanRepository, BillScheduleRepository, EntryId};
 use lib_budgets::BudgetRepository;
 use lib_categories::CategoryRepository;
-use lib_core::{AccountId, CategoryId, PayeeId, RowID, TagId, UnitId};
+use lib_core::{AccountId, BillPlanId, BudgetId, CategoryId, PayeeId, RowID, TagId, UnitId};
 use lib_documents::DocumentRepository;
 use lib_institutions::InstitutionRepository;
 use lib_inventory::InventoryRepository;
@@ -320,6 +320,14 @@ impl<T: BillsStore + Clone> BillsStore for Switched<T> {
         self.live_mut().entries_mut()
     }
 
+    fn delete_bill_plan(&mut self, id: BillPlanId) {
+        self.live_mut().delete_bill_plan(id);
+    }
+
+    fn delete_entry(&mut self, id: EntryId) {
+        self.live_mut().delete_entry(id);
+    }
+
     fn reload(&mut self) -> Result<()> {
         self.reload_snapshot()
     }
@@ -362,6 +370,10 @@ impl<T: BudgetsStore + Clone> BudgetsStore for Switched<T> {
 
     fn category_budgets(&self, id: CategoryId) -> usize {
         self.live.category_budgets(id)
+    }
+
+    fn delete_budget(&mut self, id: BudgetId) {
+        self.live_mut().delete_budget(id);
     }
 
     fn reload(&mut self) -> Result<()> {
