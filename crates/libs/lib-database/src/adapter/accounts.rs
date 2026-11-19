@@ -130,10 +130,8 @@ impl Ordered for AccountsAdapter {
 
     fn place(&mut self, order: &[RowID]) {
         place_by(&mut self.accounts.rows, order, |row| row.id.row_id());
-        self.accounts.pending.push(PlaceRows {
-            domain: Domain::Accounts,
-            ids: self.order(),
-        });
+        let placed = PlaceRows::of(self, "accounts");
+        self.accounts.pending.push(placed);
     }
 }
 

@@ -112,18 +112,6 @@ use lib_documents::DocumentLink;
 /// write: a mutable borrow that writes nothing costs one extra repaint. A reload notes nothing,
 /// since it puts memory back as stored rather than writing.
 ///
-/// Notes a list in a stored order as it was before a delete or a move and as it is after (#1267).
-/// A delete notes it before the row's own image, so Undo, which goes newest first, restores the
-/// row before its place.
-fn record_order(journal: &Journal, domain: Domain, before: Vec<RowID>, after: Vec<RowID>) {
-    journal.record(RowImage::Order(domain, before, after));
-}
-
-/// `order` without `id`: the order a delete leaves.
-fn without(order: &[RowID], id: RowID) -> Vec<RowID> {
-    order.iter().copied().filter(|kept| *kept != id).collect()
-}
-
 /// Where the domain records onto History (#1247), its `*_mut()` hands out a recording wrapper
 /// around the repository, which notes each row's image before and after a write in the
 /// [`Journal`] `written` shares ([`crate::reversal`]). Every domain records (#1247-#1249).
@@ -168,6 +156,11 @@ impl<S: ?Sized> std::ops::DerefMut for Journaled<S> {
     }
 }
 
+/// `order` without `id`: the order a delete leaves.
+fn without(order: &[RowID], id: RowID) -> Vec<RowID> {
+    order.iter().copied().filter(|kept| *kept != id).collect()
+}
+
 /// The Institutions, each write recorded with the row's image before it.
 impl<S: InstitutionsStore + ?Sized> InstitutionRepository for Journaled<S> {
     fn institutions(&self) -> Vec<lib_institutions::Institution> {
@@ -189,7 +182,7 @@ impl<S: InstitutionsStore + ?Sized> InstitutionRepository for Journaled<S> {
             let journal = self.written.journal();
             let order = self.store.order();
             let after = without(&order, id.row_id());
-            record_order(journal, Domain::Institutions, order, after);
+            journal.record(RowImage::Order(Domain::Institutions, order, after));
             journal.record(RowImage::Institution(Some(before), None));
         }
         self.store.institutions_mut().delete_institution(id);
@@ -309,7 +302,7 @@ impl<S: AccountsStore + ?Sized> AccountRepository for Journaled<S> {
         if let Some(before) = self.store.accounts().account(id) {
             let order = self.store.order();
             let after = without(&order, id.row_id());
-            record_order(journal, Domain::Accounts, order, after);
+            journal.record(RowImage::Order(Domain::Accounts, order, after));
             journal.record(RowImage::Account(Some(before), None));
         }
         self.store.accounts_mut().delete_account(id);
@@ -583,7 +576,7 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
         let order: Vec<RowID> = types.iter().map(|held| held.id.row_id()).collect();
         if let Some(before) = types.into_iter().find(|held| held.id == id) {
             let after = without(&order, id.row_id());
-            record_order(journal, Domain::DocumentTypes, order, after);
+            journal.record(RowImage::Order(Domain::DocumentTypes, order, after));
             journal.record(RowImage::DocumentType(Some(before), None));
         }
         self.store.documents_mut().delete_document_type(id);
@@ -591,15 +584,13 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
 
     fn move_document_type(&mut self, id: lib_core::DocumentTypeId, to: usize) {
         self.store.written.note(Domain::DocumentTypes);
-        let before = Ordered::order(self);
+        let before = self.order();
         self.store.documents_mut().move_document_type(id, to);
-        let after = Ordered::order(self);
-        record_order(
-            self.store.written.journal(),
-            Domain::DocumentTypes,
-            before,
-            after,
-        );
+        let after = self.order();
+        self.store
+            .written
+            .journal()
+            .record(RowImage::Order(Domain::DocumentTypes, before, after));
     }
 }
 
@@ -813,8 +804,7 @@ impl SharedStores {
 
 impl SharedStores {
     /// The store holding `domain`'s list in a stored order, for Undo and Redo to place its rows
-    /// (#1267); `None` for a domain with no stored order. A new list adds its arm here and in
-    /// [`ordered_table`](crate::adapter::ordered::ordered_table).
+    /// (#1267); `None` for a domain with no stored order. A new list adds its arm here.
     pub(crate) fn ordered_mut(&self, domain: Domain) -> Option<RefMut<'_, dyn Ordered>> {
         Some(match domain {
             Domain::Institutions => RefMut::map(self.institutions.borrow_mut(), |store| {
@@ -834,7 +824,7 @@ impl SharedStores {
 /// The order, noting the store's ordered domain written when the rows are placed.
 impl<S: Ordered + ?Sized> Ordered for Recorded<S> {
     fn order(&self) -> Vec<RowID> {
-        Box::as_ref(&self.store.store).order()
+        self.store.store.order()
     }
 
     fn ordered_domain(&self) -> Domain {

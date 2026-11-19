@@ -81,7 +81,8 @@ pub enum RowImage {
     Location(Option<Location>, Option<Location>),
     Item(Option<Item>, Option<Item>),
     /// A list in a stored order ([`crate::adapter::ordered`]): every row's place before and after
-    /// one was moved or removed.
+    /// one was moved or removed. A delete records it before the row's own image, so Undo, which
+    /// goes newest first, restores the row before its place.
     Order(Domain, Vec<RowID>, Vec<RowID>),
 }
 
@@ -752,6 +753,10 @@ mod tests {
 
     fn institutions(ports: &crate::LedgerPorts) -> Vec<Institution> {
         ports.institutions().borrow().institutions().institutions()
+    }
+
+    fn accounts(ports: &crate::LedgerPorts) -> Vec<Account> {
+        ports.stores().accounts.borrow().accounts().accounts()
     }
 
     #[test]
@@ -1448,12 +1453,7 @@ mod tests {
 
     #[test]
     fn an_account_added_edited_and_deleted_is_each_undone_and_redone() {
-        let rows = |ports: &crate::LedgerPorts| {
-            sorted(
-                ports.stores().accounts.borrow().accounts().accounts(),
-                |row| row.id,
-            )
-        };
+        let rows = |ports: &crate::LedgerPorts| sorted(accounts(ports), |row| row.id);
         let ports = ports();
         let original = rows(&ports)[0].clone();
         let mut added = original.clone();
@@ -1842,13 +1842,10 @@ mod tests {
     fn an_account_delete_is_undone_to_its_place_and_redone() {
         a_delete_undone_and_redone_through_the_file(
             Domain::Accounts,
-            |ports| {
-                let accounts = ports.stores().accounts.borrow().accounts().accounts();
-                accounts.iter().map(|row| row.id).collect()
-            },
+            |ports| accounts(ports).iter().map(|row| row.id).collect(),
             |ports| {
                 let ids = [AccountId::new(), AccountId::new(), AccountId::new()];
-                let mut row = ports.stores().accounts.borrow().accounts().accounts()[0].clone();
+                let mut row = accounts(ports)[0].clone();
                 for (n, id) in ids.iter().enumerate() {
                     row.id = *id;
                     row.name = format!("Placed {n}");

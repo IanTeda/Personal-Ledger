@@ -7,7 +7,7 @@
 //! store through [`Ordered::place`], reached by its [`Domain`] through
 //! [`SharedStores::ordered_mut`](crate::adapter::store::SharedStores::ordered_mut). An add appends
 //! (`MAX(position) + 1`, or the end of memory), so it records no order. The file's side is one
-//! writer change, [`PlaceRows`], which finds the table by [`ordered_table`].
+//! writer change, [`PlaceRows`], naming its table.
 
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -31,28 +31,29 @@ pub trait Ordered {
     fn place(&mut self, order: &[RowID]);
 }
 
-/// The table `domain`'s order is kept in, or `None` for a domain with no stored order. A new list
-/// in a stored order adds its arm here, beside its [`Ordered`] impl.
-pub(crate) fn ordered_table(domain: Domain) -> Option<&'static str> {
-    match domain {
-        Domain::Institutions => Some("institutions"),
-        Domain::Accounts => Some("accounts"),
-        Domain::DocumentTypes => Some("document_types"),
-        _ => None,
-    }
-}
-
 /// Sorts `rows` by where `id_of` finds them in `order`, rows it doesn't name going last.
 pub(crate) fn place_by<T, I: Hash + Eq>(rows: &mut [T], order: &[I], id_of: impl Fn(&T) -> I) {
     let places: HashMap<&I, usize> = order.iter().enumerate().map(|(at, id)| (id, at)).collect();
     rows.sort_by_cached_key(|row| places.get(&id_of(row)).copied().unwrap_or(usize::MAX));
 }
 
-/// Every row's place in `domain`'s list, written as its `position`.
+/// Every row's place in `domain`'s list, written as its `position` in `table`.
 #[derive(Debug, Clone)]
 pub(crate) struct PlaceRows {
-    pub(crate) domain: Domain,
-    pub(crate) ids: Vec<RowID>,
+    domain: Domain,
+    table: &'static str,
+    ids: Vec<RowID>,
+}
+
+impl PlaceRows {
+    /// `store`'s order as it stands, written to `table`, a literal of the adapter's, never input.
+    pub(crate) fn of(store: &(impl Ordered + ?Sized), table: &'static str) -> Self {
+        Self {
+            domain: store.ordered_domain(),
+            table,
+            ids: store.order(),
+        }
+    }
 }
 
 impl Change for PlaceRows {
@@ -62,12 +63,7 @@ impl Change for PlaceRows {
 
     fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>> {
         Box::pin(async move {
-            let Some(table) = ordered_table(self.domain) else {
-                debug_assert!(false, "{:?} keeps no stored order", self.domain);
-                return Ok(());
-            };
-            // The table name is one of `ordered_table`'s literals, never input.
-            let sql = format!("UPDATE {table} SET position = ? WHERE id = ?");
+            let sql = format!("UPDATE {} SET position = ? WHERE id = ?", self.table);
             for (place, id) in self.ids.into_iter().enumerate() {
                 let place = i64::try_from(place).unwrap_or(i64::MAX);
                 sqlx::query(&sql)
@@ -101,13 +97,5 @@ mod tests {
         place_by(&mut rows, &[2, 9], |row| *row);
 
         assert_eq!(rows, [2, 5, 4, 3, 1]);
-    }
-
-    #[test]
-    fn only_the_lists_in_a_stored_order_have_a_table() {
-        assert_eq!(ordered_table(Domain::Institutions), Some("institutions"));
-        assert_eq!(ordered_table(Domain::Accounts), Some("accounts"));
-        assert_eq!(ordered_table(Domain::DocumentTypes), Some("document_types"));
-        assert_eq!(ordered_table(Domain::Units), None);
     }
 }

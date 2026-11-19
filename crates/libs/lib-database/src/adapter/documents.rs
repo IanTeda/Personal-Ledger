@@ -143,10 +143,8 @@ impl DocumentsAdapter {
 
     /// Every type's place, after one moved or went.
     fn push_order(&mut self) {
-        self.pending.push(PlaceRows {
-            domain: Domain::DocumentTypes,
-            ids: self.order(),
-        });
+        let placed = PlaceRows::of(self, "document_types");
+        self.pending.push(placed);
     }
 }
 

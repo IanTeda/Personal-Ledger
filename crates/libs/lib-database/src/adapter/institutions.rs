@@ -119,10 +119,8 @@ impl Ordered for InstitutionsAdapter {
 
     fn place(&mut self, order: &[RowID]) {
         place_by(&mut self.rows, order, |row| row.id.row_id());
-        self.pending.push(PlaceRows {
-            domain: Domain::Institutions,
-            ids: self.order(),
-        });
+        let placed = PlaceRows::of(self, "institutions");
+        self.pending.push(placed);
     }
 }
 
