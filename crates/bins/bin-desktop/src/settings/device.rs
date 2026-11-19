@@ -5,6 +5,7 @@
 //! `lib_config` spell every key and value. The pages' Presenters (`lib-settings`) decide what a
 //! write's answer means; this only reads and writes.
 
+use crate::reversal::{ConfigChange, ConfigJournal};
 use lib_config::{ConfigWriter, Shadow};
 use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_settings::{
@@ -21,6 +22,9 @@ pub struct DeviceConfigFile {
     /// Each key's value in force, by [`ConfigKey::ALL`]'s order, read once from start-up's parse:
     /// a write changes the file, not this run.
     effective: Vec<(ConfigKey, ConfigValue)>,
+    /// What the running input changed in the file, for its History entry: shared with `Root`,
+    /// whose `send` takes it, as `lib-database`'s journal is for the Ledger's rows.
+    journal: ConfigJournal,
 }
 
 impl DeviceConfigFile {
@@ -31,7 +35,19 @@ impl DeviceConfigFile {
                 .into_iter()
                 .filter_map(|key| Some((key, lib_config::read_value(key, config)?)))
                 .collect(),
+            journal: ConfigJournal::default(),
         }
+    }
+
+    /// The journal this device records into, for the Shell's root Router to take each input's
+    /// changes from.
+    pub(crate) fn journal(&self) -> ConfigJournal {
+        self.journal.clone()
+    }
+
+    /// The changes recorded since the last take, in the order written.
+    pub(crate) fn take(&self) -> Vec<ConfigChange> {
+        self.journal.take()
     }
 
     /// [`Self::change`], recording the key's raw value in the file just before and just after for
@@ -45,7 +61,7 @@ impl DeviceConfigFile {
         let before = self.writer.value(key);
         let answer = self.change(key, value, edit);
         if matches!(answer, DeviceAnswer::Saved { .. }) {
-            crate::reversal::record(key, before, self.writer.value(key));
+            self.journal.record(key, before, self.writer.value(key));
         }
         answer
     }
@@ -242,15 +258,13 @@ mod tests {
         let path = dir.path().join("personal-ledger.conf");
         std::fs::write(&path, "[General]\nstart_view = cash\n").expect("the file written");
         let device = writing_to(&path, &[]);
-        crate::reversal::close(Vec::new(), None);
 
         device.write(ConfigValue::StartView(StartView::Dashboard));
         device.write(ConfigValue::StartView(StartView::Dashboard));
         device.remove(ConfigKey::Locale);
 
-        let entry = crate::reversal::close(Vec::new(), None).expect("one change recorded");
         assert_eq!(
-            entry.reversal.configuration,
+            device.take(),
             [(
                 ConfigKey::StartView,
                 Some("cash".to_string()),
@@ -263,7 +277,7 @@ mod tests {
             device.restore(ConfigKey::StartView, Some("cash")),
             DeviceAnswer::Saved { .. }
         ));
-        assert_eq!(crate::reversal::close(Vec::new(), None), None);
+        assert_eq!(device.take(), []);
         assert_eq!(
             std::fs::read_to_string(&path).unwrap_or_default(),
             "[General]\nstart_view = cash\n"

@@ -10,6 +10,19 @@ use crate::shell::view::window_size::WindowSize;
 use lib_shell::NavInput;
 
 impl Root {
+    /// Closes the running input's History entry from `labels`, its `Notice::Changed`s, the
+    /// Configuration it changed and the Open Ledger's rows it wrote (`crate::reversal::close`).
+    /// Only `send` calls it, right after the input's commit (#1277).
+    pub(crate) fn close_history(&mut self, labels: Vec<String>) {
+        let ledger = self
+            .open
+            .as_ref()
+            .and_then(|open| open.ports.take_reversal());
+        if let Some(entry) = crate::reversal::close(labels, self.configuration.take(), ledger) {
+            self.presenter.record(entry);
+        }
+    }
+
     /// A click on Back, Forward, Undo or the History list (`shell::view::topbar::TopBar`'s
     /// `on_action`). Back and Forward land the way a rail click does, scroll reset included.
     /// Undo steps one entry, and a click on a History row undoes or redoes through it, each as one

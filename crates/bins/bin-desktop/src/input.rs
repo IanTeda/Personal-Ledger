@@ -155,8 +155,8 @@ pub(crate) fn join_or_send<C: BorrowMut<App>, R>(
 
 /// Delivers one input: runs `handle`, which hands it to its Presenter, then commits once, reloads
 /// each domain the commit's deletes cascade into (ADR-0046's 2026-11-02 amendment), announces what
-/// the input changed, reads the rail's badge counts again if it changed anything, drains the
-/// queued Notices into the Shell and redraws it. The reload and drain wait for the current update to
+/// the input changed, reads the rail's badge counts again if it changed anything, closes what it
+/// changed into one History entry, drains the queued Notices into the Shell and redraws it. The reload and drain wait for the current update to
 /// end, since the Shell may be the Entity handling the input. Without a door (a unit test that
 /// builds a part with no Shell), it only runs `handle`.
 pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C) -> R) -> R {
@@ -213,6 +213,9 @@ pub(crate) fn offer<C: BorrowMut<App>, R>(
         }
         let _ = shell.update(cx, |shell, cx| {
             shell.refresh_rail_counts(false, cx);
+            // The input's changes become its one History entry, named by its Presenters'
+            // `Notice::Changed`s, before the rest of its Notices show.
+            shell.close_history(crate::notices::take_changed());
             shell.drain_notices(cx);
             cx.notify();
         });

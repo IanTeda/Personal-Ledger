@@ -138,7 +138,7 @@ pub struct ShellLogs {
 pub fn build(
     persisted: PersistedState,
     start_view: &lib_core::StartView,
-    device: Rc<dyn DeviceConfiguration>,
+    device: Rc<crate::DeviceConfigFile>,
     bindings: ShellBindings,
     logs: ShellLogs,
     ledger: Option<LedgerFile>,
@@ -167,6 +167,7 @@ pub fn build(
         .map(SettingsPage::from_id)
         .unwrap_or_default();
 
+    let configuration = device.journal();
     let mut shell = Root::with_clock(
         nav,
         focus_handle,
@@ -177,6 +178,7 @@ pub fn build(
         folders,
         cx,
     );
+    shell.configuration = configuration;
     if let Some(ledger) = ledger {
         shell.open_ledger(ledger, cx);
     }
@@ -223,6 +225,10 @@ pub struct Root {
     /// Everything built on the Ledger file, `None` with no Ledger open: the one source of truth
     /// for whether one is (#975).
     open: Option<OpenLedger>,
+    /// The Configuration changes the running input made, shared with the device Settings writes
+    /// through, which `send` closes into the input's History entry with the Open Ledger's (#1277).
+    /// An empty journal of its own when built on another device, as a test's.
+    configuration: crate::reversal::ConfigJournal,
     /// Set by `:close` and cleared when a Ledger is next opened: the state file then remembers no
     /// last Ledger, rather than the one remembered before this run.
     last_ledger_forgotten: bool,
@@ -298,6 +304,7 @@ impl Root {
             documents_state: None,
             refreshes: 0,
             open: None,
+            configuration: crate::reversal::ConfigJournal::default(),
             settings,
             _settings_subscriptions,
             presenter: {

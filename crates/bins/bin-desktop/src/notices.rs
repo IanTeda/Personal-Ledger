@@ -28,6 +28,36 @@ pub fn drain() -> Vec<Notice> {
     QUEUE.with_borrow_mut(std::mem::take)
 }
 
+/// The labels of the `Notice::Changed`s queued, oldest first, taken off the queue so each input's
+/// `send` names its History entry by them, leaving every other Notice queued to show.
+pub fn take_changed() -> Vec<String> {
+    QUEUE.with_borrow_mut(|queue| {
+        let (changed, rest) = std::mem::take(queue)
+            .into_iter()
+            .partition::<Vec<_>, _>(|notice| matches!(notice, Notice::Changed(_)));
+        *queue = rest;
+        changed
+            .into_iter()
+            .filter_map(|notice| match notice {
+                Notice::Changed(label) => Some(label),
+                _ => None,
+            })
+            .collect()
+    })
+}
+
+/// Every Notice queued to show, oldest first, leaving any `Notice::Changed` queued for the running
+/// input's `send` to label its History entry with.
+pub fn drain_shown() -> Vec<Notice> {
+    QUEUE.with_borrow_mut(|queue| {
+        let (changed, shown) = std::mem::take(queue)
+            .into_iter()
+            .partition(|notice| matches!(notice, Notice::Changed(_)));
+        *queue = changed;
+        shown
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use lib_toast::ToastKind;
@@ -48,5 +78,20 @@ mod tests {
             ]
         );
         assert_eq!(drain(), []);
+    }
+
+    #[test]
+    fn the_changed_labels_come_off_the_queue_apart_from_the_notices_shown() {
+        drain();
+        Queue.notify(Notice::Status("Saved".to_string()));
+        Queue.notify(Notice::Changed("Add payee Netflix".to_string()));
+
+        assert_eq!(drain_shown(), [Notice::Status("Saved".to_string())]);
+        Queue.notify(Notice::Toast(ToastKind::Error, "Save failed".to_string()));
+        assert_eq!(take_changed(), ["Add payee Netflix".to_string()]);
+        assert_eq!(
+            drain(),
+            [Notice::Toast(ToastKind::Error, "Save failed".to_string())]
+        );
     }
 }
