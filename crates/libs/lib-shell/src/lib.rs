@@ -24,6 +24,7 @@
 //! answering that port do.
 
 pub mod dialog;
+mod error;
 pub mod explorer;
 pub mod fake;
 pub mod help;
@@ -39,6 +40,7 @@ pub mod toast_history;
 pub mod window_size;
 
 pub use dialog::{DialogCommand, dialog_keymap};
+pub use error::{Error, Result};
 pub use explorer::{
     EntryKind, ExplorerChoice, ExplorerFilter, ExplorerFilters, ExplorerMode, ExplorerOutcome,
     ExplorerViewModel, FolderEntry, FolderUnreadable, LedgerFolders,

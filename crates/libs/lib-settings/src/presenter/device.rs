@@ -18,10 +18,14 @@ pub fn device_status<T>(answer: &DeviceAnswer<T>, key: ConfigKey) -> String {
     let name = key.name();
     match answer {
         DeviceAnswer::Saved { file, .. } => msg::settings_device_saved(name, file),
-        DeviceAnswer::Shadowed { source } => msg::settings_device_shadowed(name, source),
-        DeviceAnswer::Refused(DeviceRefusal::NoFile) => msg::settings_device_no_file(name),
+        DeviceAnswer::Shadowed { source } => {
+            lib_locale::msg::settings_device_shadowed(name, source)
+        }
+        DeviceAnswer::Refused(DeviceRefusal::NoFile) => {
+            lib_locale::msg::settings_device_no_file(name)
+        }
         DeviceAnswer::Refused(DeviceRefusal::WriteFailed) => {
-            msg::settings_device_write_failed(name)
+            lib_locale::msg::settings_device_write_failed(name)
         }
     }
 }
@@ -52,7 +56,10 @@ mod tests {
         };
         assert_eq!(
             device_status(&answer, ConfigKey::Toasts),
-            msg::settings_device_shadowed(ConfigKey::Toasts.name(), "PERSONAL_LEDGER_TOASTS")
+            lib_locale::msg::settings_device_shadowed(
+                ConfigKey::Toasts.name(),
+                "PERSONAL_LEDGER_TOASTS"
+            )
         );
     }
 
@@ -61,7 +68,7 @@ mod tests {
         let answer: DeviceAnswer<()> = DeviceAnswer::Refused(DeviceRefusal::NoFile);
         assert_eq!(
             device_status(&answer, ConfigKey::RowDensity),
-            msg::settings_device_no_file(ConfigKey::RowDensity.name())
+            lib_locale::msg::settings_device_no_file(ConfigKey::RowDensity.name())
         );
     }
 
@@ -70,7 +77,7 @@ mod tests {
         let answer: DeviceAnswer<()> = DeviceAnswer::Refused(DeviceRefusal::WriteFailed);
         assert_eq!(
             device_status(&answer, ConfigKey::RowDensity),
-            msg::settings_device_write_failed(ConfigKey::RowDensity.name())
+            lib_locale::msg::settings_device_write_failed(ConfigKey::RowDensity.name())
         );
     }
 }

@@ -595,8 +595,7 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
 
     /// Undoes the newest `count` entries as one input: `u` steps one, a click on the dropdown's
     /// Undo row steps down to and including it. Undo never navigates, since the View the change
-    /// came from repaints itself, and a failed step says why itself through the Router, so the
-    /// status line is left to it.
+    /// came from repaints itself. A step that fails stops it, and the status line says why.
     pub fn undo_through<R: ShellRouter<Reversal = H> + ?Sized>(
         &mut self,
         count: usize,
@@ -614,30 +613,45 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
         self.step_through(Direction::Redo, count, router);
     }
 
-    /// Steps `count` entries one way as one input, then says what it came to on the status line
-    /// unless a step failed, which says itself.
+    /// Steps `count` entries one way as one input, then says what it came to on the status line:
+    /// how many stepped, and why the next didn't if one failed.
     fn step_through<R: ShellRouter<Reversal = H> + ?Sized>(
         &mut self,
         direction: Direction,
         count: usize,
         router: &mut R,
     ) {
+        let mut failure = None;
+        let mut step = |result: crate::Result<()>| match result {
+            Ok(()) => true,
+            Err(error) => {
+                failure = Some(error);
+                false
+            }
+        };
         let steps = match direction {
             Direction::Undo => self
                 .history
-                .undo_through(count, |reversal| router.reverse(reversal)),
+                .undo_through(count, |reversal| step(router.reverse(reversal))),
             Direction::Redo => self
                 .history
-                .redo_through(count, |reversal| router.replay(reversal)),
+                .redo_through(count, |reversal| step(router.replay(reversal))),
         };
-        if steps.failed.is_some() {
-            return;
-        }
-        let status = match (direction, steps.done.last()) {
-            (Direction::Undo, None) => msg::status_nothing_to_undo(),
-            (Direction::Undo, Some(label)) => msg::status_undid(count_of(&steps.done), label),
-            (Direction::Redo, None) => msg::status_nothing_to_redo(),
-            (Direction::Redo, Some(label)) => msg::status_redid(count_of(&steps.done), label),
+        let stepped = count_of(&steps.done);
+        let status = match (failure, steps.done.last()) {
+            (Some(error), None) => failure_message(&error),
+            (Some(error), Some(_)) => match direction {
+                Direction::Undo => msg::status_undid_then_failed(stepped, &failure_message(&error)),
+                Direction::Redo => msg::status_redid_then_failed(stepped, &failure_message(&error)),
+            },
+            (None, None) => match direction {
+                Direction::Undo => msg::status_nothing_to_undo(),
+                Direction::Redo => msg::status_nothing_to_redo(),
+            },
+            (None, Some(label)) => match direction {
+                Direction::Undo => msg::status_undid(stepped, label),
+                Direction::Redo => msg::status_redid(stepped, label),
+            },
         };
         router.notify(Notice::Status(status));
     }
@@ -1042,6 +1056,20 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
 /// than the History's [`crate::history::DEPTH`].
 fn count_of(done: &[String]) -> i64 {
     i64::try_from(done.len()).unwrap_or(i64::MAX)
+}
+
+/// The status line's words for why an Undo or Redo step didn't apply.
+fn failure_message(error: &crate::Error) -> String {
+    use crate::Error;
+    match error {
+        Error::LedgerNotSaved { reloaded: true } => msg::status_step_not_saved(),
+        Error::LedgerNotSaved { reloaded: false } => msg::status_step_not_saved_unsaved(),
+        Error::ConfigurationShadowed { key, source } => {
+            msg::settings_device_shadowed(key.name(), source)
+        }
+        Error::ConfigurationNoFile { key } => msg::settings_device_no_file(key.name()),
+        Error::ConfigurationNotWritten { key } => msg::settings_device_write_failed(key.name()),
+    }
 }
 
 #[cfg(test)]
@@ -1560,18 +1588,19 @@ mod tests {
             reversal: "locale",
         });
         let mut router = RecordingRouter {
-            steps_apply: false,
+            refuses: Some("locale"),
             ..RecordingRouter::default()
         };
 
         shell.command(ShellCommand::Undo, &mut router);
-        router.steps_apply = true;
+        router.refuses = None;
         shell.command(ShellCommand::Undo, &mut router);
 
         assert_eq!(
             router.routed,
             [
                 Routed::Reversed("locale"),
+                Routed::Notice(status(&failure_message(&RecordingRouter::refusal()))),
                 Routed::Reversed("locale"),
                 Routed::Notice(status("Undid Set Locale"))
             ]
@@ -1684,16 +1713,65 @@ mod tests {
     }
 
     #[test]
-    fn a_multi_step_that_fails_leaves_the_status_line_to_the_failure() {
+    fn an_undo_that_fails_partway_says_how_many_stepped_then_why() {
+        let mut shell = recorded(&["a", "b", "c", "d"]);
+        let mut router = RecordingRouter {
+            refuses: Some("b"),
+            ..RecordingRouter::default()
+        };
+
+        shell.undo_through(4, &mut router);
+
+        let why = failure_message(&RecordingRouter::refusal());
+        assert_eq!(
+            router.routed.last(),
+            Some(&Routed::Notice(status(&msg::status_undid_then_failed(
+                2, &why
+            ))))
+        );
+        assert_eq!(shell.history.redo_labels().collect::<Vec<_>>(), ["c", "d"]);
+        assert_eq!(shell.history.undo_labels().collect::<Vec<_>>(), ["b", "a"]);
+    }
+
+    #[test]
+    fn a_redo_that_fails_partway_says_how_many_stepped_then_why() {
+        let mut shell = recorded(&["a", "b", "c", "d"]);
+        shell.undo_through(4, &mut RecordingRouter::default());
+        let mut router = RecordingRouter {
+            refuses: Some("c"),
+            ..RecordingRouter::default()
+        };
+
+        shell.redo_through(4, &mut router);
+
+        let why = failure_message(&RecordingRouter::refusal());
+        assert_eq!(
+            router.routed.last(),
+            Some(&Routed::Notice(status(&msg::status_redid_then_failed(
+                2, &why
+            ))))
+        );
+        assert_eq!(shell.history.undo_labels().collect::<Vec<_>>(), ["b", "a"]);
+        assert_eq!(shell.history.redo_labels().collect::<Vec<_>>(), ["c", "d"]);
+    }
+
+    #[test]
+    fn a_failure_on_the_first_step_shows_its_message_alone() {
         let mut shell = recorded(&["Toasts: Off", "Start view: Last"]);
         let mut router = RecordingRouter {
-            steps_apply: false,
+            refuses: Some("Start view: Last"),
             ..RecordingRouter::default()
         };
 
         shell.undo_through(2, &mut router);
 
-        assert_eq!(router.routed, [Routed::Reversed("Start view: Last")]);
+        assert_eq!(
+            router.routed,
+            [
+                Routed::Reversed("Start view: Last"),
+                Routed::Notice(status(&failure_message(&RecordingRouter::refusal()))),
+            ]
+        );
         assert_eq!(shell.history().undo.len(), 2);
     }
 

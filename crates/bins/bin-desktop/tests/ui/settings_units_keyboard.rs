@@ -1257,7 +1257,7 @@ fn a_failed_undo_reloads_the_units_keeps_the_entry_and_says_why(app: &mut TestAp
     assert_eq!(undo_labels(&mut ui), ["Edit unit aux"], "still to undo");
     assert_eq!(
         status_message(&mut ui).as_deref(),
-        Some("Couldn't save the change to units, so they are back as last saved")
+        Some("Couldn't save that, so the Ledger is back as last saved")
     );
     assert!(visible_toasts(&mut ui).contains(&(
         "Error".to_string(),
@@ -1282,6 +1282,39 @@ fn closing_the_ledger_leaves_only_configuration_on_history(app: &mut TestAppCont
 
     ui.press(": c l o s e enter");
 
+    let history = ui.read(|shell| shell.history());
+    assert_eq!(
+        undo_labels(&mut ui),
+        configuration,
+        "only the Configuration is left"
+    );
+    assert!(history.redo.is_empty(), "the undone Ledger change went too");
+}
+
+#[gpui::test]
+fn opening_another_ledger_leaves_only_configuration_on_history(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Large);
+    ui.press("g s l l");
+    let configuration = undo_labels(&mut ui);
+    assert_eq!(configuration.len(), 1, "a General change");
+    ui.press("escape j j j j j l");
+    assert_eq!(ui.settings_frame().page, "Units");
+    rename_aud_to_aux(&mut ui);
+    ui.press("B down enter");
+    ui.press("u");
+    assert_eq!(undo_labels(&mut ui).len(), 2);
+    assert_eq!(ui.read(|shell| shell.history()).redo.len(), 1);
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let other = folder.path().join("other.pldb");
+    common::new_ledger(&other);
+    ui.browse_from(folder.path());
+
+    ui.press(": o p e n enter");
+    ui.click("explorer-row-0");
+    ui.click("explorer-open");
+
+    assert_eq!(ui.ledger_path(), Some(other), "the other Ledger opened");
     let history = ui.read(|shell| shell.history());
     assert_eq!(
         undo_labels(&mut ui),

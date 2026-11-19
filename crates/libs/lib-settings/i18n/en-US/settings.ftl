@@ -107,10 +107,7 @@ settings-hint-move = move
 ## `$path` the file a setting was saved to.
 
 settings-device-shadowed-note = Set by { $source }
-settings-device-shadowed = { $key } is set by { $source }, which outranks your personal-ledger.conf: change it there
-settings-device-no-file = { $key } can't be saved: there's no home folder to keep personal-ledger.conf in
 settings-device-saved = { $key } saved to { $path }
-settings-device-write-failed = Couldn't save { $key } to personal-ledger.conf: the log says why
 
 ## General (DESKTOP-178): On start, Start view, Toasts, the Locale, the Data folder, and
 ## the THIS DEVICE box, whose rows are the Ledger On start reopens and the config file Settings

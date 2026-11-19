@@ -111,20 +111,20 @@ impl ShellRouter for RootRouter<'_, '_> {
         let Some(open) = self.open.as_ref() else {
             return;
         };
-        for notice in super::write_failures::roll_back(&failure, open, self.cx) {
+        for notice in super::write_failures::roll_back(&failure, open, self.cx).0 {
             self.notify(notice);
         }
     }
 
     /// Puts back each key's raw value from before the change, the last written first, and the
     /// Ledger's rows as they were before it.
-    fn reverse(&mut self, reversal: &Reversal) -> bool {
+    fn reverse(&mut self, reversal: &Reversal) -> lib_shell::Result<()> {
         self.apply_reversal(reversal, Direction::Back)
     }
 
     /// Writes each key's raw value from after the change again, in the order first written, and
     /// the Ledger's rows as the change left them.
-    fn replay(&mut self, reversal: &Reversal) -> bool {
+    fn replay(&mut self, reversal: &Reversal) -> lib_shell::Result<()> {
         self.apply_reversal(reversal, Direction::Forward)
     }
 
@@ -349,24 +349,28 @@ impl ShellRouter for RootRouter<'_, '_> {
 impl RootRouter<'_, '_> {
     /// Writes an entry's Ledger rows through `step` as the Undo or Redo input's writes, then commits them
     /// at once and waits for the writer, so a failed step is known before History moves the entry
-    /// (#1247): the failure is rolled back as any failed write is, says so on the status line, and
-    /// the step reports it failed. A failure from an earlier input still waiting to be read is
+    /// (#1247): the failure is rolled back as any failed write is, with an Error Toast naming the
+    /// domain, and the step returns [`lib_shell::Error::LedgerNotSaved`] for the Shell to word. A failure from an earlier input still waiting to be read is
     /// rolled back first, so it isn't taken for this step's. With no Ledger open there is nothing
     /// to step, which can't happen: a closed Ledger's parts leave History.
-    fn step_ledger(&mut self, step: impl FnOnce(&lib_database::LedgerPorts)) -> bool {
+    fn step_ledger(
+        &mut self,
+        step: impl FnOnce(&lib_database::LedgerPorts),
+    ) -> lib_shell::Result<()> {
         let Some(open) = self.open.as_ref() else {
-            return false;
+            return Err(lib_shell::Error::LedgerNotSaved { reloaded: false });
         };
         for failure in open.flush_and_take_failures() {
             self.write_failed(failure);
         }
         let Some(open) = self.open.as_ref() else {
-            return false;
+            return Err(lib_shell::Error::LedgerNotSaved { reloaded: false });
         };
         step(&open.ports);
         crate::input::commit_now(self.cx);
         let failures = open.flush_and_take_failures();
         let failed = !failures.is_empty();
+        let mut reloaded = true;
         let mut notices = Vec::new();
         for failure in failures {
             tracing::error!(
@@ -374,29 +378,33 @@ impl RootRouter<'_, '_> {
                 domains = ?failure.domains,
                 "Failed to save an Undo or Redo"
             );
-            notices.extend(super::write_failures::roll_back(&failure, open, self.cx));
-        }
-        // The status line says why in place of "Undid …", which a failed step doesn't set.
-        if let Some(Notice::Toast(_, text)) = notices.first() {
-            let status = Notice::Status(text.clone());
-            self.notify(status);
+            let (rolled_back, read_back) =
+                super::write_failures::roll_back(&failure, open, self.cx);
+            reloaded &= read_back;
+            notices.extend(rolled_back);
         }
         for notice in notices {
             self.notify(notice);
         }
-        !failed
+        if failed {
+            Err(lib_shell::Error::LedgerNotSaved { reloaded })
+        } else {
+            Ok(())
+        }
     }
 
     /// Steps `reversal` one way: the Ledger's rows through the ports, then each Configuration key
     /// to its value on that side of the change.
-    fn apply_reversal(&mut self, reversal: &Reversal, direction: Direction) -> bool {
-        if let Some(ledger) = &reversal.ledger
-            && !self.step_ledger(|ports| match direction {
+    fn apply_reversal(
+        &mut self,
+        reversal: &Reversal,
+        direction: Direction,
+    ) -> lib_shell::Result<()> {
+        if let Some(ledger) = &reversal.ledger {
+            self.step_ledger(|ports| match direction {
                 Direction::Back => ports.reverse(ledger),
                 Direction::Forward => ports.replay(ledger),
-            })
-        {
-            return false;
+            })?;
         }
         let changes: Vec<_> = match direction {
             Direction::Back => reversal
@@ -415,9 +423,9 @@ impl RootRouter<'_, '_> {
     }
 
     /// Puts `changes` back in the configuration file through Settings, whose pages repaint from what
-    /// the file then reads and route what takes effect at once as a write does. Whether they all
-    /// went back.
-    fn restore(&mut self, changes: &[(ConfigKey, Option<String>)]) -> bool {
+    /// the file then reads and route what takes effect at once as a write does. The first that
+    /// didn't go back is returned.
+    fn restore(&mut self, changes: &[(ConfigKey, Option<String>)]) -> lib_shell::Result<()> {
         self.settings
             .update(self.cx, |view, cx| view.restore_device(changes, cx))
     }

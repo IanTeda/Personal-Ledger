@@ -58,8 +58,27 @@ pub struct RecordingRouter {
     /// What [`ShellRouter::set_data_folder`] answers: whether the folder picked is now in effect.
     pub data_folder_applies: bool,
     pub folders: FakeLedgerFolders,
-    /// What [`ShellRouter::reverse`] and [`ShellRouter::replay`] answer: whether the step applied.
-    pub steps_apply: bool,
+    /// The step whose reversal matches this is refused by [`ShellRouter::reverse`] and
+    /// [`ShellRouter::replay`], with [`Self::refusal`]; every other step applies.
+    pub refuses: Option<&'static str>,
+}
+
+impl RecordingRouter {
+    /// What a refused step returns.
+    #[must_use]
+    pub fn refusal() -> crate::Error {
+        crate::Error::ConfigurationNoFile {
+            key: lib_core::configuration::ConfigKey::Toasts,
+        }
+    }
+
+    fn step(&self, reversal: &'static str) -> crate::Result<()> {
+        if self.refuses == Some(reversal) {
+            Err(Self::refusal())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl Default for RecordingRouter {
@@ -75,7 +94,7 @@ impl Default for RecordingRouter {
             opens: true,
             data_folder_applies: true,
             folders: FakeLedgerFolders::default(),
-            steps_apply: true,
+            refuses: None,
         }
     }
 }
@@ -102,14 +121,14 @@ impl ShellRouter for RecordingRouter {
         self.routed.push(Routed::WriteFailed(failure));
     }
 
-    fn reverse(&mut self, reversal: &&'static str) -> bool {
+    fn reverse(&mut self, reversal: &&'static str) -> crate::Result<()> {
         self.routed.push(Routed::Reversed(reversal));
-        self.steps_apply
+        self.step(reversal)
     }
 
-    fn replay(&mut self, reversal: &&'static str) -> bool {
+    fn replay(&mut self, reversal: &&'static str) -> crate::Result<()> {
         self.routed.push(Routed::Replayed(reversal));
-        self.steps_apply
+        self.step(reversal)
     }
 
     fn not_a_jump(&mut self, sequence: String) {

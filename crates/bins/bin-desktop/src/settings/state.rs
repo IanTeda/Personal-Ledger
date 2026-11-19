@@ -591,20 +591,19 @@ impl SettingsView {
 
     /// Undo or Redo of a Settings › General or Display change (#1244, #1246): puts each key back in
     /// the file, in order, then hands both pages what the file now reads, whichever shows, and each
-    /// routes what changed in effect through the events a write sends. Whether every key went back; the first that didn't, shadowed or refused, says why on the status line and stops
-    /// the rest. With none back, the page is left as it was.
+    /// routes what changed in effect through the events a write sends. The first key that didn't go
+    /// back, shadowed or refused, is returned and stops the rest, for the Shell to say on the status
+    /// line. With none back, the page is left as it was.
     pub fn restore_device(
         &mut self,
         changes: &[(lib_core::configuration::ConfigKey, Option<String>)],
         cx: &mut Context<'_, Self>,
-    ) -> bool {
+    ) -> lib_shell::Result<()> {
         let mut restored = 0;
+        let mut outcome = Ok(());
         for (key, value) in changes {
-            if let Some(why) = refused(self.device.restore(*key, value.as_deref()), *key) {
-                lib_toast::Notify::notify(
-                    &mut crate::notices::Queue,
-                    lib_toast::Notice::Status(why),
-                );
+            if let Err(error) = refused(self.device.restore(*key, value.as_deref()), *key) {
+                outcome = Err(error);
                 break;
             }
             restored += 1;
@@ -620,7 +619,7 @@ impl SettingsView {
                 page.answer(cx, |presenter, router| presenter.reload(snapshot, router));
             });
         }
-        restored == changes.len()
+        outcome
     }
 
     /// The folder the Data folder picker picked, written by General's Presenter, the one place
@@ -638,15 +637,23 @@ impl SettingsView {
     }
 }
 
-/// Why a restore of `key` didn't go to the file, in the words a write's refusal uses, or `None`
-/// once saved.
+/// Why a restore of `key` didn't go to the file, or `Ok` once saved.
 fn refused(
     answer: lib_settings::DeviceAnswer<()>,
     key: lib_core::configuration::ConfigKey,
-) -> Option<String> {
+) -> lib_shell::Result<()> {
+    use lib_settings::{DeviceAnswer, DeviceRefusal};
     match answer {
-        lib_settings::DeviceAnswer::Saved { .. } => None,
-        answer => Some(lib_settings::device_status(&answer, key)),
+        DeviceAnswer::Saved { .. } => Ok(()),
+        DeviceAnswer::Shadowed { source } => {
+            Err(lib_shell::Error::ConfigurationShadowed { key, source })
+        }
+        DeviceAnswer::Refused(DeviceRefusal::NoFile) => {
+            Err(lib_shell::Error::ConfigurationNoFile { key })
+        }
+        DeviceAnswer::Refused(DeviceRefusal::WriteFailed) => {
+            Err(lib_shell::Error::ConfigurationNotWritten { key })
+        }
     }
 }
 

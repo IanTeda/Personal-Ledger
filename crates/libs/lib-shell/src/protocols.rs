@@ -48,13 +48,13 @@ pub trait ShellRouter: Notify {
     /// at once, with an Error Toast (ADR-0046).
     fn write_failed(&mut self, failure: Self::Failure);
 
-    /// Undo: puts back what `reversal` changed. Whether it applied; one that didn't stays on the
-    /// History to undo, and says why itself.
-    fn reverse(&mut self, reversal: &Self::Reversal) -> bool;
+    /// Undo: puts back what `reversal` changed. One that didn't apply stays on the History to
+    /// undo, and returns why; the Shell words it on the status line.
+    fn reverse(&mut self, reversal: &Self::Reversal) -> crate::Result<()>;
 
-    /// Redo: makes again the change `reversal` undid. Whether it applied; one that didn't stays on
-    /// the History to redo, and says why itself.
-    fn replay(&mut self, reversal: &Self::Reversal) -> bool;
+    /// Redo: makes again the change `reversal` undid. One that didn't apply stays on the History
+    /// to redo, and returns why; the Shell words it on the status line.
+    fn replay(&mut self, reversal: &Self::Reversal) -> crate::Result<()>;
 
     /// A prefix was followed by a key that finishes no sequence (`g x`): say so on the status
     /// line.

@@ -73,10 +73,15 @@ impl Root {
 /// Puts each domain `failure` names back as stored and returns an Error Toast for each. The input
 /// the failure arrives as announces each domain read back, so every view model reading it is
 /// rebuilt. If a domain can't be read back either, its rows in memory stand and the Toast says
-/// they aren't saved.
-pub(super) fn roll_back(failure: &WriteFailure, open: &OpenLedger, cx: &mut App) -> Vec<Notice> {
+/// they aren't saved. Also whether every domain read back.
+pub(super) fn roll_back(
+    failure: &WriteFailure,
+    open: &OpenLedger,
+    cx: &mut App,
+) -> (Vec<Notice>, bool) {
     let mut done = Vec::new();
     let mut notices = Vec::new();
+    let mut all_reloaded = true;
     for &domain in &failure.domains {
         // Deduped by store, not domain: one reload and one Toast for a batch writing both.
         let kept_with = domain.reloaded_with();
@@ -94,12 +99,13 @@ pub(super) fn roll_back(failure: &WriteFailure, open: &OpenLedger, cx: &mut App)
             }
             Err(error) => {
                 tracing::error!(%error, ?domain, "Failed to reload after a failed write");
+                all_reloaded = false;
                 unsaved()
             }
         };
         notices.push(Notice::Toast(ToastKind::Error, text));
     }
-    notices
+    (notices, all_reloaded)
 }
 
 /// A Toast's text, read from the Catalogue when it is shown.
