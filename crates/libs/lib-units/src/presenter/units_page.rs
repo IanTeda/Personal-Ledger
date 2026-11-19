@@ -423,7 +423,7 @@ impl UnitsPagePresenter {
         match event {
             UnitsPageEvent::Move(step) => {
                 let rows = self.rows();
-                if let Some(row) = step_id(&rows, self.selection(), step) {
+                if let Some(row) = step_id(&rows, self.selection_in(&rows), step) {
                     self.select(row);
                 }
             }
@@ -687,7 +687,12 @@ impl UnitsPagePresenter {
 
     /// The selected row, or the first while nothing (or a removed row) is selected.
     fn selection(&self) -> Option<UnitsRow> {
-        resolve(self.rows(), self.selected)
+        self.selection_in(&self.rows())
+    }
+
+    /// `selection` over rows the caller has already built, so one input reads the Ledger once.
+    fn selection_in(&self, rows: &[UnitsRow]) -> Option<UnitsRow> {
+        resolve(rows.iter().copied(), self.selected)
     }
 
     /// Selects `row`, remembering it as its table's last row for `Tab`.
@@ -703,7 +708,7 @@ impl UnitsPagePresenter {
     /// is gone). An empty Units table leaves the selection where it is.
     fn next_table(&mut self) {
         let rows = self.rows();
-        let target = match self.selection() {
+        let target = match self.selection_in(&rows) {
             Some(UnitsRow::Unit(_)) => resolve(
                 rows.iter().filter_map(|row| match row {
                     UnitsRow::Source(id) => Some(*id),
