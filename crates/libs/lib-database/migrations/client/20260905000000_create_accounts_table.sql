@@ -10,7 +10,7 @@
 -- balance is the opening balance as a decimal string in the Unit's precision, so no precision is
 -- lost to a float; opened_at is a calendar date. account_number is the form's optional field.
 -- position is the Account's place across the whole Ledger: a new row takes the highest plus one, a
--- delete leaves a gap, and Undo of a delete writes the places back (#1262). Rows read back in
+-- delete leaves a gap until the next Undo or Redo renumbers the places (#1262). Rows read back in
 -- position order, the order they were added in. Enforced by SQLite's foreign_keys
 -- pragma, turned on for every connection.
 

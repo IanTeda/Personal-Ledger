@@ -110,8 +110,7 @@ impl AccountsAdapter {
     /// one's place. For Undo and Redo of a delete, which put a row back where it was (#1262).
     pub fn place(&mut self, order: &[AccountId]) {
         let rows = &mut self.accounts.rows;
-        let rank = |id: AccountId| order.iter().position(|held| *held == id);
-        rows.sort_by_key(|row| rank(row.id).unwrap_or(usize::MAX));
+        super::store::place_by(rows, order, |row| row.id);
         let placed = rows.iter().map(|row| row.id).collect();
         self.accounts.pending.push(AccountsChange::Place(placed));
     }
@@ -247,9 +246,7 @@ impl Change for AccountsChange {
                 Self::Place(order) => {
                     for (place, id) in order.into_iter().enumerate() {
                         let place = i64::try_from(place).unwrap_or(i64::MAX);
-                        sqlx::query("UPDATE accounts SET position = ? WHERE id = ?")
-                            .bind(place)
-                            .bind(id)
+                        sqlx::query!("UPDATE accounts SET position = ? WHERE id = ?", place, id)
                             .execute(&mut *conn)
                             .await?;
                     }

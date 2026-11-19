@@ -6,7 +6,7 @@
 -- name before any write reaches this table; NOCASE folds ASCII only, which the rule's own folding
 -- covers. products is the Products label (GLOSSARY.md) the Add institution dialog joins, stored as
 -- given. position is the Institution's place in the list: a new row takes the highest plus one, a
--- delete leaves a gap, and Undo of a delete writes the places back (#1262). Rows read back in
+-- delete leaves a gap until the next Undo or Redo renumbers the places (#1262). Rows read back in
 -- position order, the order they were added in.
 --
 -- usual_unit_id is the Usual unit (GLOSSARY.md): the Unit the Institution's Accounts are normally

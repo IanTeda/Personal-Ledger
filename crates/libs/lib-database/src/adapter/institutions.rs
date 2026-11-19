@@ -114,9 +114,7 @@ impl InstitutionsAdapter {
     /// Puts the held Institutions in `order`, any not named after those that are, and saves each
     /// one's place. For Undo and Redo of a delete, which put a row back where it was (#1262).
     pub fn place(&mut self, order: &[InstitutionId]) {
-        let rank = |id: InstitutionId| order.iter().position(|held| *held == id);
-        self.rows
-            .sort_by_key(|row| rank(row.id).unwrap_or(usize::MAX));
+        super::store::place_by(&mut self.rows, order, |row| row.id);
         let placed = self.rows.iter().map(|row| row.id).collect();
         self.pending.push(PlaceInstitutions(placed));
     }
@@ -163,11 +161,13 @@ impl Change for PlaceInstitutions {
         Box::pin(async move {
             for (place, id) in self.0.into_iter().enumerate() {
                 let place = i64::try_from(place).unwrap_or(i64::MAX);
-                sqlx::query("UPDATE institutions SET position = ? WHERE id = ?")
-                    .bind(place)
-                    .bind(id)
-                    .execute(&mut *conn)
-                    .await?;
+                sqlx::query!(
+                    "UPDATE institutions SET position = ? WHERE id = ?",
+                    place,
+                    id,
+                )
+                .execute(&mut *conn)
+                .await?;
             }
             Ok(())
         })

@@ -41,6 +41,24 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc;
 
+/// Sorts `rows` by where `id_of` finds them in `order`, rows it doesn't name going last.
+pub(crate) fn place_by<T, I: PartialEq>(rows: &mut [T], order: &[I], id_of: impl Fn(&T) -> I) {
+    rows.sort_by_key(|row| {
+        let id = id_of(row);
+        order
+            .iter()
+            .position(|held| *held == id)
+            .unwrap_or(usize::MAX)
+    });
+}
+
+/// The order before and after deleting `id`, for the recorders that note the order before the row.
+fn order_pair<I: Copy + PartialEq>(held: impl Iterator<Item = I>, id: I) -> (Vec<I>, Vec<I>) {
+    let before: Vec<I> = held.collect();
+    let after = before.iter().copied().filter(|kept| *kept != id).collect();
+    (before, after)
+}
+
 use chrono::NaiveDate;
 use lib_account_deletion::DeletionReads;
 use lib_accounts::{
@@ -175,18 +193,14 @@ impl<S: InstitutionsStore + ?Sized> InstitutionRepository for Journaled<S> {
         if let Some(before) = self.store.institutions().institution(id) {
             let journal = self.written.journal();
             // The order first, so Undo, which goes newest first, restores the row before its place.
-            let before_order: Vec<_> = self
-                .store
-                .institutions()
-                .institutions()
-                .iter()
-                .map(|held| held.id)
-                .collect();
-            let order = before_order
-                .iter()
-                .copied()
-                .filter(|held| *held != id)
-                .collect();
+            let (before_order, order) = order_pair(
+                self.store
+                    .institutions()
+                    .institutions()
+                    .iter()
+                    .map(|held| held.id),
+                id,
+            );
             journal.record(RowImage::InstitutionOrder(before_order, order));
             journal.record(RowImage::Institution(Some(before), None));
         }
@@ -306,18 +320,10 @@ impl<S: AccountsStore + ?Sized> AccountRepository for Journaled<S> {
         journal.unlink_account(id);
         if let Some(before) = self.store.accounts().account(id) {
             // The order first, so Undo, which goes newest first, restores the row before its place.
-            let before_order: Vec<_> = self
-                .store
-                .accounts()
-                .accounts()
-                .iter()
-                .map(|held| held.id)
-                .collect();
-            let order = before_order
-                .iter()
-                .copied()
-                .filter(|held| *held != id)
-                .collect();
+            let (before_order, order) = order_pair(
+                self.store.accounts().accounts().iter().map(|held| held.id),
+                id,
+            );
             journal.record(RowImage::AccountOrder(before_order, order));
             journal.record(RowImage::Account(Some(before), None));
         }
@@ -771,12 +777,7 @@ impl InstitutionsStore for InMemoryInstitutions {
     }
 
     fn place_institutions(&mut self, order: &[InstitutionId]) {
-        self.institutions.sort_by_key(|row| {
-            order
-                .iter()
-                .position(|held| *held == row.id)
-                .unwrap_or(usize::MAX)
-        });
+        place_by(&mut self.institutions, order, |row| row.id);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1044,12 +1045,7 @@ impl AccountsStore for lib_accounts::fake::InMemoryPorts {
     }
 
     fn place_accounts(&mut self, order: &[AccountId]) {
-        self.accounts.accounts.sort_by_key(|row| {
-            order
-                .iter()
-                .position(|held| *held == row.id)
-                .unwrap_or(usize::MAX)
-        });
+        place_by(&mut self.accounts.accounts, order, |row| row.id);
     }
 
     fn reload(&mut self) -> Result<()> {
