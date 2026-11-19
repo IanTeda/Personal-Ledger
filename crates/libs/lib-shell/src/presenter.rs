@@ -162,6 +162,13 @@ const HINTS: [(&str, ShellCommand, Label); 4] = [
     ),
 ];
 
+/// Which way History steps: Undo reverses the newest entries, Redo replays the last undone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Direction {
+    Undo,
+    Redo,
+}
+
 /// The Shell's Presenter. `P` is the Client's Settings page, which the Back history steps between,
 /// `E` what one of the Client's own palette Commands does, which its Router acts on, and `H` what
 /// reverses a History entry ([`ShellRouter::Reversal`]).
@@ -575,6 +582,12 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
         self.history.retain(drop_ledger);
     }
 
+    /// Whether anything is on the History to undo, which the header's Undo button reads while its
+    /// dropdown is closed, so the rows are only built when it is open.
+    pub fn can_undo(&self) -> bool {
+        self.history.can_undo()
+    }
+
     /// What the header's Undo dropdown draws, its times relative to the Clock now.
     pub fn history(&self) -> HistoryViewModel {
         self.history.view_model(self.clock.now())
@@ -589,17 +602,7 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
         count: usize,
         router: &mut R,
     ) {
-        let steps = self
-            .history
-            .undo_through(count, |reversal| router.reverse(reversal));
-        if steps.failed.is_some() {
-            return;
-        }
-        let status = match steps.done.last() {
-            None => msg::status_nothing_to_undo(),
-            Some(label) => msg::status_undid(count_of(&steps.done), label),
-        };
-        router.notify(Notice::Status(status));
+        self.step_through(Direction::Undo, count, router);
     }
 
     /// Redoes the next `count` entries as one input, as [`Self::undo_through`] undoes them.
@@ -608,15 +611,33 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
         count: usize,
         router: &mut R,
     ) {
-        let steps = self
-            .history
-            .redo_through(count, |reversal| router.replay(reversal));
+        self.step_through(Direction::Redo, count, router);
+    }
+
+    /// Steps `count` entries one way as one input, then says what it came to on the status line
+    /// unless a step failed, which says itself.
+    fn step_through<R: ShellRouter<Reversal = H> + ?Sized>(
+        &mut self,
+        direction: Direction,
+        count: usize,
+        router: &mut R,
+    ) {
+        let steps = match direction {
+            Direction::Undo => self
+                .history
+                .undo_through(count, |reversal| router.reverse(reversal)),
+            Direction::Redo => self
+                .history
+                .redo_through(count, |reversal| router.replay(reversal)),
+        };
         if steps.failed.is_some() {
             return;
         }
-        let status = match steps.done.last() {
-            None => msg::status_nothing_to_redo(),
-            Some(label) => msg::status_redid(count_of(&steps.done), label),
+        let status = match (direction, steps.done.last()) {
+            (Direction::Undo, None) => msg::status_nothing_to_undo(),
+            (Direction::Undo, Some(label)) => msg::status_undid(count_of(&steps.done), label),
+            (Direction::Redo, None) => msg::status_nothing_to_redo(),
+            (Direction::Redo, Some(label)) => msg::status_redid(count_of(&steps.done), label),
         };
         router.notify(Notice::Status(status));
     }
@@ -1614,6 +1635,19 @@ mod tests {
         assert_eq!(view.redo.len(), 1);
         assert_eq!(view.redo[0].label, "Locale: en-AU");
         assert_eq!(view.undo.len(), 2);
+    }
+
+    #[test]
+    fn can_undo_is_false_with_an_empty_history_and_true_once_a_change_is_recorded() {
+        let mut shell = shell();
+        assert!(!shell.can_undo());
+
+        shell.record(Entry {
+            label: "Locale: en-AU".to_string(),
+            reversal: "Locale: en-AU",
+        });
+
+        assert!(shell.can_undo());
     }
 
     #[test]

@@ -127,21 +127,7 @@ pub(crate) fn commit_now(cx: &mut App) {
     let door = cx.global_mut::<Door>();
     if let Some((commit, _)) = &door.ledger {
         let committed = commit.commit();
-        merge(&mut door.committed, committed);
-    }
-}
-
-/// Adds what `later` changed to `committed`, each domain once.
-fn merge(committed: &mut Committed, later: Committed) {
-    for domain in later.wrote {
-        if !committed.wrote.contains(&domain) {
-            committed.wrote.push(domain);
-        }
-    }
-    for domain in later.cascaded {
-        if !committed.cascaded.contains(&domain) {
-            committed.cascaded.push(domain);
-        }
+        door.committed.merge(committed);
     }
 }
 
@@ -212,7 +198,7 @@ pub(crate) fn offer<C: BorrowMut<App>, R>(
     let reloaded = std::mem::take(&mut door.reloaded);
     let announcer = match &door.ledger {
         Some((commit, announcer)) => {
-            merge(&mut committed, commit.commit());
+            committed.merge(commit.commit());
             Some(announcer.clone())
         }
         None => None,

@@ -58,7 +58,6 @@ impl Render for Root {
         // `&mut Root` parameter for `cx.listener` to supply, and the collapsed rail's
         // `on_row_hover` closure additionally needs to close over each row's own `Noun` --
         // `PrimaryRail` curries that in per-row from the single `Rc` given here.
-        let history = self.presenter.history();
         let entity = cx.entity();
         let on_rail_toggle: topbar::OnRailToggle = {
             let entity = entity.clone();
@@ -207,9 +206,10 @@ impl Render for Root {
                         on_topbar_action,
                         self.nav().can_go_back(),
                         self.nav().can_go_forward(),
-                        history.can_undo,
-                        self.state.undo_menu_open.then_some(topbar::UndoMenu {
-                            history,
+                        self.presenter.can_undo(),
+                        // The rows are built only while the dropdown is open, not every frame.
+                        self.state.undo_menu_open.then(|| topbar::UndoMenu {
+                            history: self.presenter.history(),
                             hovered: self.state.undo_hover,
                         }),
                     ))

@@ -41,6 +41,21 @@ impl Committed {
     pub fn is_empty(&self) -> bool {
         self.wrote.is_empty() && self.cascaded.is_empty()
     }
+
+    /// Adds what `later` changed to this, each domain once, so one input's several commits read as
+    /// one.
+    pub fn merge(&mut self, later: Committed) {
+        for domain in later.wrote {
+            if !self.wrote.contains(&domain) {
+                self.wrote.push(domain);
+            }
+        }
+        for domain in later.cascaded {
+            if !self.cascaded.contains(&domain) {
+                self.cascaded.push(domain);
+            }
+        }
+    }
 }
 
 /// The domains written since the last commit, noted by each store's recorder and drained by the
@@ -268,6 +283,22 @@ mod tests {
                 })
                 .expect("the notes load")
         }
+    }
+
+    #[test]
+    fn merge_keeps_each_domain_once_in_the_order_first_seen() {
+        let mut committed = Committed {
+            wrote: vec![Domain::Units],
+            cascaded: vec![Domain::Documents],
+        };
+
+        committed.merge(Committed {
+            wrote: vec![Domain::Units, Domain::Test],
+            cascaded: vec![Domain::Documents, Domain::Payees],
+        });
+
+        assert_eq!(committed.wrote, [Domain::Units, Domain::Test]);
+        assert_eq!(committed.cascaded, [Domain::Documents, Domain::Payees]);
     }
 
     #[sqlx::test(migrations = "migrations/client")]
