@@ -1,9 +1,9 @@
-//! The contract every [`DeviceConfiguration`] keeps, run against the in-memory one here and the
-//! Client's over its configuration file, so the fake the Presenters' tests use can be trusted.
-//!
-//! Each check is generic over a [`DeviceFactory`]: a Client runs it from its own tests, since its
-//! device needs its own set-up (a temporary configuration file per check). Each writes through the
-//! port, reads the device back, and expects what was saved, and only that. The writes run over
+//! The contracts the device's ports keep. The write-through policy runs once, on [`Policed`](crate::Policed) over
+//! the in-memory file ([`run_all_policy`]). The raw [`DeviceFile`] contract runs against both the
+//! in-memory file here and the Client's over its configuration file ([`run_all_device_file`]), so the
+//! fake the Presenters' tests use can be trusted; it is generic over a [`DeviceFileFactory`], since
+//! the Client's file needs its own set-up (a temporary file per check). Each check writes through
+//! the port, reads it back, and expects what was saved, and only that. The writes run over
 //! every [`ConfigKey`], so a new key is checked with no new arm here.
 
 use std::path::PathBuf;
@@ -13,29 +13,30 @@ use lib_core::{
     ColourAppearance, DateStyle, Levels, OnStart, RowDensity, StartView, StatusGlyphs, UnitId,
 };
 
-use crate::fake::StoredDevice;
+use crate::device::{DeviceFile, WriteError};
+use crate::fake::{InMemoryDeviceConfiguration, StoredDevice};
 use crate::log::LogLevel;
 use crate::protocols::{
     BaseUnitAnswer, DeviceAnswer, DeviceConfiguration, DeviceRefusal, LedgerPreferences,
     LedgerUnits, TracingLog, writes_when_shadowed,
 };
 
-/// Builds the device a contract check runs on.
-pub trait DeviceFactory {
-    type Device: DeviceConfiguration;
+/// Builds the raw file a [`DeviceFile`] contract check runs on, each on a file of its own.
+pub trait DeviceFileFactory {
+    type File: DeviceFile;
 
-    /// A device writing to a file of its own, empty to start.
-    fn writable(&mut self) -> Self::Device;
+    /// A file that takes writes, empty to start.
+    fn writable(&mut self) -> Self::File;
 
     /// [`Self::writable`], with `key` set by a source above the file, and that source's name as
-    /// the device says it.
-    fn shadowing(&mut self, key: ConfigKey) -> (Self::Device, String);
+    /// the file says it.
+    fn shadowing(&mut self, key: ConfigKey) -> (Self::File, String);
 
-    /// A device with no file to write, as with no home folder.
-    fn without_file(&mut self) -> Self::Device;
+    /// A file with no place to be written, as with no home folder.
+    fn without_file(&mut self) -> Self::File;
 
-    /// A device whose file can't be written.
-    fn unwritable(&mut self) -> Self::Device;
+    /// A file that can't be written.
+    fn unwritable(&mut self) -> Self::File;
 }
 
 /// A value for every key, each other than its default, in [`ConfigKey::ALL`]'s order.
@@ -92,6 +93,11 @@ fn stored(device: &impl DeviceConfiguration) -> StoredDevice {
     )
 }
 
+/// What `file` holds, as its raw read says.
+fn held(file: &impl DeviceFile) -> StoredDevice {
+    StoredDevice(file.stored_all().into_iter().collect())
+}
+
 /// The sample values cover every key, once each, so the checks below reach a new key.
 pub fn the_sample_values_cover_every_key() {
     for values in [first_values(), second_values()] {
@@ -102,9 +108,97 @@ pub fn the_sample_values_cover_every_key() {
     }
 }
 
-/// Every key written through the port answers saved with its value, and reads back as stored.
-pub fn every_key_is_saved_and_reads_back(factory: &mut impl DeviceFactory) {
-    let device = factory.writable();
+/// Every key written through a raw file reads back, and a later write replaces it.
+pub fn every_key_is_written_and_read_back(factory: &mut impl DeviceFileFactory) {
+    let file = factory.writable();
+    for value in first_values() {
+        assert_eq!(file.set(value), Ok(()));
+    }
+    assert_eq!(held(&file), StoredDevice::of(first_values()));
+
+    for value in second_values() {
+        assert_eq!(file.set(value), Ok(()));
+    }
+    assert_eq!(held(&file), StoredDevice::of(second_values()));
+}
+
+/// A removed key reads back unset and the others stay; removing it again is no error.
+pub fn a_removed_key_reads_back_unset(factory: &mut impl DeviceFileFactory) {
+    let file = factory.writable();
+    for value in first_values() {
+        assert_eq!(file.set(value), Ok(()));
+    }
+    for key in ConfigKey::ALL {
+        assert_eq!(file.remove(key), Ok(()), "{key:?} removed");
+        assert_eq!(file.remove(key), Ok(()), "{key:?} removed again");
+        assert_eq!(file.raw(key), None, "{key:?} taken out");
+    }
+    assert_eq!(held(&file), StoredDevice::default());
+}
+
+/// A restore puts a key back as its raw text was read, and takes it out for `None`.
+pub fn a_restore_puts_the_raw_value_back(factory: &mut impl DeviceFileFactory) {
+    let file = factory.writable();
+    for value in first_values() {
+        let key = value.key();
+        assert_eq!(file.set(value), Ok(()));
+        let raw = file.raw(key);
+        assert!(raw.is_some(), "{key:?} is read raw once written");
+
+        assert_eq!(file.remove(key), Ok(()));
+        assert_eq!(file.raw(key), None, "{key:?}");
+        assert_eq!(file.restore(key, raw.as_deref()), Ok(()));
+        assert_eq!(file.raw(key), raw, "{key:?} restored");
+
+        assert_eq!(file.restore(key, None), Ok(()));
+        assert_eq!(file.raw(key), None, "{key:?} restored to unset");
+    }
+}
+
+/// The file reports where it is, and what sets a key above it and no other.
+pub fn the_file_reports_its_target_and_shadows(factory: &mut impl DeviceFileFactory) {
+    assert!(factory.writable().target().is_some());
+    assert_eq!(factory.without_file().target(), None);
+
+    for value in first_values() {
+        let key = value.key();
+        let (file, source) = factory.shadowing(key);
+        assert_eq!(
+            file.shadow(key).as_deref(),
+            Some(source.as_str()),
+            "{key:?}"
+        );
+        for other in ConfigKey::ALL.into_iter().filter(|other| *other != key) {
+            assert_eq!(file.shadow(other), None, "{other:?} under {key:?}");
+        }
+    }
+}
+
+/// A file that can't be written answers every change with an error, and holds nothing.
+pub fn an_unwritable_file_is_an_error(factory: &mut impl DeviceFileFactory) {
+    let file = factory.unwritable();
+    for value in first_values() {
+        let key = value.key();
+        assert_eq!(file.set(value), Err(WriteError), "{key:?}");
+        assert_eq!(file.remove(key), Err(WriteError), "{key:?} removed");
+        assert_eq!(file.restore(key, None), Err(WriteError), "{key:?} restored");
+    }
+    assert_eq!(held(&file), StoredDevice::default());
+}
+
+/// Runs every [`DeviceFile`] check.
+pub fn run_all_device_file(factory: &mut impl DeviceFileFactory) {
+    the_sample_values_cover_every_key();
+    every_key_is_written_and_read_back(factory);
+    a_removed_key_reads_back_unset(factory);
+    a_restore_puts_the_raw_value_back(factory);
+    the_file_reports_its_target_and_shadows(factory);
+    an_unwritable_file_is_an_error(factory);
+}
+
+/// Every key written through the policy answers saved with its value, and reads back as stored.
+pub fn every_key_is_saved_and_reads_back() {
+    let device = InMemoryDeviceConfiguration::writable();
 
     for value in first_values() {
         assert_saved(device.write(value.clone()), &value);
@@ -114,8 +208,8 @@ pub fn every_key_is_saved_and_reads_back(factory: &mut impl DeviceFactory) {
 }
 
 /// A later write replaces the value, and a removed key reads back unset, the others kept.
-pub fn a_later_write_replaces_the_value(factory: &mut impl DeviceFactory) {
-    let device = factory.writable();
+pub fn a_later_write_replaces_the_value() {
+    let device = InMemoryDeviceConfiguration::writable();
     for value in first_values() {
         device.write(value);
     }
@@ -142,10 +236,11 @@ pub fn a_later_write_replaces_the_value(factory: &mut impl DeviceFactory) {
 /// A key a source above the file sets reads that source, answers shadowed naming it, and is not
 /// written; the other keys are not shadowed. The Locale and the Data folder are named too, but
 /// still written ([`writes_when_shadowed`]).
-pub fn a_shadowed_key_reads_its_source_and_is_left_unwritten(factory: &mut impl DeviceFactory) {
+pub fn a_shadowed_key_reads_its_source_and_is_left_unwritten() {
     for value in first_values() {
         let key = value.key();
-        let (device, source) = factory.shadowing(key);
+        let source = format!("PERSONAL_LEDGER_{}", key.name().to_uppercase());
+        let device = InMemoryDeviceConfiguration::shadowing(key, &source);
 
         let snapshot = device.read();
         assert_eq!(
@@ -181,8 +276,8 @@ pub fn a_shadowed_key_reads_its_source_and_is_left_unwritten(factory: &mut impl 
 }
 
 /// The read names the file a write goes to, the one a save names, and no file without one.
-pub fn the_read_names_the_file(factory: &mut impl DeviceFactory) {
-    let device = factory.writable();
+pub fn the_read_names_the_file() {
+    let device = InMemoryDeviceConfiguration::writable();
     let Some(file) = device.read().file else {
         panic!("a writable device names its file");
     };
@@ -193,30 +288,34 @@ pub fn the_read_names_the_file(factory: &mut impl DeviceFactory) {
         other => panic!("expected a save, got {other:?}"),
     }
 
-    assert_eq!(factory.without_file().read().file, None);
+    assert_eq!(InMemoryDeviceConfiguration::default().read().file, None);
 }
 
 /// With no file to write, every write is refused.
-pub fn with_no_file_every_write_is_refused(factory: &mut impl DeviceFactory) {
-    let device = factory.without_file();
-    assert_refused(&device, DeviceRefusal::NoFile);
+pub fn with_no_file_every_write_is_refused() {
+    assert_refused(
+        &InMemoryDeviceConfiguration::default(),
+        DeviceRefusal::NoFile,
+    );
 }
 
 /// A file that can't be written refuses every write.
-pub fn a_failed_write_is_refused(factory: &mut impl DeviceFactory) {
-    let device = factory.unwritable();
-    assert_refused(&device, DeviceRefusal::WriteFailed);
+pub fn a_failed_write_is_refused() {
+    assert_refused(
+        &InMemoryDeviceConfiguration::unwritable(),
+        DeviceRefusal::WriteFailed,
+    );
 }
 
-/// Runs every check.
-pub fn run_all(factory: &mut impl DeviceFactory) {
+/// Runs every policy check, once, on [`Policed`] over the in-memory file.
+pub fn run_all_policy() {
     the_sample_values_cover_every_key();
-    every_key_is_saved_and_reads_back(factory);
-    a_later_write_replaces_the_value(factory);
-    a_shadowed_key_reads_its_source_and_is_left_unwritten(factory);
-    the_read_names_the_file(factory);
-    with_no_file_every_write_is_refused(factory);
-    a_failed_write_is_refused(factory);
+    every_key_is_saved_and_reads_back();
+    a_later_write_replaces_the_value();
+    a_shadowed_key_reads_its_source_and_is_left_unwritten();
+    the_read_names_the_file();
+    with_no_file_every_write_is_refused();
+    a_failed_write_is_refused();
 }
 
 fn assert_saved(answer: DeviceAnswer<ConfigValue>, expected: &ConfigValue) {
@@ -381,7 +480,9 @@ pub fn run_all_ledger(factory: &mut impl LedgerFactory) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::{InMemoryDeviceConfiguration, InMemoryLedgerUnits, InMemoryTracingLog};
+    use crate::fake::{
+        InMemoryDeviceConfiguration, InMemoryDeviceFile, InMemoryLedgerUnits, InMemoryTracingLog,
+    };
 
     struct FakeLogs;
 
@@ -422,34 +523,39 @@ mod tests {
         run_all_ledger(&mut FakeLedger);
     }
 
-    struct Fakes;
+    struct FakeFiles;
 
-    impl DeviceFactory for Fakes {
-        type Device = InMemoryDeviceConfiguration;
+    impl DeviceFileFactory for FakeFiles {
+        type File = InMemoryDeviceFile;
 
-        fn writable(&mut self) -> Self::Device {
-            InMemoryDeviceConfiguration::writable()
+        fn writable(&mut self) -> Self::File {
+            InMemoryDeviceConfiguration::writable().into_file()
         }
 
-        fn shadowing(&mut self, key: ConfigKey) -> (Self::Device, String) {
+        fn shadowing(&mut self, key: ConfigKey) -> (Self::File, String) {
             let source = format!("PERSONAL_LEDGER_{}", key.name().to_uppercase());
-            (InMemoryDeviceConfiguration::shadowing(key, &source), source)
+            (
+                InMemoryDeviceConfiguration::shadowing(key, &source).into_file(),
+                source,
+            )
         }
 
-        fn without_file(&mut self) -> Self::Device {
-            InMemoryDeviceConfiguration::default()
+        fn without_file(&mut self) -> Self::File {
+            InMemoryDeviceFile::default()
         }
 
-        fn unwritable(&mut self) -> Self::Device {
-            InMemoryDeviceConfiguration {
-                fail_writes: true,
-                ..InMemoryDeviceConfiguration::writable()
-            }
+        fn unwritable(&mut self) -> Self::File {
+            InMemoryDeviceConfiguration::unwritable().into_file()
         }
     }
 
     #[test]
-    fn the_in_memory_device_keeps_the_contract() {
-        run_all(&mut Fakes);
+    fn the_in_memory_file_keeps_the_device_file_contract() {
+        run_all_device_file(&mut FakeFiles);
+    }
+
+    #[test]
+    fn the_policy_over_the_in_memory_file_keeps_its_contract() {
+        run_all_policy();
     }
 }

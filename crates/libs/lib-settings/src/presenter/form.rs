@@ -1251,10 +1251,7 @@ mod tests {
         assert_eq!(device.stored(), StoredDevice::default());
         assert!(statuses[0].contains("--roomy"));
 
-        let mut form = form_on(Rc::new(InMemoryDeviceConfiguration {
-            fail_writes: true,
-            ..InMemoryDeviceConfiguration::writable()
-        }));
+        let mut form = form_on(Rc::new(InMemoryDeviceConfiguration::unwritable()));
         let (answer, statuses) = send(
             &mut form,
             [FormInput::Choose {

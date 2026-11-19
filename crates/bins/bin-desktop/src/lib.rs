@@ -63,7 +63,7 @@ use lib_database::{FsLedgerFolders, LedgerCreationAdapter, Storage, open_storage
 use lib_ledger_creation::presenter::SharedLedgerCreation;
 use lib_shell::LedgerFolders;
 use persistence::{PersistedState, WindowGeometry};
-pub use settings::device::DeviceConfigFile;
+pub use settings::device::{ConfiguredDevice, DeviceConfigFile};
 pub use shell::view::window_size::{WindowSize, WindowSizeExt};
 
 /// Crate Result type alias used across the Desktop binary.
@@ -397,7 +397,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                         })
                         .detach();
                     cx.new(|cx| {
-                        let device = std::rc::Rc::new(DeviceConfigFile::new(
+                        let device = std::rc::Rc::new(ConfiguredDevice::new(
                             &device_settings,
                             device_writer,
                         ));

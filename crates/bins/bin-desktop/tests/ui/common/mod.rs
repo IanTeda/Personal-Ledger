@@ -10,7 +10,7 @@
 )]
 
 use bin_desktop::{
-    DeviceConfigFile, WindowSize, WindowSizeExt,
+    ConfiguredDevice, WindowSize, WindowSizeExt,
     locale::init_for_tests,
     navigation::nav::{Noun, RailMode},
     persistence::PersistedState,
@@ -512,7 +512,7 @@ impl<'a> Harness<'a> {
             router::build(
                 persisted,
                 config.general.start_view(),
-                Rc::new(DeviceConfigFile::new(&config, writer)),
+                Rc::new(ConfiguredDevice::new(&config, writer)),
                 ShellBindings { keybindings },
                 ShellLogs {
                     buffer: logs.clone(),

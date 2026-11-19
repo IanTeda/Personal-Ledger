@@ -15,6 +15,7 @@
     reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
 )]
 pub mod contract;
+pub mod device;
 pub mod fake;
 pub mod keymap;
 pub mod log;
@@ -24,6 +25,7 @@ pub mod presenter;
 pub mod protocols;
 pub mod summary;
 
+pub use crate::device::{ChangeLog, DeviceFile, Policed, WriteError};
 pub use crate::log::{LogLevel, LogLine, TracingLevel};
 pub use crate::page::{ScopeFacts, ScopeGroup, SettingsPage};
 pub use crate::presenter::{

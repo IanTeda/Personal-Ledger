@@ -5,26 +5,25 @@
 //! `lib_config` spell every key and value. The pages' Presenters (`lib-settings`) decide what a
 //! write's answer means; this only reads and writes.
 
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use crate::reversal::{ConfigJournal, ConfigReversal};
-use lib_config::{ConfigWriter, Shadow};
+use lib_config::ConfigWriter;
 use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_settings::{
-    DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceSnapshot, KeyState,
-    writes_when_shadowed,
+    DeviceAnswer, DeviceConfiguration, DeviceFile, DeviceSnapshot, Policed, WriteError,
 };
 
 /// Where a device's settings are written, what outranks the file, as start-up's parse recorded it
 /// in the writer's overrides report, and each key's value in force from that parse. The default
-/// has no file, so every write is refused, as with no home folder.
+/// has no file. No policy lives here: [`Policed`] decides what a write may do.
 #[derive(Debug, Clone, Default)]
 pub struct DeviceConfigFile {
     writer: ConfigWriter,
     /// Each key's value in force, by [`ConfigKey::ALL`]'s order, read once from start-up's parse:
     /// a write changes the file, not this run.
     effective: Vec<(ConfigKey, ConfigValue)>,
-    /// What the running input changed in the file, for its History entry: shared with `Root`,
-    /// whose `send` takes it, as `lib-database`'s journal is for the Ledger's rows.
-    journal: ConfigJournal,
 }
 
 impl DeviceConfigFile {
@@ -35,7 +34,80 @@ impl DeviceConfigFile {
                 .into_iter()
                 .filter_map(|key| Some((key, lib_config::read_value(key, config)?)))
                 .collect(),
-            journal: ConfigJournal::default(),
+        }
+    }
+}
+
+/// Logs a failed write's cause, which the policy only sees as a [`WriteError`].
+fn failed(key: ConfigKey) -> impl FnOnce(lib_config::Error) -> WriteError {
+    move |error| {
+        tracing::error!(%error, key = key.name(), "Couldn't write a device's setting");
+        WriteError
+    }
+}
+
+impl DeviceFile for DeviceConfigFile {
+    fn target(&self) -> Option<PathBuf> {
+        self.writer.target().map(Into::into)
+    }
+
+    fn shadow(&self, key: ConfigKey) -> Option<String> {
+        self.writer
+            .overrides()
+            .get(key)
+            .map(lib_config::Shadow::source)
+    }
+
+    fn stored_all(&self) -> Vec<(ConfigKey, ConfigValue)> {
+        self.writer.stored_all()
+    }
+
+    fn effective(&self, key: ConfigKey) -> Option<ConfigValue> {
+        self.effective
+            .iter()
+            .find(|(read, _)| *read == key)
+            .map(|(_, value)| value.clone())
+    }
+
+    fn raw(&self, key: ConfigKey) -> Option<String> {
+        self.writer.value(key)
+    }
+
+    fn set(&self, value: ConfigValue) -> Result<(), WriteError> {
+        let key = value.key();
+        self.writer.set(value).map_err(failed(key))
+    }
+
+    /// The sources below the file, the operating system's Locale last, decide at the next start.
+    fn remove(&self, key: ConfigKey) -> Result<(), WriteError> {
+        self.writer.remove(key).map_err(failed(key))
+    }
+
+    fn restore(&self, key: ConfigKey, value: Option<&str>) -> Result<(), WriteError> {
+        self.writer.restore(key, value).map_err(failed(key))
+    }
+}
+
+/// The device Settings writes through: the configuration file under the write-through policy,
+/// recording each saved change in the [`ConfigJournal`] the Shell's root Router takes each input's
+/// History entry from, as `lib-database`'s journal is for the Ledger's rows.
+pub struct ConfiguredDevice {
+    device: Policed<DeviceConfigFile>,
+    /// What the running input changed in the file, shared with `Root`, whose `send` takes it.
+    journal: ConfigJournal,
+}
+
+impl ConfiguredDevice {
+    pub fn new(config: &lib_config::Config, writer: ConfigWriter) -> Self {
+        Self::over(DeviceConfigFile::new(config, writer))
+    }
+
+    /// `file` under the policy, journalling into a journal of its own.
+    pub fn over(file: DeviceConfigFile) -> Self {
+        let journal = ConfigJournal::default();
+        Self {
+            device: Policed::new(file).logging(Rc::new(journal.clone())),
+            journal,
         }
     }
 
@@ -49,85 +121,24 @@ impl DeviceConfigFile {
     pub(crate) fn take(&self) -> ConfigReversal {
         self.journal.take()
     }
-
-    /// [`Self::change`], recording the key's raw value in the file just before and just after for
-    /// the input's History entry (#1244), even under an override.
-    fn recorded<T>(
-        &self,
-        key: ConfigKey,
-        value: T,
-        edit: impl FnOnce(&ConfigWriter) -> Result<(), lib_config::Error>,
-    ) -> DeviceAnswer<T> {
-        let before = self.writer.value(key);
-        let answer = self.change(key, value, edit);
-        if matches!(answer, DeviceAnswer::Saved { .. }) {
-            self.journal.record(key, before, self.writer.value(key));
-        }
-        answer
-    }
-
-    /// Changes `key` in the file with `edit`, answering `value` once saved, unless a source above
-    /// sets a key that refuses then.
-    fn change<T>(
-        &self,
-        key: ConfigKey,
-        value: T,
-        edit: impl FnOnce(&ConfigWriter) -> Result<(), lib_config::Error>,
-    ) -> DeviceAnswer<T> {
-        if !writes_when_shadowed(key)
-            && let Some(shadow) = self.writer.overrides().get(key)
-        {
-            return DeviceAnswer::Shadowed {
-                source: shadow.source(),
-            };
-        }
-        let Some(path) = self.writer.target() else {
-            return DeviceAnswer::Refused(DeviceRefusal::NoFile);
-        };
-        match edit(&self.writer) {
-            Ok(()) => DeviceAnswer::Saved {
-                value,
-                file: path.display().to_string(),
-            },
-            Err(error) => {
-                tracing::error!(%error, key = key.name(), "Couldn't write a device's setting");
-                DeviceAnswer::Refused(DeviceRefusal::WriteFailed)
-            }
-        }
-    }
 }
 
-impl DeviceConfiguration for DeviceConfigFile {
+impl DeviceConfiguration for ConfiguredDevice {
     fn read(&self) -> DeviceSnapshot {
-        // The file is read and parsed once for every key, not once per key.
-        let stored = self.writer.stored_all();
-        DeviceSnapshot::new(self.writer.target().map(Into::into), |key| KeyState {
-            stored: stored
-                .iter()
-                .find(|(read, _)| *read == key)
-                .map(|(_, value)| value.clone()),
-            effective: self
-                .effective
-                .iter()
-                .find(|(read, _)| *read == key)
-                .map(|(_, value)| value.clone()),
-            shadow: self.writer.overrides().get(key).map(Shadow::source),
-        })
+        self.device.read()
     }
 
     fn write(&self, value: ConfigValue) -> DeviceAnswer<ConfigValue> {
-        let written = value.clone();
-        self.recorded(value.key(), value, |writer| writer.set(written))
+        self.device.write(value)
     }
 
-    /// The sources below the file, the operating system's Locale last, decide at the next start.
     fn remove(&self, key: ConfigKey) -> DeviceAnswer<()> {
-        self.recorded(key, (), |writer| writer.remove(key))
+        self.device.remove(key)
     }
 
     /// Undo and Redo's write, which records nothing, so stepping through History makes no entry.
     fn restore(&self, key: ConfigKey, value: Option<&str>) -> DeviceAnswer<()> {
-        self.change(key, (), |writer| writer.restore(key, value))
+        self.device.restore(key, value)
     }
 }
 
@@ -136,12 +147,13 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use lib_core::{ColourAppearance, DateStyle, OnStart, RowDensity, StartView, StatusGlyphs};
-    use lib_settings::contract::{self, DeviceFactory};
+    use lib_settings::DeviceRefusal;
+    use lib_settings::contract::{self, DeviceFileFactory};
 
     use super::*;
     use crate::reversal::ConfigChange;
 
-    fn writing_to(path: &Path, env: &[(String, String)]) -> DeviceConfigFile {
+    fn file_at(path: &Path, env: &[(String, String)]) -> DeviceConfigFile {
         DeviceConfigFile::new(
             &lib_config::Config::default(),
             ConfigWriter::new(
@@ -151,7 +163,11 @@ mod tests {
         )
     }
 
-    /// Each check's device on a file of its own in one temporary folder.
+    fn writing_to(path: &Path, env: &[(String, String)]) -> ConfiguredDevice {
+        ConfiguredDevice::over(file_at(path, env))
+    }
+
+    /// Each check's file of its own in one temporary folder.
     struct ConfFiles {
         dir: tempfile::TempDir,
         made: usize,
@@ -166,38 +182,38 @@ mod tests {
         }
     }
 
-    impl DeviceFactory for ConfFiles {
-        type Device = DeviceConfigFile;
+    impl DeviceFileFactory for ConfFiles {
+        type File = DeviceConfigFile;
 
-        fn writable(&mut self) -> Self::Device {
-            writing_to(&self.next_path(), &[])
+        fn writable(&mut self) -> Self::File {
+            file_at(&self.next_path(), &[])
         }
 
-        fn shadowing(&mut self, key: ConfigKey) -> (Self::Device, String) {
+        fn shadowing(&mut self, key: ConfigKey) -> (Self::File, String) {
             let var = lib_config::env_var(key);
             let path = self.next_path();
-            (writing_to(&path, &[(var.clone(), "x".to_string())]), var)
+            (file_at(&path, &[(var.clone(), "x".to_string())]), var)
         }
 
-        fn without_file(&mut self) -> Self::Device {
+        fn without_file(&mut self) -> Self::File {
             DeviceConfigFile::default()
         }
 
         /// A file whose folder is a file, so nothing can be written under it.
-        fn unwritable(&mut self) -> Self::Device {
+        fn unwritable(&mut self) -> Self::File {
             let blocker = self.dir.path().join("blocker");
             std::fs::write(&blocker, "").expect("a file to block the folder");
-            writing_to(&blocker.join("personal-ledger.conf"), &[])
+            file_at(&blocker.join("personal-ledger.conf"), &[])
         }
     }
 
     #[test]
-    fn the_conf_file_keeps_the_device_configuration_contract() {
+    fn the_conf_file_keeps_the_device_file_contract() {
         let mut files = ConfFiles {
             dir: tempfile::tempdir().expect("a temporary directory"),
             made: 0,
         };
-        contract::run_all(&mut files);
+        contract::run_all_device_file(&mut files);
     }
 
     #[test]
@@ -205,7 +221,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("personal-ledger.conf");
         let config = lib_config::Config::default();
-        let device = DeviceConfigFile::new(
+        let device = ConfiguredDevice::new(
             &config,
             ConfigWriter::new(Some(path.clone()), lib_config::Overrides::default()),
         );
@@ -304,7 +320,7 @@ mod tests {
             DeviceAnswer::Shadowed { .. }
         ));
         assert!(matches!(
-            DeviceConfigFile::default().restore(ConfigKey::Toasts, None),
+            ConfiguredDevice::over(DeviceConfigFile::default()).restore(ConfigKey::Toasts, None),
             DeviceAnswer::Refused(DeviceRefusal::NoFile)
         ));
     }

@@ -1435,7 +1435,7 @@ mod tests {
             ],
         );
         {
-            let mut stored = device.stored.borrow_mut();
+            let mut stored = device.stored_mut();
             stored.0.remove(&ConfigKey::RowDensity);
             stored.0.remove(&ConfigKey::ColourTheme);
         }
@@ -1478,7 +1478,7 @@ mod tests {
         );
         let before = display.output();
         {
-            let mut stored = device.stored.borrow_mut();
+            let mut stored = device.stored_mut();
             stored.0.remove(&ConfigKey::RowDensity);
             stored.0.remove(&ConfigKey::StatusGlyphs);
         }
@@ -1493,7 +1493,7 @@ mod tests {
     fn reload_routes_the_colour_theme_back_to_none() {
         let (device, mut display) = writable();
         send(&mut display, [DisplayEvent::ClickColourTheme("nord")]);
-        device.stored.borrow_mut().0.remove(&ConfigKey::ColourTheme);
+        device.stored_mut().0.remove(&ConfigKey::ColourTheme);
 
         assert_eq!(
             reloaded(&mut display, &device),
@@ -1504,7 +1504,7 @@ mod tests {
     #[test]
     fn reload_routes_a_colour_theme_put_back() {
         let (device, mut display) = writable();
-        device.stored.borrow_mut().0.insert(
+        device.stored_mut().0.insert(
             ConfigKey::ColourTheme,
             ConfigValue::ColourTheme("from-a-newer-release".to_string()),
         );
@@ -1526,7 +1526,7 @@ mod tests {
                 ColourAppearance::Dark,
             ))],
         );
-        device.stored.borrow_mut().0.insert(
+        device.stored_mut().0.insert(
             ConfigKey::ColourAppearance,
             ConfigValue::ColourAppearance(ColourAppearance::Light),
         );

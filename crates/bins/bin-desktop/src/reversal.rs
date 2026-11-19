@@ -1,6 +1,6 @@
 //! What the Desktop's History entries reverse (#1238, #1244, #1247): the changes an input made,
 //! recorded below the Presenters as they are written and closed into one entry by the input's
-//! `send` right after its commit (`crate::input`, #1277). `DeviceConfigFile` records `[General]`'s
+//! `send` right after its commit (`crate::input`, #1277). `ConfiguredDevice` records `[General]`'s
 //! and `[Display]`'s keys in its [`ConfigJournal`], and the Open Ledger's stores their row images in
 //! `lib-database`'s journal, which `send` takes as the entry's Ledger part. Every Ledger domain
 //! records (#1247, #1248, #1249).
@@ -14,6 +14,7 @@ use std::rc::Rc;
 
 use lib_core::configuration::{ConfigKey, Section};
 use lib_database::{Domain, LedgerReversal};
+use lib_settings::ChangeLog;
 use lib_shell::{Entry, Step};
 
 /// One key's change to the user's configuration file: its raw value before and after, `None`
@@ -88,11 +89,11 @@ impl Reversal {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ConfigJournal(Rc<RefCell<Vec<ConfigChange>>>);
 
-impl ConfigJournal {
+impl ChangeLog for ConfigJournal {
     /// Notes that the running input changed `key` in the file from `before` to `after`. A write
     /// that left the file's value as it was is no change, and only `[General]` and `[Display]` are
     /// recorded.
-    pub(crate) fn record(&self, key: ConfigKey, before: Option<String>, after: Option<String>) {
+    fn record(&self, key: ConfigKey, before: Option<String>, after: Option<String>) {
         if before == after || !matches!(key.section(), Section::General | Section::Display) {
             return;
         }
@@ -100,7 +101,9 @@ impl ConfigJournal {
             .borrow_mut()
             .push(ConfigChange { key, before, after });
     }
+}
 
+impl ConfigJournal {
     /// Every change recorded since the last take, in the order written.
     pub(crate) fn take(&self) -> ConfigReversal {
         ConfigReversal(std::mem::take(&mut *self.0.borrow_mut()))

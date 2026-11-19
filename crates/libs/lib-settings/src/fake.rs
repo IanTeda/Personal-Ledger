@@ -1,4 +1,4 @@
-//! A recording Router, an in-memory [`DeviceConfiguration`] and an in-memory [`TracingLog`], for the Presenters' tests and a
+//! A recording Router, an in-memory [`DeviceFile`] and an in-memory [`TracingLog`], for the Presenters' tests and a
 //! Client's UI-first work.
 
 use std::cell::RefCell;
@@ -12,6 +12,7 @@ use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_core::{UnitId, UnitRef};
 use lib_toast::{Notice, Notify};
 
+use crate::device::{DeviceFile, Policed, WriteError};
 use crate::log::{LogLevel, LogLine};
 use crate::page::SettingsPage;
 use crate::presenter::{ClearLogsPresenter, DisplayOutput, LogListChange, LogScroll};
@@ -19,10 +20,7 @@ use crate::protocols::{
     BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerRouter, LedgerSummaries,
     LedgerUnits,
 };
-use crate::protocols::{
-    DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceRouter, DeviceSnapshot, KeyState,
-    SettingsRouter, TracingLog, TracingRouter, writes_when_shadowed,
-};
+use crate::protocols::{DeviceRouter, SettingsRouter, TracingLog, TracingRouter};
 
 /// One thing a Presenter asked of the Shell, in the order asked.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -306,11 +304,12 @@ impl StoredDevice {
     }
 }
 
-/// A configuration file in memory: the settings written, the values start-up read, the keys a
-/// source above it sets, and whether there is a file to write at all or writes fail.
+/// A configuration file in memory, with no policy: the settings written, the values start-up read,
+/// the keys a source above it sets, and whether there is a file to write at all or writes fail.
+/// Presenter tests use it through [`InMemoryDeviceConfiguration`], so they run the real policy.
 #[derive(Debug, Default)]
-pub struct InMemoryDeviceConfiguration {
-    /// The file a write names; `None` refuses every write, as with no home folder.
+pub struct InMemoryDeviceFile {
+    /// The file a write names; `None` is no home folder.
     pub file: Option<PathBuf>,
     /// The values in force, as start-up read them; a write leaves them, as it does a run's.
     pub effective: StoredDevice,
@@ -319,46 +318,16 @@ pub struct InMemoryDeviceConfiguration {
     /// Makes every write fail, as a file that can't be written does.
     pub fail_writes: bool,
     pub stored: RefCell<StoredDevice>,
-    /// Each restore that went to the file, in order: the fake can't parse a raw value, so a
+    /// Each restore that reached the file, in order: the fake can't parse a raw value, so a
     /// restored value is noted here and only a restored `None` changes [`Self::stored`].
     pub restored: RefCell<Vec<(ConfigKey, Option<String>)>>,
+    /// The raw text a restore put back, which [`DeviceFile::raw`] reads until the key is written.
+    raw_restored: RefCell<HashMap<ConfigKey, String>>,
 }
 
-impl InMemoryDeviceConfiguration {
-    /// A file that takes every write.
-    pub fn writable() -> Self {
-        Self {
-            file: Some(PathBuf::from("personal-ledger.conf")),
-            ..Self::default()
-        }
-    }
-
-    /// [`Self::writable`], with `key` set by `source` above the file.
-    pub fn shadowing(key: ConfigKey, source: &str) -> Self {
-        Self {
-            shadows: vec![(key, source.to_string())],
-            ..Self::writable()
-        }
-    }
-
-    /// `self`, with start-up having read each of `values`.
-    pub fn reading(self, values: impl IntoIterator<Item = ConfigValue>) -> Self {
-        Self {
-            effective: StoredDevice::of(values),
-            ..self
-        }
-    }
-
-    /// `self`, with the file holding each of `values`.
-    pub fn storing(self, values: impl IntoIterator<Item = ConfigValue>) -> Self {
-        Self {
-            stored: RefCell::new(StoredDevice::of(values)),
-            ..self
-        }
-    }
-
-    pub fn stored(&self) -> StoredDevice {
-        self.stored.borrow().clone()
+impl DeviceFile for InMemoryDeviceFile {
+    fn target(&self) -> Option<PathBuf> {
+        self.file.clone()
     }
 
     fn shadow(&self, key: ConfigKey) -> Option<String> {
@@ -368,68 +337,130 @@ impl InMemoryDeviceConfiguration {
             .map(|(_, source)| source.clone())
     }
 
-    /// Changes `key` in the file with `edit`, answering `value`, unless the key is shadowed,
-    /// there's no file, or writes fail.
-    fn change<T>(
-        &self,
-        key: ConfigKey,
-        value: T,
-        edit: impl FnOnce(&mut StoredDevice),
-    ) -> DeviceAnswer<T> {
-        if !writes_when_shadowed(key)
-            && let Some(source) = self.shadow(key)
-        {
-            return DeviceAnswer::Shadowed { source };
+    fn stored_all(&self) -> Vec<(ConfigKey, ConfigValue)> {
+        let stored = self.stored.borrow();
+        ConfigKey::ALL
+            .into_iter()
+            .filter_map(|key| Some((key, stored.get(key)?.clone())))
+            .collect()
+    }
+
+    fn effective(&self, key: ConfigKey) -> Option<ConfigValue> {
+        self.effective.get(key).cloned()
+    }
+
+    /// A restored text as put back, else the stored value's debug form: the fake can't spell a
+    /// value as the parser does, and only needs the raw text to be told apart.
+    fn raw(&self, key: ConfigKey) -> Option<String> {
+        if let Some(raw) = self.raw_restored.borrow().get(&key) {
+            return Some(raw.clone());
         }
-        let Some(file) = &self.file else {
-            return DeviceAnswer::Refused(DeviceRefusal::NoFile);
-        };
+        self.stored
+            .borrow()
+            .get(key)
+            .map(|value| format!("{value:?}"))
+    }
+
+    fn set(&self, value: ConfigValue) -> Result<(), WriteError> {
         if self.fail_writes {
-            return DeviceAnswer::Refused(DeviceRefusal::WriteFailed);
+            return Err(WriteError);
         }
-        edit(&mut self.stored.borrow_mut());
-        DeviceAnswer::Saved {
-            value,
-            file: file.display().to_string(),
+        self.raw_restored.borrow_mut().remove(&value.key());
+        self.stored.borrow_mut().0.insert(value.key(), value);
+        Ok(())
+    }
+
+    fn remove(&self, key: ConfigKey) -> Result<(), WriteError> {
+        if self.fail_writes {
+            return Err(WriteError);
         }
+        self.raw_restored.borrow_mut().remove(&key);
+        self.stored.borrow_mut().0.remove(&key);
+        Ok(())
+    }
+
+    fn restore(&self, key: ConfigKey, value: Option<&str>) -> Result<(), WriteError> {
+        if self.fail_writes {
+            return Err(WriteError);
+        }
+        match value {
+            None => {
+                self.raw_restored.borrow_mut().remove(&key);
+                self.stored.borrow_mut().0.remove(&key);
+            }
+            Some(raw) => {
+                self.raw_restored.borrow_mut().insert(key, raw.to_string());
+            }
+        }
+        self.restored
+            .borrow_mut()
+            .push((key, value.map(str::to_string)));
+        Ok(())
     }
 }
 
-impl DeviceConfiguration for InMemoryDeviceConfiguration {
-    fn read(&self) -> DeviceSnapshot {
-        let stored = self.stored.borrow();
-        DeviceSnapshot::new(self.file.clone(), |key| KeyState {
-            stored: stored.get(key).cloned(),
-            effective: self.effective.get(key).cloned(),
-            shadow: self.shadow(key),
+/// The in-memory file under the real write-through policy: what the Presenters' tests write to.
+pub type InMemoryDeviceConfiguration = Policed<InMemoryDeviceFile>;
+
+impl InMemoryDeviceConfiguration {
+    /// A file that takes every write.
+    pub fn writable() -> Self {
+        Self::new(InMemoryDeviceFile {
+            file: Some(PathBuf::from("personal-ledger.conf")),
+            ..InMemoryDeviceFile::default()
         })
     }
 
-    fn write(&self, value: ConfigValue) -> DeviceAnswer<ConfigValue> {
-        let written = value.clone();
-        self.change(value.key(), value, |stored| {
-            stored.0.insert(written.key(), written);
+    /// [`Self::writable`], with `key` set by `source` above the file.
+    pub fn shadowing(key: ConfigKey, source: &str) -> Self {
+        Self::edited(Self::writable(), |file| {
+            file.shadows = vec![(key, source.to_string())];
         })
     }
 
-    fn remove(&self, key: ConfigKey) -> DeviceAnswer<()> {
-        self.change(key, (), |stored| {
-            stored.0.remove(&key);
+    /// [`Self::writable`], but every write fails.
+    pub fn unwritable() -> Self {
+        Self::edited(Self::writable(), |file| file.fail_writes = true)
+    }
+
+    /// `self`, writing to `path`.
+    #[must_use]
+    pub fn at(self, path: PathBuf) -> Self {
+        Self::edited(self, |file| file.file = Some(path))
+    }
+
+    /// `self`, with start-up having read each of `values`.
+    #[must_use]
+    pub fn reading(self, values: impl IntoIterator<Item = ConfigValue>) -> Self {
+        Self::edited(self, |file| file.effective = StoredDevice::of(values))
+    }
+
+    /// `self`, with the file holding each of `values`.
+    #[must_use]
+    pub fn storing(self, values: impl IntoIterator<Item = ConfigValue>) -> Self {
+        Self::edited(self, |file| {
+            file.stored = RefCell::new(StoredDevice::of(values));
         })
     }
 
-    fn restore(&self, key: ConfigKey, value: Option<&str>) -> DeviceAnswer<()> {
-        let answer = self.change(key, (), |stored| {
-            if value.is_none() {
-                stored.0.remove(&key);
-            }
-        });
-        if matches!(answer, DeviceAnswer::Saved { .. }) {
-            self.restored
-                .borrow_mut()
-                .push((key, value.map(str::to_string)));
-        }
-        answer
+    pub fn stored(&self) -> StoredDevice {
+        self.file().stored.borrow().clone()
+    }
+
+    /// The file's rows, for a test to change under a Presenter.
+    pub fn stored_mut(&self) -> std::cell::RefMut<'_, StoredDevice> {
+        self.file().stored.borrow_mut()
+    }
+
+    /// Each restore that went to the file, in order.
+    pub fn restored(&self) -> Vec<(ConfigKey, Option<String>)> {
+        self.file().restored.borrow().clone()
+    }
+
+    fn edited(self, edit: impl FnOnce(&mut InMemoryDeviceFile)) -> Self {
+        let mut file = self.into_file();
+        edit(&mut file);
+        Self::new(file)
     }
 }
 

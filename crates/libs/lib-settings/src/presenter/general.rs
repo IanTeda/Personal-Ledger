@@ -1040,10 +1040,7 @@ mod tests {
 
     #[test]
     fn refused_toasts_arent_handed_the_shell() {
-        let mut general = general_on(Rc::new(InMemoryDeviceConfiguration {
-            fail_writes: true,
-            ..InMemoryDeviceConfiguration::writable()
-        }));
+        let mut general = general_on(Rc::new(InMemoryDeviceConfiguration::unwritable()));
         let router = send(&mut general, [GeneralEvent::SetToasts(false)]);
         assert!(general.settings().toasts_on);
         assert!(!router.routed.contains(&Routed::ToastsChanged(false)));
@@ -1376,11 +1373,9 @@ mod tests {
 
     #[test]
     fn the_data_folder_and_this_device_show_what_the_device_reads() {
-        let device = InMemoryDeviceConfiguration {
-            file: Some(PathBuf::from("/home/me/.config/personal-ledger.conf")),
-            ..InMemoryDeviceConfiguration::writable()
-        }
-        .reading([ConfigValue::Data(PathBuf::from("/home/me/Ledgers"))]);
+        let device = InMemoryDeviceConfiguration::writable()
+            .at(PathBuf::from("/home/me/.config/personal-ledger.conf"))
+            .reading([ConfigValue::Data(PathBuf::from("/home/me/Ledgers"))]);
         let mut general = general_on(Rc::new(device));
         general.set_last_ledger(Some(PathBuf::from("/home/me/Ledgers/home.ledger")));
 
@@ -1475,7 +1470,7 @@ mod tests {
         );
         assert!(general.view_model().fields.list_open());
         {
-            let mut stored = device.stored.borrow_mut();
+            let mut stored = device.stored_mut();
             stored.0.remove(&ConfigKey::Toasts);
             stored.0.insert(
                 ConfigKey::StartView,
@@ -1507,8 +1502,7 @@ mod tests {
             Rc::new(InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(true)]));
         let mut general = general_on(device.clone());
         device
-            .stored
-            .borrow_mut()
+            .stored_mut()
             .0
             .insert(ConfigKey::Toasts, ConfigValue::Toasts(false));
 
@@ -1522,7 +1516,7 @@ mod tests {
         let device = with_data_folder(InMemoryDeviceConfiguration::writable());
         let mut general = general_on(device.clone());
         pick(&mut general, "/home/me/finance");
-        device.stored.borrow_mut().0.remove(&ConfigKey::Data);
+        device.stored_mut().0.remove(&ConfigKey::Data);
 
         general.reload(device.read(), &mut RecordingRouter::default());
 
@@ -1534,7 +1528,7 @@ mod tests {
             "--data",
         ));
         let mut general = general_on(shadowed.clone());
-        shadowed.stored.borrow_mut().0.insert(
+        shadowed.stored_mut().0.insert(
             ConfigKey::Data,
             ConfigValue::Data(PathBuf::from("/home/me/finance")),
         );
@@ -1553,8 +1547,7 @@ mod tests {
         ));
         let mut general = general_reading(device.clone(), Locale::EnUs);
         device
-            .stored
-            .borrow_mut()
+            .stored_mut()
             .0
             .insert(ConfigKey::Locale, ConfigValue::Locale("en-GB".to_string()));
 
@@ -1586,8 +1579,7 @@ mod tests {
             Rc::new(InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(true)]));
         let mut general = general_on(device.clone());
         device
-            .stored
-            .borrow_mut()
+            .stored_mut()
             .0
             .insert(ConfigKey::Toasts, ConfigValue::Toasts(false));
 
@@ -1602,7 +1594,7 @@ mod tests {
         let device = with_data_folder(InMemoryDeviceConfiguration::writable());
         let mut general = general_on(device.clone());
         pick(&mut general, "/home/me/finance");
-        device.stored.borrow_mut().0.remove(&ConfigKey::Data);
+        device.stored_mut().0.remove(&ConfigKey::Data);
 
         assert_eq!(
             reloaded(&mut general, &device),
@@ -1627,7 +1619,7 @@ mod tests {
             "--data",
         ));
         let mut general = general_on(shadowed.clone());
-        shadowed.stored.borrow_mut().0.insert(
+        shadowed.stored_mut().0.insert(
             ConfigKey::Data,
             ConfigValue::Data(PathBuf::from("/home/me/finance")),
         );

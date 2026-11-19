@@ -138,7 +138,7 @@ pub struct ShellLogs {
 pub fn build(
     persisted: PersistedState,
     start_view: &lib_core::StartView,
-    device: Rc<crate::DeviceConfigFile>,
+    device: Rc<crate::ConfiguredDevice>,
     bindings: ShellBindings,
     logs: ShellLogs,
     ledger: Option<LedgerFile>,
