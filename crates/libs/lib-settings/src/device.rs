@@ -6,7 +6,7 @@
 //! itself, whose failure becomes [`DeviceRefusal::WriteFailed`].
 
 use std::fmt;
-use std::path::PathBuf;
+use std::path::Path;
 use std::rc::Rc;
 
 use lib_core::configuration::{ConfigKey, ConfigValue};
@@ -25,7 +25,7 @@ pub struct WriteError;
 /// holds and how to change it. Every write goes through, so [`Policed`] decides first.
 pub trait DeviceFile {
     /// The file a write goes to; `None` with no home folder to keep one in.
-    fn target(&self) -> Option<PathBuf>;
+    fn target(&self) -> Option<&Path>;
 
     /// What sets `key` above the file, by name, or `None` when nothing does.
     fn shadow(&self, key: ConfigKey) -> Option<String>;
@@ -86,14 +86,14 @@ impl<F: DeviceFile> Policed<F> {
         }
     }
 
-    /// The file underneath, with no policy.
-    pub fn into_file(self) -> F {
-        self.file
-    }
-
     /// The raw file underneath.
     pub fn file(&self) -> &F {
         &self.file
+    }
+
+    /// The raw file underneath, for the fake's builders to change in place, keeping the log.
+    pub(crate) fn file_mut(&mut self) -> &mut F {
+        &mut self.file
     }
 
     /// [`Self::change`], noting the key's raw value before and after for the input's History entry
@@ -104,10 +104,12 @@ impl<F: DeviceFile> Policed<F> {
         value: T,
         edit: impl FnOnce(&F) -> Result<(), WriteError>,
     ) -> DeviceAnswer<T> {
-        let before = self.log.as_ref().map(|_| self.file.raw(key));
+        let Some(log) = &self.log else {
+            return self.change(key, value, edit);
+        };
+        let before = self.file.raw(key);
         let answer = self.change(key, value, edit);
-        if let (Some(log), Some(before), DeviceAnswer::Saved { .. }) = (&self.log, before, &answer)
-        {
+        if matches!(answer, DeviceAnswer::Saved { .. }) {
             log.record(key, before, self.file.raw(key));
         }
         answer
@@ -158,7 +160,7 @@ impl<F: DeviceFile> DeviceConfiguration for Policed<F> {
     fn read(&self) -> DeviceSnapshot {
         // The file is read and parsed once for every key, not once per key.
         let stored = self.file.stored_all();
-        DeviceSnapshot::new(self.file.target(), |key| KeyState {
+        DeviceSnapshot::new(self.file.target().map(Path::to_path_buf), |key| KeyState {
             stored: stored
                 .iter()
                 .find(|(read, _)| *read == key)

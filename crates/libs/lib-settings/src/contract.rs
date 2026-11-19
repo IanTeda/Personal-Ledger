@@ -101,13 +101,13 @@ fn sample_pairs() -> Vec<(ConfigValue, ConfigValue)> {
 }
 
 /// A value for every key, each other than its default, in [`ConfigKey::ALL`]'s order.
-pub fn first_values() -> Vec<ConfigValue> {
+fn first_values() -> Vec<ConfigValue> {
     sample_pairs().into_iter().map(|(first, _)| first).collect()
 }
 
 /// A second value for every key, each other than [`first_values`]', the Locale's default date
 /// style among them.
-pub fn second_values() -> Vec<ConfigValue> {
+fn second_values() -> Vec<ConfigValue> {
     sample_pairs()
         .into_iter()
         .map(|(_, second)| second)
@@ -125,29 +125,14 @@ fn stored(device: &impl DeviceConfiguration) -> StoredDevice {
     )
 }
 
+/// The name the in-memory file gives a source above it that sets `key`.
+fn shadow_source(key: ConfigKey) -> String {
+    format!("PERSONAL_LEDGER_{}", key.name().to_uppercase())
+}
+
 /// What `file` holds, as its raw read says.
 fn held(file: &impl DeviceFile) -> StoredDevice {
     StoredDevice(file.stored_all().into_iter().collect())
-}
-
-/// The sample pairs cover every key, once each, so the checks below reach a new key, and each
-/// pair is two different values of the one key, so a later write is seen to replace the first.
-pub fn the_sample_values_cover_every_key() {
-    let pairs = sample_pairs();
-    assert_eq!(
-        pairs
-            .iter()
-            .map(|(first, _)| first.key())
-            .collect::<Vec<_>>(),
-        ConfigKey::ALL
-    );
-    for (first, second) in &pairs {
-        assert_eq!(first.key(), second.key(), "{first:?} and {second:?}");
-        assert_ne!(
-            first, second,
-            "{first:?}: the pair's two values are the same"
-        );
-    }
 }
 
 /// Every key written through a raw file reads back, and a later write replaces it.
@@ -230,7 +215,6 @@ pub fn an_unwritable_file_is_an_error(factory: &mut impl DeviceFileFactory) {
 
 /// Runs every [`DeviceFile`] check.
 pub fn run_all_device_file(factory: &mut impl DeviceFileFactory) {
-    the_sample_values_cover_every_key();
     every_key_is_written_and_read_back(factory);
     a_removed_key_reads_back_unset(factory);
     a_restore_puts_the_raw_value_back(factory);
@@ -281,7 +265,7 @@ pub fn a_later_write_replaces_the_value() {
 pub fn a_shadowed_key_reads_its_source_and_is_left_unwritten() {
     for value in first_values() {
         let key = value.key();
-        let source = format!("PERSONAL_LEDGER_{}", key.name().to_uppercase());
+        let source = shadow_source(key);
         let device = InMemoryDeviceConfiguration::shadowing(key, &source);
 
         let snapshot = device.read();
@@ -351,7 +335,6 @@ pub fn a_failed_write_is_refused() {
 
 /// Runs every policy check, once, on [`Policed`] over the in-memory file.
 pub fn run_all_policy() {
-    the_sample_values_cover_every_key();
     every_key_is_saved_and_reads_back();
     a_later_write_replaces_the_value();
     a_shadowed_key_reads_its_source_and_is_left_unwritten();
@@ -522,9 +505,28 @@ pub fn run_all_ledger(factory: &mut impl LedgerFactory) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::{
-        InMemoryDeviceConfiguration, InMemoryDeviceFile, InMemoryLedgerUnits, InMemoryTracingLog,
-    };
+    use crate::fake::{InMemoryDeviceFile, InMemoryLedgerUnits, InMemoryTracingLog};
+
+    /// The sample pairs cover every key, once each, so the checks reach a new key, and each pair
+    /// is two different values of the one key, so a later write is seen to replace the first.
+    #[test]
+    fn the_sample_values_cover_every_key() {
+        let pairs = sample_pairs();
+        assert_eq!(
+            pairs
+                .iter()
+                .map(|(first, _)| first.key())
+                .collect::<Vec<_>>(),
+            ConfigKey::ALL
+        );
+        for (first, second) in &pairs {
+            assert_eq!(first.key(), second.key(), "{first:?} and {second:?}");
+            assert_ne!(
+                first, second,
+                "{first:?}: the pair's two values are the same"
+            );
+        }
+    }
 
     struct FakeLogs;
 
@@ -571,15 +573,12 @@ mod tests {
         type File = InMemoryDeviceFile;
 
         fn writable(&mut self) -> Self::File {
-            InMemoryDeviceConfiguration::writable().into_file()
+            InMemoryDeviceFile::writable()
         }
 
         fn shadowing(&mut self, key: ConfigKey) -> (Self::File, String) {
-            let source = format!("PERSONAL_LEDGER_{}", key.name().to_uppercase());
-            (
-                InMemoryDeviceConfiguration::shadowing(key, &source).into_file(),
-                source,
-            )
+            let source = shadow_source(key);
+            (InMemoryDeviceFile::shadowing(key, &source), source)
         }
 
         fn without_file(&mut self) -> Self::File {
@@ -587,7 +586,7 @@ mod tests {
         }
 
         fn unwritable(&mut self) -> Self::File {
-            InMemoryDeviceConfiguration::unwritable().into_file()
+            InMemoryDeviceFile::unwritable()
         }
     }
 

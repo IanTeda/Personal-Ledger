@@ -3,7 +3,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 
@@ -326,8 +326,8 @@ pub struct InMemoryDeviceFile {
 }
 
 impl DeviceFile for InMemoryDeviceFile {
-    fn target(&self) -> Option<PathBuf> {
-        self.file.clone()
+    fn target(&self) -> Option<&Path> {
+        self.file.as_deref()
     }
 
     fn shadow(&self, key: ConfigKey) -> Option<String> {
@@ -399,28 +399,49 @@ impl DeviceFile for InMemoryDeviceFile {
     }
 }
 
+impl InMemoryDeviceFile {
+    /// A file that takes every write.
+    pub fn writable() -> Self {
+        Self {
+            file: Some(PathBuf::from("personal-ledger.conf")),
+            ..Self::default()
+        }
+    }
+
+    /// [`Self::writable`], with `key` set by `source` above the file.
+    pub fn shadowing(key: ConfigKey, source: &str) -> Self {
+        Self {
+            shadows: vec![(key, source.to_string())],
+            ..Self::writable()
+        }
+    }
+
+    /// [`Self::writable`], but every write fails.
+    pub fn unwritable() -> Self {
+        Self {
+            fail_writes: true,
+            ..Self::writable()
+        }
+    }
+}
+
 /// The in-memory file under the real write-through policy: what the Presenters' tests write to.
 pub type InMemoryDeviceConfiguration = Policed<InMemoryDeviceFile>;
 
 impl InMemoryDeviceConfiguration {
     /// A file that takes every write.
     pub fn writable() -> Self {
-        Self::new(InMemoryDeviceFile {
-            file: Some(PathBuf::from("personal-ledger.conf")),
-            ..InMemoryDeviceFile::default()
-        })
+        Self::new(InMemoryDeviceFile::writable())
     }
 
     /// [`Self::writable`], with `key` set by `source` above the file.
     pub fn shadowing(key: ConfigKey, source: &str) -> Self {
-        Self::edited(Self::writable(), |file| {
-            file.shadows = vec![(key, source.to_string())];
-        })
+        Self::new(InMemoryDeviceFile::shadowing(key, source))
     }
 
     /// [`Self::writable`], but every write fails.
     pub fn unwritable() -> Self {
-        Self::edited(Self::writable(), |file| file.fail_writes = true)
+        Self::new(InMemoryDeviceFile::unwritable())
     }
 
     /// `self`, writing to `path`.
@@ -457,10 +478,9 @@ impl InMemoryDeviceConfiguration {
         self.file().restored.borrow().clone()
     }
 
-    fn edited(self, edit: impl FnOnce(&mut InMemoryDeviceFile)) -> Self {
-        let mut file = self.into_file();
-        edit(&mut file);
-        Self::new(file)
+    fn edited(mut self, edit: impl FnOnce(&mut InMemoryDeviceFile)) -> Self {
+        edit(self.file_mut());
+        self
     }
 }
 

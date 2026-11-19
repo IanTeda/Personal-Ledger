@@ -5,7 +5,7 @@
 //! `lib_config` spell every key and value. The pages' Presenters (`lib-settings`) decide what a
 //! write's answer means; this only reads and writes.
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::rc::Rc;
 
 use crate::reversal::{ConfigJournal, ConfigReversal};
@@ -47,8 +47,8 @@ fn failed(key: ConfigKey) -> impl FnOnce(lib_config::Error) -> WriteError {
 }
 
 impl DeviceFile for DeviceConfigFile {
-    fn target(&self) -> Option<PathBuf> {
-        self.writer.target().map(Into::into)
+    fn target(&self) -> Option<&Path> {
+        self.writer.target()
     }
 
     fn shadow(&self, key: ConfigKey) -> Option<String> {
