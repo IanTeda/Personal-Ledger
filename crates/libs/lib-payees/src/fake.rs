@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use lib_core::{CategoryId, PayeeId};
+use lib_core::{CategoryId, CategoryRef, CategoryTypes, PayeeId};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
@@ -62,25 +62,42 @@ impl PayeeCategories for InMemoryPayeeCategories {
     }
 }
 
-/// The sample Categories' leaves, with their ids, as a Payee's Default category reads them.
+/// The sample Categories' leaves, with their ids, as a Payee's Default category reads them: in Tree
+/// order, worked out from the sample's tree (`lib_core::tree_order`) rather than listed by hand, as
+/// `lib-database`'s `payee_categories` lists the Categories store's leaves. No two sample leaves
+/// share a name, so each label is the leaf's own name.
 pub fn sample_categories() -> Vec<PayeeCategory> {
-    [
-        (8, "Dining"),
-        (7, "Groceries"),
-        (10, "Household"),
-        (2, "Rent"),
-        (4, "Electricity"),
-        (5, "Water"),
-        (9, "Transport"),
-        (12, "Interest"),
-        (11, "Salary"),
-    ]
-    .into_iter()
-    .map(|(n, label)| PayeeCategory {
+    let category = |n: u32, name: &str, parent: Option<u32>, category_type, is_leaf| CategoryRef {
         id: CategoryId::seed(n),
-        label: label.to_string(),
-    })
-    .collect()
+        name: name.to_string(),
+        path: name.to_string(),
+        parent: parent.map(CategoryId::seed),
+        category_type,
+        is_leaf,
+    };
+    let (expense, income) = (CategoryTypes::Expense, CategoryTypes::Income);
+    let rows = vec![
+        category(1, "Housing", None, expense.clone(), false),
+        category(2, "Rent", Some(1), expense.clone(), true),
+        category(3, "Utilities", Some(1), expense.clone(), false),
+        category(4, "Electricity", Some(3), expense.clone(), true),
+        category(5, "Water", Some(3), expense.clone(), true),
+        category(6, "Food", None, expense.clone(), false),
+        category(7, "Groceries", Some(6), expense.clone(), true),
+        category(8, "Dining", Some(6), expense.clone(), true),
+        category(9, "Transport", None, expense.clone(), true),
+        category(10, "Household", None, expense, true),
+        category(11, "Salary", None, income.clone(), true),
+        category(12, "Interest", None, income, true),
+    ];
+    lib_core::tree_order(&rows)
+        .into_iter()
+        .filter(|row| row.is_leaf)
+        .map(|row| PayeeCategory {
+            id: row.id,
+            label: row.name,
+        })
+        .collect()
 }
 
 /// Every Payees port in memory, together, so a test can hand a write the ones it takes.

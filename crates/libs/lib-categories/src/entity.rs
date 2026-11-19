@@ -134,42 +134,41 @@ pub fn descendants_inclusive(categories: &[Category], id: CategoryId) -> Vec<Cat
     found
 }
 
-/// Every category with its [`path`], depth-first from each top-level category, siblings A-Z by name (ignoring case, ties by id) within their type --
-/// the Category filter's option list, parents included (choosing a parent matches its descendants).
+/// Every category with its [`path`], in Tree order ([`lib_core::tree_order_indices`]) -- the
+/// Category filter's option list, parents included (choosing a parent matches its descendants).
 pub fn paths_in_tree_order(categories: &[Category]) -> Vec<(CategoryId, String)> {
-    fn walk(
-        categories: &[Category],
-        parent: Option<CategoryId>,
-        out: &mut Vec<(CategoryId, String)>,
-    ) {
-        let mut siblings: Vec<_> = categories.iter().filter(|c| c.parent == parent).collect();
-        siblings.sort_by_cached_key(|c| {
-            (
-                matches!(c.category_type, CategoryTypes::Income),
-                c.name.to_lowercase(),
-                c.id,
-            )
-        });
-        for category in siblings {
-            if let Some(label) = path(categories, category.id) {
-                out.push((category.id, label));
-            }
-            walk(categories, Some(category.id), out);
-        }
-    }
-    let mut out = Vec::with_capacity(categories.len());
-    walk(categories, None, &mut out);
-    out
+    lib_core::tree_order_indices(categories)
+        .into_iter()
+        .filter_map(|index| {
+            let id = categories[index].id;
+            path(categories, id).map(|label| (id, label))
+        })
+        .collect()
 }
 
-/// The categories in tree order: depth-first from each top-level category, each parent before its
-/// children and siblings A-Z by name within their type, so a restored row returns to its place. A row the tree can't reach (a missing parent or a cycle)
-/// is left out, as [`paths_in_tree_order`] leaves it out.
+/// The categories in Tree order, so a restored row returns to its place. A row the tree can't
+/// reach (a missing parent or a cycle) is left out, as [`paths_in_tree_order`] leaves it out.
 pub fn tree_order(categories: &[Category]) -> Vec<Category> {
-    paths_in_tree_order(categories)
-        .into_iter()
-        .filter_map(|(id, _)| get(categories, id).cloned())
-        .collect()
+    lib_core::tree_order(categories)
+}
+
+/// A Category as [`lib_core::tree_order`] walks it.
+impl lib_core::TreeNode for Category {
+    fn node_id(&self) -> CategoryId {
+        self.id
+    }
+
+    fn node_parent(&self) -> Option<CategoryId> {
+        self.parent
+    }
+
+    fn node_is_income(&self) -> bool {
+        self.category_type == CategoryTypes::Income
+    }
+
+    fn node_name(&self) -> &str {
+        &self.name
+    }
 }
 
 /// The depth of a category in the tree (0 for top-level, capped at 3).

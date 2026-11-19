@@ -275,7 +275,7 @@ One of the two fixed classifications a Category carries: Expense (money going ou
 _Avoid_: Account type.
 
 **Tree order**:
-The order Categories are listed in: Expense before Income, each parent before its children, and siblings A–Z by name, ignoring case.
+The order Categories are listed in: Expense before Income, each parent before its children, and siblings A–Z by name, ignoring case. One definition, `lib_core::tree_order`, used by every crate that lists Categories.
 
 **Uncategorised**:
 The system-provided leaf Category, one per Category Type, that a deleted Category's Splits are re-pointed to, so deleting a Category never deletes a Split. Created the first time it is needed. Fixed once made: it cannot be renamed, moved, given another Category Type or have a Category nested under it.

@@ -23,8 +23,6 @@ mod bills_seed_tests;
 #[cfg(test)]
 mod budgets_seed_tests;
 #[cfg(test)]
-mod category_order_tests;
-#[cfg(test)]
 mod documents_seed_tests;
 #[cfg(test)]
 mod transactions_seed_tests;

@@ -358,15 +358,7 @@ pub fn sample_categories() -> Vec<CategoryRef> {
         category(11, "Salary", "Salary", false, true),
         category(12, "Interest", "Interest", false, true),
     ];
-    // Listed in tree order: siblings A-Z within their type, as `lib-categories` lists them.
-    [6, 8, 7, 10, 1, 2, 3, 4, 5, 9, 12, 11]
-        .into_iter()
-        .filter_map(|n| {
-            rows.iter()
-                .find(|row| row.id == CategoryId::seed(n))
-                .cloned()
-        })
-        .collect()
+    lib_core::tree_order(&rows)
 }
 
 /// The sample Payees Bills' seed and tests name, with the Payees sample's ids, and its one inactive

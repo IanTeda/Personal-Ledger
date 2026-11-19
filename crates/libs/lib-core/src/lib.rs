@@ -57,6 +57,10 @@ pub use category_ref::CategoryRef;
 pub use payee_ref::PayeeRef;
 pub use unit_ref::UnitRef;
 
+/// Tree order: the one walk every crate lists Categories by.
+mod tree_order;
+pub use tree_order::{TreeNode, tree_order, tree_order_indices};
+
 /// Category types used for classifying financial transactions.
 ///
 /// [`CategoryTypes`] represents the fundamental accounting categories

@@ -6,12 +6,11 @@ mod seed;
 
 use lib_core::AccountRef;
 use lib_core::CategoryRef;
-use lib_core::CategoryTypes;
 use lib_core::PayeeRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_core::{CategoryId, TransactionId, UnitId, UnitRef};
+use lib_core::{TransactionId, UnitId, UnitRef};
 
 pub use booked::{
     FIRST_BOOKED, bill_transactions, booked_sample_transactions, document_transactions,
@@ -74,45 +73,21 @@ impl TransactionCategories for InMemoryTransactionReads {
     }
 }
 
-/// The order `lib_categories::tree_order` gives, which this crate cannot call: depth-first from each
-/// top-level Category, siblings Expense before Income, then by name lowercased, ties by id. Walking
-/// the `parent` links keeps each child under its own parent even when two siblings' names differ
-/// only in case. A row the walk cannot reach (a missing parent or a cycle) follows the reachable
-/// rows in its stored order, so none is dropped.
+/// Tree order ([`lib_core::tree_order_indices`]), as `lib_categories::tree_order` lists them. A row
+/// the walk cannot reach (a missing parent or a cycle) follows the reachable rows in its stored
+/// order, so none is dropped.
 fn tree_order(categories: &[CategoryRef]) -> Vec<CategoryRef> {
-    fn walk(
-        categories: &[CategoryRef],
-        parent: Option<CategoryId>,
-        placed: &mut [bool],
-        out: &mut Vec<CategoryRef>,
-    ) {
-        let mut siblings: Vec<usize> = (0..categories.len())
-            .filter(|&index| !placed[index] && categories[index].parent == parent)
-            .collect();
-        siblings.sort_by_cached_key(|&index| {
-            let row = &categories[index];
-            (
-                row.category_type == CategoryTypes::Income,
-                row.name.to_lowercase(),
-                row.id,
-            )
-        });
-        for index in siblings {
-            placed[index] = true;
-            out.push(categories[index].clone());
-            walk(categories, Some(categories[index].id), placed, out);
-        }
-    }
-
+    let reached = lib_core::tree_order_indices(categories);
     let mut placed = vec![false; categories.len()];
-    let mut out = Vec::with_capacity(categories.len());
-    walk(categories, None, &mut placed, &mut out);
-    for (index, row) in categories.iter().enumerate() {
-        if !placed[index] {
-            out.push(row.clone());
-        }
+    for &index in &reached {
+        placed[index] = true;
     }
-    out
+    let unreached = (0..categories.len()).filter(|&index| !placed[index]);
+    reached
+        .into_iter()
+        .chain(unreached)
+        .map(|index| categories[index].clone())
+        .collect()
 }
 
 impl TransactionPayees for InMemoryTransactionReads {
@@ -191,6 +166,7 @@ impl TransactionUnits for InMemoryPorts {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lib_core::{CategoryId, CategoryTypes};
 
     fn category(
         id: u32,
@@ -248,5 +224,25 @@ mod tests {
             .collect();
 
         assert_eq!(paths, vec!["Food", "Food › a", "food", "food › b",]);
+    }
+
+    #[test]
+    fn a_row_the_walk_cannot_reach_follows_the_reachable_rows_in_its_stored_order() {
+        let reads = InMemoryTransactionReads {
+            categories: vec![
+                category(3, "Orphan", Some(9), CategoryTypes::Expense),
+                category(1, "Food", None, CategoryTypes::Expense),
+                category(2, "Loop", Some(2), CategoryTypes::Expense),
+            ],
+            ..Default::default()
+        };
+
+        let paths: Vec<String> = reads
+            .transaction_categories()
+            .into_iter()
+            .map(|category| category.path)
+            .collect();
+
+        assert_eq!(paths, vec!["Food", "Orphan", "Loop"]);
     }
 }
