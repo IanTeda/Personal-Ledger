@@ -38,7 +38,7 @@ use lib_core::PayeeRef;
 use lib_core::{AccountRef, CategoryRef, RowID};
 use std::cell::{Cell, RefCell, RefMut};
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::mpsc;
 
 use chrono::NaiveDate;
@@ -99,6 +99,7 @@ use crate::adapter::{
     accounts, bills, categories, institutions, inventory, tags, transactions, units,
 };
 use crate::reversal::{Image, Journal, RowImage};
+use crate::writer::Deleted;
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
     Domain, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter,
@@ -133,6 +134,10 @@ impl<S: ?Sized> Recorded<S> {
     pub(crate) fn journal(&self) -> &Journal {
         self.store.written.journal()
     }
+    /// The set this store notes its writes in, shared by every store.
+    pub(crate) fn written(&self) -> &Written {
+        &self.store.written
+    }
 }
 
 /// A store with the set its writes are noted in and the journal they are recorded in: what a
@@ -140,6 +145,67 @@ impl<S: ?Sized> Recorded<S> {
 struct Journaled<S: ?Sized> {
     written: Written,
     store: Box<S>,
+}
+
+/// The stores a delete's cascade reaches in the file, which the deleting store's recorder asks what
+/// the delete takes, recording it ahead of the deleted row's own image so Undo, newest first,
+/// restores the row before the rows naming it (#1276). Held weakly, so no store owns another
+/// (the cycle invariant in [`crate::LedgerPorts`]' module doc), on the [`Written`] every recorder
+/// shares, so a store's recorder grows by nothing.
+#[derive(Debug, Clone)]
+pub(crate) struct Reaches {
+    documents: Weak<RefCell<dyn DocumentsStore>>,
+    budgets: Weak<RefCell<dyn BudgetsStore>>,
+}
+
+impl Reaches {
+    pub(crate) fn new(documents: &SharedDocumentsStore, budgets: &SharedBudgetsStore) -> Self {
+        Self {
+            documents: Rc::downgrade(documents),
+            budgets: Rc::downgrade(budgets),
+        }
+    }
+
+    /// Records in `journal` the rows `deleted` takes in each domain its rule names. Nothing is
+    /// read while Undo or Redo steps, since nothing would be recorded.
+    fn record(&self, deleted: Deleted, journal: &Journal) {
+        if !journal.recording() {
+            return;
+        }
+        for domain in deleted.cascades_to() {
+            match domain {
+                Domain::Documents => {
+                    let (Some(link), Some(documents)) = (deleted.link(), self.documents.upgrade())
+                    else {
+                        continue;
+                    };
+                    for image in documents.borrow().unlinked_by(link, journal) {
+                        journal.record(RowImage::Document(image));
+                    }
+                }
+                Domain::Budgets => {
+                    let (Some(account), Some(budgets)) =
+                        (deleted.account(), self.budgets.upgrade())
+                    else {
+                        continue;
+                    };
+                    for image in budgets.borrow().uncounted(account, journal) {
+                        journal.record(RowImage::Budget(image));
+                    }
+                }
+                domain => debug_assert!(false, "no store answers a cascade into {domain:?}"),
+            }
+        }
+    }
+}
+
+impl<S: ?Sized> Journaled<S> {
+    /// Records what deleting `deleted` takes in the stores its cascade reaches.
+    fn record_cascade(&self, deleted: Deleted) {
+        if let Some(reaches) = self.written.reaches() {
+            reaches.record(deleted, self.written.journal());
+        }
+    }
 }
 
 impl<S: ?Sized> std::ops::Deref for Journaled<S> {
@@ -214,8 +280,8 @@ impl<S: TransactionsStore + ?Sized> TransactionRepository for Journaled<S> {
     }
 
     fn delete_transaction(&mut self, id: TransactionId) {
+        self.record_cascade(Deleted::Transaction(id));
         let journal = self.written.journal();
-        journal.unlink(DocumentLink::Transaction(id));
         journal.record_delete(self.store.transactions().transaction(id));
         self.store.transactions_mut().delete_transaction(id);
     }
@@ -292,8 +358,8 @@ impl<S: AccountsStore + ?Sized> AccountRepository for Journaled<S> {
     }
 
     fn delete_account(&mut self, id: AccountId) {
+        self.record_cascade(Deleted::Account(id));
         let journal = self.written.journal();
-        journal.unlink_account(id);
         if let Some(before) = self.store.accounts().account(id) {
             let order = self.store.order();
             let after = without(&order, id.row_id());
@@ -325,8 +391,8 @@ impl<S: PayeesStore + ?Sized> PayeeRepository for Journaled<S> {
     }
 
     fn delete_payee(&mut self, id: PayeeId) {
+        self.record_cascade(Deleted::Payee(id));
         let journal = self.written.journal();
-        journal.unlink(DocumentLink::Payee(id));
         journal.record_delete(self.store.payees().payee(id));
         self.store.payees_mut().delete_payee(id);
     }
@@ -366,8 +432,8 @@ impl<S: InventoryStore + ?Sized> InventoryRepository for Journaled<S> {
     }
 
     fn delete_item(&mut self, id: lib_core::ItemId) {
+        self.record_cascade(Deleted::Item(id));
         let journal = self.written.journal();
-        journal.unlink(DocumentLink::InventoryItem(id));
         journal.record_delete(self.store.inventory().item(id));
         self.store.inventory_mut().delete_item(id);
     }
@@ -379,7 +445,7 @@ impl<S: InventoryStore + ?Sized> InventoryRepository for Journaled<S> {
         // before the Items that name it.
         for item in self.store.inventory().items() {
             if item.location == id {
-                journal.unlink(DocumentLink::InventoryItem(item.id));
+                self.record_cascade(Deleted::Item(item.id));
                 journal.record(RowImage::Item(Image {
                     before: Some(item),
                     after: None,
@@ -1555,6 +1621,30 @@ pub trait BudgetsStore {
 
     fn budgets_mut(&mut self) -> &mut dyn BudgetRepository;
 
+    /// What deleting Account `account` takes from the Budgets: its place in each Budget counting
+    /// it, as the Budget's image before and after, built on what the input's writes so far left
+    /// the Budget as (`journal`), so a second cascade into it keeps the first's change (#1276).
+    fn uncounted(&self, account: AccountId, journal: &Journal) -> Vec<Image<lib_budgets::Budget>> {
+        self.budgets()
+            .budgets()
+            .into_iter()
+            .filter_map(|budget| {
+                // A Budget the input deleted has no Accounts left to lose.
+                let mut after = journal
+                    .latest(budget.id)
+                    .unwrap_or_else(|| Some(budget.clone()))?;
+                if !after.account_ids.contains(&account) {
+                    return None;
+                }
+                after.account_ids.retain(|held| *held != account);
+                Some(Image {
+                    before: Some(budget),
+                    after: Some(after),
+                })
+            })
+            .collect()
+    }
+
     /// How many Budgets count Account `id`: the Budgets half of `lib-accounts`' `AccountUsage`.
     fn account_budgets(&self, id: AccountId) -> usize {
         self.budgets()
@@ -2301,6 +2391,35 @@ pub trait DocumentsStore: Ordered {
     fn documents(&self) -> &dyn DocumentRepository;
 
     fn documents_mut(&mut self) -> &mut dyn DocumentRepository;
+
+    /// What deleting the record `link` names takes from the Documents: the Link, from each Document
+    /// holding it, as the Document's image before and after, built on what the input's writes so
+    /// far left the Document as (`journal`), so a second cascade into it keeps the first's change
+    /// (#1276).
+    fn unlinked_by(
+        &self,
+        link: DocumentLink,
+        journal: &Journal,
+    ) -> Vec<Image<lib_documents::Document>> {
+        self.documents()
+            .documents()
+            .into_iter()
+            .filter_map(|document| {
+                // A Document the input deleted has no Links left to lose.
+                let mut after = journal
+                    .latest(document.id)
+                    .unwrap_or_else(|| Some(document.clone()))?;
+                if !after.links.contains(&link) {
+                    return None;
+                }
+                after.links.retain(|held| *held != link);
+                Some(Image {
+                    before: Some(document),
+                    after: Some(after),
+                })
+            })
+            .collect()
+    }
 
     /// The Documents in the Inbox, which the rail's badge counts. A read of its own so the in-memory
     /// fakes can count how often the rail asks (#1120).

@@ -11,7 +11,8 @@
 //! its own domain's store and the `Stored<Domain>Reads` it needs over other domains' stores.
 //!
 //! The cycle invariant: `Stored*Reads` and cross-domain adapters hold only bottom-layer stores, no
-//! store holds anything, and a `Stored<Domain>Ports` is held only by Clients, never by a read, an
+//! store holds anything (the stores a delete cascades into are held weakly, on the `Written` set
+//! the stores share, #1276), and a `Stored<Domain>Ports` is held only by Clients, never by a read, an
 //! adapter or another `Stored<Domain>Ports`. So every `Rc` points down a layer, no `Rc` cycle can
 //! be built, and no build order has to guard against one.
 //!
@@ -171,7 +172,6 @@ impl LedgerPorts {
             commit,
             failures,
         } = shared;
-        journal.attach(&stores.documents, &stores.budgets);
         let category_save = StoredCategoriesPorts::new(
             stores.categories.clone(),
             stores.budgets.clone(),

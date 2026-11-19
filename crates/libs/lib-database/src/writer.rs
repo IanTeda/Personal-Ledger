@@ -75,6 +75,56 @@ pub trait Change: Send + 'static {
     fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>>;
 }
 
+/// A row whose delete the file's `ON DELETE CASCADE` carries into other domains' rows, by its id:
+/// the one home of the rules "deleting an X takes rows in Y" (#1276). A [`Change::cascades_to`]
+/// returns [`Deleted::cascades_to`], and the History recorder asks the store of each domain it
+/// names what the delete takes there, so the commit reloads what the recorder recorded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Deleted {
+    Transaction(lib_core::TransactionId),
+    Account(lib_core::AccountId),
+    Payee(lib_core::PayeeId),
+    Item(lib_core::ItemId),
+    /// A Location takes its Items, so it reaches what each Item's delete does. Its own delete has
+    /// no Link: the Inventory's recorder takes each of its Items as an [`Deleted::Item`].
+    Location(lib_core::LocationId),
+}
+
+impl Deleted {
+    /// The domains whose rows the delete takes in the file.
+    pub(crate) fn cascades_to(self) -> &'static [Domain] {
+        match self {
+            // The Document Links to the Account, and its place in the Budgets that count it.
+            Self::Account(_) => &[Domain::Documents, Domain::Budgets],
+            // The Document Links to the row, or, for a Location, to each of its Items.
+            Self::Transaction(_) | Self::Payee(_) | Self::Item(_) | Self::Location(_) => {
+                &[Domain::Documents]
+            }
+        }
+    }
+
+    /// The Document Link naming the deleted row, which every Document holding it loses; `None` for
+    /// a Location, which no Document names.
+    pub(crate) fn link(self) -> Option<lib_documents::DocumentLink> {
+        use lib_documents::DocumentLink;
+        Some(match self {
+            Self::Transaction(id) => DocumentLink::Transaction(id),
+            Self::Account(id) => DocumentLink::Account(id),
+            Self::Payee(id) => DocumentLink::Payee(id),
+            Self::Item(id) => DocumentLink::InventoryItem(id),
+            Self::Location(_) => return None,
+        })
+    }
+
+    /// The Account whose place in the Budgets that count it the delete takes.
+    pub(crate) fn account(self) -> Option<lib_core::AccountId> {
+        match self {
+            Self::Account(id) => Some(id),
+            Self::Transaction(_) | Self::Payee(_) | Self::Item(_) | Self::Location(_) => None,
+        }
+    }
+}
+
 /// One Interactor call's changes, from every adapter, applied in the order they were made in one
 /// transaction: all of them land or none do.
 pub struct Batch(Vec<Box<dyn Change>>);

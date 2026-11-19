@@ -22,11 +22,14 @@
 //!
 //! Where a delete's SQL cascade removes rows in another store (the Document Links to a deleted
 //! Transaction, Account, Payee or Item, and an Account's place in the Budgets that count it), the
-//! recorder notes those rows' images first ([`Journal::unlink`], [`Journal::unlink_account`]),
-//! ahead of the deleted row's own, so Undo, which goes newest first, restores the row before the
-//! rows that name it. Memory still holds the rows when the delete is made, since the Client reloads
-//! the cascade only after the commit, so the recorder reads them from the stores it is attached to
-//! ([`Journal::attach`]), and a second cascade into the same row builds on the first's image.
+//! deleting store's recorder notes those rows' images first, ahead of the deleted row's own, so
+//! Undo, which goes newest first, restores the row before the rows that name it. Which deletes
+//! reach which domains is [`Deleted::cascades_to`](crate::writer::Deleted::cascades_to), the rule
+//! the commit's reload reads too, and the store a cascade reaches says what the delete takes from
+//! it (`DocumentsStore::unlinked_by`, `BudgetsStore::uncounted`) (#1276). Memory still holds the
+//! rows when the delete is made, since the Client reloads the cascade only after the commit, and
+//! a second cascade into the same row builds on the first's image ([`Journal::latest`]). The
+//! journal itself only holds images.
 //!
 //! A Bill Plan, a Bill Schedule entry or a Budget new to the Ledger is recorded like any other
 //! add, and Undo removes it through its store's delete, which only Undo calls (#1253): no Bills or
@@ -35,7 +38,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 use lib_accounts::Account;
 use lib_bills::{BillPlan, BillScheduleEntry, EntryId};
@@ -45,8 +48,8 @@ use lib_core::{
     AccountId, BillPlanId, BudgetId, CategoryId, DocumentId, DocumentTypeId, InstitutionId, ItemId,
     LocationId, PayeeId, PriceSourceId, RowID, TagId, TransactionId, UnitId,
 };
+use lib_documents::Document;
 use lib_documents::types::DocumentTypeRow;
-use lib_documents::{Document, DocumentLink};
 use lib_institutions::Institution;
 use lib_inventory::{Item, Location};
 use lib_payees::Payee;
@@ -55,9 +58,7 @@ use lib_transactions::Transaction;
 use lib_units::{PriceSourceRecord, UnitRow, UnitUse};
 
 use crate::Domain;
-use crate::adapter::store::{
-    BudgetsStore, DocumentsStore, SharedBudgetsStore, SharedDocumentsStore, SharedStores,
-};
+use crate::adapter::store::SharedStores;
 
 /// One row's image before an input and after it; `None` where the row was absent.
 #[derive(Debug, Clone, PartialEq)]
@@ -80,6 +81,9 @@ pub(crate) trait Row: Clone + PartialEq + std::fmt::Debug {
 
     /// `image` as the [`RowImage`] of its kind.
     fn image(image: Image<Self>) -> RowImage;
+
+    /// `image`'s image of this kind of row, if it is one.
+    fn of(image: &RowImage) -> Option<&Image<Self>>;
 
     /// The row `id` as its store holds it.
     fn held(stores: &SharedStores, id: Self::Id) -> Option<Self>;
@@ -235,6 +239,13 @@ macro_rules! row_images {
 
                 fn image(image: Image<Self>) -> RowImage {
                     RowImage::$variant(image)
+                }
+
+                fn of(image: &RowImage) -> Option<&Image<Self>> {
+                    match image {
+                        RowImage::$variant(image) => Some(image),
+                        _ => None,
+                    }
                 }
 
                 row_access!($access);
@@ -587,16 +598,6 @@ fn write(image: &RowImage, step: Step, stores: &SharedStores) {
     }
 }
 
-/// A cascade's rows can't be read while their store is written, so the input's entry won't restore
-/// them on Undo: no write is meant to delete through a store that is mid-write.
-fn busy_cascade(cascade: &str) {
-    tracing::warn!(
-        cascade,
-        "A delete's cascade went unrecorded: its store was busy"
-    );
-    debug_assert!(false, "the {cascade} cascade's store was busy");
-}
-
 #[derive(Debug, Default)]
 struct JournalState {
     images: Vec<RowImage>,
@@ -605,15 +606,6 @@ struct JournalState {
     index: HashMap<RowKey, usize>,
     /// The non-recording mark: set while Undo or Redo writes, so stepping makes no entry.
     paused: bool,
-    /// The stores a delete's cascade reads the rows it will change from.
-    cascades: Option<Cascades>,
-}
-
-/// The stores a cascade's rows are read from, held weakly since they hold the journal.
-#[derive(Debug, Clone)]
-struct Cascades {
-    documents: Weak<RefCell<dyn DocumentsStore>>,
-    budgets: Weak<RefCell<dyn BudgetsStore>>,
 }
 
 /// The running input's row images, shared by every store's recorder. Single-threaded, as the
@@ -661,103 +653,22 @@ impl Journal {
         }
     }
 
-    /// Points the journal at the stores a delete's cascade changes rows in, which
-    /// [`Journal::unlink`] and [`Journal::unlink_account`] read. Held weakly, since the stores
-    /// hold the journal.
-    pub(crate) fn attach(&self, documents: &SharedDocumentsStore, budgets: &SharedBudgetsStore) {
-        self.0.borrow_mut().cascades = Some(Cascades {
-            documents: Rc::downgrade(documents),
-            budgets: Rc::downgrade(budgets),
-        });
-    }
-
-    /// Notes the Documents that lose `link` when the record it names is deleted, each as its
-    /// image before and after. To be called before the deleted row's own image is recorded.
-    pub(crate) fn unlink(&self, link: DocumentLink) {
-        let Some(documents) = self.cascade_documents() else {
-            return;
-        };
-        for document in documents {
-            let latest = self.latest(&RowKey::Document(document.id), |image| match image {
-                RowImage::Document(image) => Some(image.after.clone()),
-                _ => None,
-            });
-            // A Document an earlier write in the input deleted has no Links left to lose.
-            let Some(base) = latest.unwrap_or_else(|| Some(document.clone())) else {
-                continue;
-            };
-            if !base.links.contains(&link) {
-                continue;
-            }
-            let mut after = base;
-            after.links.retain(|held| *held != link);
-            self.record(RowImage::Document(Image {
-                before: Some(document),
-                after: Some(after),
-            }));
-        }
-    }
-
-    /// Notes what a deleted Account takes with it in the file: the Document Links to it, and its
-    /// place in the Budgets that count it. To be called before the Account's own image.
-    pub(crate) fn unlink_account(&self, account: AccountId) {
-        self.unlink(DocumentLink::Account(account));
-        let Some(budgets) = self.cascade_budgets() else {
-            return;
-        };
-        for budget in budgets {
-            let latest = self.latest(&RowKey::Budget(budget.id), |image| match image {
-                RowImage::Budget(image) => Some(image.after.clone()),
-                _ => None,
-            });
-            let Some(base) = latest.unwrap_or_else(|| Some(budget.clone())) else {
-                continue;
-            };
-            if !base.account_ids.contains(&account) {
-                continue;
-            }
-            let mut after = base;
-            after.account_ids.retain(|held| *held != account);
-            self.record(RowImage::Budget(Image {
-                before: Some(budget),
-                after: Some(after),
-            }));
-        }
-    }
-
-    /// What the input's image of the row `key` names says about it now, from `read`.
-    fn latest<T>(&self, key: &RowKey, read: impl Fn(&RowImage) -> Option<T>) -> Option<T> {
+    /// The row `id` as the input's writes so far left it: `Some(None)` where they deleted it, and
+    /// `None` where the input has not written it. What a cascade builds on, so a second cascade
+    /// into the same row keeps the first's change.
+    pub(crate) fn latest<T: Row>(&self, id: T::Id) -> Option<Option<T>> {
         let state = self.0.borrow();
-        let at = *state.index.get(key)?;
-        state.images.get(at).and_then(read)
+        let at = *state.index.get(&T::key(id))?;
+        state
+            .images
+            .get(at)
+            .and_then(T::of)
+            .map(|image| image.after.clone())
     }
 
-    /// The Documents as stored now, unless nothing is to be recorded or the store is busy.
-    fn cascade_documents(&self) -> Option<Vec<Document>> {
-        let state = self.0.borrow();
-        if state.paused {
-            return None;
-        }
-        let store = state.cascades.as_ref()?.documents.upgrade()?;
-        let Ok(store) = store.try_borrow() else {
-            busy_cascade("Document Links");
-            return None;
-        };
-        Some(store.documents().documents())
-    }
-
-    /// The Budgets as stored now, unless nothing is to be recorded or the store is busy.
-    fn cascade_budgets(&self) -> Option<Vec<Budget>> {
-        let state = self.0.borrow();
-        if state.paused {
-            return None;
-        }
-        let store = state.cascades.as_ref()?.budgets.upgrade()?;
-        let Ok(store) = store.try_borrow() else {
-            busy_cascade("Budget Accounts");
-            return None;
-        };
-        Some(store.budgets().budgets())
+    /// Whether a write now would be recorded: not while Undo or Redo steps.
+    pub(crate) fn recording(&self) -> bool {
+        !self.0.borrow().paused
     }
 
     /// The images noted since the last take, leaving none: `None` where the input changed no row.
@@ -782,6 +693,7 @@ impl Journal {
 
 #[cfg(test)]
 mod tests {
+    use lib_documents::DocumentLink;
     use lib_units::UnitsPorts as _;
     use lib_units::fake::InMemoryPorts;
 

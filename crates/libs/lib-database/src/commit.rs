@@ -11,6 +11,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::adapter::store::Reaches;
 use crate::reversal::Journal;
 use crate::writer::{Batch, Change, Domain, Writer};
 
@@ -68,6 +69,8 @@ pub struct Written(Rc<WrittenState>);
 struct WrittenState {
     domains: RefCell<Vec<Domain>>,
     journal: Journal,
+    /// The stores a delete's cascade reaches, once the stores are shared (#1276).
+    reaches: RefCell<Option<Reaches>>,
 }
 
 impl Written {
@@ -87,6 +90,16 @@ impl Written {
     /// The row images every store sharing this set records into.
     pub fn journal(&self) -> &Journal {
         &self.0.journal
+    }
+
+    /// Points every store sharing this set at the stores its deletes cascade into.
+    pub(crate) fn reach(&self, reaches: Reaches) {
+        *self.0.reaches.borrow_mut() = Some(reaches);
+    }
+
+    /// The stores a delete's cascade reaches; `None` until the stores are shared.
+    pub(crate) fn reaches(&self) -> Option<Reaches> {
+        self.0.reaches.borrow().clone()
     }
 }
 

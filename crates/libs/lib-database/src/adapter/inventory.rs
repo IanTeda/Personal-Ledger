@@ -161,10 +161,10 @@ impl Change for InventoryChange {
         Domain::Inventory
     }
 
-    /// A deleted Item drops the Document Links to it, and a Location deletes its Items.
     fn cascades_to(&self) -> &'static [Domain] {
         match self {
-            Self::DeleteLocation(_) | Self::DeleteItem(_) => &[Domain::Documents],
+            Self::DeleteItem(id) => crate::writer::Deleted::Item(*id).cascades_to(),
+            Self::DeleteLocation(id) => crate::writer::Deleted::Location(*id).cascades_to(),
             Self::UpsertLocation(_) | Self::UpsertItem(_) => &[],
         }
     }

@@ -72,7 +72,15 @@ pub struct SharedLedger {
 
 impl Stores {
     /// Shares out each store once, keeping the commit and the failure channel beside them.
+    /// The stores are pointed at the stores their deletes cascade into, so a deleting store's
+    /// recorder records what a delete takes there (#1276).
     pub fn share(self) -> SharedLedger {
+        let documents: store::SharedDocumentsStore =
+            Rc::new(std::cell::RefCell::new(self.documents));
+        let budgets: store::SharedBudgetsStore = Rc::new(std::cell::RefCell::new(self.budgets));
+        self.units
+            .written()
+            .reach(store::Reaches::new(&documents, &budgets));
         SharedLedger {
             journal: self.units.journal().clone(),
             stores: store::SharedStores {
@@ -84,9 +92,9 @@ impl Stores {
                 payees: Rc::new(std::cell::RefCell::new(self.payees)),
                 transactions: Rc::new(std::cell::RefCell::new(self.transactions)),
                 bills: Rc::new(std::cell::RefCell::new(self.bills)),
-                budgets: Rc::new(std::cell::RefCell::new(self.budgets)),
+                budgets,
                 inventory: Rc::new(std::cell::RefCell::new(self.inventory)),
-                documents: Rc::new(std::cell::RefCell::new(self.documents)),
+                documents,
             },
             commit: self.commit,
             failures: self.failures,

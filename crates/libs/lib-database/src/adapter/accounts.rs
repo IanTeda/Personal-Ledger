@@ -241,10 +241,9 @@ impl Change for AccountsChange {
         Domain::Accounts
     }
 
-    /// A deleted Account drops the Document Links to it and its place in the Budgets that count it.
     fn cascades_to(&self) -> &'static [Domain] {
         match self {
-            Self::Delete(_) => &[Domain::Documents, Domain::Budgets],
+            Self::Delete(id) => crate::writer::Deleted::Account(*id).cascades_to(),
             Self::Upsert(_) => &[],
         }
     }

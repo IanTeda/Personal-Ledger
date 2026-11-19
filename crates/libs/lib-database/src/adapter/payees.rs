@@ -131,10 +131,9 @@ impl Change for PayeesChange {
         Domain::Payees
     }
 
-    /// A deleted Payee drops the Document Links to it.
     fn cascades_to(&self) -> &'static [Domain] {
         match self {
-            Self::Delete(_) => &[Domain::Documents],
+            Self::Delete(id) => crate::writer::Deleted::Payee(*id).cascades_to(),
             Self::Upsert(_) => &[],
         }
     }
