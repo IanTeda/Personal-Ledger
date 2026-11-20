@@ -11,6 +11,14 @@ pub enum Error {
     /// Each problem is on its own line so a build reports them all at once.
     #[error("Catalogue check failed:\n{0}")]
     Generic(String),
+
+    /// A closing tag in a message pattern that no opening tag matches.
+    #[error("`</{0}>` closes a tag that is not open")]
+    TagNotOpen(String),
+
+    /// An opening tag in a message pattern that is never closed.
+    #[error("`<{0}>` is never closed")]
+    TagNotClosed(String),
 }
 
 /// Result alias for the generator.

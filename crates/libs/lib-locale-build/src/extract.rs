@@ -202,8 +202,8 @@ fn flatten_expression(source: &Expression<&str>, out: &mut Vec<String>) {
 }
 
 /// The `<tag>` names a pattern uses. A tag is `<name>` ... `</name>` with a lowercase name;
-/// any other `<` is literal text. Returns a description of the problem if tags are unbalanced.
-pub(crate) fn tags(source: &Pattern<&str>) -> Result<BTreeSet<String>, String> {
+/// any other `<` is literal text. Returns an [`Error`](crate::Error) if tags are unbalanced.
+pub(crate) fn tags(source: &Pattern<&str>) -> crate::Result<BTreeSet<String>> {
     let mut texts = Vec::new();
     flatten(source, &mut texts);
 
@@ -226,7 +226,7 @@ pub(crate) fn tags(source: &Pattern<&str>) -> Result<BTreeSet<String>, String> {
             }
             if closing {
                 if stack.pop() != Some(name) {
-                    return Err(format!("`</{name}>` closes a tag that is not open"));
+                    return Err(crate::Error::TagNotOpen(name.to_string()));
                 }
             } else {
                 stack.push(name);
@@ -234,7 +234,7 @@ pub(crate) fn tags(source: &Pattern<&str>) -> Result<BTreeSet<String>, String> {
             }
         }
         if let Some(open) = stack.last() {
-            return Err(format!("`<{open}>` is never closed"));
+            return Err(crate::Error::TagNotClosed((*open).to_string()));
         }
     }
     Ok(found)

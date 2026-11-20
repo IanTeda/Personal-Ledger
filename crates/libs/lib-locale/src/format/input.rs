@@ -319,21 +319,26 @@ pub fn format_date_input(date: NaiveDate, style: Option<DateStyle>) -> String {
     }
 }
 
+/// The options a typed date field that may be left empty is read with: day-and-month alone is
+/// accepted. Hand them to [`date_error_message`] to turn a [`parse_optional_date`] error into text.
+pub fn optional_date_options(style: Option<DateStyle>) -> DateInputOptions {
+    DateInputOptions {
+        style,
+        allow_yearless: true,
+    }
+}
+
 /// Reads a typed date field that may be left empty: `None` for empty, the date otherwise, and the
-/// Message for a bad entry. Day-and-month alone is accepted (taking today's year).
+/// [`DateInputError`] for a bad entry. Day-and-month alone is accepted (taking today's year).
 pub fn parse_optional_date(
     text: &str,
     today: NaiveDate,
     style: Option<DateStyle>,
-) -> Result<Option<NaiveDate>, String> {
-    let options = DateInputOptions {
-        style,
-        allow_yearless: true,
-    };
-    match parse_date_with(text, today, &options) {
+) -> Result<Option<NaiveDate>, DateInputError> {
+    match parse_date_with(text, today, &optional_date_options(style)) {
         Ok(date) => Ok(Some(date)),
         Err(DateInputError::Empty) => Ok(None),
-        Err(error) => Err(date_error_message(&error, today, &options)),
+        Err(error) => Err(error),
     }
 }
 

@@ -5,7 +5,10 @@
 
 use chrono::NaiveDate;
 use lib_core::{DocumentId, Money};
-use lib_locale::format::{format_date_input, parse_optional_date};
+use lib_locale::format::{
+    DateInputError, date_error_message, format_date_input, optional_date_options,
+    parse_optional_date,
+};
 use lib_toast::{Notice, ToastKind};
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::presenter::{DialogPresenter, Presenter};
@@ -199,8 +202,17 @@ impl FactsFormPresenter {
         self.focused = order[next];
     }
 
-    fn parse_date(&self) -> Result<Option<NaiveDate>, String> {
+    fn parse_date(&self) -> Result<Option<NaiveDate>, DateInputError> {
         parse_optional_date(&self.date, self.ports.today, self.ports.date_style)
+    }
+
+    /// The Message for a date that doesn't parse.
+    fn date_message(&self, error: &DateInputError) -> String {
+        date_error_message(
+            error,
+            self.ports.today,
+            &optional_date_options(self.ports.date_style),
+        )
     }
 
     fn total_unreadable(&self) -> bool {
@@ -294,7 +306,7 @@ impl Presenter for FactsFormPresenter {
     }
 
     fn view_model(&self) -> FactsFormViewModel {
-        let date_error = self.parse_date().err();
+        let date_error = self.parse_date().err().map(|e| self.date_message(&e));
         let total_error = self
             .total_unreadable()
             .then(msg::documents_dialog_error_total);

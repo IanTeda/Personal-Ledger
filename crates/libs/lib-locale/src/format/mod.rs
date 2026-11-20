@@ -24,8 +24,8 @@ pub use casing::upper;
 pub use currency::{Unit, format_money};
 pub use date::{format_date, format_month, format_month_day, format_year_month};
 pub use input::{
-    DateField, DateInputError, DateInputOptions, date_error_message, format_date_input, parse_date,
-    parse_date_with, parse_optional_date,
+    DateField, DateInputError, DateInputOptions, date_error_message, format_date_input,
+    optional_date_options, parse_date, parse_date_with, parse_optional_date,
 };
 pub use number::format_number;
 pub use time::{format_time, format_time_minutes};

@@ -15,7 +15,10 @@ use std::path::Path;
 
 use chrono::NaiveDate;
 use lib_core::DocumentId;
-use lib_locale::format::{format_date_input, parse_optional_date};
+use lib_locale::format::{
+    DateInputError, date_error_message, format_date_input, optional_date_options,
+    parse_optional_date,
+};
 use lib_toast::{Notice, ToastKind};
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
@@ -361,8 +364,17 @@ impl DocumentFormPresenter {
         self.ports.today
     }
 
-    fn parse(&self, text: &str) -> Result<Option<NaiveDate>, String> {
+    fn parse(&self, text: &str) -> Result<Option<NaiveDate>, DateInputError> {
         parse_optional_date(text, self.today(), self.ports.date_style)
+    }
+
+    /// The Message for a date that doesn't parse.
+    fn date_message(&self, error: &DateInputError) -> String {
+        date_error_message(
+            error,
+            self.today(),
+            &optional_date_options(self.ports.date_style),
+        )
     }
 
     /// Every field's problem: Add's typed path checked against the Library and the disk, and the
@@ -378,11 +390,11 @@ impl DocumentFormPresenter {
         let key_date = match (self.key_kind, self.parse(&self.key_date)) {
             (None, _) | (Some(_), Ok(Some(_))) => None,
             (Some(_), Ok(None)) => Some(String::new()),
-            (Some(_), Err(hint)) => Some(hint),
+            (Some(_), Err(error)) => Some(self.date_message(&error)),
         };
         Problems {
             path,
-            date: self.parse(&self.date).err(),
+            date: self.parse(&self.date).err().map(|e| self.date_message(&e)),
             key_date,
         }
     }

@@ -20,7 +20,10 @@
 
 use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, CategoryId, Clock, DateStyle, Money, PayeeId, UnitId};
-use lib_locale::format::{format_date_input, parse_optional_date, parse_positive_amount};
+use lib_locale::format::{
+    DateInputError, date_error_message, format_date_input, optional_date_options,
+    parse_optional_date, parse_positive_amount,
+};
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
@@ -552,8 +555,17 @@ impl PlanFormPresenter {
         }
     }
 
-    fn parse(&self, text: &str) -> Result<Option<NaiveDate>, String> {
+    fn parse(&self, text: &str) -> Result<Option<NaiveDate>, DateInputError> {
         parse_optional_date(text, self.clock.today(), self.date_style)
+    }
+
+    /// The Message for a date that doesn't parse.
+    fn date_message(&self, error: &DateInputError) -> String {
+        date_error_message(
+            error,
+            self.clock.today(),
+            &optional_date_options(self.date_style),
+        )
     }
 
     fn amount_money(&self) -> Option<Money> {
@@ -583,8 +595,8 @@ impl PlanFormPresenter {
         FieldErrors {
             amount: (!self.amount.trim().is_empty() && self.amount_money().is_none())
                 .then(msg::bills_plan_error_amount),
-            first_due: first_due.err(),
-            ends_on: ends_on.err().or_else(|| {
+            first_due: first_due.err().map(|e| self.date_message(&e)),
+            ends_on: ends_on.err().map(|e| self.date_message(&e)).or_else(|| {
                 ends_before_first_due.then(msg::bills_plan_error_ends_before_first_due)
             }),
             lead: self.lead_days().is_err().then(msg::bills_plan_error_lead),
