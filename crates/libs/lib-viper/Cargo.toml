@@ -15,6 +15,7 @@ doctest = false
 test-support = ["lib_config/test-support"]
 
 [dependencies]
+thiserror = { workspace = true }
 ## -- Internal Dependencies --
 lib_config = { path = "../lib-config" }
 lib_core = { path = "../lib-core" }

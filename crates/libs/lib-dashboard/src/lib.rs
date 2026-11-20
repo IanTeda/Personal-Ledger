@@ -8,12 +8,15 @@
 //! and the no Ledger open content is the Shell's, since this module exists only once a Ledger is
 //! open.
 
+mod error;
+
 pub mod keymap;
 pub mod msg;
 pub mod presenter;
 pub mod protocols;
 pub mod test_support;
 
+pub use crate::error::{Error, Result};
 pub use crate::presenter::{
     AttentionRow, BudgetBarView, BudgetListView, DashboardEvent, DashboardOutcome,
     DashboardPresenter, DashboardViewModel,

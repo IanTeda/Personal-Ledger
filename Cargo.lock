@@ -4846,6 +4846,7 @@ dependencies = [
  "lib_locale_build",
  "lib_toast",
  "lib_viper",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -5090,6 +5091,7 @@ name = "lib_toast"
 version = "0.1.0"
 dependencies = [
  "lib_locale",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -5181,6 +5183,7 @@ dependencies = [
  "lib_config",
  "lib_core",
  "lib_toast",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

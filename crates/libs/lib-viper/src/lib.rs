@@ -9,8 +9,12 @@
 //! for them. Not a feature crate: it holds no domain, and like the feature crates it has no UI
 //! toolkit and no I/O, so both Clients draw from it.
 
+mod error;
+
 pub mod dialog;
 pub mod display;
 pub mod keymap;
 pub mod presenter;
 pub mod view;
+
+pub use error::{Error, Result};

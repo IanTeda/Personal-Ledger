@@ -9,11 +9,13 @@
 //! clock. The bins clock it with [`Toasts::advance`] and pass in the Toasts Preference, so the
 //! rules are tested once and the two Clients cannot drift. Design in `docs/toasts-design.md`.
 
+mod error;
 mod history;
 mod kind;
 mod notice;
 mod toasts;
 
+pub use error::{Error, Result};
 pub use history::{HISTORY_LIMIT, History, HistoryEntry};
 pub use kind::ToastKind;
 pub use notice::{Notice, Notify};
