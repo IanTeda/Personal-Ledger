@@ -17,6 +17,7 @@
     reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
 )]
 pub mod contract;
+mod error;
 pub mod fake;
 pub mod keymap;
 pub mod msg;
@@ -24,6 +25,7 @@ pub mod presenter;
 pub mod protocols;
 pub mod query;
 
+pub use error::{Error, Result};
 pub use protocols::SharedPorts;
 pub use protocols::{
     TransactionAccounts, TransactionCategories, TransactionPayees, TransactionRepository,

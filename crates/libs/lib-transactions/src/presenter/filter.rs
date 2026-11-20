@@ -21,7 +21,9 @@
 
 use chrono::NaiveDate;
 use lib_core::{AccountId, CategoryId, DateStyle, PayeeId, TagId};
-use lib_locale::format::{format_date_input, parse_optional_date};
+use lib_locale::format::{
+    DateInputError, DateInputOptions, date_error_message, format_date_input, parse_date_with,
+};
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 use lib_viper::view::{
@@ -32,6 +34,7 @@ use lib_viper::view::{
 use crate::keymap::RESET_FILTERS;
 use crate::msg;
 use crate::query::{StatusFilter, TransactionFilters};
+use crate::{Error, Result};
 use crate::{TransactionAccounts, TransactionCategories, TransactionPayees, TransactionTags};
 
 /// The popover's fields, in `Tab` order.
@@ -453,8 +456,27 @@ impl FilterPresenter {
         }
     }
 
-    fn parse(&self, text: &str) -> Result<Option<NaiveDate>, String> {
-        parse_optional_date(text, self.today, self.date_style)
+    fn date_options(&self) -> DateInputOptions {
+        DateInputOptions {
+            style: self.date_style,
+            allow_yearless: true,
+        }
+    }
+
+    /// A typed From or To: `None` for empty, the date otherwise. Day-and-month alone takes
+    /// today's year.
+    fn parse(&self, text: &str) -> Result<Option<NaiveDate>> {
+        match parse_date_with(text, self.today, &self.date_options()) {
+            Ok(date) => Ok(Some(date)),
+            Err(DateInputError::Empty) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    /// The Message for a date that doesn't parse.
+    fn date_message(&self, error: &Error) -> String {
+        let Error::FilterDate(error) = error;
+        date_error_message(error, self.today, &self.date_options())
     }
 
     /// The filters the draft describes, or `None` while a date doesn't parse.
@@ -498,8 +520,8 @@ impl FilterPresenter {
             placeholder,
             focused: self.focused == field,
         };
-        let from_error = self.parse(&self.from).err();
-        let to_error = self.parse(&self.to).err();
+        let from_error = self.parse(&self.from).err().map(|e| self.date_message(&e));
+        let to_error = self.parse(&self.to).err().map(|e| self.date_message(&e));
         FilterViewModel {
             frame: DialogFrame {
                 title: msg::transactions_filter_title(),
