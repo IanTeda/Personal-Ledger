@@ -18,9 +18,12 @@
 //! Use the re-exported clients and servers to build gRPC clients or implement servers.
 //! Message types are available for constructing requests and handling responses.
 
+mod error;
 mod generated;
 mod sync;
 mod utilities;
+
+pub use error::{Error, Result};
 
 // Re-export sync module to maintain flat API
 pub use sync::*;

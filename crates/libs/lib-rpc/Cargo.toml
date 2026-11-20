@@ -15,6 +15,7 @@ doctest = false
 
 [dependencies]
 ## -- Workspace Shared Dependencies --
+thiserror = { workspace = true }
 tonic = { workspace = true }
 tracing = { workspace = true }
 
