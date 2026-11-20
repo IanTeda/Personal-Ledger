@@ -25,7 +25,7 @@ use crate::interactor::{AddLocation, EditLocation};
 use crate::protocols::{
     InventoryChange, InventoryOutcome, InventoryRow, InventoryUnits, SharedInventory,
 };
-use crate::{Inventory, LocationDraft, LocationError, NameError, msg};
+use crate::{Error, Inventory, LocationDraft, NameError, msg};
 
 /// The form's fields, in `Tab` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -475,7 +475,7 @@ impl LocationFormPresenter {
                 .map(|_| ()),
         };
         match result {
-            Err(LocationError::Name(error)) => Some(Problem::Name(error)),
+            Err(Error::Name(error)) => Some(Problem::Name(error)),
             _ => (self.editing.is_none() && self.unit.is_none()).then_some(Problem::UnitMissing),
         }
     }

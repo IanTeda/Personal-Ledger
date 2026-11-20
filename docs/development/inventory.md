@@ -51,10 +51,10 @@ Invariants the schema leaves to `lib-inventory`:
 ## Domain types
 
 - `lib_inventory::Inventory` — the `locations` and `items`, with the rules as methods (`add_location`, `edit_location`, `remove_location`, `add_area`, `edit_area`, `remove_area`, `move_area`, `set_cover`, `add_item`, `edit_item`, `remove_item`) and the counts and sums the page shows. `sample_inventory(today)` is the sample seed.
-- `Location` (`id`, `name`, `address`, `unit: UnitId`, `cover: Option<Cover>`, `areas`), `Area`, `Item` and `Cover`, with their drafts (`LocationDraft`, `CoverDraft`, `ItemDraft`) and refusal types (`LocationError`, `AreaError`, `ItemError`, `NameError`, `CoverError`).
+- `Location` (`id`, `name`, `address`, `unit: UnitId`, `cover: Option<Cover>`, `areas`), `Area`, `Item` and `Cover`, with their drafts (`LocationDraft`, `CoverDraft`, `ItemDraft`). Its Refusals are the flat `lib_inventory::Error` (`error.rs`), which wraps the value-type errors kept beside their types, `NameError` and `CoverError`.
 - `lib_core::LocationId`, `AreaId`, `ItemId` — the `RowID` newtypes (ADR-0040).
 
-`Location.unit` is a `UnitId`, not a code, so a Unit rename leaves the Location where it was. With no empty Unit to refuse there is no `LocationError::UnitMissing`: the Add form reports a missing Unit itself when the select is empty, and probes the name rules with a throwaway `UnitId::new()`.
+`Location.unit` is a `UnitId`, not a code, so a Unit rename leaves the Location where it was. With no empty Unit to refuse there is no `UnitMissing` refusal: the Add form reports a missing Unit itself when the select is empty, and probes the name rules with a throwaway `UnitId::new()`.
 
 ## Persistence
 

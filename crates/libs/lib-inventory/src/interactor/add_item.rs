@@ -1,7 +1,7 @@
 use lib_core::{AreaId, ItemId, LocationId};
 
 use crate::protocols::InventoryRepository;
-use crate::{ItemDraft, ItemError};
+use crate::{ItemDraft, Result};
 
 /// Add the Item an [`ItemDraft`] describes to an Area of a Location.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,7 +12,7 @@ pub struct AddItem {
 }
 
 impl AddItem {
-    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<ItemId, ItemError> {
+    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<ItemId> {
         let mut rows = inventory.inventory();
         let outcome = rows.add_item(self.location, self.area, &self.draft);
         match &outcome {
@@ -31,6 +31,7 @@ impl AddItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::fake::InMemoryInventory;
     use lib_core::Money;
 
@@ -63,7 +64,7 @@ mod tests {
                 draft
             }
             .run(&mut inventory),
-            Err(ItemError::UnknownArea)
+            Err(Error::UnknownArea)
         );
         assert_eq!(inventory, before);
     }

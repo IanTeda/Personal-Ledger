@@ -1,7 +1,7 @@
 use lib_core::ItemId;
 
 use crate::protocols::InventoryRepository;
-use crate::{ItemDraft, ItemError};
+use crate::{ItemDraft, Result};
 
 /// Edit an Item's name and replacement value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,7 +11,7 @@ pub struct EditItem {
 }
 
 impl EditItem {
-    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<(), ItemError> {
+    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<()> {
         let mut rows = inventory.inventory();
         let outcome = rows.edit_item(self.id, &self.draft);
         match &outcome {

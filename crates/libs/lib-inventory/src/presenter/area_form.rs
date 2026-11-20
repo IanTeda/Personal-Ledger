@@ -17,7 +17,7 @@ use lib_viper::view::{DialogFrame, Hint, TextFieldView};
 use super::{area_name_error_text, area_refusal_text};
 use crate::interactor::{AddArea, EditArea};
 use crate::protocols::{InventoryChange, InventoryOutcome, InventoryRow, SharedInventory};
-use crate::{AreaError, Inventory, NameError, msg};
+use crate::{Error, Inventory, NameError, msg};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AreaFormEvent {
@@ -267,7 +267,7 @@ impl AreaFormPresenter {
             None => scratch.add_area(self.location, &self.name).map(|_| ()),
         };
         match result {
-            Err(AreaError::Name(error)) => Some(error),
+            Err(Error::Name(error)) => Some(error),
             _ => None,
         }
     }

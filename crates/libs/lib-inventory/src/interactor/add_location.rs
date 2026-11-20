@@ -1,7 +1,7 @@
 use lib_core::{LocationId, UnitId};
 
 use crate::protocols::InventoryRepository;
-use crate::{LocationDraft, LocationError};
+use crate::{LocationDraft, Result};
 
 /// Add the Location a [`LocationDraft`] describes, in `unit`, with no Areas, after every Location
 /// already there.
@@ -13,7 +13,7 @@ pub struct AddLocation {
 
 impl AddLocation {
     /// Returns the new Location's id, or refuses a name that is empty or taken, or a bad cover.
-    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<LocationId, LocationError> {
+    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<LocationId> {
         let mut rows = inventory.inventory();
         let outcome = rows.add_location(&self.draft, self.unit);
         match &outcome {
@@ -32,6 +32,7 @@ impl AddLocation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::NameError;
     use crate::fake::InMemoryInventory;
 
@@ -77,7 +78,7 @@ mod tests {
                 unit: UnitId::SEED_AUD,
             }
             .run(&mut inventory),
-            Err(LocationError::Name(NameError::Taken))
+            Err(Error::Name(NameError::Taken))
         );
         assert_eq!(inventory, before);
     }

@@ -1,7 +1,7 @@
 use lib_core::LocationId;
 
 use crate::protocols::InventoryRepository;
-use crate::{LocationError, RemovedLocation};
+use crate::{RemovedLocation, Result};
 
 /// Remove a Location with its Areas and Items, used or not. The last Location may go.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,10 +11,7 @@ impl RemoveLocation {
     /// Returns the Areas and Items that went with it. An unknown Location is refused before
     /// anything is written. The port's delete takes the Items, then the Areas, then the Location,
     /// and the file's cascade drops the Document Links to the Items.
-    pub fn run(
-        self,
-        inventory: &mut dyn InventoryRepository,
-    ) -> Result<RemovedLocation, LocationError> {
+    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<RemovedLocation> {
         let outcome = inventory.inventory().remove_location(self.0);
         match &outcome {
             Ok(removed) => {
@@ -37,6 +34,7 @@ mod tests {
     use lib_core::{AreaId, ItemId};
 
     use super::*;
+    use crate::Error;
     use crate::fake::InMemoryInventory;
 
     fn sample() -> InMemoryInventory {
@@ -77,7 +75,7 @@ mod tests {
 
         assert_eq!(
             RemoveLocation(LocationId::seed(9_999)).run(&mut inventory),
-            Err(LocationError::Unknown)
+            Err(Error::UnknownLocation)
         );
         assert_eq!(inventory, before);
     }

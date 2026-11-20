@@ -1,6 +1,6 @@
 use lib_core::{AreaId, LocationId};
 
-use crate::AreaError;
+use crate::Result;
 use crate::protocols::InventoryRepository;
 
 /// Add an Area at the end of a Location's tabs.
@@ -11,7 +11,7 @@ pub struct AddArea {
 }
 
 impl AddArea {
-    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<AreaId, AreaError> {
+    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<AreaId> {
         let mut rows = inventory.inventory();
         let outcome = rows.add_area(self.location, &self.name);
         match &outcome {
@@ -30,6 +30,7 @@ impl AddArea {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::NameError;
     use crate::fake::InMemoryInventory;
 
@@ -61,7 +62,7 @@ mod tests {
                 name: "attic".into()
             }
             .run(&mut inventory),
-            Err(AreaError::Name(NameError::Taken))
+            Err(Error::Name(NameError::Taken))
         );
         assert_eq!(inventory, before);
     }

@@ -27,7 +27,7 @@ pub use location_form::{
 pub use remove_area::{RemoveAreaEvent, RemoveAreaPresenter, RemoveAreaViewModel};
 pub use remove_location::{RemoveLocationEvent, RemoveLocationPresenter, RemoveLocationViewModel};
 
-use crate::{AreaError, LocationError, NameError, msg};
+use crate::{Error, NameError, msg};
 
 /// A Location name's problem as the form words it.
 fn location_name_error_text(error: NameError) -> String {
@@ -47,22 +47,30 @@ fn area_name_error_text(error: NameError) -> String {
 
 /// A refusal a Location Dialog shows in place of a name's problem. The forms check names live, so
 /// what is left is a row that went, or changed, while the Dialog was open.
-fn location_refusal_text(error: LocationError) -> String {
+fn location_refusal_text(error: Error) -> String {
     match error {
-        LocationError::Name(error) => location_name_error_text(error),
-        LocationError::Unknown | LocationError::Cover(_) => msg::inventory_refusal_gone(),
+        Error::Name(error) => location_name_error_text(error),
+        Error::UnknownLocation | Error::Cover(_) => msg::inventory_refusal_gone(),
+        other => {
+            debug_assert!(false, "a Location write refused with {other:?}");
+            msg::inventory_refusal_gone()
+        }
     }
 }
 
 /// A refusal an Area Dialog shows.
-fn area_refusal_text(error: AreaError) -> String {
+fn area_refusal_text(error: Error) -> String {
     match error {
-        AreaError::Name(error) => area_name_error_text(error),
-        AreaError::UnknownLocation
-        | AreaError::UnknownArea
-        | AreaError::NeedsDestination
-        | AreaError::BadDestination
-        | AreaError::LastAreaHoldsItems => msg::inventory_refusal_gone(),
+        Error::Name(error) => area_name_error_text(error),
+        Error::UnknownLocation
+        | Error::UnknownArea
+        | Error::NeedsDestination
+        | Error::BadDestination
+        | Error::LastAreaHoldsItems => msg::inventory_refusal_gone(),
+        other => {
+            debug_assert!(false, "an Area write refused with {other:?}");
+            msg::inventory_refusal_gone()
+        }
     }
 }
 

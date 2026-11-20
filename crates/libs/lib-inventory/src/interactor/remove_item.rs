@@ -1,6 +1,6 @@
 use lib_core::ItemId;
 
-use crate::ItemError;
+use crate::Result;
 use crate::protocols::InventoryRepository;
 
 /// Remove an Item. The Document Links to it are `lib-documents`' to drop.
@@ -8,7 +8,7 @@ use crate::protocols::InventoryRepository;
 pub struct RemoveItem(pub ItemId);
 
 impl RemoveItem {
-    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<(), ItemError> {
+    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<()> {
         let mut rows = inventory.inventory();
         let outcome = rows.remove_item(self.0).map(|_| ());
         match &outcome {
@@ -25,6 +25,7 @@ impl RemoveItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::fake::InMemoryInventory;
 
     #[test]
@@ -40,6 +41,6 @@ mod tests {
             .expect("the Item is there");
 
         assert_eq!(inventory.items().len(), before - 1);
-        assert_eq!(RemoveItem(id).run(&mut inventory), Err(ItemError::Unknown));
+        assert_eq!(RemoveItem(id).run(&mut inventory), Err(Error::UnknownItem));
     }
 }

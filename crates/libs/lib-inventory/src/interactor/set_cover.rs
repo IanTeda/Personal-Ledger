@@ -1,7 +1,7 @@
 use lib_core::LocationId;
 
 use crate::protocols::InventoryRepository;
-use crate::{CoverDraft, LocationError};
+use crate::{CoverDraft, Result};
 
 /// Set a Location's cover from a [`CoverDraft`], or clear it when the insurer is empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,7 +11,7 @@ pub struct SetCover {
 }
 
 impl SetCover {
-    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<(), LocationError> {
+    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<()> {
         let mut rows = inventory.inventory();
         let outcome = rows.set_cover(self.location, &self.cover);
         match &outcome {
@@ -31,6 +31,7 @@ impl SetCover {
 mod tests {
     use super::*;
     use crate::CoverError;
+    use crate::Error;
     use crate::fake::InMemoryInventory;
 
     fn sample() -> InMemoryInventory {
@@ -53,7 +54,7 @@ mod tests {
                 cover: bad
             }
             .run(&mut inventory),
-            Err(LocationError::Cover(CoverError::SumMissing))
+            Err(Error::Cover(CoverError::SumMissing))
         );
         assert!(inventory.location(id).expect("seeded").cover.is_some());
 

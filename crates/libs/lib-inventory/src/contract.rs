@@ -16,8 +16,8 @@ use crate::interactor::{
     RemoveItem, RemoveLocation, SetCover,
 };
 use crate::{
-    AreaError, CoverDraft, Inventory, InventoryRepository, InventoryUnits, ItemDraft,
-    LocationDraft, LocationError, LocationUsage, LocationUse, NameError, sample_inventory,
+    CoverDraft, Error, Inventory, InventoryRepository, InventoryUnits, ItemDraft, LocationDraft,
+    LocationUsage, LocationUse, NameError, sample_inventory,
 };
 
 /// Builds the port a contract check runs on.
@@ -196,7 +196,7 @@ pub fn an_edited_location_reloads_the_same<F: PortsFactory>(factory: &mut F) {
             draft: draft("Nowhere", CoverDraft::default()),
         }
         .run(&mut port),
-        Err(LocationError::Unknown)
+        Err(Error::UnknownLocation)
     );
     factory.commit(&mut port);
 
@@ -259,7 +259,7 @@ pub fn areas_reload_in_order<F: PortsFactory>(factory: &mut F) {
             name: "ROOF RACK".into()
         }
         .run(&mut port),
-        Err(AreaError::Name(NameError::Taken))
+        Err(Error::Name(NameError::Taken))
     );
     factory.commit(&mut port);
 
@@ -349,7 +349,7 @@ pub fn remove_area_moves_its_items<F: PortsFactory>(factory: &mut F) {
             destination: None
         }
         .run(&mut port),
-        Err(AreaError::NeedsDestination)
+        Err(Error::NeedsDestination)
     );
     assert_eq!(port.locations()[0], elm, "a refusal writes nothing");
 
@@ -450,7 +450,7 @@ pub fn removing_an_unknown_location_writes_nothing<F: PortsFactory>(factory: &mu
 
     assert_eq!(
         RemoveLocation(lib_core::LocationId::seed(9_999)).run(&mut port),
-        Err(LocationError::Unknown)
+        Err(Error::UnknownLocation)
     );
     factory.commit(&mut port);
 

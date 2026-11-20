@@ -1,6 +1,6 @@
 use lib_core::AreaId;
 
-use crate::AreaError;
+use crate::Result;
 use crate::protocols::InventoryRepository;
 
 /// Rename an Area. Its id and its Items stay.
@@ -11,7 +11,7 @@ pub struct EditArea {
 }
 
 impl EditArea {
-    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<(), AreaError> {
+    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<()> {
         let mut rows = inventory.inventory();
         let outcome = rows.edit_area(self.area, &self.name);
         match &outcome {

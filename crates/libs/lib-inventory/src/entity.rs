@@ -6,6 +6,8 @@ use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{AreaId, ItemId, LocationId, Money, UnitId};
 
+use crate::{Error, Result};
+
 /// A Location's insurance cover: one of its details, not a record of its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cover {
@@ -119,18 +121,6 @@ fn zero() -> Money {
 // Validation
 // ---------------------------------------------------------------------------------------------
 
-/// Why an Item is refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ItemError {
-    Unknown,
-    UnknownLocation,
-    /// The Area is not one of the Location's.
-    UnknownArea,
-    NameEmpty,
-    /// A replacement value below zero.
-    ReplacementNegative,
-}
-
 /// The editable details of an Item: where it sits is fixed once added, bar a move to another Area
 /// of its Location.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,20 +130,26 @@ pub struct ItemDraft {
 }
 
 /// Why a Location or Area name is refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum NameError {
+    #[error("the name is empty")]
     Empty,
     /// Another Location (or another Area of the same Location) has it, ignoring case.
+    #[error("the name is taken")]
     Taken,
 }
 
 /// Why a Location's cover is refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum CoverError {
     /// An insurer is set but no sum insured.
+    #[error("an insurer needs a sum insured")]
     SumMissing,
+    #[error("the sum insured must be above zero")]
     SumNotPositive,
+    #[error("the item limit must be above zero")]
     LimitNotPositive,
+    #[error("the item limit is above the sum insured")]
     LimitAboveSum,
 }
 
@@ -169,7 +165,7 @@ pub struct CoverDraft {
 
 impl CoverDraft {
     /// `Ok(None)` when there is no insurer, which clears all five fields.
-    pub fn validate(&self) -> Result<Option<Cover>, CoverError> {
+    pub fn validate(&self) -> std::result::Result<Option<Cover>, CoverError> {
         let insurer = self.insurer.trim();
         if insurer.is_empty() {
             return Ok(None);
@@ -232,26 +228,6 @@ impl From<&Location> for LocationDraft {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LocationError {
-    Unknown,
-    Name(NameError),
-    Cover(CoverError),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AreaError {
-    UnknownLocation,
-    UnknownArea,
-    Name(NameError),
-    /// The Area holds Items and another Area of the Location must take them.
-    NeedsDestination,
-    /// The destination is the Area itself, or not an Area of the same Location.
-    BadDestination,
-    /// The Area holds Items and is the Location's only Area, so there is nowhere to move them.
-    LastAreaHoldsItems,
-}
-
 fn taken<'a>(mut names: impl Iterator<Item = &'a str>, name: &str) -> bool {
     names.any(|n| n.to_lowercase() == name.to_lowercase())
 }
@@ -279,11 +255,7 @@ pub struct RemovedArea {
 /// changed so the Ledger can record them (ADR-0039).
 impl Inventory {
     /// Adds a Location with no Areas and returns its id.
-    pub fn add_location(
-        &mut self,
-        draft: &LocationDraft,
-        unit: UnitId,
-    ) -> Result<LocationId, LocationError> {
+    pub fn add_location(&mut self, draft: &LocationDraft, unit: UnitId) -> Result<LocationId> {
         let (name, cover) = checked(self, None, draft)?;
         let id = LocationId::new();
         self.locations.push(Location {
@@ -298,17 +270,13 @@ impl Inventory {
     }
 
     /// Edits everything but the Unit.
-    pub fn edit_location(
-        &mut self,
-        id: LocationId,
-        draft: &LocationDraft,
-    ) -> Result<(), LocationError> {
+    pub fn edit_location(&mut self, id: LocationId, draft: &LocationDraft) -> Result<()> {
         let (name, cover) = checked(self, Some(id), draft)?;
         let location = self
             .locations
             .iter_mut()
             .find(|l| l.id == id)
-            .ok_or(LocationError::Unknown)?;
+            .ok_or(Error::UnknownLocation)?;
         location.name = name;
         location.address = draft.address.trim().to_string();
         location.cover = cover;
@@ -316,12 +284,12 @@ impl Inventory {
     }
 
     /// Removes a Location, its Areas and its Items, and reports each. The last Location may go.
-    pub fn remove_location(&mut self, id: LocationId) -> Result<RemovedLocation, LocationError> {
+    pub fn remove_location(&mut self, id: LocationId) -> Result<RemovedLocation> {
         let at = self
             .locations
             .iter()
             .position(|l| l.id == id)
-            .ok_or(LocationError::Unknown)?;
+            .ok_or(Error::UnknownLocation)?;
         let removed = self.locations.remove(at);
         let items = self
             .items
@@ -337,25 +305,25 @@ impl Inventory {
     }
 
     /// Adds an Area at the end of the Location's tabs and returns its id.
-    pub fn add_area(&mut self, location: LocationId, name: &str) -> Result<AreaId, AreaError> {
+    pub fn add_area(&mut self, location: LocationId, name: &str) -> Result<AreaId> {
         let id = AreaId::new();
         let location = self
             .locations
             .iter_mut()
             .find(|l| l.id == location)
-            .ok_or(AreaError::UnknownLocation)?;
+            .ok_or(Error::UnknownLocation)?;
         let name = checked_area_name(location, None, name)?;
         location.areas.push(Area { id, name });
         Ok(id)
     }
 
     /// Renames an Area. Nothing else about an Area is editable: it never changes Location.
-    pub fn edit_area(&mut self, area: AreaId, name: &str) -> Result<(), AreaError> {
+    pub fn edit_area(&mut self, area: AreaId, name: &str) -> Result<()> {
         let location = self
             .locations
             .iter_mut()
             .find(|l| l.areas.iter().any(|a| a.id == area))
-            .ok_or(AreaError::UnknownArea)?;
+            .ok_or(Error::UnknownArea)?;
         let name = checked_area_name(location, Some(area), name)?;
         if let Some(a) = location.areas.iter_mut().find(|a| a.id == area) {
             a.name = name;
@@ -369,17 +337,17 @@ impl Inventory {
         &mut self,
         area: AreaId,
         destination: Option<AreaId>,
-    ) -> Result<RemovedArea, AreaError> {
-        let (location, _) = self.area(area).ok_or(AreaError::UnknownArea)?;
+    ) -> Result<RemovedArea> {
+        let (location, _) = self.area(area).ok_or(Error::UnknownArea)?;
         let location_id = location.id;
         let mut moved_items = Vec::new();
         if self.area_items(area) > 0 {
             if location.areas.len() == 1 {
-                return Err(AreaError::LastAreaHoldsItems);
+                return Err(Error::LastAreaHoldsItems);
             }
-            let to = destination.ok_or(AreaError::NeedsDestination)?;
+            let to = destination.ok_or(Error::NeedsDestination)?;
             if to == area || !location.areas.iter().any(|a| a.id == to) {
-                return Err(AreaError::BadDestination);
+                return Err(Error::BadDestination);
             }
             for item in self.items.iter_mut().filter(|i| i.area == area) {
                 item.area = to;
@@ -414,16 +382,12 @@ impl Inventory {
 /// The Items' and cover writes.
 impl Inventory {
     /// Sets or clears a Location's cover; an empty insurer clears it.
-    pub fn set_cover(
-        &mut self,
-        location: LocationId,
-        draft: &CoverDraft,
-    ) -> Result<(), LocationError> {
-        let cover = draft.validate().map_err(LocationError::Cover)?;
+    pub fn set_cover(&mut self, location: LocationId, draft: &CoverDraft) -> Result<()> {
+        let cover = draft.validate().map_err(Error::Cover)?;
         self.locations
             .iter_mut()
             .find(|l| l.id == location)
-            .ok_or(LocationError::Unknown)?
+            .ok_or(Error::UnknownLocation)?
             .cover = cover;
         Ok(())
     }
@@ -434,10 +398,10 @@ impl Inventory {
         location: LocationId,
         area: AreaId,
         draft: &ItemDraft,
-    ) -> Result<ItemId, ItemError> {
-        let holder = self.location(location).ok_or(ItemError::UnknownLocation)?;
+    ) -> Result<ItemId> {
+        let holder = self.location(location).ok_or(Error::UnknownLocation)?;
         if !holder.areas.iter().any(|a| a.id == area) {
-            return Err(ItemError::UnknownArea);
+            return Err(Error::UnknownArea);
         }
         let (name, replacement) = checked_item(draft)?;
         let id = ItemId::new();
@@ -452,36 +416,36 @@ impl Inventory {
     }
 
     /// Edits an Item's name and replacement value.
-    pub fn edit_item(&mut self, id: ItemId, draft: &ItemDraft) -> Result<(), ItemError> {
+    pub fn edit_item(&mut self, id: ItemId, draft: &ItemDraft) -> Result<()> {
         let (name, replacement) = checked_item(draft)?;
         let item = self
             .items
             .iter_mut()
             .find(|i| i.id == id)
-            .ok_or(ItemError::Unknown)?;
+            .ok_or(Error::UnknownItem)?;
         item.name = name;
         item.replacement = replacement;
         Ok(())
     }
 
     /// Removes an Item and returns it.
-    pub fn remove_item(&mut self, id: ItemId) -> Result<Item, ItemError> {
+    pub fn remove_item(&mut self, id: ItemId) -> Result<Item> {
         let at = self
             .items
             .iter()
             .position(|i| i.id == id)
-            .ok_or(ItemError::Unknown)?;
+            .ok_or(Error::UnknownItem)?;
         Ok(self.items.remove(at))
     }
 }
 
-fn checked_item(draft: &ItemDraft) -> Result<(String, Money), ItemError> {
+fn checked_item(draft: &ItemDraft) -> Result<(String, Money)> {
     let name = draft.name.trim();
     if name.is_empty() {
-        return Err(ItemError::NameEmpty);
+        return Err(Error::ItemNameEmpty);
     }
     if draft.replacement.0 < 0 {
-        return Err(ItemError::ReplacementNegative);
+        return Err(Error::ReplacementNegative);
     }
     Ok((name.to_string(), draft.replacement.clone()))
 }
@@ -490,15 +454,15 @@ fn checked(
     inventory: &Inventory,
     own_id: Option<LocationId>,
     draft: &LocationDraft,
-) -> Result<(String, Option<Cover>), LocationError> {
+) -> Result<(String, Option<Cover>)> {
     if let Some(id) = own_id
         && inventory.location(id).is_none()
     {
-        return Err(LocationError::Unknown);
+        return Err(Error::UnknownLocation);
     }
     let name = draft.name.trim();
     if name.is_empty() {
-        return Err(LocationError::Name(NameError::Empty));
+        return Err(Error::Name(NameError::Empty));
     }
     let others = inventory
         .locations
@@ -506,20 +470,16 @@ fn checked(
         .filter(|l| Some(l.id) != own_id)
         .map(|l| l.name.as_str());
     if taken(others, name) {
-        return Err(LocationError::Name(NameError::Taken));
+        return Err(Error::Name(NameError::Taken));
     }
-    let cover = draft.cover.validate().map_err(LocationError::Cover)?;
+    let cover = draft.cover.validate().map_err(Error::Cover)?;
     Ok((name.to_string(), cover))
 }
 
-fn checked_area_name(
-    location: &Location,
-    own_id: Option<AreaId>,
-    name: &str,
-) -> Result<String, AreaError> {
+fn checked_area_name(location: &Location, own_id: Option<AreaId>, name: &str) -> Result<String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(AreaError::Name(NameError::Empty));
+        return Err(Error::Name(NameError::Empty));
     }
     let others = location
         .areas
@@ -527,7 +487,7 @@ fn checked_area_name(
         .filter(|a| Some(a.id) != own_id)
         .map(|a| a.name.as_str());
     if taken(others, name) {
-        return Err(AreaError::Name(NameError::Taken));
+        return Err(Error::Name(NameError::Taken));
     }
     Ok(name.to_string())
 }
@@ -866,13 +826,13 @@ mod tests {
 
         assert_eq!(
             service.add_area(LocationId::seed(9_999), "Nowhere"),
-            Err(AreaError::UnknownLocation)
+            Err(Error::UnknownLocation)
         );
         assert_eq!(
             service
                 .remove_location(LocationId::seed(9_999))
                 .unwrap_err(),
-            LocationError::Unknown
+            Error::UnknownLocation
         );
         assert!(service.move_area(AreaId::seed(9_999), 1).is_none());
 
@@ -1064,11 +1024,11 @@ mod tests {
         let mut inv = seed();
         assert_eq!(
             inv.add_location(&draft("  "), UnitId::SEED_AUD),
-            Err(LocationError::Name(NameError::Empty))
+            Err(Error::Name(NameError::Empty))
         );
         assert_eq!(
             inv.add_location(&draft("storage UNIT"), UnitId::SEED_AUD),
-            Err(LocationError::Name(NameError::Taken))
+            Err(Error::Name(NameError::Taken))
         );
         assert_eq!(inv.location_count(), 3);
     }
@@ -1108,11 +1068,11 @@ mod tests {
         assert_eq!(inv.edit_location(id, &draft("STORAGE unit")), Ok(()));
         assert_eq!(
             inv.edit_location(id, &draft("12 elm st contents")),
-            Err(LocationError::Name(NameError::Taken))
+            Err(Error::Name(NameError::Taken))
         );
         assert_eq!(
             inv.edit_location(LocationId::seed(999), &draft("Anything")),
-            Err(LocationError::Unknown)
+            Err(Error::UnknownLocation)
         );
     }
 
@@ -1132,7 +1092,7 @@ mod tests {
         assert_eq!(inv.location_count(), 2);
         assert_eq!(inv.area_count(), 13);
         assert_eq!(inv.item_count(), 223);
-        assert_eq!(inv.remove_location(storage), Err(LocationError::Unknown));
+        assert_eq!(inv.remove_location(storage), Err(Error::UnknownLocation));
     }
 
     #[test]
@@ -1203,7 +1163,7 @@ mod tests {
         bad.cover = cover("NRMA", Some(100), Some(500));
         assert_eq!(
             inv.add_location(&bad, UnitId::SEED_AUD),
-            Err(LocationError::Cover(CoverError::LimitAboveSum))
+            Err(Error::Cover(CoverError::LimitAboveSum))
         );
         assert_eq!(inv.location_count(), 3);
     }
@@ -1222,13 +1182,13 @@ mod tests {
         );
         assert_eq!(
             inv.set_cover(hilux, &cover("AAMI", None, None)),
-            Err(LocationError::Cover(CoverError::SumMissing))
+            Err(Error::Cover(CoverError::SumMissing))
         );
         inv.set_cover(hilux, &cover("", None, None)).unwrap();
         assert_eq!(inv.location(hilux).unwrap().cover, None);
         assert_eq!(
             inv.set_cover(LocationId::new(), &cover("", None, None)),
-            Err(LocationError::Unknown)
+            Err(Error::UnknownLocation)
         );
     }
 
@@ -1257,7 +1217,7 @@ mod tests {
 
         assert_eq!(inv.remove_item(id).unwrap().name, "Tall ladder");
         assert_eq!(inv.item_count(), before);
-        assert_eq!(inv.remove_item(id), Err(ItemError::Unknown));
+        assert_eq!(inv.remove_item(id), Err(Error::UnknownItem));
     }
 
     #[test]
@@ -1268,23 +1228,23 @@ mod tests {
         let elm_area = area_id(&inv, "12 Elm St contents", "Kitchen");
         assert_eq!(
             inv.add_item(storage, area, &item_draft("  ", 10)),
-            Err(ItemError::NameEmpty)
+            Err(Error::ItemNameEmpty)
         );
         assert_eq!(
             inv.add_item(storage, area, &item_draft("Ladder", -1)),
-            Err(ItemError::ReplacementNegative)
+            Err(Error::ReplacementNegative)
         );
         assert_eq!(
             inv.add_item(storage, elm_area, &item_draft("Ladder", 10)),
-            Err(ItemError::UnknownArea)
+            Err(Error::UnknownArea)
         );
         assert_eq!(
             inv.add_item(LocationId::new(), area, &item_draft("Ladder", 10)),
-            Err(ItemError::UnknownLocation)
+            Err(Error::UnknownLocation)
         );
         assert_eq!(
             inv.edit_item(ItemId::new(), &item_draft("Ladder", 10)),
-            Err(ItemError::Unknown)
+            Err(Error::UnknownItem)
         );
     }
 
@@ -1299,17 +1259,14 @@ mod tests {
         assert_eq!(inv.location(elm).unwrap().areas.last().unwrap().id, id);
         assert_eq!(
             inv.add_area(elm, "attic"),
-            Err(AreaError::Name(NameError::Taken))
+            Err(Error::Name(NameError::Taken))
         );
-        assert_eq!(
-            inv.add_area(elm, " "),
-            Err(AreaError::Name(NameError::Empty))
-        );
+        assert_eq!(inv.add_area(elm, " "), Err(Error::Name(NameError::Empty)));
         // The same name is fine in another Location.
         assert!(inv.add_area(storage, "Attic").is_ok());
         assert_eq!(
             inv.add_area(LocationId::seed(999), "X"),
-            Err(AreaError::UnknownLocation)
+            Err(Error::UnknownLocation)
         );
     }
 
@@ -1343,11 +1300,11 @@ mod tests {
         assert_eq!(inv.edit_area(living, "LOUNGE"), Ok(()));
         assert_eq!(
             inv.edit_area(living, "kitchen"),
-            Err(AreaError::Name(NameError::Taken))
+            Err(Error::Name(NameError::Taken))
         );
         assert_eq!(
             inv.edit_area(AreaId::seed(999), "X"),
-            Err(AreaError::UnknownArea)
+            Err(Error::UnknownArea)
         );
     }
 
@@ -1366,10 +1323,7 @@ mod tests {
         let laundry = area_id(&inv, "12 Elm St contents", "Laundry");
         let batharea = area_id(&inv, "12 Elm St contents", "Batharea");
         let value = inv.location_value(location_id(&inv, "12 Elm St contents"));
-        assert_eq!(
-            inv.remove_area(laundry, None),
-            Err(AreaError::NeedsDestination)
-        );
+        assert_eq!(inv.remove_area(laundry, None), Err(Error::NeedsDestination));
         inv.remove_area(laundry, Some(batharea)).unwrap();
         assert_eq!(inv.area_items(batharea), 9 + 11);
         assert_eq!(inv.area_value(batharea), dollars(1_880 + 3_120));
@@ -1387,15 +1341,15 @@ mod tests {
         let storage = area_id(&inv, "Storage unit", "Storage");
         assert_eq!(
             inv.remove_area(laundry, Some(storage)),
-            Err(AreaError::BadDestination)
+            Err(Error::BadDestination)
         );
         assert_eq!(
             inv.remove_area(laundry, Some(laundry)),
-            Err(AreaError::BadDestination)
+            Err(Error::BadDestination)
         );
         assert_eq!(
             inv.remove_area(laundry, Some(AreaId::seed(999))),
-            Err(AreaError::BadDestination)
+            Err(Error::BadDestination)
         );
         assert!(inv.area(laundry).is_some());
     }
@@ -1406,14 +1360,14 @@ mod tests {
         let storage = area_id(&inv, "Storage unit", "Storage");
         assert_eq!(
             inv.remove_area(storage, None),
-            Err(AreaError::LastAreaHoldsItems)
+            Err(Error::LastAreaHoldsItems)
         );
         // Emptied by removing the Location's Items, the last Area may go.
         let location = location_id(&inv, "Storage unit");
         inv.items.retain(|i| i.location != location);
         assert_eq!(inv.remove_area(storage, None).map(|_| ()), Ok(()));
         assert!(inv.location(location).unwrap().areas.is_empty());
-        assert_eq!(inv.remove_area(storage, None), Err(AreaError::UnknownArea));
+        assert_eq!(inv.remove_area(storage, None), Err(Error::UnknownArea));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use lib_core::LocationId;
 
 use crate::protocols::InventoryRepository;
-use crate::{LocationDraft, LocationError};
+use crate::{LocationDraft, Result};
 
 /// Edit a Location's name, address and cover. Its Unit is fixed once added.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,7 +11,7 @@ pub struct EditLocation {
 }
 
 impl EditLocation {
-    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<(), LocationError> {
+    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<()> {
         let mut rows = inventory.inventory();
         let outcome = rows.edit_location(self.id, &self.draft);
         match &outcome {
@@ -30,6 +30,7 @@ impl EditLocation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::fake::InMemoryInventory;
     use crate::{CoverDraft, CoverError};
 
@@ -72,7 +73,7 @@ mod tests {
 
         assert_eq!(
             EditLocation { id, draft }.run(&mut inventory),
-            Err(LocationError::Cover(CoverError::SumMissing))
+            Err(Error::Cover(CoverError::SumMissing))
         );
         assert_eq!(inventory, before);
     }

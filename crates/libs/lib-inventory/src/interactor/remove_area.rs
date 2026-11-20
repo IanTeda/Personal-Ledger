@@ -1,7 +1,7 @@
 use lib_core::AreaId;
 
 use crate::protocols::InventoryRepository;
-use crate::{AreaError, RemovedArea};
+use crate::{RemovedArea, Result};
 
 /// Remove an Area. An empty one just goes; one with Items moves them to `destination`, another
 /// Area of the same Location, first.
@@ -14,7 +14,7 @@ pub struct RemoveArea {
 impl RemoveArea {
     /// Returns the Items moved. The moved Items are written before the Location drops the Area,
     /// so a stored Item never names an Area that is gone.
-    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<RemovedArea, AreaError> {
+    pub fn run(self, inventory: &mut dyn InventoryRepository) -> Result<RemovedArea> {
         let mut rows = inventory.inventory();
         let holder = rows.area(self.area).map(|(location, _)| location.id);
         let outcome = rows.remove_area(self.area, self.destination);
@@ -44,6 +44,7 @@ impl RemoveArea {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::fake::InMemoryInventory;
 
     fn sample() -> InMemoryInventory {
@@ -87,7 +88,7 @@ mod tests {
                 destination: None
             }
             .run(&mut inventory),
-            Err(AreaError::NeedsDestination)
+            Err(Error::NeedsDestination)
         );
         assert_eq!(inventory, before);
     }
