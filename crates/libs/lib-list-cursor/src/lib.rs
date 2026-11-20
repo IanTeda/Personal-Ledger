@@ -9,6 +9,10 @@
 //! Positions are `usize` row indexes; ids are whatever the caller keys rows by. Every function
 //! clamps rather than wraps, and an empty list never panics.
 
+mod error;
+
+pub use error::{Error, Result};
+
 /// `Ctrl-d`/`Ctrl-u`: rows moved by a half page in a list that does not measure its viewport.
 pub const HALF_PAGE: usize = 5;
 

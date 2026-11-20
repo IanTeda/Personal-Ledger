@@ -4797,6 +4797,7 @@ name = "lib_colour_theme"
 version = "0.1.0"
 dependencies = [
  "lib_core",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4956,6 +4957,9 @@ dependencies = [
 [[package]]
 name = "lib_list_cursor"
 version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.20",
+]
 
 [[package]]
 name = "lib_locale"

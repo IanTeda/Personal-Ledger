@@ -7,11 +7,13 @@
 //! `docs/colour-themes-design.md`.
 
 mod colour;
+mod error;
 mod parse;
 mod resolve;
 mod theme;
 
 pub use colour::{Rgba, contrast_ratio, mix};
+pub use error::{Error, Result};
 pub use parse::{ParseError, ThemeFile, parse_hex, parse_theme};
 pub use resolve::{
     CHART_SERIES_COUNT, ContrastFailure, InfoToast, NON_TEXT_CONTRAST, ResolveInputs,
