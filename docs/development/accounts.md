@@ -45,7 +45,7 @@ Invariants and deliberate omissions:
 
 ## Domain types
 
-`AccountId` is in `lib-core`. `lib_accounts::Account` is the domain type (`id`, `name`, `institution`, `account_type`, `unit`, `balance`, `account_number`, `opened_at`); `AccountDraft` is what Edit can change and `NewAccount` is the draft plus what is fixed at creation. `AccountError` (`NotFound`, `Incomplete`) is the refusal. Beside them in `entity.rs` are `insert_account`, `edit_account`, `remove_account`, `get`, `group_accounts` and `display_order` (the page's grouping), `net_worth`, `find_by_name` (the `:accounts <name>` lookup) and `sample_accounts`, the sample seed.
+`AccountId` is in `lib-core`. `lib_accounts::Account` is the domain type (`id`, `name`, `institution`, `account_type`, `unit`, `balance`, `account_number`, `opened_at`); `AccountDraft` is what Edit can change and `NewAccount` is the draft plus what is fixed at creation. `error.rs`'s `Error` (`NotFound`, `Incomplete`) is the refusal. In `entity.rs` are `insert_account`, `edit_account`, `remove_account`, `get`, `group_accounts` and `display_order` (the page's grouping), `net_worth`, `find_by_name` (the `:accounts <name>` lookup) and `sample_accounts`, the sample seed.
 
 The Account's `institution` and `unit` are ids, so it stays on them whatever they are renamed. Names are looked up when shown.
 

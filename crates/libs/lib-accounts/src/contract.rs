@@ -13,7 +13,7 @@ use lib_core::{AccountId, AccountType, InstitutionId, UnitId};
 use crate::fake::InMemoryPorts;
 use crate::interactor::{AddAccount, EditAccount};
 use crate::{
-    Account, AccountDraft, AccountError, AccountRepository, AccountUsage, AccountUse, NewAccount,
+    Account, AccountDraft, AccountRepository, AccountUsage, AccountUse, Error, NewAccount,
     sample_accounts,
 };
 
@@ -198,7 +198,7 @@ pub fn an_edited_account_reloads_the_same<F: PortsFactory>(factory: &mut F) {
             draft: draft("Nowhere", None),
         }
         .run(ports.accounts()),
-        Err(AccountError::NotFound)
+        Err(Error::NotFound)
     );
     factory.commit(&mut ports);
 

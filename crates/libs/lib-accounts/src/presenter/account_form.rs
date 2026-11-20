@@ -33,7 +33,7 @@ use lib_viper::view::{
 
 use crate::interactor::{AddAccount, EditAccount};
 use crate::protocols::{AccountsOutcome, SharedPorts};
-use crate::{AccountDraft, AccountError, GROUP_ORDER, NewAccount, msg};
+use crate::{AccountDraft, Error, GROUP_ORDER, NewAccount, msg};
 
 /// The form's fields, in `Tab` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -157,7 +157,7 @@ pub struct AccountFormPresenter {
     focused: AccountField,
     /// The focused select's list; only one is ever open.
     list: SelectList,
-    error: Option<AccountError>,
+    error: Option<Error>,
 }
 
 impl AccountFormPresenter {
@@ -743,9 +743,9 @@ fn accepts_balance_text(text: &str) -> bool {
 
 /// A refusal as the Dialog shows it. An incomplete form never confirms, so only a gone Account is
 /// ever shown.
-fn refusal_text(error: AccountError) -> String {
+fn refusal_text(error: Error) -> String {
     match error {
-        AccountError::NotFound | AccountError::Incomplete => msg::accounts_error_gone(),
+        Error::NotFound | Error::Incomplete => msg::accounts_error_gone(),
     }
 }
 

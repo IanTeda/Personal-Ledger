@@ -7,6 +7,8 @@ use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
 
+use crate::{Error, Result};
+
 /// The order the Accounts page groups accounts in -- fixed, never alphabetised or sorted by
 /// balance (the README's implementation note 3). Not `AccountType::all()`, whose order puts
 /// Investment before Loan; the desktop design lists Loan first.
@@ -55,16 +57,6 @@ pub struct NewAccount {
     pub opened_at: NaiveDate,
 }
 
-/// Why an Account write was refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum AccountError {
-    #[error("account not found")]
-    NotFound,
-    /// A form was confirmed without everything an Account needs.
-    #[error("the account details are incomplete")]
-    Incomplete,
-}
-
 /// Adds the Account `new` describes under a fresh id and returns it as written.
 pub fn insert_account(accounts: &mut Vec<Account>, new: NewAccount) -> Account {
     let account = Account {
@@ -87,11 +79,11 @@ pub fn edit_account(
     accounts: &mut [Account],
     id: AccountId,
     draft: &AccountDraft,
-) -> Result<Account, AccountError> {
+) -> Result<Account> {
     let account = accounts
         .iter_mut()
         .find(|account| account.id == id)
-        .ok_or(AccountError::NotFound)?;
+        .ok_or(Error::NotFound)?;
     account.name.clone_from(&draft.name);
     account.institution = draft.institution;
     account.account_type = draft.account_type.clone();
@@ -101,8 +93,8 @@ pub fn edit_account(
 
 /// Removes every row with Account `id`, so a deleted id can never leave the list orphaned, and
 /// returns the first one removed. The Transactions booked to it are the Ledger's to delete.
-pub fn remove_account(accounts: &mut Vec<Account>, id: AccountId) -> Result<Account, AccountError> {
-    let first = get(accounts, id).ok_or(AccountError::NotFound)?.clone();
+pub fn remove_account(accounts: &mut Vec<Account>, id: AccountId) -> Result<Account> {
+    let first = get(accounts, id).ok_or(Error::NotFound)?.clone();
     accounts.retain(|account| account.id != id);
     Ok(first)
 }
@@ -549,7 +541,7 @@ mod tests {
         assert_eq!(edited.unit, UnitId::SEED_AUD);
         assert_eq!(
             edit_account(&mut accounts, AccountId::seed(8), &draft("x")),
-            Err(AccountError::NotFound)
+            Err(Error::NotFound)
         );
     }
 
@@ -565,7 +557,7 @@ mod tests {
         assert_eq!(accounts.len(), 1);
         assert_eq!(
             remove_account(&mut accounts, AccountId::seed(4)),
-            Err(AccountError::NotFound)
+            Err(Error::NotFound)
         );
     }
 }

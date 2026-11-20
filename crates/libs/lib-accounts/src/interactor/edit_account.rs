@@ -1,7 +1,7 @@
 use lib_core::AccountId;
 
 use crate::protocols::AccountRepository;
-use crate::{Account, AccountDraft, AccountError, edit_account};
+use crate::{Account, AccountDraft, Result, edit_account};
 
 /// Write an [`AccountDraft`] onto Account `id`, leaving its Unit, opening balance and opened date.
 #[derive(Debug, Clone, PartialEq)]
@@ -12,7 +12,7 @@ pub struct EditAccount {
 
 impl EditAccount {
     /// Returns the Account as written, or refuses an Account that isn't there.
-    pub fn run(self, accounts: &mut dyn AccountRepository) -> Result<Account, AccountError> {
+    pub fn run(self, accounts: &mut dyn AccountRepository) -> Result<Account> {
         let mut rows = accounts.accounts();
         let outcome = edit_account(&mut rows, self.id, &self.draft);
         match &outcome {
@@ -33,6 +33,7 @@ mod tests {
     use lib_core::{AccountType, InstitutionId};
 
     use super::*;
+    use crate::Error;
     use crate::fake::InMemoryAccounts;
 
     fn draft(name: &str) -> AccountDraft {
@@ -75,7 +76,7 @@ mod tests {
                 draft: draft("x"),
             }
             .run(&mut accounts),
-            Err(AccountError::NotFound)
+            Err(Error::NotFound)
         );
         assert_eq!(accounts, before);
     }
