@@ -111,12 +111,12 @@ impl CategoryTypes {
     ///
     /// # Errors
     ///
-    /// Returns a `String` error message if the provided i32 value is not valid.
-    pub fn from_rpc_i32(value: i32) -> Result<Self, String> {
+    /// Returns `CategoryTypesError::InvalidCategoryType` carrying the value if it is not valid.
+    pub fn from_rpc_i32(value: i32) -> Result<Self, CategoryTypesError> {
         match value {
             3 => Ok(CategoryTypes::Expense),
             4 => Ok(CategoryTypes::Income),
-            _ => Err(format!("Invalid category type value: {}", value)),
+            _ => Err(CategoryTypesError::InvalidCategoryType(value.to_string())),
         }
     }
 }
@@ -347,6 +347,10 @@ mod tests {
         assert!(CategoryTypes::from_rpc_i32(5).is_err()); // old Liability
         assert!(CategoryTypes::from_rpc_i32(6).is_err());
         assert!(CategoryTypes::from_rpc_i32(999).is_err());
+        assert_eq!(
+            CategoryTypes::from_rpc_i32(999),
+            Err(CategoryTypesError::InvalidCategoryType("999".to_string()))
+        );
     }
 
     #[test]

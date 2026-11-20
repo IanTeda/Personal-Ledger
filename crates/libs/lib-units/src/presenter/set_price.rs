@@ -6,7 +6,7 @@
 use chrono::{Local, NaiveDate};
 use lib_core::{Money, UnitId};
 use lib_locale::format::{
-    AmountStyle, DateInputOptions, date_error_message, format_amount, format_date,
+    AmountStyle, DateInputError, DateInputOptions, date_error_message, format_amount, format_date,
     format_date_input, parse_date_with, parse_positive_amount,
 };
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
@@ -151,7 +151,7 @@ impl Presenter for SetPricePresenter {
         };
         let week_help = match self.day() {
             Ok(day) => msg::units_set_price_week_of(&format_date(WeeklyPrice::week_of(day), None)),
-            Err(error) => error,
+            Err(error) => date_error_message(&error, today(&self.clock), &Self::date_options()),
         };
         let zero = Money(0.into());
         let (placeholder, close_help) = match &self.quote {
@@ -220,16 +220,17 @@ impl SetPricePresenter {
         }
     }
 
-    /// The typed day, or the Message saying why it can't be read. A year is required, as on any
-    /// entry form.
-    fn day(&self) -> Result<NaiveDate, String> {
-        let today = today(&self.clock);
-        let options = DateInputOptions {
+    /// How the week is read: a year is required, as on any entry form.
+    fn date_options() -> DateInputOptions {
+        DateInputOptions {
             style: None,
             allow_yearless: false,
-        };
-        parse_date_with(&self.week, today, &options)
-            .map_err(|error| date_error_message(&error, today, &options))
+        }
+    }
+
+    /// The typed day, or why it can't be read; the view model turns the error into its Message.
+    fn day(&self) -> Result<NaiveDate, DateInputError> {
+        parse_date_with(&self.week, today(&self.clock), &Self::date_options())
     }
 
     /// The typed close, padded to the quote Unit's Precision; never rounded, so places finer than
