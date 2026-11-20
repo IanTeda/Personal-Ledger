@@ -8,6 +8,8 @@
 
 use lib_core::{CategoryId, CategoryTypes};
 
+use crate::{Error, Result};
+
 /// Joins a category's ancestors in a path label: `Food › Groceries`.
 pub const PATH_SEPARATOR: &str = " \u{203a} ";
 
@@ -244,52 +246,6 @@ pub fn get_or_create_uncategorised(
     next_id
 }
 
-/// Errors for category operations.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum CategoryError {
-    /// Attempted to nest a category deeper than the 3-level cap.
-    #[error("categories nest at most three levels deep")]
-    DepthExceeded,
-    /// Attempted to make a category its own parent (directly or via a cycle).
-    #[error("a category can't be its own parent")]
-    CycleDetected,
-    /// Attempted to move an Expense to Income (or vice versa) or parent has different type.
-    #[error("the parent category is a different type")]
-    TypeMismatch,
-    /// Category not found.
-    #[error("category not found")]
-    NotFound,
-    /// Parent category not found.
-    #[error("parent category not found")]
-    ParentNotFound,
-    /// Attempted to rename, move, retype or nest under Uncategorised, which is fixed.
-    #[error("Uncategorised is fixed")]
-    UncategorisedFixed,
-}
-
-/// Why an Add or Edit of a Category was refused: the tree rules, or the Monthly budget it carried.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum SaveCategoryRefusal {
-    #[error(transparent)]
-    Category(#[from] CategoryError),
-    #[error(transparent)]
-    Budget(#[from] crate::protocols::MonthlyBudgetRefusal),
-    /// A Category with children can't move under a leaf that holds Splits, Bill Plans or Payee
-    /// defaults: they would have no child to take them.
-    #[error("{leaf} holds rows; add a Category under it first")]
-    LeafHoldsRows {
-        leaf: String,
-        held: crate::protocols::Holdings,
-    },
-    /// A top-level Category can't change type while Budgets or Bill Plans use its Categories.
-    #[error("{category} can't change type while its categories are in use")]
-    TypeInUse {
-        category: String,
-        to: CategoryTypes,
-        blockers: crate::protocols::TypeChangeBlockers,
-    },
-}
-
 /// Whether `child_id` is a descendant of `parent_id` (cycle detection).
 fn is_descendant(categories: &[Category], parent_id: CategoryId, child_id: CategoryId) -> bool {
     if parent_id == child_id {
@@ -316,19 +272,19 @@ pub fn insert_category(
     name: String,
     parent_id: Option<CategoryId>,
     category_type: CategoryTypes,
-) -> Result<CategoryId, CategoryError> {
+) -> Result<CategoryId> {
     if let Some(parent_id) = parent_id {
-        let parent = get(categories, parent_id).ok_or(CategoryError::ParentNotFound)?;
+        let parent = get(categories, parent_id).ok_or(Error::ParentNotFound)?;
         if is_uncategorised(parent) {
-            return Err(CategoryError::UncategorisedFixed);
+            return Err(Error::UncategorisedFixed);
         }
         // Type must match
         if parent.category_type != category_type {
-            return Err(CategoryError::TypeMismatch);
+            return Err(Error::TypeMismatch);
         }
         // Depth check
         if depth(categories, parent_id) >= 2 {
-            return Err(CategoryError::DepthExceeded);
+            return Err(Error::DepthExceeded);
         }
     }
 
@@ -343,17 +299,13 @@ pub fn insert_category(
 }
 
 /// Edit a category's name (parent changes use `move_category`). Uncategorised keeps its name.
-pub fn edit_category(
-    categories: &mut [Category],
-    id: CategoryId,
-    name: String,
-) -> Result<(), CategoryError> {
+pub fn edit_category(categories: &mut [Category], id: CategoryId, name: String) -> Result<()> {
     let category = categories
         .iter_mut()
         .find(|c| c.id == id)
-        .ok_or(CategoryError::NotFound)?;
+        .ok_or(Error::NotFound)?;
     if is_uncategorised(category) && category.name != name {
-        return Err(CategoryError::UncategorisedFixed);
+        return Err(Error::UncategorisedFixed);
     }
     category.name = name;
     Ok(())
@@ -369,32 +321,32 @@ pub fn move_category(
     categories: &mut [Category],
     id: CategoryId,
     new_parent_id: Option<CategoryId>,
-) -> Result<(), CategoryError> {
+) -> Result<()> {
     let category = categories
         .iter()
         .find(|c| c.id == id)
-        .ok_or(CategoryError::NotFound)?;
+        .ok_or(Error::NotFound)?;
     let category_type = category.category_type.clone();
     if is_uncategorised(category) && category.parent != new_parent_id {
-        return Err(CategoryError::UncategorisedFixed);
+        return Err(Error::UncategorisedFixed);
     }
 
     if let Some(parent_id) = new_parent_id {
-        let parent = get(categories, parent_id).ok_or(CategoryError::ParentNotFound)?;
+        let parent = get(categories, parent_id).ok_or(Error::ParentNotFound)?;
         if is_uncategorised(parent) {
-            return Err(CategoryError::UncategorisedFixed);
+            return Err(Error::UncategorisedFixed);
         }
         // Type must match
         if parent.category_type != category_type {
-            return Err(CategoryError::TypeMismatch);
+            return Err(Error::TypeMismatch);
         }
         // Cycle check: new parent must not be a descendant of id
         if is_descendant(categories, id, parent_id) {
-            return Err(CategoryError::CycleDetected);
+            return Err(Error::CycleDetected);
         }
         // Depth check, for the whole subtree being moved
         if move_exceeds_depth(categories, id, parent_id) {
-            return Err(CategoryError::DepthExceeded);
+            return Err(Error::DepthExceeded);
         }
     }
 
@@ -409,13 +361,13 @@ pub fn change_category_type(
     categories: &mut [Category],
     id: CategoryId,
     new_type: CategoryTypes,
-) -> Result<(), CategoryError> {
+) -> Result<()> {
     let category = categories
         .iter()
         .find(|c| c.id == id)
-        .ok_or(CategoryError::NotFound)?;
+        .ok_or(Error::NotFound)?;
     if is_uncategorised(category) && category.category_type != new_type {
-        return Err(CategoryError::UncategorisedFixed);
+        return Err(Error::UncategorisedFixed);
     }
 
     let descendants = descendants_inclusive(categories, id);
@@ -730,7 +682,7 @@ mod tests {
             Some(salary),
             CategoryTypes::Expense,
         );
-        assert_eq!(result, Err(CategoryError::TypeMismatch));
+        assert_eq!(result, Err(Error::TypeMismatch));
     }
 
     #[test]
@@ -742,7 +694,7 @@ mod tests {
             Some(CategoryId::seed(999)),
             CategoryTypes::Expense,
         );
-        assert_eq!(result, Err(CategoryError::ParentNotFound));
+        assert_eq!(result, Err(Error::ParentNotFound));
     }
 
     #[test]
@@ -756,7 +708,7 @@ mod tests {
             Some(electricity),
             CategoryTypes::Expense,
         );
-        assert_eq!(result, Err(CategoryError::DepthExceeded));
+        assert_eq!(result, Err(Error::DepthExceeded));
     }
 
     #[test]
@@ -783,7 +735,7 @@ mod tests {
         assert_eq!(height(&categories, utilities), 1);
         assert_eq!(
             move_category(&mut categories, housing, Some(transport)),
-            Err(CategoryError::DepthExceeded)
+            Err(Error::DepthExceeded)
         );
         assert_eq!(categories, before);
         assert!(move_category(&mut categories, utilities, Some(transport)).is_ok());
@@ -797,7 +749,7 @@ mod tests {
 
         // Try to make Food a child of Groceries (its own child) -- cycle
         let result = move_category(&mut categories, food, Some(groceries));
-        assert_eq!(result, Err(CategoryError::CycleDetected));
+        assert_eq!(result, Err(Error::CycleDetected));
     }
 
     #[test]
@@ -808,7 +760,7 @@ mod tests {
 
         // Can't move an Expense under an Income parent
         let result = move_category(&mut categories, transport, Some(salary));
-        assert_eq!(result, Err(CategoryError::TypeMismatch));
+        assert_eq!(result, Err(Error::TypeMismatch));
     }
 
     #[test]
@@ -976,15 +928,15 @@ mod tests {
 
         assert_eq!(
             edit_category(&mut categories, id, "Misc".into()),
-            Err(CategoryError::UncategorisedFixed)
+            Err(Error::UncategorisedFixed)
         );
         assert_eq!(
             move_category(&mut categories, id, Some(food)),
-            Err(CategoryError::UncategorisedFixed)
+            Err(Error::UncategorisedFixed)
         );
         assert_eq!(
             change_category_type(&mut categories, id, CategoryTypes::Income),
-            Err(CategoryError::UncategorisedFixed)
+            Err(Error::UncategorisedFixed)
         );
         assert_eq!(
             insert_category(
@@ -993,11 +945,11 @@ mod tests {
                 Some(id),
                 CategoryTypes::Expense
             ),
-            Err(CategoryError::UncategorisedFixed)
+            Err(Error::UncategorisedFixed)
         );
         assert_eq!(
             move_category(&mut categories, food, Some(id)),
-            Err(CategoryError::UncategorisedFixed),
+            Err(Error::UncategorisedFixed),
             "nothing moves under it"
         );
         assert_eq!(categories, before);

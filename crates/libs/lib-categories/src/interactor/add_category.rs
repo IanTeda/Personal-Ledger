@@ -2,7 +2,7 @@ use lib_core::{CategoryId, CategoryTypes};
 
 use super::{BudgetChange, gains_first_child};
 use crate::protocols::{CategoryRepository, CategorySavePorts};
-use crate::{Category, CategoryError, SaveCategoryRefusal, get, insert_category};
+use crate::{Category, Error, Result, get, insert_category};
 
 /// Add a Category at top level or under `parent_id`, with its Monthly budget. Refused when the
 /// parent isn't there, is another type, or already sits at the depth cap, or when the budget
@@ -21,12 +21,11 @@ impl AddCategory {
         self,
         categories: &mut dyn CategoryRepository,
         budget: &mut dyn CategorySavePorts,
-    ) -> Result<Category, SaveCategoryRefusal> {
+    ) -> Result<Category> {
         let before = categories.categories();
         let mut rows = before.clone();
         let outcome = insert_category(&mut rows, self.name, self.parent_id, self.category_type)
-            .and_then(|id| get(&rows, id).cloned().ok_or(CategoryError::NotFound))
-            .map_err(SaveCategoryRefusal::from)
+            .and_then(|id| get(&rows, id).cloned().ok_or(Error::NotFound))
             .and_then(|category| {
                 self.monthly.check(budget, &rows, category.id)?;
                 Ok(category)
@@ -52,7 +51,6 @@ mod tests {
     use lib_core::Money;
 
     use super::*;
-    use crate::MonthlyBudgetRefusal;
     use crate::fake::{InMemoryCategories, InMemoryCategoryBudget};
 
     fn add(name: &str, parent_id: Option<CategoryId>, category_type: CategoryTypes) -> AddCategory {
@@ -92,12 +90,12 @@ mod tests {
 
         assert_eq!(
             add("Bonus", Some(salary), CategoryTypes::Expense).run(&mut categories, &mut budget),
-            Err(CategoryError::TypeMismatch.into())
+            Err(Error::TypeMismatch)
         );
         assert_eq!(
             add("Peak", Some(electricity), CategoryTypes::Expense)
                 .run(&mut categories, &mut budget),
-            Err(CategoryError::DepthExceeded.into())
+            Err(Error::DepthExceeded)
         );
         assert_eq!(
             add(
@@ -106,7 +104,7 @@ mod tests {
                 CategoryTypes::Expense
             )
             .run(&mut categories, &mut budget),
-            Err(CategoryError::ParentNotFound.into())
+            Err(Error::ParentNotFound)
         );
         assert_eq!(categories, before);
     }
@@ -138,7 +136,7 @@ mod tests {
                 ..add("Bonus", None, CategoryTypes::Income)
             }
             .run(&mut categories, &mut budget),
-            Err(MonthlyBudgetRefusal::NotAnExpenseLeaf.into())
+            Err(Error::NotAnExpenseLeaf)
         );
         assert_eq!(categories, before);
         assert!(budget.amounts.is_empty());
@@ -190,7 +188,7 @@ mod tests {
         }
         .run(&mut categories, &mut budget);
 
-        assert_eq!(refused, Err(MonthlyBudgetRefusal::NotAnExpenseLeaf.into()));
+        assert_eq!(refused, Err(Error::NotAnExpenseLeaf));
         assert!(budget.stopped.is_empty());
     }
 
@@ -248,7 +246,7 @@ mod tests {
         let refused =
             add("Bonus", Some(salary), CategoryTypes::Expense).run(&mut categories, &mut budget);
 
-        assert_eq!(refused, Err(CategoryError::TypeMismatch.into()));
+        assert_eq!(refused, Err(Error::TypeMismatch));
         assert!(budget.handed_over.is_empty());
     }
 }

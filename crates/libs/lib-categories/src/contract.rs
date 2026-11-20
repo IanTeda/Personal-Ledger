@@ -14,8 +14,8 @@ use lib_core::{CategoryId, CategoryTypes, Money, Period};
 use crate::fake::{InMemoryCategories, InMemoryCategoryBudget};
 use crate::interactor::{AddCategory, BudgetChange, MoveCategory, RenameCategory};
 use crate::{
-    Category, CategoryBudgetMonths, CategoryError, CategoryRepository, CategorySavePorts,
-    CategoryUse, Holdings, sample_categories, tree_order,
+    Category, CategoryBudgetMonths, CategoryRepository, CategorySavePorts, CategoryUse, Error,
+    Holdings, sample_categories, tree_order,
 };
 
 /// A stored Categories port.
@@ -281,12 +281,12 @@ pub fn a_refused_write_leaves_the_tree_as_it_was<F: PortsFactory>(factory: &mut 
     assert_eq!(
         add("Peak", Some(ELECTRICITY), CategoryTypes::Expense)
             .run(ports.categories(), &mut InMemoryCategoryBudget::default()),
-        Err(CategoryError::DepthExceeded.into())
+        Err(Error::DepthExceeded)
     );
     assert_eq!(
         add("Bonus", Some(SALARY), CategoryTypes::Expense)
             .run(ports.categories(), &mut InMemoryCategoryBudget::default()),
-        Err(CategoryError::TypeMismatch.into())
+        Err(Error::TypeMismatch)
     );
     assert_eq!(
         MoveCategory {
@@ -294,7 +294,7 @@ pub fn a_refused_write_leaves_the_tree_as_it_was<F: PortsFactory>(factory: &mut 
             parent_id: Some(ELECTRICITY),
         }
         .run(ports.categories()),
-        Err(CategoryError::DepthExceeded)
+        Err(Error::DepthExceeded)
     );
     assert_eq!(
         MoveCategory {
@@ -302,7 +302,7 @@ pub fn a_refused_write_leaves_the_tree_as_it_was<F: PortsFactory>(factory: &mut 
             parent_id: Some(TRANSPORT),
         }
         .run(ports.categories()),
-        Err(CategoryError::DepthExceeded)
+        Err(Error::DepthExceeded)
     );
     assert_eq!(
         MoveCategory {
@@ -310,7 +310,7 @@ pub fn a_refused_write_leaves_the_tree_as_it_was<F: PortsFactory>(factory: &mut 
             parent_id: Some(SALARY),
         }
         .run(ports.categories()),
-        Err(CategoryError::TypeMismatch)
+        Err(Error::TypeMismatch)
     );
     assert_eq!(
         MoveCategory {
@@ -318,7 +318,7 @@ pub fn a_refused_write_leaves_the_tree_as_it_was<F: PortsFactory>(factory: &mut 
             parent_id: Some(ELECTRICITY),
         }
         .run(ports.categories()),
-        Err(CategoryError::CycleDetected)
+        Err(Error::CycleDetected)
     );
     assert_eq!(
         RenameCategory {
@@ -326,7 +326,7 @@ pub fn a_refused_write_leaves_the_tree_as_it_was<F: PortsFactory>(factory: &mut 
             name: "Nowhere".into(),
         }
         .run(ports.categories()),
-        Err(CategoryError::NotFound)
+        Err(Error::NotFound)
     );
     factory.commit(&mut ports);
 

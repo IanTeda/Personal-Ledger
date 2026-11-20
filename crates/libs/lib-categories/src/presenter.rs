@@ -19,21 +19,19 @@ pub use category_form::{
 use lib_core::CategoryTypes;
 use lib_viper::view::count;
 
-use crate::protocols::{MonthlyBudgetRefusal, TypeChangeBlockers};
-use crate::{CategoryError, SaveCategoryRefusal, msg};
+use crate::protocols::TypeChangeBlockers;
+use crate::{Error, msg};
 
 /// A refused Add or Edit as the form shows it.
-fn save_refusal_text(refusal: &SaveCategoryRefusal) -> String {
+fn save_refusal_text(refusal: &Error) -> String {
     match refusal {
-        SaveCategoryRefusal::Category(error) => match error {
-            CategoryError::NotFound => msg::categories_refusal_gone(),
-            CategoryError::ParentNotFound => msg::categories_refusal_parent_gone(),
-            CategoryError::TypeMismatch => msg::categories_refusal_type_mismatch(),
-            CategoryError::DepthExceeded => msg::categories_refusal_too_deep(),
-            CategoryError::CycleDetected => msg::categories_refusal_cycle(),
-            CategoryError::UncategorisedFixed => msg::categories_refusal_uncategorised_fixed(),
-        },
-        SaveCategoryRefusal::LeafHoldsRows { leaf, held } => {
+        Error::NotFound => msg::categories_refusal_gone(),
+        Error::ParentNotFound => msg::categories_refusal_parent_gone(),
+        Error::TypeMismatch => msg::categories_refusal_type_mismatch(),
+        Error::DepthExceeded => msg::categories_refusal_too_deep(),
+        Error::CycleDetected => msg::categories_refusal_cycle(),
+        Error::UncategorisedFixed => msg::categories_refusal_uncategorised_fixed(),
+        Error::LeafHoldsRows { leaf, held } => {
             let mut parts = Vec::new();
             if held.splits > 0 {
                 parts.push(msg::categories_holds_splits());
@@ -52,16 +50,14 @@ fn save_refusal_text(refusal: &SaveCategoryRefusal) -> String {
             };
             msg::categories_refusal_leaf_holds_rows(leaf, &rows)
         }
-        SaveCategoryRefusal::TypeInUse {
+        Error::TypeInUse {
             category,
             to,
             blockers,
         } => type_in_use_text(category, to, *blockers),
-        SaveCategoryRefusal::Budget(refusal) => match refusal {
-            MonthlyBudgetRefusal::NotAnExpenseLeaf => msg::categories_refusal_budget_not_a_leaf(),
-            MonthlyBudgetRefusal::ReadOnly => msg::categories_refusal_budget_read_only(),
-            MonthlyBudgetRefusal::Unavailable => msg::categories_refusal_budget_unavailable(),
-        },
+        Error::NotAnExpenseLeaf => msg::categories_refusal_budget_not_a_leaf(),
+        Error::BudgetReadOnly => msg::categories_refusal_budget_read_only(),
+        Error::BudgetUnavailable => msg::categories_refusal_budget_unavailable(),
     }
 }
 

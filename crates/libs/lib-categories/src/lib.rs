@@ -18,6 +18,7 @@
 )]
 pub mod contract;
 mod entity;
+mod error;
 pub mod fake;
 pub mod interactor;
 pub mod keymap;
@@ -26,9 +27,10 @@ pub mod presenter;
 pub mod protocols;
 
 pub use entity::*;
+pub use error::{Error, Result};
 pub use protocols::{
     CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryBudgetMonths,
     CategoryChange, CategoryHandover, CategoryRepository, CategorySavePorts, CategoryUsage,
-    CategoryUse, Holdings, MonthlyBudget, MonthlyBudgetRefusal, ParentStop, SharedBudgetMonths,
-    SharedCategories, SharedSavePorts, TypeChangeBlockers,
+    CategoryUse, Holdings, MonthlyBudget, ParentStop, SharedBudgetMonths, SharedCategories,
+    SharedSavePorts, TypeChangeBlockers,
 };

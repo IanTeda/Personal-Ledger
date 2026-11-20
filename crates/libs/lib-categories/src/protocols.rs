@@ -18,7 +18,7 @@ use std::rc::Rc;
 use lib_core::{CategoryId, Money, Period};
 use lib_toast::Notify;
 
-use crate::Category;
+use crate::{Category, Result};
 
 /// The Categories on the Ledger.
 pub trait CategoryRepository {
@@ -85,20 +85,6 @@ pub struct MonthlyBudget {
     pub archived: Option<String>,
 }
 
-/// Why a Monthly budget can't be saved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum MonthlyBudgetRefusal {
-    /// Only a leaf Expense Category takes a budget amount.
-    #[error("only a leaf expense category can be budgeted")]
-    NotAnExpenseLeaf,
-    /// The Budget is archived, or the month closed.
-    #[error("the budget is read-only")]
-    ReadOnly,
-    /// The Budget has gone, or refused for a reason no Dialog reaches.
-    #[error("the budget is unavailable")]
-    Unavailable,
-}
-
 /// Where a Category that is about to gain a child is budgeted, for the Dialogs' notice: the
 /// active Budgets that will Stop it, and the month they Stop it from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,15 +117,11 @@ pub trait CategoryBudget {
         categories: &[Category],
         category: CategoryId,
         amount: Option<&Money>,
-    ) -> Result<(), MonthlyBudgetRefusal>;
+    ) -> Result<()>;
 
     /// Saves `amount` for `category`, once its Category is written. An unchanged amount writes
     /// nothing.
-    fn set_monthly_budget(
-        &mut self,
-        category: CategoryId,
-        amount: Option<Money>,
-    ) -> Result<(), MonthlyBudgetRefusal>;
+    fn set_monthly_budget(&mut self, category: CategoryId, amount: Option<Money>) -> Result<()>;
 
     /// Where `category` is budgeted this month, in every active Budget, or `None` when nowhere.
     /// The Dialogs ask it of a chosen parent to warn that a child will Stop its budget.

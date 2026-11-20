@@ -1,7 +1,7 @@
 use lib_core::CategoryId;
 
 use crate::protocols::CategoryRepository;
-use crate::{Category, CategoryError, edit_category, get};
+use crate::{Category, Error, Result, edit_category, get};
 
 /// Rename Category `id`, leaving its parent and type.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,10 +12,10 @@ pub struct RenameCategory {
 
 impl RenameCategory {
     /// Returns the Category as written, or refuses a Category that isn't there.
-    pub fn run(self, categories: &mut dyn CategoryRepository) -> Result<Category, CategoryError> {
+    pub fn run(self, categories: &mut dyn CategoryRepository) -> Result<Category> {
         let mut rows = categories.categories();
         let outcome = edit_category(&mut rows, self.id, self.name)
-            .and_then(|()| get(&rows, self.id).cloned().ok_or(CategoryError::NotFound));
+            .and_then(|()| get(&rows, self.id).cloned().ok_or(Error::NotFound));
         match &outcome {
             Ok(category) => {
                 categories.upsert_category(category.clone());
@@ -69,7 +69,7 @@ mod tests {
                 name: "Nowhere".into(),
             }
             .run(&mut categories),
-            Err(CategoryError::NotFound)
+            Err(Error::NotFound)
         );
         assert_eq!(categories, before);
     }

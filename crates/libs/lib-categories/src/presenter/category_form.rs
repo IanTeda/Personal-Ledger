@@ -771,10 +771,10 @@ mod tests {
 
     use super::super::test_support::sample;
     use super::*;
-    use crate::CategoryError;
     use crate::CategoryRepository as _;
+    use crate::Error;
     use crate::fake::{InMemoryCategoryBudget, RecordingRouter, RouterCall};
-    use crate::protocols::{CategoryBudget as _, CategoryUse, MonthlyBudgetRefusal};
+    use crate::protocols::{CategoryBudget as _, CategoryUse};
 
     const HOUSING: CategoryId = CategoryId::seed(1);
     const UTILITIES: CategoryId = CategoryId::seed(3);
@@ -1362,7 +1362,7 @@ mod tests {
             budget
                 .borrow()
                 .check_monthly_budget(&[], SALARY, Some(&money("1"))),
-            Err(MonthlyBudgetRefusal::NotAnExpenseLeaf)
+            Err(Error::NotAnExpenseLeaf)
         );
     }
 
@@ -1662,7 +1662,7 @@ mod tests {
     fn uncategorised_fixed_has_its_own_refusal_text() {
         sample();
         assert_eq!(
-            save_refusal_text(&CategoryError::UncategorisedFixed.into()),
+            save_refusal_text(&Error::UncategorisedFixed),
             "Uncategorised is fixed: it can't be renamed, moved, retyped or given subcategories."
         );
     }

@@ -10,7 +10,7 @@ use chrono::Datelike as _;
 use lib_budgets::{Budgets, Error, PERSONAL_SPENDING_ID};
 use lib_categories::{
     Category, CategoryBudget, CategoryHandover, CategoryRepository, CategoryUsage, CategoryUse,
-    Holdings, MonthlyBudget, MonthlyBudgetRefusal, ParentStop, TypeChangeBlockers,
+    Holdings, MonthlyBudget, ParentStop, TypeChangeBlockers,
 };
 use lib_core::{CategoryId, Clock, Money};
 
@@ -94,11 +94,11 @@ impl CategoryUsage for StoredCategoriesPorts {
 }
 
 /// What a refused Budget write means to the Categories Dialogs.
-fn budget_refusal(error: Error) -> MonthlyBudgetRefusal {
+fn budget_refusal(error: Error) -> lib_categories::Error {
     match error {
-        Error::NotAnExpenseLeaf => MonthlyBudgetRefusal::NotAnExpenseLeaf,
-        Error::Archived | Error::ClosedMonth => MonthlyBudgetRefusal::ReadOnly,
-        _ => MonthlyBudgetRefusal::Unavailable,
+        Error::NotAnExpenseLeaf => lib_categories::Error::NotAnExpenseLeaf,
+        Error::Archived | Error::ClosedMonth => lib_categories::Error::BudgetReadOnly,
+        _ => lib_categories::Error::BudgetUnavailable,
     }
 }
 
@@ -131,7 +131,7 @@ impl CategoryBudget for StoredCategoriesPorts {
         categories: &[Category],
         category: CategoryId,
         amount: Option<&Money>,
-    ) -> Result<(), MonthlyBudgetRefusal> {
+    ) -> lib_categories::Result<()> {
         let mut budgets = self.stored_budgets();
         budgets
             .set_monthly_limit(
@@ -151,7 +151,7 @@ impl CategoryBudget for StoredCategoriesPorts {
         &mut self,
         category: CategoryId,
         amount: Option<Money>,
-    ) -> Result<(), MonthlyBudgetRefusal> {
+    ) -> lib_categories::Result<()> {
         let tree = self.tree();
         let today = self.clock.today();
         let mut budgets = self.budgets.borrow_mut();

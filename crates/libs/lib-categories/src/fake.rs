@@ -12,12 +12,12 @@ use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryHandover,
-    CategoryUsage, CategoryUse, Holdings, MonthlyBudget, MonthlyBudgetRefusal, ParentStop,
-    SharedCategories, TypeChangeBlockers,
+    CategoryUsage, CategoryUse, Holdings, MonthlyBudget, ParentStop, SharedCategories,
+    TypeChangeBlockers,
 };
 use crate::{
-    Category, CategoryRepository, descendants_inclusive, get, is_leaf, sample_categories,
-    tree_order,
+    Category, CategoryRepository, Error, Result, descendants_inclusive, get, is_leaf,
+    sample_categories, tree_order,
 };
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -150,9 +150,9 @@ impl CategoryBudget for InMemoryCategoryBudget {
         categories: &[Category],
         category: CategoryId,
         amount: Option<&Money>,
-    ) -> Result<(), MonthlyBudgetRefusal> {
+    ) -> Result<()> {
         if self.archived.is_some() {
-            return Err(MonthlyBudgetRefusal::ReadOnly);
+            return Err(Error::BudgetReadOnly);
         }
         if self.amounts.get(&category) == amount {
             return Ok(());
@@ -163,18 +163,14 @@ impl CategoryBudget for InMemoryCategoryBudget {
         if expense_leaf {
             Ok(())
         } else {
-            Err(MonthlyBudgetRefusal::NotAnExpenseLeaf)
+            Err(Error::NotAnExpenseLeaf)
         }
     }
 
     /// Takes the check as made: a test's Category is written before its budget, as a Client's is.
-    fn set_monthly_budget(
-        &mut self,
-        category: CategoryId,
-        amount: Option<Money>,
-    ) -> Result<(), MonthlyBudgetRefusal> {
+    fn set_monthly_budget(&mut self, category: CategoryId, amount: Option<Money>) -> Result<()> {
         if self.archived.is_some() {
-            return Err(MonthlyBudgetRefusal::ReadOnly);
+            return Err(Error::BudgetReadOnly);
         }
         match amount {
             Some(amount) => self.amounts.insert(category, amount),

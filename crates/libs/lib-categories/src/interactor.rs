@@ -15,8 +15,8 @@ pub use rename_category::RenameCategory;
 
 use lib_core::{CategoryId, Money};
 
-use crate::Category;
-use crate::protocols::{CategoryBudget, MonthlyBudgetRefusal};
+use crate::protocols::CategoryBudget;
+use crate::{Category, Result};
 
 /// What an Add or Edit does to the Category's Monthly budget.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -41,12 +41,7 @@ impl BudgetChange {
     }
 
     /// Whether the change would save for `id` in `rows`, the tree as the save leaves it.
-    fn check(
-        &self,
-        budget: &dyn CategoryBudget,
-        rows: &[Category],
-        id: CategoryId,
-    ) -> Result<(), MonthlyBudgetRefusal> {
+    fn check(&self, budget: &dyn CategoryBudget, rows: &[Category], id: CategoryId) -> Result<()> {
         match self.amount() {
             Some(amount) => budget.check_monthly_budget(rows, id, amount),
             None => Ok(()),

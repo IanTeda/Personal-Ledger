@@ -2,10 +2,7 @@ use lib_core::{CategoryId, CategoryTypes};
 
 use super::{BudgetChange, gains_first_child};
 use crate::protocols::{CategoryRepository, CategorySavePorts};
-use crate::{
-    Category, CategoryError, SaveCategoryRefusal, change_category_type, edit_category,
-    move_category,
-};
+use crate::{Category, Error, Result, change_category_type, edit_category, move_category};
 
 /// The Edit category Dialog's save: rename Category `id` and move it under `parent_id` (top level
 /// when `None`); at top level `category_type` cascades to every Category nested under it, and under
@@ -27,7 +24,7 @@ impl EditCategory {
         self,
         categories: &mut dyn CategoryRepository,
         budget: &mut dyn CategorySavePorts,
-    ) -> Result<Category, SaveCategoryRefusal> {
+    ) -> Result<Category> {
         let before = categories.categories();
         let mut rows = before.clone();
         let outcome = self.edit(&mut rows).and_then(|category| {
@@ -63,7 +60,7 @@ impl EditCategory {
         &self,
         before: &[Category],
         ports: &dyn CategorySavePorts,
-    ) -> Result<(), SaveCategoryRefusal> {
+    ) -> Result<()> {
         let Some(target) = gains_first_child(before, self.parent_id) else {
             return Ok(());
         };
@@ -75,7 +72,7 @@ impl EditCategory {
             return Ok(());
         }
         let leaf = crate::get(before, target).map(|c| c.name.clone());
-        Err(SaveCategoryRefusal::LeafHoldsRows {
+        Err(Error::LeafHoldsRows {
             leaf: leaf.unwrap_or_default(),
             held,
         })
@@ -88,7 +85,7 @@ impl EditCategory {
         before: &[Category],
         category: &Category,
         ports: &dyn CategorySavePorts,
-    ) -> Result<(), SaveCategoryRefusal> {
+    ) -> Result<()> {
         let unchanged = crate::get(before, self.id)
             .is_none_or(|old| old.category_type == category.category_type);
         if unchanged {
@@ -98,7 +95,7 @@ impl EditCategory {
         if blockers.is_empty() {
             return Ok(());
         }
-        Err(SaveCategoryRefusal::TypeInUse {
+        Err(Error::TypeInUse {
             category: crate::get(before, self.id).map_or_else(String::new, |c| c.name.clone()),
             to: category.category_type.clone(),
             blockers,
@@ -106,7 +103,7 @@ impl EditCategory {
     }
 
     /// The rename, move and type change applied to `rows`, returning the Category as edited.
-    fn edit(&self, rows: &mut [Category]) -> Result<Category, SaveCategoryRefusal> {
+    fn edit(&self, rows: &mut [Category]) -> Result<Category> {
         edit_category(rows, self.id, self.name.clone())?;
         move_category(rows, self.id, self.parent_id)?;
         if let Some(category_type) = self
@@ -116,9 +113,7 @@ impl EditCategory {
         {
             change_category_type(rows, self.id, category_type)?;
         }
-        Ok(crate::get(rows, self.id)
-            .cloned()
-            .ok_or(CategoryError::NotFound)?)
+        crate::get(rows, self.id).cloned().ok_or(Error::NotFound)
     }
 }
 
@@ -127,7 +122,6 @@ mod tests {
     use lib_core::Money;
 
     use super::*;
-    use crate::MonthlyBudgetRefusal;
     use crate::fake::{InMemoryCategories, InMemoryCategoryBudget};
 
     const FOOD: CategoryId = CategoryId::seed(6);
@@ -145,10 +139,7 @@ mod tests {
         }
     }
 
-    fn run(
-        edit: EditCategory,
-        categories: &mut InMemoryCategories,
-    ) -> Result<Category, SaveCategoryRefusal> {
+    fn run(edit: EditCategory, categories: &mut InMemoryCategories) -> Result<Category> {
         edit.run(categories, &mut InMemoryCategoryBudget::default())
     }
 
@@ -215,18 +206,18 @@ mod tests {
 
         assert_eq!(
             run(edit(FOOD, "Eating", Some(SALARY)), &mut categories),
-            Err(CategoryError::TypeMismatch.into())
+            Err(Error::TypeMismatch)
         );
         assert_eq!(
             run(edit(FOOD, "Eating", Some(GROCERIES)), &mut categories),
-            Err(CategoryError::CycleDetected.into())
+            Err(Error::CycleDetected)
         );
         assert_eq!(
             run(
                 edit(CategoryId::seed(999), "Nowhere", None),
                 &mut categories
             ),
-            Err(CategoryError::NotFound.into())
+            Err(Error::NotFound)
         );
         assert_eq!(categories, before);
     }
@@ -245,7 +236,7 @@ mod tests {
                 ..edit(FOOD, "Eating", None)
             }
             .run(&mut categories, &mut budget),
-            Err(MonthlyBudgetRefusal::NotAnExpenseLeaf.into())
+            Err(Error::NotAnExpenseLeaf)
         );
         assert_eq!(categories, before);
 
@@ -311,7 +302,7 @@ mod tests {
 
         assert_eq!(
             refused,
-            Err(SaveCategoryRefusal::LeafHoldsRows {
+            Err(Error::LeafHoldsRows {
                 leaf: "Transport".into(),
                 held: held(0, 0, 1),
             })
@@ -368,7 +359,7 @@ mod tests {
 
             assert_eq!(
                 refused,
-                Err(SaveCategoryRefusal::TypeInUse {
+                Err(Error::TypeInUse {
                     category: "Food".into(),
                     to: CategoryTypes::Income,
                     blockers: used,

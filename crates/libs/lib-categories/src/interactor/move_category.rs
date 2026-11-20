@@ -1,7 +1,7 @@
 use lib_core::CategoryId;
 
 use crate::protocols::CategoryRepository;
-use crate::{Category, CategoryError, get, move_category};
+use crate::{Category, Error, Result, get, move_category};
 
 /// Move Category `id` under `parent_id`, or to top level when `None`, refused when the parent
 /// isn't there, is another type, sits at the depth cap, or is the Category or one nested under it.
@@ -13,10 +13,10 @@ pub struct MoveCategory {
 
 impl MoveCategory {
     /// Returns the Category as written.
-    pub fn run(self, categories: &mut dyn CategoryRepository) -> Result<Category, CategoryError> {
+    pub fn run(self, categories: &mut dyn CategoryRepository) -> Result<Category> {
         let mut rows = categories.categories();
         let outcome = move_category(&mut rows, self.id, self.parent_id)
-            .and_then(|()| get(&rows, self.id).cloned().ok_or(CategoryError::NotFound));
+            .and_then(|()| get(&rows, self.id).cloned().ok_or(Error::NotFound));
         match &outcome {
             Ok(category) => {
                 categories.upsert_category(category.clone());
@@ -64,7 +64,7 @@ mod tests {
                 parent_id: Some(CategoryId::seed(7)),
             }
             .run(&mut categories),
-            Err(CategoryError::CycleDetected)
+            Err(Error::CycleDetected)
         );
         assert_eq!(
             MoveCategory {
@@ -72,7 +72,7 @@ mod tests {
                 parent_id: Some(CategoryId::seed(11)),
             }
             .run(&mut categories),
-            Err(CategoryError::TypeMismatch)
+            Err(Error::TypeMismatch)
         );
         assert_eq!(categories, before);
     }
@@ -88,7 +88,7 @@ mod tests {
                 parent_id: Some(CategoryId::seed(9)),
             }
             .run(&mut categories),
-            Err(CategoryError::DepthExceeded)
+            Err(Error::DepthExceeded)
         );
         assert_eq!(categories, before);
     }
