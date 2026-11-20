@@ -23,7 +23,7 @@ use lib_core::{InstitutionId, UnitId};
 
 use crate::interactor::{AddInstitution, EditInstitution};
 use crate::protocols::{InstitutionsOutcome, SharedPorts};
-use crate::{InstitutionDraft, InstitutionError, msg};
+use crate::{Error, InstitutionDraft, msg};
 
 /// The Products the Dialog offers (`GLOSSARY.md`'s Products), enough that every seeded
 /// Institution's label is made of them. Not `lib_core::AccountType`, which classes an Account:
@@ -155,7 +155,7 @@ pub struct InstitutionFormPresenter {
     focused: InstitutionField,
     unit_list: SelectList,
     /// The last refusal, with the name it refused.
-    refusal: Option<(String, InstitutionError)>,
+    refusal: Option<(String, Error)>,
 }
 
 impl InstitutionFormPresenter {
@@ -443,11 +443,12 @@ fn unit_choices(ports: &SharedPorts, named: Option<UnitId>) -> Vec<Choice<Option
 const PRODUCTS_SEPARATOR: &str = " \u{b7} ";
 
 /// A name refusal as the Dialog words it.
-fn refusal_text(error: &InstitutionError) -> String {
+fn refusal_text(error: &Error) -> String {
     match error {
-        InstitutionError::DuplicateName(name) => msg::institutions_error_name_taken(name),
-        InstitutionError::NameRequired => msg::institutions_error_name_required(),
-        InstitutionError::NotFound => msg::institutions_error_not_found(),
+        Error::DuplicateName(name) => msg::institutions_error_name_taken(name),
+        Error::NameRequired => msg::institutions_error_name_required(),
+        // An add or an edit never reads Accounts, so `InUse` is a delete's refusal alone.
+        Error::NotFound | Error::InUse(_) => msg::institutions_error_not_found(),
     }
 }
 

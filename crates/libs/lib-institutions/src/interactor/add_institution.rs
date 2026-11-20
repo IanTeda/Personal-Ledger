@@ -1,5 +1,5 @@
 use crate::protocols::InstitutionRepository;
-use crate::{Institution, InstitutionDraft, InstitutionError, insert_institution};
+use crate::{Institution, InstitutionDraft, Result, insert_institution};
 
 /// Add an Institution, its name trimmed and refused when blank or already taken.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -7,10 +7,7 @@ pub struct AddInstitution(pub InstitutionDraft);
 
 impl AddInstitution {
     /// Returns the Institution as written.
-    pub fn run(
-        self,
-        institutions: &mut dyn InstitutionRepository,
-    ) -> Result<Institution, InstitutionError> {
+    pub fn run(self, institutions: &mut dyn InstitutionRepository) -> Result<Institution> {
         let outcome = self.apply(institutions);
         match &outcome {
             Ok(institution) => {
@@ -21,10 +18,7 @@ impl AddInstitution {
         outcome
     }
 
-    fn apply(
-        self,
-        institutions: &mut dyn InstitutionRepository,
-    ) -> Result<Institution, InstitutionError> {
+    fn apply(self, institutions: &mut dyn InstitutionRepository) -> Result<Institution> {
         let mut rows = institutions.institutions();
         let institution = insert_institution(&mut rows, &self.0)?;
         institutions.upsert_institution(institution.clone());
@@ -35,6 +29,7 @@ impl AddInstitution {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::fake::InMemoryInstitutions;
 
     fn draft(name: &str) -> InstitutionDraft {
@@ -66,11 +61,11 @@ mod tests {
 
         assert_eq!(
             AddInstitution(draft("westpac banking")).run(&mut institutions),
-            Err(InstitutionError::DuplicateName("Westpac Banking".into()))
+            Err(Error::DuplicateName("Westpac Banking".into()))
         );
         assert_eq!(
             AddInstitution(draft(" ")).run(&mut institutions),
-            Err(InstitutionError::NameRequired)
+            Err(Error::NameRequired)
         );
         assert_eq!(institutions, before);
     }

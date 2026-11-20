@@ -1,7 +1,7 @@
 use lib_core::InstitutionId;
 
-use crate::Institution;
-use crate::protocols::{InstitutionUse, InstitutionsPorts};
+use crate::protocols::InstitutionsPorts;
+use crate::{Error, Institution, Result};
 
 /// Delete an Institution no Account names. Usage is read here, so the refusal is decided in one
 /// place whatever the caller checked when it opened its Dialog: an Account may have come to name
@@ -11,23 +11,9 @@ pub struct DeleteInstitution {
     pub id: InstitutionId,
 }
 
-/// Why an Institution delete was refused.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum DeleteInstitutionRefusal {
-    /// The Institution is no longer on the Ledger.
-    #[error("the institution is not on the Ledger")]
-    NotFound,
-    /// Accounts name it; carries them.
-    #[error("the institution is used by {} accounts", .0.accounts.len())]
-    InUse(InstitutionUse),
-}
-
 impl DeleteInstitution {
     /// Returns the Institution removed.
-    pub fn run(
-        self,
-        ports: &mut dyn InstitutionsPorts,
-    ) -> Result<Institution, DeleteInstitutionRefusal> {
+    pub fn run(self, ports: &mut dyn InstitutionsPorts) -> Result<Institution> {
         let outcome = self.apply(ports);
         match &outcome {
             Ok(_) => tracing::info!(institution_id = %self.id, "Deleted an Institution"),
@@ -38,17 +24,14 @@ impl DeleteInstitution {
         outcome
     }
 
-    fn apply(
-        self,
-        ports: &mut dyn InstitutionsPorts,
-    ) -> Result<Institution, DeleteInstitutionRefusal> {
+    fn apply(self, ports: &mut dyn InstitutionsPorts) -> Result<Institution> {
         let institution = ports
             .institutions()
             .institution(self.id)
-            .ok_or(DeleteInstitutionRefusal::NotFound)?;
+            .ok_or(Error::NotFound)?;
         let uses = ports.usage().institution_usage(self.id);
         if uses.is_used() {
-            return Err(DeleteInstitutionRefusal::InUse(uses));
+            return Err(Error::InUse(uses));
         }
         ports.institutions_mut().delete_institution(self.id);
         Ok(institution)
@@ -58,6 +41,7 @@ impl DeleteInstitution {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::InstitutionUse;
     use crate::fake::InMemoryPorts;
     use crate::get;
 
@@ -92,7 +76,7 @@ mod tests {
 
         assert_eq!(
             refused,
-            Err(DeleteInstitutionRefusal::InUse(InstitutionUse {
+            Err(Error::InUse(InstitutionUse {
                 accounts: vec!["Amex Platinum".into(), "Amex Gold".into()],
             }))
         );
@@ -109,7 +93,7 @@ mod tests {
                 id: InstitutionId::new()
             }
             .run(&mut ports),
-            Err(DeleteInstitutionRefusal::NotFound)
+            Err(Error::NotFound)
         );
         assert_eq!(ports, before);
     }

@@ -7,5 +7,5 @@ mod delete_institution;
 mod edit_institution;
 
 pub use add_institution::AddInstitution;
-pub use delete_institution::{DeleteInstitution, DeleteInstitutionRefusal};
+pub use delete_institution::DeleteInstitution;
 pub use edit_institution::EditInstitution;

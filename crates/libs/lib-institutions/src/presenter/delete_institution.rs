@@ -14,7 +14,8 @@ use lib_viper::keymap::{BACK, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 
-use crate::interactor::{DeleteInstitution, DeleteInstitutionRefusal};
+use crate::Error;
+use crate::interactor::DeleteInstitution;
 use crate::msg;
 use crate::protocols::{InstitutionUse, InstitutionsOutcome, SharedPorts};
 
@@ -250,8 +251,12 @@ impl DeleteInstitutionPresenter {
                     next,
                 }));
             }
-            Err(DeleteInstitutionRefusal::InUse(uses)) => self.state = State::InUse(uses),
-            Err(DeleteInstitutionRefusal::NotFound) => self.state = State::Gone,
+            Err(Error::InUse(uses)) => self.state = State::InUse(uses),
+            // A delete writes no name, so the name refusals never come back; the row is the one thing
+            // that can be missing.
+            Err(Error::NotFound | Error::NameRequired | Error::DuplicateName(_)) => {
+                self.state = State::Gone;
+            }
         }
     }
 }

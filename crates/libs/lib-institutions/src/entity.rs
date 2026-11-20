@@ -2,6 +2,8 @@
 
 use lib_core::{InstitutionId, UnitId};
 
+use crate::{Error, Result};
+
 /// One Institution: a row of the **Institutions** section's table
 /// (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state" markup: INSTITUTION /
 /// PRODUCTS columns).
@@ -28,19 +30,6 @@ pub struct InstitutionDraft {
     pub name: String,
     pub products: String,
     pub usual_unit: Option<UnitId>,
-}
-
-/// Why an Institution write was refused.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum InstitutionError {
-    #[error("an institution needs a name")]
-    NameRequired,
-    /// Carries the name as the Institution holding it spells it.
-    #[error("an institution named {0} already exists")]
-    DuplicateName(String),
-    /// The Institution being edited is no longer on the Ledger.
-    #[error("the institution is not on the Ledger")]
-    NotFound,
 }
 
 /// The Products every Personal Institution is written with, as the Add Dialog's Cash chip joins it.
@@ -122,16 +111,16 @@ fn checked_name<'a>(
     institutions: &[Institution],
     draft: &'a InstitutionDraft,
     own: Option<InstitutionId>,
-) -> Result<&'a str, InstitutionError> {
+) -> Result<&'a str> {
     let name = draft.name.trim();
     if name.is_empty() {
-        return Err(InstitutionError::NameRequired);
+        return Err(Error::NameRequired);
     }
     let lowered = name.to_lowercase();
     if let Some(holder) = institutions.iter().find(|institution| {
         Some(institution.id) != own && institution.name.to_lowercase() == lowered
     }) {
-        return Err(InstitutionError::DuplicateName(holder.name.clone()));
+        return Err(Error::DuplicateName(holder.name.clone()));
     }
     Ok(name)
 }
@@ -143,7 +132,7 @@ fn checked_name<'a>(
 pub fn insert_institution(
     institutions: &mut Vec<Institution>,
     draft: &InstitutionDraft,
-) -> Result<Institution, InstitutionError> {
+) -> Result<Institution> {
     let name = checked_name(institutions, draft, None)?;
     let institution = Institution {
         id: InstitutionId::new(),
@@ -162,15 +151,15 @@ pub fn edit_institution(
     institutions: &mut [Institution],
     id: InstitutionId,
     draft: &InstitutionDraft,
-) -> Result<(), InstitutionError> {
+) -> Result<()> {
     if get(institutions, id).is_none() {
-        return Err(InstitutionError::NotFound);
+        return Err(Error::NotFound);
     }
     let name = checked_name(institutions, draft, Some(id))?.to_string();
     let institution = institutions
         .iter_mut()
         .find(|institution| institution.id == id)
-        .ok_or(InstitutionError::NotFound)?;
+        .ok_or(Error::NotFound)?;
     institution.name = name;
     institution.products = draft.products.clone();
     institution.usual_unit = draft.usual_unit;
@@ -280,11 +269,11 @@ mod tests {
         let before = institutions.clone();
         assert_eq!(
             insert_institution(&mut institutions, &draft("   ")),
-            Err(InstitutionError::NameRequired)
+            Err(Error::NameRequired)
         );
         assert_eq!(
             insert_institution(&mut institutions, &draft(" american EXPRESS ")),
-            Err(InstitutionError::DuplicateName("American Express".into()))
+            Err(Error::DuplicateName("American Express".into()))
         );
         assert_eq!(institutions, before);
     }
@@ -312,7 +301,7 @@ mod tests {
 
         assert_eq!(
             edit_institution(&mut institutions, InstitutionId::SEED_WESTPAC, &draft("  ")),
-            Err(InstitutionError::NameRequired)
+            Err(Error::NameRequired)
         );
         assert_eq!(
             edit_institution(
@@ -320,15 +309,15 @@ mod tests {
                 InstitutionId::SEED_WESTPAC,
                 &draft("anz banking group")
             ),
-            Err(InstitutionError::DuplicateName("ANZ Banking Group".into()))
+            Err(Error::DuplicateName("ANZ Banking Group".into()))
         );
         assert_eq!(
             edit_institution(&mut institutions, InstitutionId::new(), &draft("Bank X")),
-            Err(InstitutionError::NotFound)
+            Err(Error::NotFound)
         );
         assert_eq!(
             edit_institution(&mut institutions, InstitutionId::new(), &draft("  ")),
-            Err(InstitutionError::NotFound),
+            Err(Error::NotFound),
             "a missing row is reported before its draft's name"
         );
         assert_eq!(institutions, before);

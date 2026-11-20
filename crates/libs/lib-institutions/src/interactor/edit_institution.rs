@@ -1,7 +1,7 @@
 use lib_core::InstitutionId;
 
 use crate::protocols::InstitutionRepository;
-use crate::{Institution, InstitutionDraft, InstitutionError, edit_institution, get};
+use crate::{Error, Institution, InstitutionDraft, Result, edit_institution, get};
 
 /// Edit an Institution's name and Products. The name is refused when blank or held by another
 /// Institution; a change of capitals only is accepted.
@@ -13,10 +13,7 @@ pub struct EditInstitution {
 
 impl EditInstitution {
     /// Returns the Institution as written.
-    pub fn run(
-        self,
-        institutions: &mut dyn InstitutionRepository,
-    ) -> Result<Institution, InstitutionError> {
+    pub fn run(self, institutions: &mut dyn InstitutionRepository) -> Result<Institution> {
         let id = self.id;
         let outcome = self.apply(institutions);
         match &outcome {
@@ -28,15 +25,10 @@ impl EditInstitution {
         outcome
     }
 
-    fn apply(
-        self,
-        institutions: &mut dyn InstitutionRepository,
-    ) -> Result<Institution, InstitutionError> {
+    fn apply(self, institutions: &mut dyn InstitutionRepository) -> Result<Institution> {
         let mut rows = institutions.institutions();
         edit_institution(&mut rows, self.id, &self.draft)?;
-        let institution = get(&rows, self.id)
-            .cloned()
-            .ok_or(InstitutionError::NotFound)?;
+        let institution = get(&rows, self.id).cloned().ok_or(Error::NotFound)?;
         institutions.upsert_institution(institution.clone());
         Ok(institution)
     }
@@ -84,7 +76,7 @@ mod tests {
 
         assert_eq!(
             refused,
-            Err(InstitutionError::DuplicateName("ANZ Banking Group".into()))
+            Err(Error::DuplicateName("ANZ Banking Group".into()))
         );
         assert_eq!(institutions, before);
     }

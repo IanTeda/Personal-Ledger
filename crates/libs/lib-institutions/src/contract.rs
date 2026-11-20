@@ -9,11 +9,9 @@
 use lib_core::{InstitutionId, UnitId};
 
 use crate::fake::{InMemoryInstitutionUnits, InMemoryInstitutionUsage, InMemoryInstitutions};
-use crate::interactor::{
-    AddInstitution, DeleteInstitution, DeleteInstitutionRefusal, EditInstitution,
-};
+use crate::interactor::{AddInstitution, DeleteInstitution, EditInstitution};
 use crate::{
-    Institution, InstitutionDraft, InstitutionError, InstitutionRepository, InstitutionUnits,
+    Error, Institution, InstitutionDraft, InstitutionRepository, InstitutionUnits,
     InstitutionUsage, InstitutionUse, InstitutionsPorts, sample_institutions,
 };
 
@@ -187,11 +185,11 @@ pub fn a_blank_or_taken_name_is_refused_and_writes_nothing<F: PortsFactory>(fact
 
     assert_eq!(
         AddInstitution(draft(" anz banking group ", "savings")).run(&mut ports),
-        Err(InstitutionError::DuplicateName("ANZ Banking Group".into()))
+        Err(Error::DuplicateName("ANZ Banking Group".into()))
     );
     assert_eq!(
         AddInstitution(draft("  ", "savings")).run(&mut ports),
-        Err(InstitutionError::NameRequired)
+        Err(Error::NameRequired)
     );
     factory.commit(&mut ports);
 
@@ -236,7 +234,7 @@ pub fn a_clashing_rename_is_refused_and_writes_nothing<F: PortsFactory>(factory:
             draft: draft(" anz banking group ", "loan"),
         }
         .run(&mut ports),
-        Err(InstitutionError::DuplicateName("ANZ Banking Group".into()))
+        Err(Error::DuplicateName("ANZ Banking Group".into()))
     );
     assert_eq!(
         EditInstitution {
@@ -244,7 +242,7 @@ pub fn a_clashing_rename_is_refused_and_writes_nothing<F: PortsFactory>(factory:
             draft: draft("  ", "loan"),
         }
         .run(&mut ports),
-        Err(InstitutionError::NameRequired)
+        Err(Error::NameRequired)
     );
     factory.commit(&mut ports);
 
@@ -355,7 +353,7 @@ pub fn deleting_one_in_use_is_refused_and_writes_nothing<F: PortsFactory>(factor
 
     assert_eq!(
         refused,
-        Err(DeleteInstitutionRefusal::InUse(InstitutionUse {
+        Err(Error::InUse(InstitutionUse {
             accounts: vec!["Amex Platinum".into(), "Amex Gold".into()],
         }))
     );
