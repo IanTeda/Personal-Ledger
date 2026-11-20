@@ -17,16 +17,16 @@ pub use tag_form::{
 };
 pub use tags_page::{TagLine, TagsPageEvent, TagsPagePresenter, TagsPageViewModel};
 
-use crate::{TagError, msg};
+use crate::{Error, msg};
 
 /// A name's problem as the form words it, or the refusal it shows in its place: a blank name only
 /// keeps Save from confirming, so it has no text of its own here.
-fn name_error_text(error: &TagError) -> String {
+fn name_error_text(error: &Error) -> String {
     match error {
-        TagError::DuplicateName(name) => msg::tags_error_name_taken(name),
-        TagError::NoLetterOrDigit => msg::tags_error_no_letter_or_digit(),
-        TagError::NotFound => msg::tags_refusal_gone(),
-        TagError::NameRequired => {
+        Error::DuplicateName(name) => msg::tags_error_name_taken(name),
+        Error::NoLetterOrDigit => msg::tags_error_no_letter_or_digit(),
+        Error::NotFound => msg::tags_refusal_gone(),
+        Error::NameRequired => {
             debug_assert!(
                 false,
                 "a blank name has no text: it only keeps Save from confirming"

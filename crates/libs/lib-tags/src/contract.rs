@@ -11,7 +11,7 @@ use lib_core::{HexColor, Money, TagId, Total};
 
 use crate::fake::InMemoryPorts;
 use crate::interactor::{AddTag, DeactivateTag, EditTag, ReactivateTag};
-use crate::{Tag, TagDraft, TagError, TagRepository, TagUsage, TagUse, sample_tags, swatches};
+use crate::{Error, Tag, TagDraft, TagRepository, TagUsage, TagUse, sample_tags, swatches};
 
 /// A stored set of the Tags ports.
 pub trait StoredPorts {
@@ -166,7 +166,7 @@ pub fn an_edited_tag_reloads_the_same<F: PortsFactory>(factory: &mut F) {
             draft: draft("Nowhere", None),
         }
         .run(ports.tags()),
-        Err(TagError::NotFound)
+        Err(Error::NotFound)
     );
     factory.commit(&mut ports);
 
@@ -191,7 +191,7 @@ pub fn deactivating_and_reactivating_reload_the_same<F: PortsFactory>(factory: &
         .expect("the Tag is there");
     assert_eq!(
         DeactivateTag(TagId::seed(999)).run(ports.tags()),
-        Err(TagError::NotFound)
+        Err(Error::NotFound)
     );
     factory.commit(&mut ports);
 
@@ -221,20 +221,20 @@ pub fn a_name_is_unique_once_normalised<F: PortsFactory>(factory: &mut F) {
 
     assert_eq!(
         AddTag(draft("Tax Deductible", None)).run(ports.tags()),
-        Err(TagError::DuplicateName("tax-deductible".into()))
+        Err(Error::DuplicateName("tax-deductible".into()))
     );
     assert_eq!(
         AddTag(draft("bali_2025", None)).run(ports.tags()),
-        Err(TagError::DuplicateName("Bali 2025".into())),
+        Err(Error::DuplicateName("Bali 2025".into())),
         "an inactive Tag keeps its name taken"
     );
     assert_eq!(
         AddTag(draft(" -- ", None)).run(ports.tags()),
-        Err(TagError::NoLetterOrDigit)
+        Err(Error::NoLetterOrDigit)
     );
     assert_eq!(
         AddTag(draft("  ", None)).run(ports.tags()),
-        Err(TagError::NameRequired)
+        Err(Error::NameRequired)
     );
     assert_eq!(
         EditTag {
@@ -242,7 +242,7 @@ pub fn a_name_is_unique_once_normalised<F: PortsFactory>(factory: &mut F) {
             draft: draft("gift!", None),
         }
         .run(ports.tags()),
-        Err(TagError::DuplicateName("gift".into()))
+        Err(Error::DuplicateName("gift".into()))
     );
     assert_eq!(ports.tags().tags(), stored, "a refusal writes nothing");
 

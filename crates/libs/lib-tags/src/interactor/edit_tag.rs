@@ -1,7 +1,7 @@
 use lib_core::TagId;
 
 use crate::protocols::TagRepository;
-use crate::{Tag, TagDraft, TagError, edit_tag};
+use crate::{Error, Result, Tag, TagDraft, edit_tag};
 
 /// Write a [`TagDraft`]'s name and colour onto Tag `id`, leaving its Active flag.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,12 +13,12 @@ pub struct EditTag {
 impl EditTag {
     /// Returns the Tag as written, or refuses a Tag that isn't there or a name another Tag has
     /// once normalised.
-    pub fn run(self, tags: &mut dyn TagRepository) -> Result<Tag, TagError> {
+    pub fn run(self, tags: &mut dyn TagRepository) -> Result<Tag> {
         let mut rows = tags.tags();
         let outcome = edit_tag(&mut rows, self.id, &self.draft).and_then(|()| {
             rows.into_iter()
                 .find(|tag| tag.id == self.id)
-                .ok_or(TagError::NotFound)
+                .ok_or(Error::NotFound)
         });
         match &outcome {
             Ok(tag) => {
@@ -74,7 +74,7 @@ mod tests {
                 draft: draft("x"),
             }
             .run(&mut tags),
-            Err(TagError::NotFound)
+            Err(Error::NotFound)
         );
         assert_eq!(
             EditTag {
@@ -82,7 +82,7 @@ mod tests {
                 draft: draft("gift!"),
             }
             .run(&mut tags),
-            Err(TagError::DuplicateName("gift".into()))
+            Err(Error::DuplicateName("gift".into()))
         );
         assert_eq!(tags, before);
     }

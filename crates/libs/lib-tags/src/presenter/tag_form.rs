@@ -24,7 +24,7 @@ use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 use super::name_error_text;
 use crate::interactor::{AddTag, DeactivateTag, EditTag, ReactivateTag};
 use crate::protocols::{SharedPorts, TagChange, TagsOutcome};
-use crate::{Tag, TagDraft, TagError, msg, name_error, swatches};
+use crate::{Error, Tag, TagDraft, msg, name_error, swatches};
 
 /// The form's fields, in `Tab` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -455,12 +455,12 @@ impl TagFormPresenter {
     }
 
     /// The name's problem against every other Tag, an empty name included.
-    fn problem(&self) -> Option<TagError> {
+    fn problem(&self) -> Option<Error> {
         name_error(&self.ports.borrow().tags(), self.own_id(), &self.name)
     }
 
     /// The name's problem to show: none while it is empty.
-    fn name_problem(&self) -> Option<TagError> {
+    fn name_problem(&self) -> Option<Error> {
         if self.name.trim().is_empty() {
             return None;
         }

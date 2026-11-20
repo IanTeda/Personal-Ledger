@@ -22,6 +22,7 @@
 //!   total that only sums when every Split carrying the Tag shares one Unit. This crate reads it
 //!   through the [`TagUsage`] port.
 
+use crate::{Error, Result};
 use std::collections::HashMap;
 
 use lib_core::{HexColor, TagId};
@@ -97,21 +98,6 @@ pub fn get(tags: &[Tag], id: TagId) -> Option<&Tag> {
     tags.iter().find(|tag| tag.id == id)
 }
 
-/// Errors for Tag operations.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum TagError {
-    #[error("a tag needs a name")]
-    NameRequired,
-    /// The name normalises to nothing: it has no letter or digit.
-    #[error("a tag name needs a letter or a digit")]
-    NoLetterOrDigit,
-    /// Another Tag already has this name once normalised; carries that Tag's name.
-    #[error("{0} already exists")]
-    DuplicateName(String),
-    #[error("tag not found")]
-    NotFound,
-}
-
 /// What the Add and Edit dialogs submit.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TagDraft {
@@ -121,32 +107,32 @@ pub struct TagDraft {
 
 /// Checks `name` is present, has a letter or digit and isn't another Tag's once normalised;
 /// returns it trimmed. `own_id` is the Tag being edited.
-fn clean_name(tags: &[Tag], own_id: Option<TagId>, name: &str) -> Result<String, TagError> {
+fn clean_name(tags: &[Tag], own_id: Option<TagId>, name: &str) -> Result<String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(TagError::NameRequired);
+        return Err(Error::NameRequired);
     }
     let normalised = normalise(name);
     if normalised.is_empty() {
-        return Err(TagError::NoLetterOrDigit);
+        return Err(Error::NoLetterOrDigit);
     }
     if let Some(other) = tags
         .iter()
         .find(|t| Some(t.id) != own_id && normalise(&t.name) == normalised)
     {
-        return Err(TagError::DuplicateName(other.name.clone()));
+        return Err(Error::DuplicateName(other.name.clone()));
     }
     Ok(name.to_string())
 }
 
 /// The problem with `name` for Tag `own_id` (or a new Tag), if any; an empty name is reported too,
 /// so a dialog decides for itself whether to show that one.
-pub fn name_error(tags: &[Tag], own_id: Option<TagId>, name: &str) -> Option<TagError> {
+pub fn name_error(tags: &[Tag], own_id: Option<TagId>, name: &str) -> Option<Error> {
     clean_name(tags, own_id, name).err()
 }
 
 /// Adds a new, active Tag and returns its id.
-pub fn insert_tag(tags: &mut Vec<Tag>, draft: &TagDraft) -> Result<TagId, TagError> {
+pub fn insert_tag(tags: &mut Vec<Tag>, draft: &TagDraft) -> Result<TagId> {
     let name = clean_name(tags, None, &draft.name)?;
     let id = TagId::new();
     tags.push(Tag {
@@ -159,24 +145,24 @@ pub fn insert_tag(tags: &mut Vec<Tag>, draft: &TagDraft) -> Result<TagId, TagErr
 }
 
 /// Renames and recolours Tag `id` in place: Splits refer to it by id, so nothing is re-tagged.
-pub fn edit_tag(tags: &mut [Tag], id: TagId, draft: &TagDraft) -> Result<(), TagError> {
-    get(tags, id).ok_or(TagError::NotFound)?;
+pub fn edit_tag(tags: &mut [Tag], id: TagId, draft: &TagDraft) -> Result<()> {
+    get(tags, id).ok_or(Error::NotFound)?;
     let name = clean_name(tags, Some(id), &draft.name)?;
     let tag = tags
         .iter_mut()
         .find(|t| t.id == id)
-        .ok_or(TagError::NotFound)?;
+        .ok_or(Error::NotFound)?;
     tag.name = name;
     tag.color = draft.color.clone();
     Ok(())
 }
 
 /// Deactivates or reactivates Tag `id`.
-pub fn set_active(tags: &mut [Tag], id: TagId, is_active: bool) -> Result<(), TagError> {
+pub fn set_active(tags: &mut [Tag], id: TagId, is_active: bool) -> Result<()> {
     let tag = tags
         .iter_mut()
         .find(|t| t.id == id)
-        .ok_or(TagError::NotFound)?;
+        .ok_or(Error::NotFound)?;
     tag.is_active = is_active;
     Ok(())
 }
@@ -192,7 +178,7 @@ pub enum SplitTag {
 
 /// Resolves a Tag name typed on a Split: an exact case-insensitive match is reused, while a name
 /// only equal once normalised (`work trip` beside `work-trip`) is refused as taken.
-pub fn resolve_split_tag(tags: &[Tag], typed: &str) -> Result<SplitTag, TagError> {
+pub fn resolve_split_tag(tags: &[Tag], typed: &str) -> Result<SplitTag> {
     if let Some(id) = find_by_name(tags, typed) {
         return Ok(SplitTag::Existing(id));
     }
@@ -352,7 +338,7 @@ mod tests {
 
         assert_eq!(
             insert_tag(&mut tags, &draft("work trip")),
-            Err(TagError::DuplicateName("work-trip".to_string()))
+            Err(Error::DuplicateName("work-trip".to_string()))
         );
         assert_eq!(tags.len(), 1);
     }
@@ -374,7 +360,7 @@ mod tests {
 
         assert_eq!(
             insert_tag(&mut tags, &draft(" -- ")),
-            Err(TagError::NoLetterOrDigit)
+            Err(Error::NoLetterOrDigit)
         );
     }
 
@@ -388,7 +374,7 @@ mod tests {
         );
         assert_eq!(
             resolve_split_tag(&tags, "work trip"),
-            Err(TagError::DuplicateName("work-trip".to_string()))
+            Err(Error::DuplicateName("work-trip".to_string()))
         );
         assert_eq!(resolve_split_tag(&tags, "fresh"), Ok(SplitTag::New));
     }

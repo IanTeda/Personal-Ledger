@@ -1,7 +1,7 @@
 use lib_core::TagId;
 
 use crate::protocols::TagRepository;
-use crate::{Tag, TagError};
+use crate::{Error, Result, Tag};
 
 /// Deactivate a Tag, which drops out of the "N tags" count but keeps its name taken.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,7 +9,7 @@ pub struct DeactivateTag(pub TagId);
 
 impl DeactivateTag {
     /// Returns the Tag as written, or refuses a Tag that isn't there.
-    pub fn run(self, tags: &mut dyn TagRepository) -> Result<Tag, TagError> {
+    pub fn run(self, tags: &mut dyn TagRepository) -> Result<Tag> {
         let outcome = self.apply(tags);
         match &outcome {
             Ok(_) => tracing::info!(tag_id = %self.0, "Deactivated a Tag"),
@@ -20,8 +20,8 @@ impl DeactivateTag {
         outcome
     }
 
-    fn apply(self, tags: &mut dyn TagRepository) -> Result<Tag, TagError> {
-        let mut tag = tags.tag(self.0).ok_or(TagError::NotFound)?;
+    fn apply(self, tags: &mut dyn TagRepository) -> Result<Tag> {
+        let mut tag = tags.tag(self.0).ok_or(Error::NotFound)?;
         tag.is_active = false;
         tags.upsert_tag(tag.clone());
         Ok(tag)
@@ -57,7 +57,7 @@ mod tests {
         let mut tags = InMemoryTags::sample();
         assert_eq!(
             DeactivateTag(TagId::seed(999)).run(&mut tags),
-            Err(TagError::NotFound)
+            Err(Error::NotFound)
         );
     }
 }

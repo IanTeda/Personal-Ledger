@@ -1,5 +1,5 @@
 use crate::protocols::TagRepository;
-use crate::{Tag, TagDraft, TagError, insert_tag};
+use crate::{Error, Result, Tag, TagDraft, insert_tag};
 
 /// Add the Tag a [`TagDraft`] describes, active, under a fresh id, after every Tag already there.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -7,12 +7,12 @@ pub struct AddTag(pub TagDraft);
 
 impl AddTag {
     /// Returns the Tag as written, or refuses a name that is missing or taken once normalised.
-    pub fn run(self, tags: &mut dyn TagRepository) -> Result<Tag, TagError> {
+    pub fn run(self, tags: &mut dyn TagRepository) -> Result<Tag> {
         let mut rows = tags.tags();
         let outcome = insert_tag(&mut rows, &self.0).and_then(|id| {
             rows.into_iter()
                 .find(|tag| tag.id == id)
-                .ok_or(TagError::NotFound)
+                .ok_or(Error::NotFound)
         });
         match &outcome {
             Ok(tag) => {
@@ -58,7 +58,7 @@ mod tests {
 
         assert_eq!(
             AddTag(draft("Tax Deductible")).run(&mut tags),
-            Err(TagError::DuplicateName("tax-deductible".into()))
+            Err(Error::DuplicateName("tax-deductible".into()))
         );
         assert_eq!(tags, before);
     }

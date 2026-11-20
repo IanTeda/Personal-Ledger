@@ -15,6 +15,7 @@
 )]
 pub mod contract;
 mod entity;
+mod error;
 pub mod fake;
 pub mod interactor;
 pub mod keymap;
@@ -23,6 +24,7 @@ pub mod presenter;
 pub mod protocols;
 
 pub use entity::*;
+pub use error::{Error, Result};
 pub use protocols::{
     SharedPorts, TagChange, TagRepository, TagUsage, TagUse, TagsDialog, TagsOutcome, TagsPorts,
     TagsRouter,
