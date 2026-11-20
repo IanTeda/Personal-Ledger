@@ -1,7 +1,7 @@
 use lib_core::PayeeId;
 
 use crate::protocols::PayeeRepository;
-use crate::{Payee, PayeeError};
+use crate::{Error, Payee, Result};
 
 /// Deactivate a Payee, which keeps it on every row that names it but stops its aliases matching.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,7 +9,7 @@ pub struct DeactivatePayee(pub PayeeId);
 
 impl DeactivatePayee {
     /// Returns the Payee as written.
-    pub fn run(self, payees: &mut dyn PayeeRepository) -> Result<Payee, PayeeError> {
+    pub fn run(self, payees: &mut dyn PayeeRepository) -> Result<Payee> {
         let outcome = self.apply(payees);
         match &outcome {
             Ok(_) => tracing::info!(payee_id = %self.0, "Deactivated a Payee"),
@@ -20,8 +20,8 @@ impl DeactivatePayee {
         outcome
     }
 
-    fn apply(self, payees: &mut dyn PayeeRepository) -> Result<Payee, PayeeError> {
-        let mut payee = payees.payee(self.0).ok_or(PayeeError::NotFound)?;
+    fn apply(self, payees: &mut dyn PayeeRepository) -> Result<Payee> {
+        let mut payee = payees.payee(self.0).ok_or(Error::NotFound)?;
         payee.is_active = false;
         payees.upsert_payee(payee.clone());
         Ok(payee)

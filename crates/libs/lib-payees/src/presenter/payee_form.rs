@@ -28,7 +28,7 @@ use lib_viper::view::{
 use super::refusal_text;
 use crate::interactor::{AddPayee, EditPayee};
 use crate::protocols::{PayeeChange, PayeesOutcome, SharedPorts};
-use crate::{PayeeDraft, PayeeError, alias_owner, clean_name, msg, normalise_alias};
+use crate::{Error, PayeeDraft, alias_owner, clean_name, msg, normalise_alias};
 
 /// The form's fields, in `Tab` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -121,7 +121,7 @@ pub struct PayeeFormPresenter {
     focused: PayeeField,
     /// The Default category's list.
     list: SelectList,
-    error: Option<PayeeError>,
+    error: Option<Error>,
 }
 
 impl PayeeFormPresenter {
@@ -267,7 +267,7 @@ impl Presenter for PayeeFormPresenter {
                 focused: self.focused == PayeeField::Name,
             },
             name_error: match self.clean_name() {
-                Err(PayeeError::NameRequired) | Ok(_) => None,
+                Err(Error::NameRequired) | Ok(_) => None,
                 Err(error) => Some(refusal_text(&error)),
             },
             default_category: SelectView {
@@ -397,7 +397,7 @@ impl PayeeFormPresenter {
         self.editing.as_ref().map(|editing| editing.id)
     }
 
-    fn clean_name(&self) -> Result<String, PayeeError> {
+    fn clean_name(&self) -> crate::Result<String> {
         let payees = self.ports.borrow().payees().payees();
         clean_name(&payees, self.own_id(), &self.name)
     }
@@ -411,7 +411,7 @@ impl PayeeFormPresenter {
         };
         let payees = self.ports.borrow().payees().payees();
         if let Some(owner) = alias_owner(&payees, &rule).filter(|p| Some(p.id) != self.own_id()) {
-            self.error = Some(PayeeError::AliasTaken {
+            self.error = Some(Error::AliasTaken {
                 alias: rule,
                 owner: owner.name.clone(),
             });

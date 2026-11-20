@@ -1,7 +1,7 @@
 use lib_core::PayeeId;
 
 use crate::protocols::PayeeRepository;
-use crate::{Payee, PayeeError};
+use crate::{Error, Payee, Result};
 
 /// Reactivate a deactivated Payee, so it counts and matches again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,7 +9,7 @@ pub struct ReactivatePayee(pub PayeeId);
 
 impl ReactivatePayee {
     /// Returns the Payee as written.
-    pub fn run(self, payees: &mut dyn PayeeRepository) -> Result<Payee, PayeeError> {
+    pub fn run(self, payees: &mut dyn PayeeRepository) -> Result<Payee> {
         let outcome = self.apply(payees);
         match &outcome {
             Ok(_) => tracing::info!(payee_id = %self.0, "Reactivated a Payee"),
@@ -20,8 +20,8 @@ impl ReactivatePayee {
         outcome
     }
 
-    fn apply(self, payees: &mut dyn PayeeRepository) -> Result<Payee, PayeeError> {
-        let mut payee = payees.payee(self.0).ok_or(PayeeError::NotFound)?;
+    fn apply(self, payees: &mut dyn PayeeRepository) -> Result<Payee> {
+        let mut payee = payees.payee(self.0).ok_or(Error::NotFound)?;
         payee.is_active = true;
         payees.upsert_payee(payee.clone());
         Ok(payee)
@@ -60,11 +60,11 @@ mod tests {
 
         assert_eq!(
             DeactivatePayee(PayeeId::new()).run(&mut ports.payees),
-            Err(PayeeError::NotFound)
+            Err(Error::NotFound)
         );
         assert_eq!(
             ReactivatePayee(PayeeId::new()).run(&mut ports.payees),
-            Err(PayeeError::NotFound)
+            Err(Error::NotFound)
         );
         assert_eq!(ports, before);
     }

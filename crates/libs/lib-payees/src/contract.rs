@@ -12,9 +12,7 @@ use lib_core::{CategoryId, PayeeId};
 use crate::fake::InMemoryPorts;
 use crate::interactor::{AddPayee, DeactivatePayee, DeletePayee, EditPayee};
 use crate::protocols::PortsMut;
-use crate::{
-    DeletePayeeRefusal, Payee, PayeeDraft, PayeeError, PayeeUse, find_by_name, get, sample_payees,
-};
+use crate::{Error, Payee, PayeeDraft, PayeeUse, Result, find_by_name, get, sample_payees};
 
 /// A stored set of the Payees ports, lent out together for one write.
 pub trait StoredPorts {
@@ -129,13 +127,13 @@ fn draft(name: &str, aliases: &[&str]) -> PayeeDraft {
     }
 }
 
-fn add(ports: PortsMut<'_>, draft: &PayeeDraft) -> Result<PayeeId, PayeeError> {
+fn add(ports: PortsMut<'_>, draft: &PayeeDraft) -> Result<PayeeId> {
     AddPayee(draft.clone())
         .run(ports.payees)
         .map(|payee| payee.id)
 }
 
-fn edit(ports: PortsMut<'_>, id: PayeeId, draft: &PayeeDraft) -> Result<(), PayeeError> {
+fn edit(ports: PortsMut<'_>, id: PayeeId, draft: &PayeeDraft) -> Result<()> {
     EditPayee {
         id,
         draft: draft.clone(),
@@ -144,7 +142,7 @@ fn edit(ports: PortsMut<'_>, id: PayeeId, draft: &PayeeDraft) -> Result<(), Paye
     .map(drop)
 }
 
-fn delete(ports: PortsMut<'_>, id: PayeeId) -> Result<(), DeletePayeeRefusal> {
+fn delete(ports: PortsMut<'_>, id: PayeeId) -> Result<()> {
     DeletePayee(id).run(ports).map(drop)
 }
 
@@ -203,7 +201,7 @@ pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
 pub fn an_alias_another_payee_owns_is_refused_and_writes_nothing<F: PortsFactory>(factory: &mut F) {
     let mut ports = factory.create(sample_payees());
     let before = snapshot(&mut ports);
-    let woolworths_owns = PayeeError::AliasTaken {
+    let woolworths_owns = Error::AliasTaken {
         alias: "WOOLIES".into(),
         owner: "Woolworths".into(),
     };
@@ -289,14 +287,14 @@ pub fn payee_usage_counts_and_refuses_the_delete<F: PortsFactory>(factory: &mut 
     let before = snapshot(&mut ports);
     assert_eq!(
         delete(ports.split_mut(), woolworths),
-        Err(DeletePayeeRefusal::InUse(PayeeUse {
+        Err(Error::InUse(PayeeUse {
             splits: 2,
             bill_plans: 1,
         }))
     );
     assert_eq!(
         delete(ports.split_mut(), telstra),
-        Err(DeletePayeeRefusal::InUse(PayeeUse {
+        Err(Error::InUse(PayeeUse {
             splits: 0,
             bill_plans: 1,
         })),

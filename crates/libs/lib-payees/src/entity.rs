@@ -5,7 +5,8 @@
 
 use lib_core::{CategoryId, PayeeId};
 
-use crate::protocols::{PayeeUsage, PayeeUse};
+use crate::protocols::PayeeUsage;
+use crate::{Error, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Payee {
@@ -158,22 +159,6 @@ pub fn normalise_alias(raw: &str) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_uppercase())
 }
 
-/// Errors for Payee operations. A variant carries the names the Presenter's `msg::` Message needs,
-/// but the `#[error]` text never repeats them: it is for logs, which never hold a Payee's name.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum PayeeError {
-    #[error("a payee needs a name")]
-    NameRequired,
-    /// Another Payee already has this name (case-insensitively); carries that Payee's name.
-    #[error("another payee has this name")]
-    DuplicateName(String),
-    /// Another Payee already owns this alias.
-    #[error("another payee has this match rule")]
-    AliasTaken { alias: String, owner: String },
-    #[error("payee not found")]
-    NotFound,
-}
-
 /// What the Add and Edit dialogs submit: the aliases as typed, normalised on the way in.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PayeeDraft {
@@ -188,14 +173,14 @@ fn clean_aliases(
     payees: &[Payee],
     own_id: Option<PayeeId>,
     aliases: &[String],
-) -> Result<Vec<String>, PayeeError> {
+) -> Result<Vec<String>> {
     let mut cleaned: Vec<String> = Vec::new();
     for alias in aliases.iter().filter_map(|raw| normalise_alias(raw)) {
         if cleaned.contains(&alias) {
             continue;
         }
         if let Some(owner) = alias_owner(payees, &alias).filter(|p| Some(p.id) != own_id) {
-            return Err(PayeeError::AliasTaken {
+            return Err(Error::AliasTaken {
                 alias,
                 owner: owner.name.clone(),
             });
@@ -214,25 +199,21 @@ pub fn alias_owner<'a>(payees: &'a [Payee], alias: &str) -> Option<&'a Payee> {
 
 /// Checks `name` is present, not another Payee's name and not another Payee's alias; returns it
 /// trimmed.
-pub fn clean_name(
-    payees: &[Payee],
-    own_id: Option<PayeeId>,
-    name: &str,
-) -> Result<String, PayeeError> {
+pub fn clean_name(payees: &[Payee], own_id: Option<PayeeId>, name: &str) -> Result<String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(PayeeError::NameRequired);
+        return Err(Error::NameRequired);
     }
     let folded = name.to_lowercase();
     if let Some(other) = payees
         .iter()
         .find(|p| Some(p.id) != own_id && p.name.to_lowercase() == folded)
     {
-        return Err(PayeeError::DuplicateName(other.name.clone()));
+        return Err(Error::DuplicateName(other.name.clone()));
     }
     let as_alias = name.to_uppercase();
     if let Some(owner) = alias_owner(payees, &as_alias).filter(|p| Some(p.id) != own_id) {
-        return Err(PayeeError::AliasTaken {
+        return Err(Error::AliasTaken {
             alias: as_alias,
             owner: owner.name.clone(),
         });
@@ -246,7 +227,7 @@ pub fn name_available(payees: &[Payee], name: &str) -> bool {
 }
 
 /// Adds a new, active Payee and returns its id.
-pub fn insert_payee(payees: &mut Vec<Payee>, draft: &PayeeDraft) -> Result<PayeeId, PayeeError> {
+pub fn insert_payee(payees: &mut Vec<Payee>, draft: &PayeeDraft) -> Result<PayeeId> {
     let name = clean_name(payees, None, &draft.name)?;
     let aliases = clean_aliases(payees, None, &draft.aliases)?;
     let id = PayeeId::new();
@@ -262,8 +243,8 @@ pub fn insert_payee(payees: &mut Vec<Payee>, draft: &PayeeDraft) -> Result<Payee
 
 /// Replaces Payee `id`'s name, default Category and aliases with `draft`'s. A rename keeps the old
 /// name as an alias, and drops the alias the new name equals.
-pub fn edit_payee(payees: &mut [Payee], id: PayeeId, draft: &PayeeDraft) -> Result<(), PayeeError> {
-    let current = get(payees, id).ok_or(PayeeError::NotFound)?;
+pub fn edit_payee(payees: &mut [Payee], id: PayeeId, draft: &PayeeDraft) -> Result<()> {
+    let current = get(payees, id).ok_or(Error::NotFound)?;
     let name = clean_name(payees, Some(id), &draft.name)?;
     let mut typed = draft.aliases.clone();
     if name != current.name {
@@ -276,48 +257,34 @@ pub fn edit_payee(payees: &mut [Payee], id: PayeeId, draft: &PayeeDraft) -> Resu
     let payee = payees
         .iter_mut()
         .find(|p| p.id == id)
-        .ok_or(PayeeError::NotFound)?;
+        .ok_or(Error::NotFound)?;
     payee.name = name;
     payee.aliases = aliases;
     payee.default_category = draft.default_category;
     Ok(())
 }
 
-/// Why a Payee delete was refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum DeletePayeeRefusal {
-    #[error("payee not found")]
-    NotFound,
-    /// A Split or a Bill Plan names the Payee, so it can only be deactivated.
-    #[error("a payee in use can only be deactivated")]
-    InUse(PayeeUse),
-}
-
 /// Removes Payee `id` and its aliases and returns the row, refused while a Split or a Bill Plan
 /// names it: such a Payee can only be deactivated.
 /// Checked before anything is removed, so a refusal leaves `payees` untouched.
-pub fn delete_payee(
-    payees: &mut Vec<Payee>,
-    usage: &dyn PayeeUsage,
-    id: PayeeId,
-) -> Result<Payee, DeletePayeeRefusal> {
+pub fn delete_payee(payees: &mut Vec<Payee>, usage: &dyn PayeeUsage, id: PayeeId) -> Result<Payee> {
     let index = payees
         .iter()
         .position(|p| p.id == id)
-        .ok_or(DeletePayeeRefusal::NotFound)?;
+        .ok_or(Error::NotFound)?;
     let uses = usage.payee_usage(id);
     if uses.is_used() {
-        return Err(DeletePayeeRefusal::InUse(uses));
+        return Err(Error::InUse(uses));
     }
     Ok(payees.remove(index))
 }
 
 /// Deactivates or reactivates Payee `id`.
-pub fn set_active(payees: &mut [Payee], id: PayeeId, is_active: bool) -> Result<(), PayeeError> {
+pub fn set_active(payees: &mut [Payee], id: PayeeId, is_active: bool) -> Result<()> {
     let payee = payees
         .iter_mut()
         .find(|p| p.id == id)
-        .ok_or(PayeeError::NotFound)?;
+        .ok_or(Error::NotFound)?;
     payee.is_active = is_active;
     Ok(())
 }
@@ -368,6 +335,7 @@ pub fn without_default_category_count(payees: &[Payee]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::PayeeUse;
     use crate::fake::InMemoryPayeeUsage;
 
     #[test]
@@ -382,7 +350,7 @@ mod tests {
         assert!(get(&payees, PayeeId::seed(1)).is_none());
         assert_eq!(
             delete_payee(&mut payees, &unused, PayeeId::seed(1)),
-            Err(DeletePayeeRefusal::NotFound)
+            Err(Error::NotFound)
         );
     }
 
@@ -404,14 +372,14 @@ mod tests {
 
         assert_eq!(
             delete_payee(&mut payees, &usage, PayeeId::seed(1)),
-            Err(DeletePayeeRefusal::InUse(PayeeUse {
+            Err(Error::InUse(PayeeUse {
                 splits: 3,
                 bill_plans: 0,
             }))
         );
         assert_eq!(
             delete_payee(&mut payees, &usage, PayeeId::seed(2)),
-            Err(DeletePayeeRefusal::InUse(PayeeUse {
+            Err(Error::InUse(PayeeUse {
                 splits: 0,
                 bill_plans: 1,
             }))
@@ -516,11 +484,11 @@ mod tests {
         let mut payees = sample_payees();
         assert_eq!(
             insert_payee(&mut payees, &draft("  ", &[])),
-            Err(PayeeError::NameRequired)
+            Err(Error::NameRequired)
         );
         assert_eq!(
             insert_payee(&mut payees, &draft("woolworths", &[])),
-            Err(PayeeError::DuplicateName("Woolworths".to_string()))
+            Err(Error::DuplicateName("Woolworths".to_string()))
         );
     }
 
@@ -529,7 +497,7 @@ mod tests {
         let mut payees = sample_payees();
         assert_eq!(
             insert_payee(&mut payees, &draft("Woolies Metro", &["woolies"])),
-            Err(PayeeError::AliasTaken {
+            Err(Error::AliasTaken {
                 alias: "WOOLIES".to_string(),
                 owner: "Woolworths".to_string(),
             })
@@ -541,7 +509,7 @@ mod tests {
         let mut payees = sample_payees();
         assert_eq!(
             insert_payee(&mut payees, &draft("Woolies", &[])),
-            Err(PayeeError::AliasTaken {
+            Err(Error::AliasTaken {
                 alias: "WOOLIES".to_string(),
                 owner: "Woolworths".to_string(),
             })
@@ -598,11 +566,11 @@ mod tests {
         let coles = id_of(&payees, "Coles");
         assert_eq!(
             edit_payee(&mut payees, coles, &draft("bp", &[])),
-            Err(PayeeError::DuplicateName("BP".to_string()))
+            Err(Error::DuplicateName("BP".to_string()))
         );
         assert_eq!(
             edit_payee(&mut payees, coles, &draft("Woolies", &[])),
-            Err(PayeeError::AliasTaken {
+            Err(Error::AliasTaken {
                 alias: "WOOLIES".to_string(),
                 owner: "Woolworths".to_string(),
             })
@@ -637,7 +605,7 @@ mod tests {
         assert_eq!(active_count(&payees), active);
         assert_eq!(
             set_active(&mut payees, PayeeId::seed(999), true),
-            Err(PayeeError::NotFound)
+            Err(Error::NotFound)
         );
     }
 
@@ -684,8 +652,8 @@ mod tests {
     #[test]
     fn a_refusals_log_text_never_holds_a_payee_name_or_match_rule() {
         let refusals = [
-            PayeeError::DuplicateName("Coles".into()),
-            PayeeError::AliasTaken {
+            Error::DuplicateName("Coles".into()),
+            Error::AliasTaken {
                 alias: "WOOLIES".into(),
                 owner: "Woolworths".into(),
             },

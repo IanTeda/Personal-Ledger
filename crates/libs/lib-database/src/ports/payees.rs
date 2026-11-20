@@ -120,7 +120,7 @@ mod tests {
         assert_eq!(counted.bill_plans, before.bill_plans);
         assert_eq!(
             lib_payees::interactor::DeletePayee(payee).run(payees.borrow_mut().split_mut()),
-            Err(lib_payees::DeletePayeeRefusal::InUse(counted))
+            Err(lib_payees::Error::InUse(counted))
         );
     }
 }

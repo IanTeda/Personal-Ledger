@@ -22,7 +22,7 @@ use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 use super::refusal_text;
 use crate::interactor::{DeactivatePayee, DeletePayee, ReactivatePayee};
 use crate::protocols::{PayeeChange, PayeesOutcome, SharedPorts};
-use crate::{DeletePayeeRefusal, PayeeError, PayeeUse, msg};
+use crate::{Error, PayeeUse, msg};
 
 /// What the Dialog does to the Payee, chosen from its use when it opens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,18 +227,21 @@ impl DeletePayeePresenter {
                 DeleteAction::Delete => DeletePayee(self.id)
                     .run(ports)
                     .map_err(|refusal| match refusal {
-                        DeletePayeeRefusal::InUse(uses) => Refused::InUse(uses),
-                        DeletePayeeRefusal::NotFound => Refused::Gone,
+                        Error::InUse(uses) => Refused::InUse(uses),
+                        Error::NotFound
+                        | Error::NameRequired
+                        | Error::DuplicateName(_)
+                        | Error::AliasTaken { .. } => Refused::Gone,
                     })
                     .map(|payee| (PayeeChange::Deleted, payee.name)),
                 DeleteAction::Deactivate => DeactivatePayee(self.id)
                     .run(ports.payees)
                     .map(|payee| (PayeeChange::Deactivated, payee.name))
-                    .map_err(|_: PayeeError| Refused::Gone),
+                    .map_err(|_: Error| Refused::Gone),
                 DeleteAction::Reactivate => ReactivatePayee(self.id)
                     .run(ports.payees)
                     .map(|payee| (PayeeChange::Reactivated, payee.name))
-                    .map_err(|_: PayeeError| Refused::Gone),
+                    .map_err(|_: Error| Refused::Gone),
             }
         };
         match landed {
@@ -271,7 +274,7 @@ impl DeletePayeePresenter {
                 self.action = DeleteAction::Deactivate;
                 self.refusal = None;
             }
-            Err(Refused::Gone) => self.refusal = Some(refusal_text(&PayeeError::NotFound)),
+            Err(Refused::Gone) => self.refusal = Some(refusal_text(&Error::NotFound)),
         }
     }
 }

@@ -1,7 +1,7 @@
 use lib_core::PayeeId;
 
 use crate::protocols::PortsMut;
-use crate::{DeletePayeeRefusal, Payee, delete_payee};
+use crate::{Payee, Result, delete_payee};
 
 /// Hard-delete a Payee and its aliases, refused while a Split or a Bill Plan names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,7 +9,7 @@ pub struct DeletePayee(pub PayeeId);
 
 impl DeletePayee {
     /// Returns the row deleted.
-    pub fn run(self, ports: PortsMut<'_>) -> Result<Payee, DeletePayeeRefusal> {
+    pub fn run(self, ports: PortsMut<'_>) -> Result<Payee> {
         let outcome = self.apply(ports);
         match &outcome {
             Ok(_) => tracing::info!(payee_id = %self.0, "Deleted a Payee"),
@@ -20,7 +20,7 @@ impl DeletePayee {
         outcome
     }
 
-    fn apply(self, ports: PortsMut<'_>) -> Result<Payee, DeletePayeeRefusal> {
+    fn apply(self, ports: PortsMut<'_>) -> Result<Payee> {
         let mut rows = ports.payees.payees();
         let payee = delete_payee(&mut rows, ports.usage, self.0)?;
         ports.payees.delete_payee(self.0);
@@ -32,7 +32,7 @@ impl DeletePayee {
 mod tests {
     use super::*;
     use crate::fake::InMemoryPorts;
-    use crate::{PayeeRepository as _, PayeeUse};
+    use crate::{Error, PayeeRepository as _, PayeeUse};
 
     #[test]
     fn an_unused_payee_is_deleted_and_returned() {
@@ -60,11 +60,11 @@ mod tests {
 
         assert_eq!(
             DeletePayee(woolworths).run(ports.split_mut()),
-            Err(DeletePayeeRefusal::InUse(used))
+            Err(Error::InUse(used))
         );
         assert_eq!(
             DeletePayee(PayeeId::new()).run(ports.split_mut()),
-            Err(DeletePayeeRefusal::NotFound)
+            Err(Error::NotFound)
         );
         assert_eq!(ports, before);
     }

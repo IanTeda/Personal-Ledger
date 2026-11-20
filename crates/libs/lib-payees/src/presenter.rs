@@ -18,16 +18,16 @@ pub use payees_page::{
     PayeeColumns, PayeeLine, PayeesPageEvent, PayeesPagePresenter, PayeesPageViewModel,
 };
 
-use crate::{PayeeError, msg};
+use crate::{Error, msg};
 
 /// A refusal as the Dialogs, and the Import step's Toast, show it. A blank name only keeps Save from confirming, and in-use
 /// comes back from Delete as its own refusal, so neither has text of its own.
-pub fn refusal_text(error: &PayeeError) -> String {
+pub fn refusal_text(error: &Error) -> String {
     match error {
-        PayeeError::DuplicateName(name) => msg::payees_error_name_taken(name),
-        PayeeError::AliasTaken { alias, owner } => msg::payees_error_alias_taken(alias, owner),
-        PayeeError::NotFound => msg::payees_refusal_gone(),
-        refusal @ PayeeError::NameRequired => {
+        Error::DuplicateName(name) => msg::payees_error_name_taken(name),
+        Error::AliasTaken { alias, owner } => msg::payees_error_alias_taken(alias, owner),
+        Error::NotFound => msg::payees_refusal_gone(),
+        refusal @ (Error::NameRequired | Error::InUse(_)) => {
             debug_assert!(false, "no Payees Dialog shows {refusal:?}");
             msg::payees_refusal_gone()
         }

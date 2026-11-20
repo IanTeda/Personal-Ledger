@@ -1,7 +1,7 @@
 use lib_core::PayeeId;
 
 use crate::protocols::PayeeRepository;
-use crate::{Payee, PayeeDraft, PayeeError, edit_payee, get};
+use crate::{Error, Payee, PayeeDraft, Result, edit_payee, get};
 
 /// Edit a Payee's name, Default category and aliases. A rename keeps the old name as an alias.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,7 +12,7 @@ pub struct EditPayee {
 
 impl EditPayee {
     /// Returns the Payee as written.
-    pub fn run(self, payees: &mut dyn PayeeRepository) -> Result<Payee, PayeeError> {
+    pub fn run(self, payees: &mut dyn PayeeRepository) -> Result<Payee> {
         let id = self.id;
         let outcome = self.apply(payees);
         match &outcome {
@@ -22,10 +22,10 @@ impl EditPayee {
         outcome
     }
 
-    fn apply(self, payees: &mut dyn PayeeRepository) -> Result<Payee, PayeeError> {
+    fn apply(self, payees: &mut dyn PayeeRepository) -> Result<Payee> {
         let mut rows = payees.payees();
         edit_payee(&mut rows, self.id, &self.draft)?;
-        let payee = get(&rows, self.id).cloned().ok_or(PayeeError::NotFound)?;
+        let payee = get(&rows, self.id).cloned().ok_or(Error::NotFound)?;
         payees.upsert_payee(payee.clone());
         Ok(payee)
     }
@@ -75,7 +75,7 @@ mod tests {
         }
         .run(&mut ports.payees);
 
-        assert_eq!(refused, Err(PayeeError::NotFound));
+        assert_eq!(refused, Err(Error::NotFound));
         assert_eq!(ports, before);
     }
 }

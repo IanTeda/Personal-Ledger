@@ -1,5 +1,5 @@
 use crate::protocols::PayeeRepository;
-use crate::{Payee, PayeeDraft, PayeeError, get, insert_payee};
+use crate::{Error, Payee, PayeeDraft, Result, get, insert_payee};
 
 /// Add a Payee, active, with its name and aliases cleaned by ADR-0012's rules.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -7,7 +7,7 @@ pub struct AddPayee(pub PayeeDraft);
 
 impl AddPayee {
     /// Returns the Payee as written.
-    pub fn run(self, payees: &mut dyn PayeeRepository) -> Result<Payee, PayeeError> {
+    pub fn run(self, payees: &mut dyn PayeeRepository) -> Result<Payee> {
         let outcome = self.apply(payees);
         match &outcome {
             Ok(payee) => tracing::info!(payee_id = %payee.id, "Added a Payee"),
@@ -16,10 +16,10 @@ impl AddPayee {
         outcome
     }
 
-    fn apply(self, payees: &mut dyn PayeeRepository) -> Result<Payee, PayeeError> {
+    fn apply(self, payees: &mut dyn PayeeRepository) -> Result<Payee> {
         let mut rows = payees.payees();
         let id = insert_payee(&mut rows, &self.0)?;
-        let payee = get(&rows, id).cloned().ok_or(PayeeError::NotFound)?;
+        let payee = get(&rows, id).cloned().ok_or(Error::NotFound)?;
         payees.upsert_payee(payee.clone());
         Ok(payee)
     }
@@ -59,11 +59,11 @@ mod tests {
 
         assert_eq!(
             AddPayee(draft("coles", &[])).run(&mut ports.payees),
-            Err(PayeeError::DuplicateName("Coles".into()))
+            Err(Error::DuplicateName("Coles".into()))
         );
         assert!(matches!(
             AddPayee(draft("Corner Shop", &["woolies"])).run(&mut ports.payees),
-            Err(PayeeError::AliasTaken { .. })
+            Err(Error::AliasTaken { .. })
         ));
         assert_eq!(ports, before);
     }
