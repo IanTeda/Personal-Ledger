@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 use super::seed::Draft;
 use super::*;
-use crate::DocumentTransaction;
 use crate::types::{self, DocumentTypeRow, TracksDate};
+use crate::{DocumentTransaction, Error};
 use crate::{fake::InMemoryFiles, protocols::resolve_typed};
 use chrono::{Duration, NaiveDate};
 use lib_core::{AccountId, DocumentId, DocumentTypeId, PayeeId, TransactionId};
@@ -518,7 +518,7 @@ fn accept_without_extracted_type_or_date_uses_the_default_type_and_the_transacti
             DocumentId::seed(1),
             TransactionId::seed(7)
         ),
-        Err(FilingError::AlreadyFiled)
+        Err(Error::AlreadyFiled)
     );
 }
 
@@ -569,7 +569,7 @@ fn a_filed_document_cannot_be_skipped() {
     let mut skipped = HashSet::new();
     assert_eq!(
         skip(&documents, &mut skipped, DocumentId::seed(1)),
-        Err(FilingError::AlreadyFiled)
+        Err(Error::AlreadyFiled)
     );
     assert!(skipped.is_empty());
 }
@@ -614,15 +614,15 @@ fn add_refuses_a_duplicate_path_an_unsupported_file_and_a_blank_title() {
     add_filed(&mut documents, new_document("/tmp/a.pdf", "A")).unwrap();
     assert_eq!(
         add_filed(&mut documents, new_document("/tmp/a.pdf", "Again")),
-        Err(AddError::AlreadyInLibrary("A".to_string()))
+        Err(Error::AlreadyInLibrary("A".to_string()))
     );
     assert_eq!(
         add_filed(&mut documents, new_document("/tmp/a.txt", "A")),
-        Err(AddError::UnsupportedFile)
+        Err(Error::UnsupportedFile)
     );
     assert_eq!(
         add_filed(&mut documents, new_document("/tmp/b.pdf", "  ")),
-        Err(AddError::NoTitle)
+        Err(Error::NoTitle)
     );
     assert_eq!(documents.len(), 1);
 }
@@ -676,7 +676,7 @@ fn import_refuses_a_path_already_filed() {
             today(),
             Source::Dropped
         ),
-        Err(AddError::AlreadyInLibrary("A".to_string()))
+        Err(Error::AlreadyInLibrary("A".to_string()))
     );
 }
 

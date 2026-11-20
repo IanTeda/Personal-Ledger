@@ -6,8 +6,9 @@ use lib_core::DocumentTypeId;
 
 use super::support::{logged_type, write_documents};
 use crate::DocumentType;
+use crate::Result;
 use crate::protocols::DocumentRepository;
-use crate::types::{RemoveError, fallback_id, id_by_name, remove_type};
+use crate::types::{fallback_id, id_by_name, remove_type};
 
 /// Removes Document Type `id`. Its Documents move to the type named `destination`, or to the
 /// Default when none is named, in the same write, and the destination's Filed count grows.
@@ -18,12 +19,12 @@ pub struct RemoveDocumentType {
 }
 
 impl RemoveDocumentType {
-    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<(), RemoveError> {
+    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<()> {
         let outcome = self.apply(repo);
         logged_type("remove document type", self.id, outcome)
     }
 
-    fn apply(&self, repo: &mut dyn DocumentRepository) -> Result<(), RemoveError> {
+    fn apply(&self, repo: &mut dyn DocumentRepository) -> Result<()> {
         let before = repo.document_types();
         let moved_to = self
             .destination
@@ -53,6 +54,7 @@ impl RemoveDocumentType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::interactor::test_support::*;
     use crate::interactor::{AddDocumentType, EditDocument};
 
@@ -119,16 +121,16 @@ mod tests {
             destination: destination.map(str::to_string),
         };
 
-        ports.refuses(RemoveError::IsDefault, |ports| {
+        ports.refuses(Error::DefaultDocumentType, |ports| {
             remove(OTHER, None).run(ports)
         });
-        ports.refuses(RemoveError::Unknown, |ports| {
+        ports.refuses(Error::UnknownDocumentType, |ports| {
             remove(DocumentType(DocumentTypeId::seed(99)), Some("Other")).run(ports)
         });
-        ports.refuses(RemoveError::NeedsDestination, |ports| {
+        ports.refuses(Error::NeedsDestination, |ports| {
             remove(TAX, None).run(ports)
         });
-        ports.refuses(RemoveError::NeedsDestination, |ports| {
+        ports.refuses(Error::NeedsDestination, |ports| {
             remove(TAX, Some("Tax")).run(ports)
         });
     }

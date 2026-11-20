@@ -4,7 +4,7 @@ use lib_core::DocumentId;
 
 use super::support::{logged_document, write_documents};
 use crate::protocols::DocumentRepository;
-use crate::{ExtractedFacts, FilingError, edit_facts};
+use crate::{ExtractedFacts, Result, edit_facts};
 
 /// The Inbox's Edit: overwrites Unfiled Document `id`'s Extracted Facts.
 #[derive(Debug, Clone, PartialEq)]
@@ -14,7 +14,7 @@ pub struct SetFacts {
 }
 
 impl SetFacts {
-    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<(), FilingError> {
+    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<()> {
         logged_document(
             "set facts",
             self.id,
@@ -29,6 +29,7 @@ impl SetFacts {
 mod tests {
     use super::*;
 
+    use crate::Error;
     use crate::interactor::test_support::*;
 
     #[test]
@@ -59,8 +60,8 @@ mod tests {
             facts: ExtractedFacts::default(),
         };
 
-        ports.refuses(FilingError::AlreadyFiled, |ports| set(LEASE).run(ports));
-        ports.refuses(FilingError::NotFound, |ports| {
+        ports.refuses(Error::AlreadyFiled, |ports| set(LEASE).run(ports));
+        ports.refuses(Error::NotFound, |ports| {
             set(DocumentId::seed(99)).run(ports)
         });
     }

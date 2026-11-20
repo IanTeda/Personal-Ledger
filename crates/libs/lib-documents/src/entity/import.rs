@@ -13,19 +13,7 @@ use super::seed::cents_money;
 use crate::protocols::DocumentFiles;
 use crate::types;
 use crate::types::DocumentTypeRow;
-
-/// Why a path cannot become a Document.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AddError {
-    /// Only PDF, JPG and PNG files are Documents.
-    UnsupportedFile,
-    /// One Document per path: the Library already holds this one, under this Title.
-    AlreadyInLibrary(String),
-    /// No Document has that id.
-    NotFound,
-    /// A blank Title.
-    NoTitle,
-}
+use crate::{Error, Result};
 
 impl FileKind {
     /// The kind a path's extension names, or `None` for anything that is not a Document.
@@ -52,13 +40,16 @@ pub fn find_by_path<'a>(documents: &'a [Document], path: &Path) -> Option<&'a Do
 }
 
 /// Why a path typed for `+ Add` or `Import…` can't become a Document.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PathRefusal {
     /// Only PDF, JPG and PNG files are Documents.
+    #[error("only PDF, JPG and PNG files are documents")]
     Unsupported,
     /// One Document per path: the Library already holds this one, under this Title.
+    #[error("the library already holds this file")]
     Already(String),
     /// No file is there.
+    #[error("no file is at the path")]
     NotFound,
 }
 
@@ -82,7 +73,7 @@ pub fn check_path(
     files: &dyn DocumentFiles,
     documents: &[Document],
     typed: &str,
-) -> Result<PathBuf, PathRefusal> {
+) -> std::result::Result<PathBuf, PathRefusal> {
     let path = files.resolve(typed);
     let exists = files.exists(&path);
     match path_refusal(documents, &path, exists) {
@@ -105,14 +96,14 @@ pub struct NewDocument {
 
 /// `+ Add`: a Filed Document from a path the user already knows the meaning of. Its Links come
 /// afterwards, through the picker.
-pub fn add_filed(documents: &mut Vec<Document>, new: NewDocument) -> Result<DocumentId, AddError> {
-    let kind = FileKind::from_path(&new.path).ok_or(AddError::UnsupportedFile)?;
+pub fn add_filed(documents: &mut Vec<Document>, new: NewDocument) -> Result<DocumentId> {
+    let kind = FileKind::from_path(&new.path).ok_or(Error::UnsupportedFile)?;
     if let Some(existing) = find_by_path(documents, &new.path) {
-        return Err(AddError::AlreadyInLibrary(existing.title.clone()));
+        return Err(Error::AlreadyInLibrary(existing.title.clone()));
     }
     let title = new.title.trim();
     if title.is_empty() {
-        return Err(AddError::NoTitle);
+        return Err(Error::NoTitle);
     }
     let id = DocumentId::new();
     documents.push(Document {
@@ -173,10 +164,10 @@ pub fn import_path(
     bytes: u64,
     today: NaiveDate,
     source: Source,
-) -> Result<DocumentId, AddError> {
-    let kind = FileKind::from_path(&path).ok_or(AddError::UnsupportedFile)?;
+) -> Result<DocumentId> {
+    let kind = FileKind::from_path(&path).ok_or(Error::UnsupportedFile)?;
     if let Some(existing) = find_by_path(documents, &path) {
-        return Err(AddError::AlreadyInLibrary(existing.title.clone()));
+        return Err(Error::AlreadyInLibrary(existing.title.clone()));
     }
     let facts = catalogue_facts(types, &path, today).unwrap_or_default();
     let id = DocumentId::new();
@@ -273,7 +264,7 @@ pub fn import_batch(
                 source,
             ) {
                 Ok(id) => ImportOutcome::Imported(id),
-                Err(AddError::AlreadyInLibrary(title)) => ImportOutcome::Already(title),
+                Err(Error::AlreadyInLibrary(title)) => ImportOutcome::Already(title),
                 Err(_) => ImportOutcome::Unsupported(line.typed.clone()),
             }
         })
@@ -289,12 +280,12 @@ pub fn edit_metadata(
     doc_type: DocumentType,
     date: NaiveDate,
     key_date: Option<KeyDate>,
-) -> Result<(), AddError> {
+) -> Result<()> {
     let title = title.trim();
     if title.is_empty() {
-        return Err(AddError::NoTitle);
+        return Err(Error::NoTitle);
     }
-    let document = get_mut(documents, id).ok_or(AddError::NotFound)?;
+    let document = get_mut(documents, id).ok_or(Error::NotFound)?;
     document.title = title.to_string();
     document.doc_type = doc_type;
     document.date = date;

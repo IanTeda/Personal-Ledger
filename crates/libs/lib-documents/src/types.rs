@@ -6,6 +6,9 @@
 //! stable `id`, so a rename or a reorder never touches a Document.
 
 use lib_core::DocumentTypeId;
+
+use crate::{Error, Result};
+
 /// The kind of Key Date a type tracks (`GLOSSARY.md`'s Key Date).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TracksDate {
@@ -197,36 +200,22 @@ pub fn edit_type(
     true
 }
 
-/// A Document Type that no longer exists, as an edit found it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct UnknownDocumentType;
-
-/// Why a type can't be removed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RemoveError {
-    Unknown,
-    /// Other, the Default Document Type.
-    IsDefault,
-    /// The type has Filed files and no destination type was given.
-    NeedsDestination,
-}
-
 /// Removes the type with `id`, moving its Filed files to the type named `destination`.
 pub fn remove_type(
     types: &mut Vec<DocumentTypeRow>,
     id: DocumentTypeId,
     destination: Option<&str>,
-) -> Result<(), RemoveError> {
-    let position = position(types, id).ok_or(RemoveError::Unknown)?;
+) -> Result<()> {
+    let position = position(types, id).ok_or(Error::UnknownDocumentType)?;
     if types[position].is_default {
-        return Err(RemoveError::IsDefault);
+        return Err(Error::DefaultDocumentType);
     }
     let files = types[position].files;
     if files > 0 {
         let target = types
             .iter()
             .position(|row| row.id != id && Some(row.name.as_str()) == destination)
-            .ok_or(RemoveError::NeedsDestination)?;
+            .ok_or(Error::NeedsDestination)?;
         types[target].files += files;
     }
     types.remove(position);
@@ -254,11 +243,11 @@ mod tests {
         let mut types = default_types();
         assert_eq!(
             remove_type(&mut types, DocumentTypeId::seed(3), None),
-            Err(RemoveError::NeedsDestination)
+            Err(Error::NeedsDestination)
         );
         assert_eq!(
             remove_type(&mut types, DocumentTypeId::seed(3), Some("Tax")),
-            Err(RemoveError::NeedsDestination)
+            Err(Error::NeedsDestination)
         );
         assert_eq!(types.len(), 9);
     }
@@ -273,11 +262,11 @@ mod tests {
         );
         assert_eq!(
             remove_type(&mut types, DocumentTypeId::seed(9), Some("Bills")),
-            Err(RemoveError::IsDefault)
+            Err(Error::DefaultDocumentType)
         );
         assert_eq!(
             remove_type(&mut types, DocumentTypeId::seed(99), None),
-            Err(RemoveError::Unknown)
+            Err(Error::UnknownDocumentType)
         );
     }
 

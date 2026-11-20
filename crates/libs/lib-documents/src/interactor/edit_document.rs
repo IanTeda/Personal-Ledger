@@ -5,7 +5,7 @@ use lib_core::DocumentId;
 
 use super::support::{logged_document, write_documents};
 use crate::protocols::DocumentRepository;
-use crate::{AddError, DocumentType, KeyDate, edit_metadata};
+use crate::{DocumentType, KeyDate, Result, edit_metadata};
 
 /// The Library's `e`: replaces Filed Document `id`'s Title, Document Type, date and Key Date.
 #[derive(Debug, Clone, PartialEq)]
@@ -18,7 +18,7 @@ pub struct EditDocument {
 }
 
 impl EditDocument {
-    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<(), AddError> {
+    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<()> {
         logged_document(
             "edit document",
             self.id,
@@ -39,6 +39,7 @@ impl EditDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::interactor::test_support::*;
 
     #[test]
@@ -61,8 +62,8 @@ mod tests {
     fn edit_refuses_a_blank_title_and_an_unknown_document() {
         let mut ports = ports();
 
-        ports.refuses(AddError::NoTitle, |ports| edit(LEASE, " ").run(ports));
-        ports.refuses(AddError::NotFound, |ports| {
+        ports.refuses(Error::NoTitle, |ports| edit(LEASE, " ").run(ports));
+        ports.refuses(Error::NotFound, |ports| {
             edit(DocumentId::seed(99), "Gone").run(ports)
         });
     }

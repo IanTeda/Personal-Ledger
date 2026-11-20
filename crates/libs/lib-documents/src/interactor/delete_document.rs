@@ -4,14 +4,7 @@ use lib_core::DocumentId;
 
 use super::support::logged_document;
 use crate::protocols::DocumentRepository;
-use crate::{Document, get};
-
-/// Why a delete wrote nothing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeleteDocumentError {
-    /// No Document has that id: it has gone since the Dialog opened.
-    NotFound,
-}
+use crate::{Document, Error, Result, get};
 
 /// Deletes Document `id` and its Document Links in one write. The file on disk and every record
 /// the Links named stay, since the Ledger holds only a reference. Returns the Document as it was,
@@ -20,10 +13,10 @@ pub enum DeleteDocumentError {
 pub struct DeleteDocument(pub DocumentId);
 
 impl DeleteDocument {
-    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<Document, DeleteDocumentError> {
+    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<Document> {
         let outcome = get(&repo.documents(), self.0)
             .cloned()
-            .ok_or(DeleteDocumentError::NotFound)
+            .ok_or(Error::NotFound)
             .inspect(|_| repo.delete_document(self.0));
         logged_document("delete document", self.0, outcome)
     }
@@ -60,7 +53,7 @@ mod tests {
     fn delete_refuses_a_document_that_has_gone_and_writes_nothing() {
         let mut ports = ports();
 
-        ports.refuses(DeleteDocumentError::NotFound, |ports| {
+        ports.refuses(Error::NotFound, |ports| {
             DeleteDocument(DocumentId::seed(99)).run(ports)
         });
     }
@@ -70,9 +63,6 @@ mod tests {
         let mut ports = ports();
         DeleteDocument(LEASE).run(&mut ports).expect("there");
 
-        assert_eq!(
-            DeleteDocument(LEASE).run(&mut ports),
-            Err(DeleteDocumentError::NotFound)
-        );
+        assert_eq!(DeleteDocument(LEASE).run(&mut ports), Err(Error::NotFound));
     }
 }

@@ -4,7 +4,7 @@ use lib_core::DocumentId;
 
 use super::support::{logged_document, write_documents};
 use crate::protocols::DocumentRepository;
-use crate::{DocumentLink, DocumentType, FiledEntry, FilingError, file_by_hand};
+use crate::{DocumentLink, DocumentType, FiledEntry, Result, file_by_hand};
 
 /// File… / Link elsewhere…: files Unfiled Document `id` by hand with a Document Type and at most
 /// one Link.
@@ -16,7 +16,7 @@ pub struct FileByHand {
 }
 
 impl FileByHand {
-    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<FiledEntry, FilingError> {
+    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<FiledEntry> {
         logged_document(
             "file by hand",
             self.id,
@@ -30,6 +30,7 @@ impl FileByHand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::Filing;
     use crate::interactor::test_support::*;
     use lib_core::AccountId;
@@ -62,8 +63,8 @@ mod tests {
             link: None,
         };
 
-        ports.refuses(FilingError::AlreadyFiled, |ports| file(LEASE).run(ports));
-        ports.refuses(FilingError::NotFound, |ports| {
+        ports.refuses(Error::AlreadyFiled, |ports| file(LEASE).run(ports));
+        ports.refuses(Error::NotFound, |ports| {
             file(DocumentId::seed(99)).run(ports)
         });
     }

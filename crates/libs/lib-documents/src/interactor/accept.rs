@@ -4,7 +4,7 @@ use lib_core::{DocumentId, TransactionId};
 
 use super::support::{logged_document, write_documents};
 use crate::protocols::{DocumentRepository, DocumentTransactions};
-use crate::{FiledEntry, FilingError, accept};
+use crate::{FiledEntry, Result, accept};
 
 /// Accept: files Unfiled Document `id` under Transaction `transaction_id`, with the extracted
 /// Document Type and date. Returns what the filing wrote, as it was before.
@@ -19,7 +19,7 @@ impl Accept {
         self,
         transactions: &dyn DocumentTransactions,
         repo: &mut dyn DocumentRepository,
-    ) -> Result<FiledEntry, FilingError> {
+    ) -> Result<FiledEntry> {
         let transactions = transactions.document_transactions();
         logged_document(
             "accept",
@@ -40,6 +40,7 @@ impl Accept {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::interactor::test_support::*;
     use crate::{DocumentLink, Filing};
 
@@ -69,13 +70,13 @@ mod tests {
         let mut ports = ports();
         let accept = |id, transaction_id| Accept { id, transaction_id };
 
-        ports.refuses(FilingError::NoSuchTransaction, |ports| {
+        ports.refuses(Error::NoSuchTransaction, |ports| {
             accept(COLES_RECEIPT, TransactionId::seed(99)).run(&records(), ports)
         });
-        ports.refuses(FilingError::AlreadyFiled, |ports| {
+        ports.refuses(Error::AlreadyFiled, |ports| {
             accept(LEASE, COLES_SHOP).run(&records(), ports)
         });
-        ports.refuses(FilingError::NotFound, |ports| {
+        ports.refuses(Error::NotFound, |ports| {
             accept(DocumentId::seed(99), COLES_SHOP).run(&records(), ports)
         });
     }

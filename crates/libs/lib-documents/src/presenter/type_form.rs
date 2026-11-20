@@ -67,11 +67,14 @@ impl DocumentTypeField {
 }
 
 /// Why a name can't be saved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum NameError {
+    #[error("the name is empty")]
     Empty,
+    #[error("the name is too long")]
     TooLong,
     /// Another type already has the name, ignoring case.
+    #[error("the name is taken")]
     Taken,
 }
 

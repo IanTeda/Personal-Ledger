@@ -25,6 +25,7 @@
 )]
 pub mod contract;
 mod entity;
+mod error;
 pub mod fake;
 pub mod interactor;
 pub mod keymap;
@@ -41,3 +42,4 @@ pub use crate::protocols::{
     SharedFiles, SharedReads, SharedRepository, TypeChange,
 };
 pub use entity::*;
+pub use error::{Error, Result};

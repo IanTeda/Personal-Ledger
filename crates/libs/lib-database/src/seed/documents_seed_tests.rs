@@ -285,7 +285,7 @@ fn editing_metadata_moves_the_financial_year_with_the_date() {
             today(),
             None
         ),
-        Err(AddError::NoTitle)
+        Err(Error::NoTitle)
     );
     assert_eq!(
         edit_metadata(
@@ -296,6 +296,6 @@ fn editing_metadata_moves_the_financial_year_with_the_date() {
             today(),
             None
         ),
-        Err(AddError::NotFound)
+        Err(Error::NotFound)
     );
 }

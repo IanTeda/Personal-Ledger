@@ -4,7 +4,7 @@ use lib_core::DocumentId;
 
 use super::support::{logged_document, write_documents};
 use crate::protocols::DocumentRepository;
-use crate::{DocumentLink, FilingError, toggle_link};
+use crate::{DocumentLink, Error, Result, toggle_link};
 
 /// Adds `link` to Document `id`, or removes it when it has it. Returns whether it was added.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,12 +14,12 @@ pub struct ToggleLink {
 }
 
 impl ToggleLink {
-    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<bool, FilingError> {
+    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<bool> {
         logged_document(
             "toggle link",
             self.id,
             write_documents(repo, |_, documents| {
-                toggle_link(documents, self.id, self.link).ok_or(FilingError::NotFound)
+                toggle_link(documents, self.id, self.link).ok_or(Error::NotFound)
             }),
         )
     }
@@ -53,7 +53,7 @@ mod tests {
     fn toggle_link_refuses_an_unknown_document() {
         let mut ports = ports();
 
-        ports.refuses(FilingError::NotFound, |ports| {
+        ports.refuses(Error::NotFound, |ports| {
             ToggleLink {
                 id: DocumentId::seed(99),
                 link: DocumentLink::Payee(PayeeId::seed(1)),

@@ -11,16 +11,7 @@ use super::suggestion::{inbox_rows, suggestion};
 use crate::protocols::DocumentTransaction;
 use crate::types;
 use crate::types::DocumentTypeRow;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FilingError {
-    /// No Document has that id.
-    NotFound,
-    /// The Document is already Filed.
-    AlreadyFiled,
-    /// The Transaction to link does not exist.
-    NoSuchTransaction,
-}
+use crate::{Error, Result};
 
 /// What one filing wrote to one Document: its Document Type, date and the Links the filing added,
 /// as it was before. Filing is undone through the Shell's History (the Ledger's change journal),
@@ -39,10 +30,10 @@ fn file_one(
     doc_type: DocumentType,
     date: NaiveDate,
     link: Option<DocumentLink>,
-) -> Result<FiledEntry, FilingError> {
-    let document = get_mut(documents, id).ok_or(FilingError::NotFound)?;
+) -> Result<FiledEntry> {
+    let document = get_mut(documents, id).ok_or(Error::NotFound)?;
     if document.is_filed() {
-        return Err(FilingError::AlreadyFiled);
+        return Err(Error::AlreadyFiled);
     }
     let entry = FiledEntry {
         id,
@@ -68,13 +59,13 @@ pub fn accept(
     transactions: &[DocumentTransaction],
     id: DocumentId,
     transaction_id: TransactionId,
-) -> Result<FiledEntry, FilingError> {
+) -> Result<FiledEntry> {
     let transaction = transactions
         .iter()
         .find(|transaction| transaction.id == transaction_id)
-        .ok_or(FilingError::NoSuchTransaction)?;
+        .ok_or(Error::NoSuchTransaction)?;
     let facts = get(documents, id)
-        .ok_or(FilingError::NotFound)?
+        .ok_or(Error::NotFound)?
         .intake
         .as_ref()
         .map(|intake| intake.facts.clone())
@@ -97,8 +88,8 @@ pub fn file_by_hand(
     id: DocumentId,
     doc_type: DocumentType,
     link: Option<DocumentLink>,
-) -> Result<FiledEntry, FilingError> {
-    let document = get(documents, id).ok_or(FilingError::NotFound)?;
+) -> Result<FiledEntry> {
+    let document = get(documents, id).ok_or(Error::NotFound)?;
     let date = document
         .intake
         .as_ref()
@@ -157,31 +148,27 @@ pub fn skip(
     documents: &[Document],
     skipped: &mut HashSet<DocumentId>,
     id: DocumentId,
-) -> Result<(), FilingError> {
-    let document = get(documents, id).ok_or(FilingError::NotFound)?;
+) -> Result<()> {
+    let document = get(documents, id).ok_or(Error::NotFound)?;
     match (&document.filing, &document.intake) {
         (Filing::Unfiled, Some(_)) => {
             skipped.insert(id);
             Ok(())
         }
-        (Filing::Filed, _) => Err(FilingError::AlreadyFiled),
-        (Filing::Unfiled, None) => Err(FilingError::NotFound),
+        (Filing::Filed, _) => Err(Error::AlreadyFiled),
+        (Filing::Unfiled, None) => Err(Error::NotFound),
     }
 }
 
 /// Edit: overwrites the Extracted Facts (there is no separate corrected copy). Editing also clears
 /// the skip, which the Client does, since it holds the skipped set. Candidates recompute from the
 /// new facts on the next [`suggestion`].
-pub fn edit_facts(
-    documents: &mut [Document],
-    id: DocumentId,
-    facts: ExtractedFacts,
-) -> Result<(), FilingError> {
-    let document = get_mut(documents, id).ok_or(FilingError::NotFound)?;
+pub fn edit_facts(documents: &mut [Document], id: DocumentId, facts: ExtractedFacts) -> Result<()> {
+    let document = get_mut(documents, id).ok_or(Error::NotFound)?;
     if document.is_filed() {
-        return Err(FilingError::AlreadyFiled);
+        return Err(Error::AlreadyFiled);
     }
-    let intake = document.intake.as_mut().ok_or(FilingError::NotFound)?;
+    let intake = document.intake.as_mut().ok_or(Error::NotFound)?;
     intake.facts = facts;
     Ok(())
 }

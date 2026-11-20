@@ -4,7 +4,8 @@ use lib_core::DocumentTypeId;
 
 use super::support::logged_type;
 use crate::protocols::DocumentRepository;
-use crate::types::{DocumentTypeDraft, UnknownDocumentType, edit_type};
+use crate::types::{DocumentTypeDraft, edit_type};
+use crate::{Error, Result};
 
 /// Applies `draft` to Document Type `id`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,7 +15,7 @@ pub struct EditDocumentType {
 }
 
 impl EditDocumentType {
-    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<(), UnknownDocumentType> {
+    pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<()> {
         let mut types = repo.document_types();
         let outcome = if edit_type(&mut types, self.id, &self.draft) {
             if let Some(row) = types.iter().find(|row| row.id == self.id) {
@@ -22,7 +23,7 @@ impl EditDocumentType {
             }
             Ok(())
         } else {
-            Err(UnknownDocumentType)
+            Err(Error::UnknownDocumentType)
         };
         logged_type("edit document type", self.id, outcome)
     }
@@ -52,7 +53,7 @@ mod tests {
     fn edit_document_type_refuses_an_unknown_type() {
         let mut ports = ports();
 
-        ports.refuses(UnknownDocumentType, |ports| {
+        ports.refuses(Error::UnknownDocumentType, |ports| {
             EditDocumentType {
                 id: DocumentTypeId::seed(99),
                 draft: draft("Gone"),

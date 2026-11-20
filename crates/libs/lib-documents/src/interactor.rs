@@ -29,7 +29,7 @@ pub use accept::Accept;
 pub use accept_all_strong::AcceptAllStrong;
 pub use add_document::AddDocument;
 pub use add_document_type::AddDocumentType;
-pub use delete_document::{DeleteDocument, DeleteDocumentError};
+pub use delete_document::DeleteDocument;
 pub use edit_document::EditDocument;
 pub use edit_document_type::EditDocumentType;
 pub use file_by_hand::FileByHand;

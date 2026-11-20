@@ -12,10 +12,11 @@ use lib_viper::keymap::{BACK, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView};
 
+use crate::Error;
 use crate::interactor::RemoveDocumentType;
 use crate::msg;
 use crate::protocols::{DocumentTypesOutcome, SharedRepository, TypeChange};
-use crate::types::{RemoveError, get, position};
+use crate::types::{get, position};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemoveTypeEvent {
@@ -62,7 +63,7 @@ pub struct RemoveTypePresenter {
     destinations: Vec<String>,
     destination: Option<String>,
     list: SelectList,
-    error: Option<RemoveError>,
+    error: Option<Error>,
 }
 
 impl RemoveTypePresenter {
@@ -150,7 +151,10 @@ impl Presenter for RemoveTypePresenter {
             }),
             destination_list: self.list,
             moved_note: has_files.then(msg::documents_types_remove_moved_note),
-            refusal: self.error.map(|_| msg::documents_types_remove_refused()),
+            refusal: self
+                .error
+                .as_ref()
+                .map(|_| msg::documents_types_remove_refused()),
             files: self.files,
             hints: self.hints(),
         }
