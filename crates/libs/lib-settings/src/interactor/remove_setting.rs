@@ -30,8 +30,8 @@ mod tests {
 
     use super::*;
     use crate::device::DeviceFile;
+    use crate::error::Error;
     use crate::fake::{InMemoryDeviceFile, JournalFake};
-    use crate::protocols::DeviceRefusal;
 
     #[test]
     fn a_removal_takes_the_key_out_and_a_repeat_is_still_saved() {
@@ -70,8 +70,8 @@ mod tests {
     #[test]
     fn no_file_and_a_failed_write_are_refused() {
         for (file, refusal) in [
-            (InMemoryDeviceFile::default(), DeviceRefusal::NoFile),
-            (InMemoryDeviceFile::unwritable(), DeviceRefusal::WriteFailed),
+            (InMemoryDeviceFile::default(), Error::NoFile),
+            (InMemoryDeviceFile::unwritable(), Error::WriteFailed),
         ] {
             let ports = DevicePorts::new(Rc::new(file));
             assert_eq!(

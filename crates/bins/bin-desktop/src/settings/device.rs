@@ -11,7 +11,7 @@ use std::rc::Rc;
 use crate::reversal::{ConfigJournal, ConfigReversal};
 use lib_config::ConfigWriter;
 use lib_core::configuration::{ConfigKey, ConfigValue};
-use lib_settings::{DeviceFile, DevicePorts, WriteError};
+use lib_settings::{DeviceFile, DevicePorts, Error};
 
 /// Where a device's settings are written, what outranks the file, as start-up's parse recorded it
 /// in the writer's overrides report, and each key's value in force from that parse. The default
@@ -36,11 +36,11 @@ impl DeviceConfigFile {
     }
 }
 
-/// Logs a failed write's cause, which the policy only sees as a [`WriteError`].
-fn failed(key: ConfigKey) -> impl FnOnce(lib_config::Error) -> WriteError {
+/// Logs a failed write's cause, which the policy only sees as a [`Error`].
+fn failed(key: ConfigKey) -> impl FnOnce(lib_config::Error) -> Error {
     move |error| {
         tracing::error!(%error, key = key.name(), "Couldn't write a device's setting");
-        WriteError
+        Error::WriteFailed
     }
 }
 
@@ -71,17 +71,17 @@ impl DeviceFile for DeviceConfigFile {
         self.writer.value(key)
     }
 
-    fn set(&self, value: ConfigValue) -> Result<(), WriteError> {
+    fn set(&self, value: ConfigValue) -> lib_settings::Result<()> {
         let key = value.key();
         self.writer.set(value).map_err(failed(key))
     }
 
     /// The sources below the file, the operating system's Locale last, decide at the next start.
-    fn remove(&self, key: ConfigKey) -> Result<(), WriteError> {
+    fn remove(&self, key: ConfigKey) -> lib_settings::Result<()> {
         self.writer.remove(key).map_err(failed(key))
     }
 
-    fn restore(&self, key: ConfigKey, value: Option<&str>) -> Result<(), WriteError> {
+    fn restore(&self, key: ConfigKey, value: Option<&str>) -> lib_settings::Result<()> {
         self.writer.restore(key, value).map_err(failed(key))
     }
 }
@@ -132,7 +132,7 @@ mod tests {
 
     use lib_core::{ColourAppearance, DateStyle, OnStart, RowDensity, StartView, StatusGlyphs};
     use lib_settings::contract::{self, DeviceFileFactory};
-    use lib_settings::{DeviceAnswer, DeviceRefusal, RemoveSetting, RestoreSetting, WriteSetting};
+    use lib_settings::{DeviceAnswer, Error, RemoveSetting, RestoreSetting, WriteSetting};
 
     use super::*;
     use crate::reversal::ConfigChange;
@@ -326,7 +326,7 @@ mod tests {
                 ConfigKey::Toasts,
                 None
             ),
-            DeviceAnswer::Refused(DeviceRefusal::NoFile)
+            DeviceAnswer::Refused(Error::NoFile)
         ));
     }
 }

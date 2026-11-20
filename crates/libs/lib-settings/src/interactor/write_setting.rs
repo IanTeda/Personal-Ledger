@@ -31,8 +31,8 @@ mod tests {
 
     use super::*;
     use crate::device::DeviceFile;
+    use crate::error::Error;
     use crate::fake::{InMemoryDeviceFile, JournalFake};
-    use crate::protocols::DeviceRefusal;
 
     fn ports(file: InMemoryDeviceFile) -> (Rc<InMemoryDeviceFile>, DevicePorts) {
         let file = Rc::new(file);
@@ -92,7 +92,7 @@ mod tests {
 
         assert_eq!(
             WriteSetting(ConfigValue::Toasts(false)).run(&ports),
-            DeviceAnswer::Refused(DeviceRefusal::NoFile)
+            DeviceAnswer::Refused(Error::NoFile)
         );
     }
 
@@ -114,7 +114,7 @@ mod tests {
 
         assert_eq!(
             WriteSetting(ConfigValue::Toasts(false)).run(&ports),
-            DeviceAnswer::Refused(DeviceRefusal::WriteFailed)
+            DeviceAnswer::Refused(Error::WriteFailed)
         );
         assert_eq!(file.stored(), Default::default());
     }

@@ -640,16 +640,14 @@ fn refused(
     answer: lib_settings::DeviceAnswer<()>,
     key: lib_core::configuration::ConfigKey,
 ) -> lib_shell::Result<()> {
-    use lib_settings::{DeviceAnswer, DeviceRefusal};
+    use lib_settings::{DeviceAnswer, Error};
     match answer {
         DeviceAnswer::Saved { .. } => Ok(()),
         DeviceAnswer::Shadowed { source } => {
             Err(lib_shell::Error::ConfigurationShadowed { key, source })
         }
-        DeviceAnswer::Refused(DeviceRefusal::NoFile) => {
-            Err(lib_shell::Error::ConfigurationNoFile { key })
-        }
-        DeviceAnswer::Refused(DeviceRefusal::WriteFailed) => {
+        DeviceAnswer::Refused(Error::NoFile) => Err(lib_shell::Error::ConfigurationNoFile { key }),
+        DeviceAnswer::Refused(Error::WriteFailed) => {
             Err(lib_shell::Error::ConfigurationNotWritten { key })
         }
     }

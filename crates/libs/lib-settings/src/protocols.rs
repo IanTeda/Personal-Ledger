@@ -13,6 +13,7 @@ use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_core::{Money, UnitId, UnitRef};
 use lib_toast::Notify;
 
+use crate::error::Error;
 use crate::log::LogLine;
 use crate::page::SettingsPage;
 use crate::presenter::{
@@ -174,16 +175,7 @@ pub enum DeviceAnswer<T> {
     /// [writes when shadowed](ConfigKey::writes_when_shadowed).
     Shadowed { source: String },
     /// Not written, for the reason given.
-    Refused(DeviceRefusal),
-}
-
-/// Why a device's setting the file would take wasn't written.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeviceRefusal {
-    /// There is no home folder to keep the file in.
-    NoFile,
-    /// The file or its folder couldn't be written; the Client logs the cause.
-    WriteFailed,
+    Refused(Error),
 }
 
 /// What only the Shell does for Settings › Tracing: the log box's list is the Client's, and Clear

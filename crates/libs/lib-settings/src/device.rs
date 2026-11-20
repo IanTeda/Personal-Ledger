@@ -9,12 +9,8 @@ use std::rc::Rc;
 
 use lib_core::configuration::{ConfigKey, ConfigValue};
 
+use crate::error::Result;
 use crate::protocols::{DeviceSnapshot, KeyState};
-
-/// A write the file couldn't take. The adapter logs the cause; the policy only needs to know it
-/// failed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WriteError;
 
 /// A device's configuration file as it is, with no policy: where it is, what outranks it, what it
 /// holds and how to change it. Every write goes through, so the Interactors decide first.
@@ -37,20 +33,20 @@ pub trait DeviceFile {
     /// Writes `value` under its key, spelt as the parser reads it back.
     ///
     /// # Errors
-    /// [`WriteError`] when the file or its folder can't be written.
-    fn set(&self, value: ConfigValue) -> Result<(), WriteError>;
+    /// [`Error::WriteFailed`] when the file or its folder can't be written.
+    fn set(&self, value: ConfigValue) -> Result<()>;
 
     /// Takes `key` out of the file.
     ///
     /// # Errors
     /// As [`Self::set`].
-    fn remove(&self, key: ConfigKey) -> Result<(), WriteError>;
+    fn remove(&self, key: ConfigKey) -> Result<()>;
 
     /// Puts `key` back as [`Self::raw`] read it, or takes it out for `None`.
     ///
     /// # Errors
     /// As [`Self::set`].
-    fn restore(&self, key: ConfigKey, value: Option<&str>) -> Result<(), WriteError>;
+    fn restore(&self, key: ConfigKey, value: Option<&str>) -> Result<()>;
 }
 
 /// Where a saved change is noted for the input's History entry: the key's raw value in the file

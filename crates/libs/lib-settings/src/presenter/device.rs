@@ -4,8 +4,9 @@
 
 use lib_core::configuration::ConfigKey;
 
+use crate::error::Error;
 use crate::msg;
-use crate::protocols::{DeviceAnswer, DeviceRefusal};
+use crate::protocols::DeviceAnswer;
 
 /// The note under a control whose key `source`, a source above the file, sets; `None` for none.
 pub(super) fn shadowed_note(source: Option<&str>) -> Option<String> {
@@ -21,10 +22,8 @@ pub fn device_status<T>(answer: &DeviceAnswer<T>, key: ConfigKey) -> String {
         DeviceAnswer::Shadowed { source } => {
             lib_locale::msg::settings_device_shadowed(name, source)
         }
-        DeviceAnswer::Refused(DeviceRefusal::NoFile) => {
-            lib_locale::msg::settings_device_no_file(name)
-        }
-        DeviceAnswer::Refused(DeviceRefusal::WriteFailed) => {
+        DeviceAnswer::Refused(Error::NoFile) => lib_locale::msg::settings_device_no_file(name),
+        DeviceAnswer::Refused(Error::WriteFailed) => {
             lib_locale::msg::settings_device_write_failed(name)
         }
     }
@@ -35,7 +34,8 @@ mod tests {
     use lib_core::configuration::ConfigKey;
 
     use super::*;
-    use crate::protocols::{DeviceAnswer, DeviceRefusal};
+    use crate::error::Error;
+    use crate::protocols::DeviceAnswer;
 
     #[test]
     fn a_saved_answer_names_the_key_and_the_file() {
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn a_refusal_for_no_file_says_there_is_nowhere_to_keep_it() {
-        let answer: DeviceAnswer<()> = DeviceAnswer::Refused(DeviceRefusal::NoFile);
+        let answer: DeviceAnswer<()> = DeviceAnswer::Refused(Error::NoFile);
         assert_eq!(
             device_status(&answer, ConfigKey::RowDensity),
             lib_locale::msg::settings_device_no_file(ConfigKey::RowDensity.name())
@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn a_refusal_for_a_failed_write_says_the_write_failed() {
-        let answer: DeviceAnswer<()> = DeviceAnswer::Refused(DeviceRefusal::WriteFailed);
+        let answer: DeviceAnswer<()> = DeviceAnswer::Refused(Error::WriteFailed);
         assert_eq!(
             device_status(&answer, ConfigKey::RowDensity),
             lib_locale::msg::settings_device_write_failed(ConfigKey::RowDensity.name())

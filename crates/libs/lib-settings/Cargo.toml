@@ -27,6 +27,7 @@ lib_viper = { path = "../lib-viper" }
 
 ## -- Workspace Dependencies --
 chrono = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [build-dependencies]

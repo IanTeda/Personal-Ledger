@@ -3,7 +3,7 @@
 //! the key refuses the change (except for a key that
 //! [writes when shadowed](lib_core::configuration::ConfigKey::writes_when_shadowed)), then no file to
 //! write refuses it, then the write itself, whose failure becomes
-//! [`DeviceRefusal::WriteFailed`]. A refusal is an answer for the person, never a failure for the
+//! [`Error::WriteFailed`]. A refusal is an answer for the person, never a failure for the
 //! caller (ADR-0046).
 
 mod remove_setting;
@@ -16,8 +16,9 @@ pub use write_setting::WriteSetting;
 
 use lib_core::configuration::ConfigKey;
 
-use crate::device::{DeviceFile, DevicePorts, WriteError};
-use crate::protocols::{DeviceAnswer, DeviceRefusal};
+use crate::device::{DeviceFile, DevicePorts};
+use crate::error::{Error, Result};
+use crate::protocols::DeviceAnswer;
 
 /// Changes `key` in the file with `edit`, answering `value` once saved. A source above the file
 /// that sets `key` refuses it instead, unless the key writes when shadowed.
@@ -25,7 +26,7 @@ fn change<T>(
     ports: &DevicePorts,
     key: ConfigKey,
     value: T,
-    edit: impl FnOnce(&dyn DeviceFile) -> Result<(), WriteError>,
+    edit: impl FnOnce(&dyn DeviceFile) -> Result<()>,
 ) -> DeviceAnswer<T> {
     let file = ports.file();
     if !key.writes_when_shadowed()
@@ -34,14 +35,14 @@ fn change<T>(
         return DeviceAnswer::Shadowed { source };
     }
     let Some(path) = file.target() else {
-        return DeviceAnswer::Refused(DeviceRefusal::NoFile);
+        return DeviceAnswer::Refused(Error::NoFile);
     };
     match edit(file) {
         Ok(()) => DeviceAnswer::Saved {
             value,
             file: path.display().to_string(),
         },
-        Err(WriteError) => DeviceAnswer::Refused(DeviceRefusal::WriteFailed),
+        Err(error) => DeviceAnswer::Refused(error),
     }
 }
 
@@ -51,7 +52,7 @@ fn recorded<T>(
     ports: &DevicePorts,
     key: ConfigKey,
     value: T,
-    edit: impl FnOnce(&dyn DeviceFile) -> Result<(), WriteError>,
+    edit: impl FnOnce(&dyn DeviceFile) -> Result<()>,
 ) -> DeviceAnswer<T> {
     let Some(log) = ports.log() else {
         return change(ports, key, value, edit);
@@ -69,7 +70,7 @@ fn outcome<T>(answer: &DeviceAnswer<T>) -> &'static str {
     match answer {
         DeviceAnswer::Saved { .. } => "saved",
         DeviceAnswer::Shadowed { .. } => "shadowed",
-        DeviceAnswer::Refused(DeviceRefusal::NoFile) => "no file",
-        DeviceAnswer::Refused(DeviceRefusal::WriteFailed) => "write failed",
+        DeviceAnswer::Refused(Error::NoFile) => "no file",
+        DeviceAnswer::Refused(Error::WriteFailed) => "write failed",
     }
 }

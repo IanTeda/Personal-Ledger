@@ -16,6 +16,7 @@
 )]
 pub mod contract;
 pub mod device;
+pub mod error;
 pub mod fake;
 pub mod interactor;
 pub mod keymap;
@@ -26,7 +27,8 @@ pub mod presenter;
 pub mod protocols;
 pub mod summary;
 
-pub use crate::device::{ChangeLog, DeviceFile, DevicePorts, WriteError, snapshot};
+pub use crate::device::{ChangeLog, DeviceFile, DevicePorts, snapshot};
+pub use crate::error::{Error, Result};
 pub use crate::interactor::{RemoveSetting, RestoreSetting, WriteSetting};
 pub use crate::log::{LogLevel, LogLine, TracingLevel};
 pub use crate::page::{ScopeFacts, ScopeGroup, SettingsPage};
@@ -43,8 +45,8 @@ pub use crate::presenter::{
     TracingEvent, TracingPresenter, TracingSetup, TracingViewModel, device_status,
 };
 pub use crate::protocols::{
-    BaseUnitAnswer, ColourChoice, DeviceAnswer, DeviceRefusal, DeviceRouter, DeviceSnapshot,
-    HeadlineAmount, KeyState, LedgerCounts, LedgerPreferences, LedgerRouter, LedgerSummaries,
-    LedgerUnits, SettingsLedger, SettingsRouter, TracingLog, TracingRouter,
+    BaseUnitAnswer, ColourChoice, DeviceAnswer, DeviceRouter, DeviceSnapshot, HeadlineAmount,
+    KeyState, LedgerCounts, LedgerPreferences, LedgerRouter, LedgerSummaries, LedgerUnits,
+    SettingsLedger, SettingsRouter, TracingLog, TracingRouter,
 };
 pub use crate::summary::{PageRows, PageSummary, SummaryRow, SummarySources, summarise};

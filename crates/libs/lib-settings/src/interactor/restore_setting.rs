@@ -35,8 +35,8 @@ mod tests {
     use lib_core::configuration::ConfigValue;
 
     use super::*;
+    use crate::error::Error;
     use crate::fake::{InMemoryDeviceFile, JournalFake};
-    use crate::protocols::DeviceRefusal;
 
     fn restore(key: ConfigKey, value: Option<&str>) -> RestoreSetting {
         RestoreSetting {
@@ -94,8 +94,8 @@ mod tests {
     #[test]
     fn no_file_and_a_failed_write_are_refused() {
         for (file, refusal) in [
-            (InMemoryDeviceFile::default(), DeviceRefusal::NoFile),
-            (InMemoryDeviceFile::unwritable(), DeviceRefusal::WriteFailed),
+            (InMemoryDeviceFile::default(), Error::NoFile),
+            (InMemoryDeviceFile::unwritable(), Error::WriteFailed),
         ] {
             let ports = DevicePorts::new(Rc::new(file));
             assert_eq!(

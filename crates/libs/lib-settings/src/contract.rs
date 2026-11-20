@@ -16,13 +16,12 @@ use lib_core::{
 
 use std::rc::Rc;
 
-use crate::device::{DeviceFile, DevicePorts, WriteError};
+use crate::device::{DeviceFile, DevicePorts};
+use crate::error::Error;
 use crate::fake::StoredDevice;
 use crate::interactor::{RemoveSetting, WriteSetting};
 use crate::log::LogLevel;
-use crate::protocols::{
-    BaseUnitAnswer, DeviceAnswer, DeviceRefusal, LedgerPreferences, LedgerUnits, TracingLog,
-};
+use crate::protocols::{BaseUnitAnswer, DeviceAnswer, LedgerPreferences, LedgerUnits, TracingLog};
 
 /// Builds the raw file a [`DeviceFile`] contract check runs on, each on a file of its own.
 pub trait DeviceFileFactory {
@@ -231,9 +230,13 @@ pub fn an_unwritable_file_is_an_error(factory: &mut impl DeviceFileFactory) {
     let file = factory.unwritable();
     for value in first_values() {
         let key = value.key();
-        assert_eq!(file.set(value), Err(WriteError), "{key:?}");
-        assert_eq!(file.remove(key), Err(WriteError), "{key:?} removed");
-        assert_eq!(file.restore(key, None), Err(WriteError), "{key:?} restored");
+        assert_eq!(file.set(value), Err(Error::WriteFailed), "{key:?}");
+        assert_eq!(file.remove(key), Err(Error::WriteFailed), "{key:?} removed");
+        assert_eq!(
+            file.restore(key, None),
+            Err(Error::WriteFailed),
+            "{key:?} restored"
+        );
     }
     assert_eq!(held(&file), StoredDevice::default());
 }
@@ -351,12 +354,12 @@ pub fn the_read_names_the_file(factory: &mut impl DeviceFileFactory) {
 
 /// With no file to write, every write is refused.
 pub fn with_no_file_every_write_is_refused(factory: &mut impl DeviceFileFactory) {
-    assert_refused(&Rig::over(factory.without_file()), DeviceRefusal::NoFile);
+    assert_refused(&Rig::over(factory.without_file()), Error::NoFile);
 }
 
 /// A file that can't be written refuses every write.
 pub fn a_failed_write_is_refused(factory: &mut impl DeviceFileFactory) {
-    assert_refused(&Rig::over(factory.unwritable()), DeviceRefusal::WriteFailed);
+    assert_refused(&Rig::over(factory.unwritable()), Error::WriteFailed);
 }
 
 /// Runs every policy check through the Interactors over the files `factory` builds, so the
@@ -387,8 +390,8 @@ fn source_of<T: std::fmt::Debug>(answer: DeviceAnswer<T>) -> Option<String> {
     }
 }
 
-fn assert_refused(device: &Rig, refusal: DeviceRefusal) {
-    fn refused<T>(answer: DeviceAnswer<T>) -> Option<DeviceRefusal> {
+fn assert_refused(device: &Rig, refusal: Error) {
+    fn refused<T>(answer: DeviceAnswer<T>) -> Option<Error> {
         match answer {
             DeviceAnswer::Refused(refusal) => Some(refusal),
             _ => None,

@@ -5038,6 +5038,7 @@ dependencies = [
  "lib_locale_build",
  "lib_toast",
  "lib_viper",
+ "thiserror 2.0.20",
  "tracing",
 ]
 

@@ -12,7 +12,8 @@ use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_core::{UnitId, UnitRef};
 use lib_toast::{Notice, Notify};
 
-use crate::device::{ChangeLog, DeviceFile, WriteError, snapshot};
+use crate::device::{ChangeLog, DeviceFile, snapshot};
+use crate::error::{Error, Result};
 use crate::log::{LogLevel, LogLine};
 use crate::page::SettingsPage;
 use crate::presenter::{ClearLogsPresenter, DisplayOutput, LogListChange, LogScroll};
@@ -361,27 +362,27 @@ impl DeviceFile for InMemoryDeviceFile {
             .map(|value| format!("{value:?}"))
     }
 
-    fn set(&self, value: ConfigValue) -> Result<(), WriteError> {
+    fn set(&self, value: ConfigValue) -> Result<()> {
         if self.fail_writes {
-            return Err(WriteError);
+            return Err(Error::WriteFailed);
         }
         self.raw_restored.borrow_mut().remove(&value.key());
         self.stored.borrow_mut().0.insert(value.key(), value);
         Ok(())
     }
 
-    fn remove(&self, key: ConfigKey) -> Result<(), WriteError> {
+    fn remove(&self, key: ConfigKey) -> Result<()> {
         if self.fail_writes {
-            return Err(WriteError);
+            return Err(Error::WriteFailed);
         }
         self.raw_restored.borrow_mut().remove(&key);
         self.stored.borrow_mut().0.remove(&key);
         Ok(())
     }
 
-    fn restore(&self, key: ConfigKey, value: Option<&str>) -> Result<(), WriteError> {
+    fn restore(&self, key: ConfigKey, value: Option<&str>) -> Result<()> {
         if self.fail_writes {
-            return Err(WriteError);
+            return Err(Error::WriteFailed);
         }
         match value {
             None => {
