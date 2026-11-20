@@ -25,6 +25,7 @@ lib_viper = { path = "../lib-viper" }
 ## -- Workspace Dependencies --
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [features]

@@ -16,11 +16,11 @@
 use chrono::{Duration, NaiveDate};
 use lib_bills::interactor::MatchBill;
 use lib_bills::presenter::money;
-use lib_bills::{EntryId, Error, MATCH_WINDOW_DAYS, PayRequest, SharedPorts, SplitRef};
+use lib_bills::{EntryId, MATCH_WINDOW_DAYS, PayRequest, SharedPorts, SplitRef};
 use lib_core::{Clock, DateStyle, Money};
 use lib_locale::format::{
-    AmountStyle, format_amount, format_date_input, format_month_day, parse_optional_date,
-    parse_positive_amount, upper,
+    AmountStyle, DateInputError, DateInputOptions, date_error_message, format_amount,
+    format_date_input, format_month_day, parse_date_with, parse_positive_amount, upper,
 };
 use lib_toast::Notice;
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
@@ -31,6 +31,7 @@ use lib_viper::view::{Choice, DialogFrame, Hint, TextFieldView};
 use crate::interactor::PayBill;
 use crate::msg;
 use crate::protocols::{PayOutcome, SharedPayments};
+use crate::{Error, Result};
 
 /// The two settlement paths, in the switch's order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -361,6 +362,7 @@ impl PayPresenter {
                         ports.categories,
                     )
                     .map(|()| PayOutcome::Matched)
+                    .map_err(Error::from)
                 }
                 None => return,
             },
@@ -382,8 +384,37 @@ impl PayPresenter {
         parse_positive_amount(&self.amount)
     }
 
-    fn parse_date(&self) -> Result<Option<NaiveDate>, String> {
-        parse_optional_date(&self.date, self.clock.today(), self.date_style)
+    fn date_options(&self) -> DateInputOptions {
+        DateInputOptions {
+            style: self.date_style,
+            allow_yearless: true,
+        }
+    }
+
+    /// The typed Date: `None` for empty, the date otherwise. Day-and-month alone takes today's
+    /// year.
+    fn parse_date(&self) -> Result<Option<NaiveDate>> {
+        match parse_date_with(&self.date, self.clock.today(), &self.date_options()) {
+            Ok(date) => Ok(Some(date)),
+            Err(DateInputError::Empty) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    /// The Message under the Date for a refused parse.
+    fn date_message(&self, error: &Error) -> String {
+        match error {
+            Error::PayDate(error) => {
+                date_error_message(error, self.clock.today(), &self.date_options())
+            }
+            _ => {
+                debug_assert!(
+                    false,
+                    "a date parse refuses only with PayDate, not {error:?}"
+                );
+                refusal_text(error)
+            }
+        }
     }
 
     /// The status line's hints: `←`/`→` switch panel on either.
@@ -416,7 +447,9 @@ fn decimal_characters(text: &str) -> String {
 /// settled, superseded or gone under the Dialog, or a candidate no longer one.
 fn refusal_text(refusal: &Error) -> String {
     match refusal {
-        Error::AmountNotPositive => msg::bill_payments_pay_error_amount(),
+        Error::AmountNotPositive | Error::Bills(lib_bills::Error::AmountNotPositive) => {
+            msg::bill_payments_pay_error_amount()
+        }
         _ => msg::bill_payments_pay_error_gone(),
     }
 }
@@ -495,7 +528,7 @@ impl Presenter for PayPresenter {
                 lib_locale::msg::date_word_today(),
                 PayField::Date,
             ),
-            date_error: self.parse_date().err(),
+            date_error: self.parse_date().err().map(|e| self.date_message(&e)),
             chips: self.opened.chips.clone(),
             direct_notice: msg::bill_payments_pay_direct_notice(),
             refusal: self.refusal.clone(),

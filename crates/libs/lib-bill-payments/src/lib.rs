@@ -21,10 +21,12 @@
     reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
 )]
 pub mod contract;
+mod error;
 pub mod fake;
 pub mod interactor;
 pub mod msg;
 pub mod presenter;
 pub mod protocols;
 
+pub use error::{Error, Result};
 pub use protocols::{BillPayments, PayOutcome, SharedPayments};

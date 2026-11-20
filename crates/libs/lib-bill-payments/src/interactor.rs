@@ -4,11 +4,12 @@
 
 use bigdecimal::Signed;
 use chrono::NaiveDate;
-use lib_bills::{BillScheduleEntry, EntryId, Error, Resolution, SplitRef};
+use lib_bills::{BillScheduleEntry, EntryId, Resolution, SplitRef};
 use lib_core::{Money, TransactionId, TransactionStatus};
 use lib_transactions::{Split, Transaction};
 
 use crate::protocols::BillPayments;
+use crate::{Error, Result};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PayBill {
@@ -26,7 +27,7 @@ impl PayBill {
     /// # Errors
     /// `EntryNotFound` or `EntryNotOpen` for an entry that is gone or settled, `PlanNotFound` for
     /// a Plan that is gone, and `AmountNotPositive` for an amount of zero or less.
-    pub fn run(self, payments: &mut dyn BillPayments) -> Result<TransactionId, Error> {
+    pub fn run(self, payments: &mut dyn BillPayments) -> Result<TransactionId> {
         self.run_as(TransactionId::new(), payments)
     }
 
@@ -38,7 +39,7 @@ impl PayBill {
         self,
         transaction_id: TransactionId,
         payments: &mut dyn BillPayments,
-    ) -> Result<TransactionId, Error> {
+    ) -> Result<TransactionId> {
         let (plan, due, date) = (self.entry.plan_id, self.entry.due, self.date);
         let outcome = self.apply(transaction_id, payments);
         match &outcome {
@@ -60,7 +61,7 @@ impl PayBill {
         self,
         transaction_id: TransactionId,
         payments: &mut dyn BillPayments,
-    ) -> Result<TransactionId, Error> {
+    ) -> Result<TransactionId> {
         let entry = payments.entry(self.entry).ok_or(Error::EntryNotFound)?;
         if !entry.is_open() {
             return Err(Error::EntryNotOpen);
