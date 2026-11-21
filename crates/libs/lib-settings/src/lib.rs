@@ -16,7 +16,7 @@
 )]
 pub mod contract;
 pub mod device;
-pub mod error;
+mod error;
 pub mod fake;
 pub mod interactor;
 pub mod keymap;

@@ -1,5 +1,6 @@
 //! Enforces the `error.rs` convention over `crates/libs/*` (#1300, parent #1274): every library
-//! crate has a private `src/error.rs`, re-exports `Error` and `Result` from `lib.rs`, and has no
+//! crate has a private `src/error.rs` (`mod error`, never `pub mod error`, #1303), re-exports
+//! `Error` and `Result` from `lib.rs`, and has no
 //! public function whose error is a `String`, so a caller matches on a typed variant, never on
 //! text (`/rust-style`). It lives beside `viper_dependencies.rs` for the same reason: this is the
 //! one crate that already looks across the library crates.
@@ -53,6 +54,17 @@ fn reexports_error(lib_rs: &str) -> bool {
             .map(str::trim)
             .collect();
         names.contains(&"Error") && names.contains(&"Result")
+    })
+}
+
+/// Whether `lib_rs` declares `error` as a public module, `pub mod error`, which would give a second
+/// public path to `Error`. `pub(crate) mod error` is private to the crate and allowed.
+fn declares_public_error_module(lib_rs: &str) -> bool {
+    lib_rs.lines().any(|line| {
+        line.trim()
+            .strip_prefix("pub ")
+            .and_then(|rest| rest.strip_prefix("mod error"))
+            .is_some_and(|after| after.starts_with([';', ' ', '{']))
     })
 }
 
@@ -110,6 +122,9 @@ fn violations_in(dir: &Path) -> Vec<String> {
         found.push(format!(
             "{name}: lib.rs lacks `pub use error::{{Error, Result}}`"
         ));
+    }
+    if declares_public_error_module(&lib_rs) {
+        found.push(format!("{name}: lib.rs declares error as a public module"));
     }
     let mut files = Vec::new();
     rust_files(&dir.join("src"), &mut files);
@@ -172,4 +187,32 @@ fn the_convention_flags_a_missing_error_file_re_export_and_string_error() {
         "pub use crate::error::{\n    Error,\n    Result,\n};"
     ));
     assert!(!reexports_error("pub use error::Error;"));
+}
+
+#[test]
+fn the_convention_flags_a_public_error_module() {
+    let dir = std::env::temp_dir().join(format!("error_convention_public_{}", std::process::id()));
+    let src = dir.join("src");
+    fs::create_dir_all(&src).expect("temp crate dir");
+    fs::write(dir.join("Cargo.toml"), "").expect("manifest");
+    fs::write(src.join("error.rs"), "").expect("error module");
+    fs::write(
+        src.join("lib.rs"),
+        "pub mod error;\npub use error::{Error, Result};\n",
+    )
+    .expect("lib");
+    let found = violations_in(&dir);
+    fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        found,
+        vec![format!(
+            "{}: lib.rs declares error as a public module",
+            crate_name(&dir)
+        )]
+    );
+
+    assert!(declares_public_error_module("pub mod error;"));
+    assert!(declares_public_error_module("    pub mod error {}"));
+    assert!(!declares_public_error_module("mod error;"));
+    assert!(!declares_public_error_module("pub(crate) mod error;"));
 }

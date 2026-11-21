@@ -26,7 +26,7 @@
 //! This domain layer is designed for SQLite-backed persistence and does not reference Postgres or other database engines. All type mappings and invariants are implemented for SQLite compatibility.
 
 /// Unified error and result types for the domain layer.
-pub mod error;
+mod error;
 pub use error::{Error, Result};
 
 /// Database row identifier type using time-ordered UUID v7.
