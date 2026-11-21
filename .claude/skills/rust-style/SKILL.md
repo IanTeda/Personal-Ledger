@@ -13,9 +13,9 @@ Every crate has a private `error.rs` module exporting `Error` and `Result<T>`, r
 
 No public function returns `Result<_, String>`: a `String` error is English the person can't have translated and text a caller can't match on. Make the failure a typed variant instead.
 
-Small value-type errors (a name, an area, a parse of one type) stay beside their type in that type's module, and `Error` wraps them with a `#[from]` variant, so parse failures never mix with workflow refusals.
+Small value-type errors (a name, an area, a parse of one type) stay beside their type in that type's module, and `Error` wraps them with a `#[from]` variant, so parse failures never mix with workflow refusals. `Error` wraps a value-type error only where the crate's own `Result<T>` functions return it; a value-type error that a public function returns directly needs no wrapping variant, since that variant would be one nothing constructs.
 
-**Infrastructure crates** (`lib-config`, `lib-database`, `lib-rpc`, `lib-tracing`, …): start the enum with a single `Generic(String)` catch-all variant. `Generic` is for infrastructure crates only: a domain or feature crate has no `Generic` and is typed only, like `lib-core`, so a domain failure can't hide in a string:
+**Infrastructure crates** (`lib-config`, `lib-database`, `lib-locale`, `lib-locale-build`, `lib-rpc`, `lib-tracing`): start the enum with a single `Generic(String)` catch-all variant. `Generic` is for infrastructure crates only: a domain or feature crate has no `Generic` and is typed only, like `lib-core`, so a domain failure can't hide in a string:
 
 ```rust
 #[derive(thiserror::Error, Debug)]
