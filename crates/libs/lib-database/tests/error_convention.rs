@@ -57,13 +57,28 @@ fn reexports_error(lib_rs: &str) -> bool {
     })
 }
 
-/// Whether `lib_rs` declares `error` as a public module, `pub mod error`, which would give a second
-/// public path to `Error`. `pub(crate) mod error` is private to the crate and allowed.
+/// Whether `lib_rs` declares `error` with any visibility wider than the crate: bare `pub`,
+/// `pub(super)`, `pub(self)` or `pub(in …)`, any of which would give a path to `Error` beyond the
+/// crate. Only `pub(crate)` and private `mod error` are allowed, so the rule is "private, or
+/// `pub(crate)`" and nothing else is excepted.
 fn declares_public_error_module(lib_rs: &str) -> bool {
     lib_rs.lines().any(|line| {
-        line.trim()
-            .strip_prefix("pub ")
-            .and_then(|rest| rest.strip_prefix("mod error"))
+        let line = line.trim();
+        let declaration = if let Some(restricted) = line.strip_prefix("pub(") {
+            let Some(close) = restricted.find(')') else {
+                return false;
+            };
+            if restricted[..close].trim() == "crate" {
+                return false;
+            }
+            restricted[close + 1..].trim_start()
+        } else if let Some(rest) = line.strip_prefix("pub ") {
+            rest
+        } else {
+            return false;
+        };
+        declaration
+            .strip_prefix("mod error")
             .is_some_and(|after| after.starts_with([';', ' ', '{']))
     })
 }
@@ -213,6 +228,11 @@ fn the_convention_flags_a_public_error_module() {
 
     assert!(declares_public_error_module("pub mod error;"));
     assert!(declares_public_error_module("    pub mod error {}"));
+    assert!(declares_public_error_module("pub(super) mod error;"));
+    assert!(declares_public_error_module(
+        "pub(in crate::foo) mod error;"
+    ));
+    assert!(declares_public_error_module("pub(self) mod error;"));
     assert!(!declares_public_error_module("mod error;"));
     assert!(!declares_public_error_module("pub(crate) mod error;"));
 }
