@@ -21,8 +21,8 @@
 use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, CategoryId, Clock, DateStyle, Money, PayeeId, UnitId};
 use lib_locale::format::{
-    DateInputError, date_error_message, format_date_input, optional_date_options,
-    parse_optional_date, parse_positive_amount,
+    DateInputError, format_date_input, optional_date_message, parse_optional_date,
+    parse_positive_amount,
 };
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
@@ -561,11 +561,7 @@ impl PlanFormPresenter {
 
     /// The Message for a date that doesn't parse.
     fn date_message(&self, error: &DateInputError) -> String {
-        date_error_message(
-            error,
-            self.clock.today(),
-            &optional_date_options(self.date_style),
-        )
+        optional_date_message(error, self.clock.today(), self.date_style)
     }
 
     fn amount_money(&self) -> Option<Money> {

@@ -22,8 +22,7 @@
 use chrono::NaiveDate;
 use lib_core::{AccountId, CategoryId, DateStyle, PayeeId, TagId};
 use lib_locale::format::{
-    DateInputError, date_error_message, format_date_input, optional_date_options,
-    parse_optional_date,
+    DateInputError, format_date_input, optional_date_message, parse_optional_date,
 };
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
@@ -464,7 +463,7 @@ impl FilterPresenter {
 
     /// The Message for a date that doesn't parse.
     fn date_message(&self, error: &DateInputError) -> String {
-        date_error_message(error, self.today, &optional_date_options(self.date_style))
+        optional_date_message(error, self.today, self.date_style)
     }
 
     /// The filters the draft describes, or `None` while a date doesn't parse.

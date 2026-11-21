@@ -2,7 +2,7 @@
 
 use lib_core::DocumentId;
 
-use super::support::{reason, write_documents};
+use super::support::write_documents;
 use crate::protocols::DocumentRepository;
 use crate::{NewDocument, Result, add_filed};
 
@@ -15,9 +15,7 @@ impl AddDocument {
         let outcome = write_documents(repo, |_, documents| add_filed(documents, self.0));
         match &outcome {
             Ok(id) => tracing::info!(document_id = %id, "Added a Document"),
-            Err(refusal) => {
-                tracing::info!(refusal = reason(refusal), "Refused to add a Document");
-            }
+            Err(refusal) => tracing::info!(%refusal, "Refused to add a Document"),
         }
         outcome
     }

@@ -1,14 +1,8 @@
-//! The crate's error type. A Colour Theme file's parse failures stay beside `parse_theme` in
-//! [`ParseError`] (`build.rs` includes `parse.rs` on its own) and are wrapped here, so a caller
-//! with more than one fallible call in this crate has one type to name.
+//! The crate's error type. No function returns `Result<T>` yet: a Colour Theme file's parse
+//! failures stay beside `parse_theme` in [`crate::ParseError`] (`build.rs` includes `parse.rs` on
+//! its own), which returns it directly, so `Error` has no variant wrapping it.
 
-use crate::ParseError;
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum Error {
-    /// A Colour Theme file failed to parse.
-    #[error("colour theme file: {0}")]
-    Parse(#[from] ParseError),
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;

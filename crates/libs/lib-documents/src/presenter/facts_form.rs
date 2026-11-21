@@ -6,8 +6,7 @@
 use chrono::NaiveDate;
 use lib_core::{DocumentId, Money};
 use lib_locale::format::{
-    DateInputError, date_error_message, format_date_input, optional_date_options,
-    parse_optional_date,
+    DateInputError, format_date_input, optional_date_message, parse_optional_date,
 };
 use lib_toast::{Notice, ToastKind};
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
@@ -208,11 +207,7 @@ impl FactsFormPresenter {
 
     /// The Message for a date that doesn't parse.
     fn date_message(&self, error: &DateInputError) -> String {
-        date_error_message(
-            error,
-            self.ports.today,
-            &optional_date_options(self.ports.date_style),
-        )
+        optional_date_message(error, self.ports.today, self.ports.date_style)
     }
 
     fn total_unreadable(&self) -> bool {

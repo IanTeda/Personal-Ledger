@@ -25,8 +25,8 @@ impl PayBill {
     /// is Open.)
     ///
     /// # Errors
-    /// `EntryNotFound` or `EntryNotOpen` for an entry that is gone or settled, `PlanNotFound` for
-    /// a Plan that is gone, and `AmountNotPositive` for an amount of zero or less.
+    /// `Bills` wrapping `EntryNotFound` or `EntryNotOpen` for an entry that is gone or settled, or
+    /// `PlanNotFound` for a Plan that is gone, and `AmountNotPositive` for an amount of zero or less.
     pub fn run(self, payments: &mut dyn BillPayments) -> Result<TransactionId> {
         self.run_as(TransactionId::new(), payments)
     }
@@ -62,13 +62,15 @@ impl PayBill {
         transaction_id: TransactionId,
         payments: &mut dyn BillPayments,
     ) -> Result<TransactionId> {
-        let entry = payments.entry(self.entry).ok_or(Error::EntryNotFound)?;
+        let entry = payments
+            .entry(self.entry)
+            .ok_or(lib_bills::Error::EntryNotFound)?;
         if !entry.is_open() {
-            return Err(Error::EntryNotOpen);
+            return Err(lib_bills::Error::EntryNotOpen.into());
         }
         let plan = payments
             .bill_plan(self.entry.plan_id)
-            .ok_or(Error::PlanNotFound)?;
+            .ok_or(lib_bills::Error::PlanNotFound)?;
         if !self.amount.0.is_positive() {
             return Err(Error::AmountNotPositive);
         }
@@ -238,7 +240,10 @@ mod tests {
             plan_id: BillPlanId::seed(9_999),
             due: today(),
         };
-        assert_eq!(pay(gone, cents(100)), Err(Error::EntryNotFound));
+        assert_eq!(
+            pay(gone, cents(100)),
+            Err(Error::Bills(lib_bills::Error::EntryNotFound))
+        );
         assert_eq!(*ports.borrow(), before);
     }
 
@@ -256,6 +261,6 @@ mod tests {
         };
 
         assert!(pay().is_ok());
-        assert_eq!(pay(), Err(Error::EntryNotOpen));
+        assert_eq!(pay(), Err(Error::Bills(lib_bills::Error::EntryNotOpen)));
     }
 }

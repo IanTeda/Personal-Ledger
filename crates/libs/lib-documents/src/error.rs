@@ -1,9 +1,9 @@
 //! The Documents Refusals (`GLOSSARY.md`): one variant per rule a Document, filing or Document
-//! Type write enforces. A typed path or a Document Type name the rules refuse keeps its own small
-//! error beside its check (`PathRefusal`, `NameError`), wrapped here. The `#[error]` text is for
-//! logs; the person sees the Presenter's `msg::` Message.
+//! Type write enforces. A Document Type name the rules refuse keeps its own small error beside its
+//! check (`NameError`), wrapped here; a typed path's `PathRefusal` is returned directly, never
+//! through `Result<T>`, so it isn't. The `#[error]` text is for logs, and carries no Title or
+//! name (ADR-0047); the person sees the Presenter's `msg::` Message.
 
-use crate::PathRefusal;
 use crate::types::NameError;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -35,9 +35,6 @@ pub enum Error {
     /// The Document Type has Filed files and no destination type was given.
     #[error("the document type has filed documents and needs a destination")]
     NeedsDestination,
-    /// A typed path the rules refuse.
-    #[error(transparent)]
-    Path(#[from] PathRefusal),
     /// A Document Type name the rules refuse.
     #[error(transparent)]
     Name(#[from] NameError),

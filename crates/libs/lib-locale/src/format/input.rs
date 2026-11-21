@@ -320,8 +320,8 @@ pub fn format_date_input(date: NaiveDate, style: Option<DateStyle>) -> String {
 }
 
 /// The options a typed date field that may be left empty is read with: day-and-month alone is
-/// accepted. Hand them to [`date_error_message`] to turn a [`parse_optional_date`] error into text.
-pub fn optional_date_options(style: Option<DateStyle>) -> DateInputOptions {
+/// accepted. Private so [`parse_optional_date`] and [`optional_date_message`] can't disagree.
+fn optional_date_options(style: Option<DateStyle>) -> DateInputOptions {
     DateInputOptions {
         style,
         allow_yearless: true,
@@ -340,6 +340,16 @@ pub fn parse_optional_date(
         Err(DateInputError::Empty) => Ok(None),
         Err(error) => Err(error),
     }
+}
+
+/// The user-facing text for a [`parse_optional_date`] error, read with the same options the parse
+/// used, so the expected format it names is the one the field accepts.
+pub fn optional_date_message(
+    error: &DateInputError,
+    today: NaiveDate,
+    style: Option<DateStyle>,
+) -> String {
+    date_error_message(error, today, &optional_date_options(style))
 }
 
 /// The user-facing text for a typed-date error, as a Message with the expected format as an

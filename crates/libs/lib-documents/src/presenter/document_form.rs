@@ -16,8 +16,7 @@ use std::path::Path;
 use chrono::NaiveDate;
 use lib_core::DocumentId;
 use lib_locale::format::{
-    DateInputError, date_error_message, format_date_input, optional_date_options,
-    parse_optional_date,
+    DateInputError, format_date_input, optional_date_message, parse_optional_date,
 };
 use lib_toast::{Notice, ToastKind};
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
@@ -370,11 +369,7 @@ impl DocumentFormPresenter {
 
     /// The Message for a date that doesn't parse.
     fn date_message(&self, error: &DateInputError) -> String {
-        date_error_message(
-            error,
-            self.today(),
-            &optional_date_options(self.ports.date_style),
-        )
+        optional_date_message(error, self.today(), self.ports.date_style)
     }
 
     /// Every field's problem: Add's typed path checked against the Library and the disk, and the

@@ -226,22 +226,13 @@ impl DeletePayeePresenter {
             match self.action {
                 DeleteAction::Delete => DeletePayee(self.id)
                     .run(ports)
-                    .map_err(|refusal| match refusal {
-                        Error::InUse(uses) => Refused::InUse(uses),
-                        Error::NotFound
-                        | Error::NameRequired
-                        | Error::DuplicateName(_)
-                        | Error::AliasTaken { .. } => Refused::Gone,
-                    })
                     .map(|payee| (PayeeChange::Deleted, payee.name)),
                 DeleteAction::Deactivate => DeactivatePayee(self.id)
                     .run(ports.payees)
-                    .map(|payee| (PayeeChange::Deactivated, payee.name))
-                    .map_err(|_: Error| Refused::Gone),
+                    .map(|payee| (PayeeChange::Deactivated, payee.name)),
                 DeleteAction::Reactivate => ReactivatePayee(self.id)
                     .run(ports.payees)
-                    .map(|payee| (PayeeChange::Reactivated, payee.name))
-                    .map_err(|_: Error| Refused::Gone),
+                    .map(|payee| (PayeeChange::Reactivated, payee.name)),
             }
         };
         match landed {
@@ -269,21 +260,14 @@ impl DeletePayeePresenter {
                 }));
             }
             // It came into use under the Dialog: what's left to offer is Deactivate.
-            Err(Refused::InUse(uses)) => {
+            Err(Error::InUse(uses)) => {
                 self.uses = uses;
                 self.action = DeleteAction::Deactivate;
                 self.refusal = None;
             }
-            Err(Refused::Gone) => self.refusal = Some(refusal_text(&Error::NotFound)),
+            Err(refusal) => self.refusal = Some(refusal_text(&refusal)),
         }
     }
-}
-
-/// Why a confirm didn't land.
-enum Refused {
-    Gone,
-    /// What names the Payee.
-    InUse(PayeeUse),
 }
 
 #[cfg(test)]

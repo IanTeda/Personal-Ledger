@@ -4,24 +4,7 @@ use lib_core::{DocumentId, DocumentTypeId};
 
 use crate::protocols::DocumentRepository;
 use crate::types::DocumentTypeRow;
-use crate::{Document, Error, Result, get};
-
-/// A refusal as a log line carries it: the kind alone, never a Title or a type's name (ADR-0047).
-pub(super) fn reason(refusal: &Error) -> &'static str {
-    match refusal {
-        Error::UnsupportedFile => "unsupported file",
-        Error::AlreadyInLibrary(_) => "already in the Library",
-        Error::NotFound => "no such Document",
-        Error::NoTitle => "blank Title",
-        Error::AlreadyFiled => "already Filed",
-        Error::NoSuchTransaction => "no such Transaction",
-        Error::UnknownDocumentType => "no such Document Type",
-        Error::DefaultDocumentType => "the Default Document Type",
-        Error::NeedsDestination => "has Filed Documents and no destination",
-        Error::Path(_) => "path refused",
-        Error::Name(_) => "name refused",
-    }
-}
+use crate::{Document, Result, get};
 
 /// Logs how an intent on Document `id` ended and hands the outcome back.
 pub(super) fn logged_document<R>(intent: &str, id: DocumentId, outcome: Result<R>) -> Result<R> {
@@ -30,7 +13,7 @@ pub(super) fn logged_document<R>(intent: &str, id: DocumentId, outcome: Result<R
         Err(refusal) => tracing::info!(
             intent,
             document_id = %id,
-            refusal = reason(refusal),
+            %refusal,
             "Documents intent refused"
         ),
     }
@@ -44,7 +27,7 @@ pub(super) fn logged_type<R>(intent: &str, id: DocumentTypeId, outcome: Result<R
         Err(refusal) => tracing::info!(
             intent,
             document_type_id = %id,
-            refusal = reason(refusal),
+            %refusal,
             "Documents intent refused"
         ),
     }

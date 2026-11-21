@@ -383,7 +383,7 @@ impl Inventory {
 impl Inventory {
     /// Sets or clears a Location's cover; an empty insurer clears it.
     pub fn set_cover(&mut self, location: LocationId, draft: &CoverDraft) -> Result<()> {
-        let cover = draft.validate().map_err(Error::Cover)?;
+        let cover = draft.validate()?;
         self.locations
             .iter_mut()
             .find(|l| l.id == location)
@@ -472,7 +472,7 @@ fn checked(
     if taken(others, name) {
         return Err(Error::Name(NameError::Taken));
     }
-    let cover = draft.cover.validate().map_err(Error::Cover)?;
+    let cover = draft.cover.validate()?;
     Ok((name.to_string(), cover))
 }
 
