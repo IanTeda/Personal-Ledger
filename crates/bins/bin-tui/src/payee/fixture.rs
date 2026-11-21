@@ -29,10 +29,11 @@ use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono::NaiveDate;
 
 use super::{
-    AliasMode, AliasSource, Payee, PayeeAlias, PayeeCategoryShare, PayeeError, PayeeResolution,
-    PayeeStore, PayeeTransaction, TransactionStatus,
+    AliasMode, AliasSource, Payee, PayeeAlias, PayeeCategoryShare, PayeeResolution, PayeeStore,
+    PayeeTransaction, TransactionStatus,
 };
 use crate::category::{CategoryFixture, CategoryStore};
+use crate::{Error, Result};
 use lib_core::{Money, RowID};
 
 use crate::fixture::{date, seed_from_id};
@@ -593,9 +594,9 @@ impl PayeeStore for PayeeFixture {
         icon_derived: bool,
         default_category_path: Option<String>,
         active: bool,
-    ) -> Result<RowID, PayeeError> {
+    ) -> Result<RowID> {
         if let Some(holder) = self.find_holder(&name, None) {
-            return Err(PayeeError::DuplicateName {
+            return Err(Error::PayeeDuplicateName {
                 holder: holder.name.clone(),
             });
         }
@@ -620,13 +621,13 @@ impl PayeeStore for PayeeFixture {
         Ok(id)
     }
 
-    fn rename(&mut self, id: RowID, new_name: String) -> Result<(), PayeeError> {
-        let current_name = self.find(id).ok_or(PayeeError::NotFound)?.name.clone();
+    fn rename(&mut self, id: RowID, new_name: String) -> Result<()> {
+        let current_name = self.find(id).ok_or(Error::PayeeNotFound)?.name.clone();
         if new_name.eq_ignore_ascii_case(&current_name) {
             return Ok(());
         }
         if let Some(holder) = self.find_holder(&new_name, Some(id)) {
-            return Err(PayeeError::DuplicateName {
+            return Err(Error::PayeeDuplicateName {
                 holder: holder.name.clone(),
             });
         }
@@ -643,7 +644,7 @@ impl PayeeStore for PayeeFixture {
             .payees
             .iter_mut()
             .find(|payee| payee.id == id)
-            .ok_or(PayeeError::NotFound)?;
+            .ok_or(Error::PayeeNotFound)?;
         payee.name = new_name;
         payee.updated_on = FIXTURE_NOW;
         Ok(())
@@ -656,12 +657,12 @@ impl PayeeStore for PayeeFixture {
         icon_url: Option<String>,
         icon_derived: bool,
         default_category_path: Option<String>,
-    ) -> Result<(), PayeeError> {
+    ) -> Result<()> {
         let payee = self
             .payees
             .iter_mut()
             .find(|payee| payee.id == id)
-            .ok_or(PayeeError::NotFound)?;
+            .ok_or(Error::PayeeNotFound)?;
         payee.website = website;
         payee.icon_url = icon_url;
         payee.icon_derived = icon_derived;
@@ -670,22 +671,22 @@ impl PayeeStore for PayeeFixture {
         Ok(())
     }
 
-    fn set_active(&mut self, id: RowID, active: bool) -> Result<(), PayeeError> {
+    fn set_active(&mut self, id: RowID, active: bool) -> Result<()> {
         let payee = self
             .payees
             .iter_mut()
             .find(|payee| payee.id == id)
-            .ok_or(PayeeError::NotFound)?;
+            .ok_or(Error::PayeeNotFound)?;
         payee.is_active = active;
         payee.updated_on = FIXTURE_NOW;
         Ok(())
     }
 
-    fn delete(&mut self, id: RowID) -> Result<(), PayeeError> {
-        let payee = self.find(id).ok_or(PayeeError::NotFound)?;
+    fn delete(&mut self, id: RowID) -> Result<()> {
+        let payee = self.find(id).ok_or(Error::PayeeNotFound)?;
         let alias_count = self.aliases(id).len();
         if payee.transaction_count > 0 || alias_count > 0 {
-            return Err(PayeeError::ReferencesExist {
+            return Err(Error::PayeeReferencesExist {
                 transaction_count: payee.transaction_count,
                 alias_count,
             });
@@ -709,20 +710,15 @@ impl PayeeStore for PayeeFixture {
             })
     }
 
-    fn add_alias(
-        &mut self,
-        payee_id: RowID,
-        typed: &str,
-        mode: AliasMode,
-    ) -> Result<RowID, PayeeError> {
-        self.find(payee_id).ok_or(PayeeError::NotFound)?;
+    fn add_alias(&mut self, payee_id: RowID, typed: &str, mode: AliasMode) -> Result<RowID> {
+        self.find(payee_id).ok_or(Error::PayeeNotFound)?;
         let pattern = match mode {
             AliasMode::ExactText => format!("(?i)^{}$", regex::escape(typed)),
             AliasMode::Regex => typed.to_string(),
         };
 
         if let Some(other) = self.conflicting_holder(payee_id, &pattern) {
-            return Err(PayeeError::PatternCollision { pattern, other });
+            return Err(Error::PayeePatternCollision { pattern, other });
         }
 
         let id = RowID::new();
@@ -736,14 +732,14 @@ impl PayeeStore for PayeeFixture {
         Ok(id)
     }
 
-    fn remove_alias(&mut self, alias_id: RowID) -> Result<(), PayeeError> {
+    fn remove_alias(&mut self, alias_id: RowID) -> Result<()> {
         let alias = self
             .aliases
             .iter()
             .find(|alias| alias.id == alias_id)
-            .ok_or(PayeeError::AliasNotFound)?;
+            .ok_or(Error::PayeeAliasNotFound)?;
         if alias.source == AliasSource::Rename {
-            return Err(PayeeError::RenameProtectedAlias);
+            return Err(Error::PayeeRenameProtectedAlias);
         }
         self.aliases.retain(|alias| alias.id != alias_id);
         Ok(())
@@ -931,10 +927,10 @@ mod tests {
             .expect("the prior name should be stored as the new alias's pattern");
         assert_eq!(new_alias.source, AliasSource::Rename);
 
-        assert_eq!(
+        assert!(matches!(
             store.remove_alias(new_alias.id),
-            Err(PayeeError::RenameProtectedAlias)
-        );
+            Err(Error::PayeeRenameProtectedAlias)
+        ));
     }
 
     #[test]
@@ -942,11 +938,8 @@ mod tests {
         let mut store = PayeeFixture::new();
         let coles_central = find_by_name(&store, "Coles Central").id;
 
-        assert_eq!(
-            store.rename(coles_central, "woolworths".to_string()),
-            Err(PayeeError::DuplicateName {
-                holder: "Woolworths".to_string()
-            })
+        assert!(
+            matches!(store.rename(coles_central, "woolworths".to_string()), Err(Error::PayeeDuplicateName { holder }) if holder == "Woolworths")
         );
     }
 
@@ -954,12 +947,8 @@ mod tests {
     fn delete_refuses_a_payee_with_transactions_or_aliases() {
         let mut store = PayeeFixture::new();
         let woolworths = find_by_name(&store, "Woolworths").id;
-        assert_eq!(
-            store.delete(woolworths),
-            Err(PayeeError::ReferencesExist {
-                transaction_count: 184,
-                alias_count: 2,
-            })
+        assert!(
+            matches!(store.delete(woolworths), Err(Error::PayeeReferencesExist { transaction_count, alias_count }) if transaction_count == 184 && alias_count == 2)
         );
     }
 
@@ -978,12 +967,8 @@ mod tests {
         let mut store = PayeeFixture::new();
         let coles_central = find_by_name(&store, "Coles Central").id;
 
-        assert_eq!(
-            store.add_alias(coles_central, "Woolworths", AliasMode::ExactText),
-            Err(PayeeError::PatternCollision {
-                pattern: "(?i)^Woolworths$".to_string(),
-                other: "Woolworths".to_string(),
-            })
+        assert!(
+            matches!(store.add_alias(coles_central, "Woolworths", AliasMode::ExactText), Err(Error::PayeePatternCollision { pattern, other }) if pattern == "(?i)^Woolworths$" && other == "Woolworths")
         );
     }
 

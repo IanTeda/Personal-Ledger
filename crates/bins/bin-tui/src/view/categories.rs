@@ -163,7 +163,7 @@ impl Default for CategoriesView {
 
 impl CategoriesView {
     /// Queues the `toast-save-failed` Error for a write the store refused.
-    fn push_if_refused(&mut self, result: Result<(), crate::category::CategoryError>) {
+    fn push_if_refused(&mut self, result: crate::Result<()>) {
         if let Err(error) = result {
             let entity = lib_locale::msg::toast_entity_category();
             self.toasts.push(save_failed(&entity, &error));

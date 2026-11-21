@@ -62,7 +62,7 @@ const VALUE_ERRORS: &[&str] = &[
 /// The crates that still break the usage rules, by directory name: the ratchet of the Result map
 /// (#1309). Each crate's slice deletes its own entry, a listed crate that passes fails the test
 /// as stale, and the last slice deletes the list.
-const PENDING: &[&str] = &["bin-desktop", "bin-tui", "bin-sync-server"];
+const PENDING: &[&str] = &["bin-desktop", "bin-sync-server"];
 
 /// The one shape every crate's alias takes, as `syn` prints it.
 const ALIAS: &str = "pub type Result < T , E = Error > = std :: result :: Result < T , E > ;";

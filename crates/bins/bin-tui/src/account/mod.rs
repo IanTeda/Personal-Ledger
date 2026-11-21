@@ -27,6 +27,8 @@ pub use fixture::{AccountFixture, FIXTURE_NOW};
 use chrono::NaiveDate;
 use lib_core::{AccountType, Money, RowID};
 
+use crate::Result;
+
 /// A Unit's two facts an Account needs: its code (for the "same unit"/"mixed units" rules and
 /// transfer-target filtering) and its display precision (`decimal_places`, e.g. `2` for AUD,
 /// `4` for a fund, `8` for BTC). Denormalised directly onto [`Account`] rather than a separate
@@ -107,23 +109,6 @@ impl TransactionStatus {
     }
 }
 
-/// Everything [`AccountStore::delete`] can refuse, per the handoff's "7d — Delete" rules.
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum AccountError {
-    #[error("account not found")]
-    NotFound,
-    #[error(
-        "{name} holds transactions or Balance Checks — choose a same-unit account to move them into"
-    )]
-    RequiresTransferTarget { name: String },
-    #[error("the transfer target must share {name}'s unit ({unit})")]
-    TransferTargetUnitMismatch { name: String, unit: String },
-    #[error("can't transfer an account's transactions to itself")]
-    TransferTargetIsSource,
-    #[error("the transfer target must be active")]
-    TransferTargetInactive,
-}
-
 /// The seam a future backend ticket implements a second time against real `lib_database`
 /// persistence, once `Shell` has an async-DB mechanism for any `View` (out of scope for the
 /// current map — see issue #115's Notes). Every method here is synchronous and read methods
@@ -177,9 +162,9 @@ pub trait AccountStore {
         name: String,
         account_type: AccountType,
         active: bool,
-    ) -> Result<(), AccountError>;
+    ) -> Result<()>;
 
-    fn set_active(&mut self, id: RowID, active: bool) -> Result<(), AccountError>;
+    fn set_active(&mut self, id: RowID, active: bool) -> Result<()>;
 
     /// Candidates for `delete(id, ..)`'s transfer target: active accounts sharing `id`'s unit,
     /// excluding `id` itself — the handoff's "same-unit only ... excludes inactive and the
@@ -192,7 +177,7 @@ pub trait AccountStore {
     /// Balance Checks are discarded (they assert a balance only `id` ever had), then `id` itself
     /// is removed. On an empty account (`transaction_count == 0` and no Balance Checks) `target`
     /// is ignored and this is just the removal.
-    fn delete(&mut self, id: RowID, target: Option<RowID>) -> Result<(), AccountError>;
+    fn delete(&mut self, id: RowID, target: Option<RowID>) -> Result<()>;
 }
 
 /// Every distinct Unit currently used by at least one account, sorted by code. The

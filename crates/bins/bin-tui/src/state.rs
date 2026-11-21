@@ -13,6 +13,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::Result;
+
 /// Directory name under the platform's state directory, as the Desktop names its own.
 const APPLICATION_NAME: &str = "personal-ledger";
 
@@ -56,18 +58,19 @@ pub fn load() -> TuiState {
 }
 
 /// Saves `state` to `path`, creating its directory if needed.
-pub fn save_to(path: &Path, state: &TuiState) -> io::Result<()> {
+pub fn save_to(path: &Path, state: &TuiState) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let contents = serde_json::to_string_pretty(state)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    std::fs::write(path, contents)
+    std::fs::write(path, contents)?;
+    Ok(())
 }
 
 /// Saves to the platform's state file; with no state directory there is nowhere to keep it, which
 /// isn't worth failing the quit over.
-pub fn save(state: &TuiState) -> io::Result<()> {
+pub fn save(state: &TuiState) -> Result<()> {
     match state_file_path() {
         Some(path) => save_to(&path, state),
         None => Ok(()),

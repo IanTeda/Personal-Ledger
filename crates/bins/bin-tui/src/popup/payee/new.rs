@@ -10,7 +10,7 @@
 //!
 //! **`name` is checked against the live fixture before submit**: a case-insensitive collision
 //! refuses `create_fields` outright (rendered as an inline warning) rather than surfacing
-//! `PayeeError::DuplicateName` after the fact — the handoff's own "a collision resolves to the
+//! `Error::PayeeDuplicateName` after the fact — the handoff's own "a collision resolves to the
 //! existing payee rather than creating a second".
 //!
 //! **`icon url` has no independent free-text state while `[×] derive from website` is

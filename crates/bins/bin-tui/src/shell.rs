@@ -3530,19 +3530,19 @@ mod tests {
     }
 
     impl Outside for Recorded {
-        fn open(&self, url: &str) -> std::io::Result<()> {
+        fn open(&self, url: &str) -> crate::Result<()> {
             self.record(format!("open {url}"))
         }
 
-        fn copy(&self, text: &str) -> std::io::Result<()> {
+        fn copy(&self, text: &str) -> crate::Result<()> {
             self.record(format!("copy {text}"))
         }
     }
 
     impl Recorded {
-        fn record(&self, what: String) -> std::io::Result<()> {
+        fn record(&self, what: String) -> crate::Result<()> {
             if self.refuse {
-                return Err(std::io::Error::other("refused"));
+                return Err(std::io::Error::other("refused").into());
             }
             self.sent.borrow_mut().push(what);
             Ok(())

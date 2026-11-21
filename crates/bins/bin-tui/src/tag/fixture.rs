@@ -21,9 +21,10 @@ use chrono::{Duration, Months, NaiveDate};
 use lib_core::{HexColor, Money, RowID};
 
 use super::colour::swatches;
-use super::{Tag, TagError, TagStore, TagTransaction};
+use super::{Tag, TagStore, TagTransaction};
 use crate::category::{CategoryFixture, CategoryStore};
 use crate::fixture::{date, month_start, seed_from_id};
+use crate::{Error, Result};
 
 /// The fixture's fixed "now" — matches `crate::account::fixture`'s own `2026-09-08`. `pub` so
 /// `view::tags` can pin its own "Tagged spend" chart window to the same date, mirroring
@@ -351,14 +352,9 @@ impl TagStore for TagFixture {
         self.tags.iter().find(|tag| tag.id == id)
     }
 
-    fn create(
-        &mut self,
-        name: String,
-        color: Option<HexColor>,
-        active: bool,
-    ) -> Result<RowID, TagError> {
+    fn create(&mut self, name: String, color: Option<HexColor>, active: bool) -> Result<RowID> {
         if self.name_taken(&name, None) {
-            return Err(TagError::DuplicateName { name });
+            return Err(Error::TagDuplicateName { name });
         }
         let id = RowID::new();
         self.tags.push(Tag {
@@ -380,15 +376,15 @@ impl TagStore for TagFixture {
         name: String,
         color: Option<HexColor>,
         active: bool,
-    ) -> Result<(), TagError> {
+    ) -> Result<()> {
         if self.name_taken(&name, Some(id)) {
-            return Err(TagError::DuplicateName { name });
+            return Err(Error::TagDuplicateName { name });
         }
         let tag = self
             .tags
             .iter_mut()
             .find(|tag| tag.id == id)
-            .ok_or(TagError::NotFound)?;
+            .ok_or(Error::TagNotFound)?;
         tag.name = name;
         tag.color = color;
         tag.is_active = active;
@@ -396,20 +392,20 @@ impl TagStore for TagFixture {
         Ok(())
     }
 
-    fn set_active(&mut self, id: RowID, active: bool) -> Result<(), TagError> {
+    fn set_active(&mut self, id: RowID, active: bool) -> Result<()> {
         let tag = self
             .tags
             .iter_mut()
             .find(|tag| tag.id == id)
-            .ok_or(TagError::NotFound)?;
+            .ok_or(Error::TagNotFound)?;
         tag.is_active = active;
         tag.updated_on = FIXTURE_NOW;
         Ok(())
     }
 
-    fn delete(&mut self, id: RowID) -> Result<(), TagError> {
+    fn delete(&mut self, id: RowID) -> Result<()> {
         if self.find(id).is_none() {
-            return Err(TagError::NotFound);
+            return Err(Error::TagNotFound);
         }
         self.tags.retain(|tag| tag.id != id);
         Ok(())
@@ -482,11 +478,8 @@ mod tests {
     fn create_rejects_a_case_insensitive_duplicate_against_an_active_tag() {
         let mut store = TagFixture::new();
         let result = store.create("japan trip 2026".to_string(), None, true);
-        assert_eq!(
-            result,
-            Err(TagError::DuplicateName {
-                name: "japan trip 2026".to_string()
-            })
+        assert!(
+            matches!(result, Err(Error::TagDuplicateName { name }) if name == "japan trip 2026")
         );
     }
 
@@ -494,12 +487,7 @@ mod tests {
     fn create_rejects_a_case_insensitive_duplicate_against_an_inactive_tag() {
         let mut store = TagFixture::new();
         let result = store.create("OLD PROJECT".to_string(), None, true);
-        assert_eq!(
-            result,
-            Err(TagError::DuplicateName {
-                name: "OLD PROJECT".to_string()
-            })
-        );
+        assert!(matches!(result, Err(Error::TagDuplicateName { name }) if name == "OLD PROJECT"));
     }
 
     #[test]
@@ -551,11 +539,8 @@ mod tests {
         let mut store = TagFixture::new();
         let home_renovation = find_by_name(&store, "Home Renovation").id;
         let result = store.update(home_renovation, "tax deductible".to_string(), None, true);
-        assert_eq!(
-            result,
-            Err(TagError::DuplicateName {
-                name: "tax deductible".to_string()
-            })
+        assert!(
+            matches!(result, Err(Error::TagDuplicateName { name }) if name == "tax deductible")
         );
     }
 
@@ -613,7 +598,10 @@ mod tests {
     #[test]
     fn delete_of_an_unknown_id_returns_not_found() {
         let mut store = TagFixture::new();
-        assert_eq!(store.delete(RowID::new()), Err(TagError::NotFound));
+        assert!(matches!(
+            store.delete(RowID::new()),
+            Err(Error::TagNotFound)
+        ));
     }
 
     // --- Right-pane fixture data (issue #132) ---

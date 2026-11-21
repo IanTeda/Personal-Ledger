@@ -145,7 +145,7 @@ impl Default for PayeesView {
 
 impl PayeesView {
     /// Queues the `toast-save-failed` Error for a write the store refused.
-    fn push_if_refused(&mut self, result: Result<(), crate::payee::PayeeError>) {
+    fn push_if_refused(&mut self, result: crate::Result<()>) {
         if let Err(error) = result {
             let entity = lib_locale::msg::toast_entity_payee();
             self.toasts.push(save_failed(&entity, &error));

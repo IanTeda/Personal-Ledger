@@ -8,12 +8,14 @@ use std::process::{Command, Stdio};
 
 use base64::Engine as _;
 
+use crate::Result;
+
 /// The browser and the clipboard, behind one seam.
 pub trait Outside {
     /// Opens `url` in the default browser.
-    fn open(&self, url: &str) -> io::Result<()>;
+    fn open(&self, url: &str) -> Result<()>;
     /// Puts `text` on the clipboard.
-    fn copy(&self, text: &str) -> io::Result<()>;
+    fn copy(&self, text: &str) -> Result<()>;
 }
 
 /// The real browser and clipboard.
@@ -23,7 +25,7 @@ pub struct System;
 impl Outside for System {
     /// Hands `url` to the platform's opener, detached and silenced: the TUI owns the terminal, so
     /// the opener's own output must not land on it.
-    fn open(&self, url: &str) -> io::Result<()> {
+    fn open(&self, url: &str) -> Result<()> {
         let mut command = if cfg!(target_os = "macos") {
             Command::new("open")
         } else if cfg!(target_os = "windows") {
@@ -38,16 +40,17 @@ impl Outside for System {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn()
-            .map(drop)
+            .spawn()?;
+        Ok(())
     }
 
     /// Asks the terminal to set the clipboard (OSC 52), which works over SSH and needs no
     /// clipboard library. A terminal that doesn't support it ignores the sequence.
-    fn copy(&self, text: &str) -> io::Result<()> {
+    fn copy(&self, text: &str) -> Result<()> {
         let mut stdout = io::stdout();
         stdout.write_all(osc52(text).as_bytes())?;
-        stdout.flush()
+        stdout.flush()?;
+        Ok(())
     }
 }
 

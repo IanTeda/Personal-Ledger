@@ -16,7 +16,8 @@
 
 use lib_core::{Money, RowID};
 
-use super::{CategoryError, CategoryKind, CategoryNode, CategoryStore};
+use super::{CategoryKind, CategoryNode, CategoryStore};
+use crate::{Error, Result};
 
 /// An in-memory `CategoryStore`, seeded once with a fixed demo tree. Every mutating method
 /// mutates this same `Vec` in place — the "in-memory mutable fixture" this map's ticket
@@ -322,21 +323,16 @@ impl CategoryStore for CategoryFixture {
         Money(total)
     }
 
-    fn insert(
-        &mut self,
-        parent: RowID,
-        name: String,
-        note: Option<String>,
-    ) -> Result<RowID, CategoryError> {
+    fn insert(&mut self, parent: RowID, name: String, note: Option<String>) -> Result<RowID> {
         if self.find(parent).is_none() {
-            return Err(CategoryError::NotFound);
+            return Err(Error::CategoryNotFound);
         }
         if self
             .children(parent)
             .iter()
             .any(|sibling| sibling.name.eq_ignore_ascii_case(&name))
         {
-            return Err(CategoryError::DuplicateSibling { name });
+            return Err(Error::CategoryDuplicateSibling { name });
         }
 
         let new_id = RowID::new();
@@ -351,51 +347,51 @@ impl CategoryStore for CategoryFixture {
         Ok(new_id)
     }
 
-    fn rename(&mut self, id: RowID, name: String) -> Result<(), CategoryError> {
+    fn rename(&mut self, id: RowID, name: String) -> Result<()> {
         if self.is_root(id) {
-            return Err(CategoryError::IsRoot);
+            return Err(Error::CategoryIsRoot);
         }
         let Some(parent_id) = self.find(id).and_then(|n| n.parent_id) else {
-            return Err(CategoryError::NotFound);
+            return Err(Error::CategoryNotFound);
         };
         if self
             .children(parent_id)
             .iter()
             .any(|sibling| sibling.id != id && sibling.name.eq_ignore_ascii_case(&name))
         {
-            return Err(CategoryError::DuplicateSibling { name });
+            return Err(Error::CategoryDuplicateSibling { name });
         }
 
         let Some(this) = self.nodes.iter_mut().find(|node| node.id == id) else {
-            return Err(CategoryError::NotFound);
+            return Err(Error::CategoryNotFound);
         };
         this.name = name;
         Ok(())
     }
 
-    fn set_note(&mut self, id: RowID, note: Option<String>) -> Result<(), CategoryError> {
+    fn set_note(&mut self, id: RowID, note: Option<String>) -> Result<()> {
         if self.is_root(id) {
-            return Err(CategoryError::IsRoot);
+            return Err(Error::CategoryIsRoot);
         }
         let Some(this) = self.nodes.iter_mut().find(|node| node.id == id) else {
-            return Err(CategoryError::NotFound);
+            return Err(Error::CategoryNotFound);
         };
         this.note = note;
         Ok(())
     }
 
-    fn validate_move(&self, id: RowID, new_parent: RowID) -> Result<(), CategoryError> {
+    fn validate_move(&self, id: RowID, new_parent: RowID) -> Result<()> {
         let Some(this) = self.find(id) else {
-            return Err(CategoryError::NotFound);
+            return Err(Error::CategoryNotFound);
         };
         if this.parent_id.is_none() {
-            return Err(CategoryError::IsRoot);
+            return Err(Error::CategoryIsRoot);
         }
         if self.find(new_parent).is_none() {
-            return Err(CategoryError::NotFound);
+            return Err(Error::CategoryNotFound);
         }
         if self.descendants(id).contains(&new_parent) {
-            return Err(CategoryError::WouldCycle {
+            return Err(Error::CategoryWouldCycle {
                 name: this.name.clone(),
             });
         }
@@ -410,7 +406,7 @@ impl CategoryStore for CategoryFixture {
                         None => false,
                     });
             if has_transactions {
-                return Err(CategoryError::CrossRootWithTransactions {
+                return Err(Error::CategoryCrossRootWithTransactions {
                     name: this.name.clone(),
                 });
             }
@@ -419,22 +415,22 @@ impl CategoryStore for CategoryFixture {
         Ok(())
     }
 
-    fn move_to(&mut self, id: RowID, new_parent: RowID) -> Result<(), CategoryError> {
+    fn move_to(&mut self, id: RowID, new_parent: RowID) -> Result<()> {
         self.validate_move(id, new_parent)?;
 
         let Some(this) = self.nodes.iter_mut().find(|node| node.id == id) else {
-            return Err(CategoryError::NotFound);
+            return Err(Error::CategoryNotFound);
         };
         this.parent_id = Some(new_parent);
         Ok(())
     }
 
-    fn set_active(&mut self, id: RowID, active: bool) -> Result<(), CategoryError> {
+    fn set_active(&mut self, id: RowID, active: bool) -> Result<()> {
         if self.is_root(id) {
-            return Err(CategoryError::IsRoot);
+            return Err(Error::CategoryIsRoot);
         }
         let Some(this) = self.nodes.iter_mut().find(|node| node.id == id) else {
-            return Err(CategoryError::NotFound);
+            return Err(Error::CategoryNotFound);
         };
         this.active = active;
         Ok(())
@@ -553,11 +549,8 @@ mod tests {
             .expect("first insert should succeed");
 
         let result = store.insert(food, "snacks".to_string(), None);
-        assert_eq!(
-            result,
-            Err(CategoryError::DuplicateSibling {
-                name: "snacks".to_string()
-            })
+        assert!(
+            matches!(result, Err(Error::CategoryDuplicateSibling { name }) if name == "snacks")
         );
     }
 
@@ -583,10 +576,10 @@ mod tests {
     fn rename_rejects_renaming_a_root() {
         let mut store = CategoryFixture::new();
         let income = find_by_name(&store, "Income").id;
-        assert_eq!(
+        assert!(matches!(
             store.rename(income, "Revenue".to_string()),
-            Err(CategoryError::IsRoot)
-        );
+            Err(Error::CategoryIsRoot)
+        ));
     }
 
     #[test]
@@ -603,10 +596,10 @@ mod tests {
     fn set_note_rejects_a_root() {
         let mut store = CategoryFixture::new();
         let income = find_by_name(&store, "Income").id;
-        assert_eq!(
+        assert!(matches!(
             store.set_note(income, Some("nope".to_string())),
-            Err(CategoryError::IsRoot)
-        );
+            Err(Error::CategoryIsRoot)
+        ));
     }
 
     #[test]
@@ -638,11 +631,8 @@ mod tests {
         let food = find_by_name(&store, "Food").id;
         let groceries = find_by_name(&store, "Groceries").id;
 
-        assert_eq!(
-            store.move_to(food, groceries),
-            Err(CategoryError::WouldCycle {
-                name: "Food".to_string()
-            })
+        assert!(
+            matches!(store.move_to(food, groceries), Err(Error::CategoryWouldCycle { name }) if name == "Food")
         );
     }
 
@@ -652,11 +642,8 @@ mod tests {
         let groceries = find_by_name(&store, "Groceries").id;
         let salary = find_by_name(&store, "Salary").id;
 
-        assert_eq!(
-            store.move_to(groceries, salary),
-            Err(CategoryError::CrossRootWithTransactions {
-                name: "Groceries".to_string()
-            })
+        assert!(
+            matches!(store.move_to(groceries, salary), Err(Error::CategoryCrossRootWithTransactions { name }) if name == "Groceries")
         );
     }
 
@@ -709,9 +696,9 @@ mod tests {
     fn archive_refuses_a_root() {
         let mut store = CategoryFixture::new();
         let expenses = find_by_name(&store, "Expenses").id;
-        assert_eq!(
+        assert!(matches!(
             store.set_active(expenses, false),
-            Err(CategoryError::IsRoot)
-        );
+            Err(Error::CategoryIsRoot)
+        ));
     }
 }

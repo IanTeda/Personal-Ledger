@@ -37,6 +37,8 @@ pub use fixture::{FIXTURE_NOW, TagFixture};
 use chrono::NaiveDate;
 use lib_core::{HexColor, Money, RowID};
 
+use crate::Result;
+
 /// One Tag — a freeform, globally-unique label a user can attach to any number of
 /// Transactions, independent of their Category and Payee (`GLOSSARY.md`, ADR-0015).
 #[derive(Debug, Clone, PartialEq)]
@@ -77,16 +79,6 @@ pub struct TagTransaction {
     pub amount: Money,
 }
 
-/// Everything [`TagStore::create`]/[`TagStore::update`] can refuse — just the one rule, per
-/// ADR-0015's global (not sibling-scoped, Tag has no hierarchy) case-insensitive uniqueness.
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum TagError {
-    #[error("tag not found")]
-    NotFound,
-    #[error("a tag named \"{name}\" already exists")]
-    DuplicateName { name: String },
-}
-
 /// The seam a future backend ticket implements a second time against real `lib_database`
 /// persistence (out of scope for this map — see issue #125's Notes/Out of scope). Every
 /// method here is synchronous and read methods return plain values (no `Result`) because the
@@ -98,15 +90,10 @@ pub trait TagStore {
 
     fn find(&self, id: RowID) -> Option<&Tag>;
 
-    /// Creates a new Tag, or `Err(TagError::DuplicateName)` if `name` clashes
+    /// Creates a new Tag, or `Err(Error::TagDuplicateName)` if `name` clashes
     /// case-insensitively with an existing Tag (active or not — a deactivated Tag's name is
     /// still taken, nothing here frees it back up).
-    fn create(
-        &mut self,
-        name: String,
-        color: Option<HexColor>,
-        active: bool,
-    ) -> Result<RowID, TagError>;
+    fn create(&mut self, name: String, color: Option<HexColor>, active: bool) -> Result<RowID>;
 
     /// Updates `name`/`color`/`active`. The same case-insensitive uniqueness check as `create`
     /// applies, except against the Tag's own current name (renaming a Tag to the name it
@@ -117,15 +104,15 @@ pub trait TagStore {
         name: String,
         color: Option<HexColor>,
         active: bool,
-    ) -> Result<(), TagError>;
+    ) -> Result<()>;
 
-    fn set_active(&mut self, id: RowID, active: bool) -> Result<(), TagError>;
+    fn set_active(&mut self, id: RowID, active: bool) -> Result<()>;
 
     /// Deletes a Tag unconditionally — never refused, regardless of
     /// `tagged_transaction_count`. Removing a Tag just means those (simulated) Transactions
     /// lose a label; unlike deleting an Account, nothing is orphaned or destroyed, per the
     /// map's own decision.
-    fn delete(&mut self, id: RowID) -> Result<(), TagError>;
+    fn delete(&mut self, id: RowID) -> Result<()>;
 
     /// The Tag's fixture-simulated transaction rows, newest first — generated on demand,
     /// deterministically seeded from the Tag's own id (mirroring `AccountStore::ledger`), not

@@ -26,10 +26,10 @@ use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono::NaiveDate;
 
 use super::{
-    Account, AccountBalanceCheck, AccountError, AccountStore, AccountTransaction, AccountUnit,
-    TransactionStatus,
+    Account, AccountBalanceCheck, AccountStore, AccountTransaction, AccountUnit, TransactionStatus,
 };
 use crate::fixture::{date, month_start, seed_from_id};
+use crate::{Error, Result};
 use lib_core::{AccountType, Money, RowID};
 
 /// The fixture's fixed "now" — matches `crate::category::fixture`'s own `2026-09-08`, so
@@ -508,12 +508,12 @@ impl AccountStore for AccountFixture {
         name: String,
         account_type: AccountType,
         active: bool,
-    ) -> Result<(), AccountError> {
+    ) -> Result<()> {
         let account = self
             .accounts
             .iter_mut()
             .find(|account| account.id == id)
-            .ok_or(AccountError::NotFound)?;
+            .ok_or(Error::AccountNotFound)?;
         account.name = name;
         account.account_type = account_type;
         account.is_active = active;
@@ -521,12 +521,12 @@ impl AccountStore for AccountFixture {
         Ok(())
     }
 
-    fn set_active(&mut self, id: RowID, active: bool) -> Result<(), AccountError> {
+    fn set_active(&mut self, id: RowID, active: bool) -> Result<()> {
         let account = self
             .accounts
             .iter_mut()
             .find(|account| account.id == id)
-            .ok_or(AccountError::NotFound)?;
+            .ok_or(Error::AccountNotFound)?;
         account.is_active = active;
         account.updated_on = FIXTURE_NOW;
         Ok(())
@@ -544,23 +544,23 @@ impl AccountStore for AccountFixture {
             .collect()
     }
 
-    fn delete(&mut self, id: RowID, target: Option<RowID>) -> Result<(), AccountError> {
-        let source = self.find(id).ok_or(AccountError::NotFound)?.clone();
+    fn delete(&mut self, id: RowID, target: Option<RowID>) -> Result<()> {
+        let source = self.find(id).ok_or(Error::AccountNotFound)?.clone();
         let needs_transfer = source.transaction_count > 0 || !source.balance_checks.is_empty();
 
         if needs_transfer {
-            let target_id = target.ok_or_else(|| AccountError::RequiresTransferTarget {
+            let target_id = target.ok_or_else(|| Error::AccountRequiresTransferTarget {
                 name: source.name.clone(),
             })?;
             if target_id == id {
-                return Err(AccountError::TransferTargetIsSource);
+                return Err(Error::TransferTargetIsSource);
             }
-            let target_account = self.find(target_id).ok_or(AccountError::NotFound)?;
+            let target_account = self.find(target_id).ok_or(Error::AccountNotFound)?;
             if !target_account.is_active {
-                return Err(AccountError::TransferTargetInactive);
+                return Err(Error::TransferTargetInactive);
             }
             if target_account.unit.code != source.unit.code {
-                return Err(AccountError::TransferTargetUnitMismatch {
+                return Err(Error::TransferTargetUnitMismatch {
                     name: source.name.clone(),
                     unit: source.unit.code.clone(),
                 });
@@ -570,7 +570,7 @@ impl AccountStore for AccountFixture {
                 .accounts
                 .iter_mut()
                 .find(|account| account.id == target_id)
-                .ok_or(AccountError::NotFound)?;
+                .ok_or(Error::AccountNotFound)?;
             target_mut.transactions_sum =
                 Money(target_mut.transactions_sum.0.clone() + source.transactions_sum.0.clone());
             target_mut.transaction_count += source.transaction_count;
@@ -758,11 +758,8 @@ mod tests {
     fn delete_refuses_a_non_empty_account_without_a_transfer_target() {
         let mut store = AccountFixture::new();
         let everyday_spending = find_by_name(&store, "Everyday Spending").id;
-        assert_eq!(
-            store.delete(everyday_spending, None),
-            Err(AccountError::RequiresTransferTarget {
-                name: "Everyday Spending".to_string()
-            })
+        assert!(
+            matches!(store.delete(everyday_spending, None), Err(Error::AccountRequiresTransferTarget { name }) if name == "Everyday Spending")
         );
     }
 
@@ -771,12 +768,8 @@ mod tests {
         let mut store = AccountFixture::new();
         let everyday_spending = find_by_name(&store, "Everyday Spending").id;
         let vanguard_vdhg = find_by_name(&store, "Vanguard VDHG").id;
-        assert_eq!(
-            store.delete(everyday_spending, Some(vanguard_vdhg)),
-            Err(AccountError::TransferTargetUnitMismatch {
-                name: "Everyday Spending".to_string(),
-                unit: "AUD".to_string()
-            })
+        assert!(
+            matches!(store.delete(everyday_spending, Some(vanguard_vdhg)), Err(Error::TransferTargetUnitMismatch { name, unit }) if name == "Everyday Spending" && unit == "AUD")
         );
     }
 

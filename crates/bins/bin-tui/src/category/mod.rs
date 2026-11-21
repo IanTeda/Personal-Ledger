@@ -22,6 +22,8 @@ pub use fixture::CategoryFixture;
 
 use lib_core::{Money, RowID};
 
+use crate::Result;
+
 /// The two roots a Category's `kind` is always inherited from — never stored per node, per
 /// the handoff's "Kind is derived, not stored" rule. Deliberately a local, two-variant type
 /// rather than reusing `lib_core::CategoryTypes` (five flat accounting classifications for
@@ -63,22 +65,6 @@ pub struct CategoryNode {
     pub transaction_count: u32,
     pub first_posted: Option<chrono::NaiveDate>,
     pub last_posted: Option<chrono::NaiveDate>,
-}
-
-/// Everything [`CategoryStore::move_to`], `insert` and `rename` can refuse, per the handoff's
-/// "5b — Move" `refuses` line and its sibling-uniqueness/root-immutability rules.
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum CategoryError {
-    #[error("{name} can't move into its own descendant set")]
-    WouldCycle { name: String },
-    #[error("{name} can't cross into the other root while it or a descendant has transactions")]
-    CrossRootWithTransactions { name: String },
-    #[error("a category named \"{name}\" already exists under this parent")]
-    DuplicateSibling { name: String },
-    #[error("category not found")]
-    NotFound,
-    #[error("the two roots (income/expenses) can't be renamed, moved or archived")]
-    IsRoot,
 }
 
 /// The seam a future backend ticket implements a second time against real `lib_database`
@@ -129,28 +115,23 @@ pub trait CategoryStore {
     /// `direct(id) + Σ rollup(children)`, per the handoff's recursive-CTE definition.
     fn rollup(&self, id: RowID) -> Money;
 
-    fn insert(
-        &mut self,
-        parent: RowID,
-        name: String,
-        note: Option<String>,
-    ) -> Result<RowID, CategoryError>;
+    fn insert(&mut self, parent: RowID, name: String, note: Option<String>) -> Result<RowID>;
 
-    fn rename(&mut self, id: RowID, name: String) -> Result<(), CategoryError>;
+    fn rename(&mut self, id: RowID, name: String) -> Result<()>;
 
     /// Sets `note` directly — free text, no uniqueness or other validation, per the handoff's
     /// "5d — Edit" field table.
-    fn set_note(&mut self, id: RowID, note: Option<String>) -> Result<(), CategoryError>;
+    fn set_note(&mut self, id: RowID, note: Option<String>) -> Result<()>;
 
     /// Checks whether `move_to(id, new_parent)` would succeed, without mutating anything —
     /// `move_to` itself calls this first. The seam the Move popup ("Categories: 5b move
     /// popup") previews refusals against live, as the user types, rather than only
     /// discovering them on submit.
-    fn validate_move(&self, id: RowID, new_parent: RowID) -> Result<(), CategoryError>;
+    fn validate_move(&self, id: RowID, new_parent: RowID) -> Result<()>;
 
-    fn move_to(&mut self, id: RowID, new_parent: RowID) -> Result<(), CategoryError>;
+    fn move_to(&mut self, id: RowID, new_parent: RowID) -> Result<()>;
 
     /// Sets `active` directly — `false` is the handoff's "archive" (soft path: history and
     /// totals intact, just no longer offered when categorising); `true` reverses it.
-    fn set_active(&mut self, id: RowID, active: bool) -> Result<(), CategoryError>;
+    fn set_active(&mut self, id: RowID, active: bool) -> Result<()>;
 }

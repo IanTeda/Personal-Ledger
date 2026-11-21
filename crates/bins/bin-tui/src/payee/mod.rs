@@ -37,6 +37,8 @@ pub use fixture::PayeeFixture;
 use chrono::NaiveDate;
 use lib_core::{Money, RowID};
 
+use crate::Result;
+
 pub use crate::account::TransactionStatus;
 
 /// Where a Payee Alias came from — `Rename` is protected (only a rename itself, never a user
@@ -139,28 +141,6 @@ pub enum PayeeResolution {
     WouldCreate,
 }
 
-/// Everything a `PayeeStore` mutation can refuse.
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum PayeeError {
-    #[error("payee not found")]
-    NotFound,
-    #[error("alias not found")]
-    AliasNotFound,
-    #[error("a payee named \"{holder}\" already exists")]
-    DuplicateName { holder: String },
-    #[error("{transaction_count} txns · {alias_count} matches reference this payee")]
-    ReferencesExist {
-        transaction_count: u32,
-        alias_count: usize,
-    },
-    #[error("a rename match is protected — edit refuses it, only remove is allowed")]
-    RenameProtectedAlias,
-    #[error(
-        "\"{pattern}\" also matches {other} — two payees matching one text resolves arbitrarily"
-    )]
-    PatternCollision { pattern: String, other: String },
-}
-
 /// The seam a future backend ticket implements a second time against real `lib_database`
 /// persistence, once `Shell` has an async-DB mechanism for any `View` (out of scope for the
 /// current map — see issue #134's Notes). Every method here is synchronous and read methods
@@ -207,7 +187,7 @@ pub trait PayeeStore {
     /// before committing.
     fn conflicting_holder(&self, payee_id: RowID, pattern: &str) -> Option<String>;
 
-    /// Creates a new Payee, or `Err(PayeeError::DuplicateName)` on a case-insensitive name
+    /// Creates a new Payee, or `Err(Error::PayeeDuplicateName)` on a case-insensitive name
     /// clash (active or not).
     fn create(
         &mut self,
@@ -217,13 +197,13 @@ pub trait PayeeStore {
         icon_derived: bool,
         default_category_path: Option<String>,
         active: bool,
-    ) -> Result<RowID, PayeeError>;
+    ) -> Result<RowID>;
 
     /// Renames `id`, inserting a `source = Rename` alias for its prior name in the same step —
     /// there is deliberately no plain "set name" (mirrors `lib_database::Payees::rename`'s own
     /// contract). A no-op when `new_name` is unchanged case-insensitively — no alias is written
     /// for that. Fails on a case-insensitive collision with another Payee's current name.
-    fn rename(&mut self, id: RowID, new_name: String) -> Result<(), PayeeError>;
+    fn rename(&mut self, id: RowID, new_name: String) -> Result<()>;
 
     /// Updates `website`/`icon_url`/`icon_derived`/`default_category_path` only — name goes
     /// through [`PayeeStore::rename`], `is_active` through [`PayeeStore::set_active`].
@@ -234,28 +214,23 @@ pub trait PayeeStore {
         icon_url: Option<String>,
         icon_derived: bool,
         default_category_path: Option<String>,
-    ) -> Result<(), PayeeError>;
+    ) -> Result<()>;
 
-    fn set_active(&mut self, id: RowID, active: bool) -> Result<(), PayeeError>;
+    fn set_active(&mut self, id: RowID, active: bool) -> Result<()>;
 
     /// Deletes `id` — refused, mirroring the real schema's foreign-key pragma, while it holds
     /// any transaction or any alias (including its own rename history, which references it
     /// forever once it exists).
-    fn delete(&mut self, id: RowID) -> Result<(), PayeeError>;
+    fn delete(&mut self, id: RowID) -> Result<()>;
 
     /// Adds a hand-authored (`source = Manual`) alias to `payee_id`, refusing a pattern that
     /// collides with another Payee (see [`PayeeStore::conflict_partners`]'s own doc on what
     /// "collides" means here).
-    fn add_alias(
-        &mut self,
-        payee_id: RowID,
-        typed: &str,
-        mode: AliasMode,
-    ) -> Result<RowID, PayeeError>;
+    fn add_alias(&mut self, payee_id: RowID, typed: &str, mode: AliasMode) -> Result<RowID>;
 
-    /// Removes a `source = Manual` alias; refuses (`Err(PayeeError::RenameProtectedAlias)`) on
+    /// Removes a `source = Manual` alias; refuses (`Err(Error::PayeeRenameProtectedAlias)`) on
     /// a `source = Rename` one.
-    fn remove_alias(&mut self, alias_id: RowID) -> Result<(), PayeeError>;
+    fn remove_alias(&mut self, alias_id: RowID) -> Result<()>;
 
     /// Runs the real three-step resolution order (`lib_database::Payees::resolve_or_create`'s
     /// own algorithm, short of the final create) against typed text.
