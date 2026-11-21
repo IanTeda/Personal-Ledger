@@ -305,9 +305,8 @@ impl DialogPresenter for TypeFormPresenter {
         TypeFormEvent::Cancel
     }
 
-    /// A name with no problem: the view model's `frame.can_confirm`.
     fn can_confirm(&self) -> bool {
-        self.name_error().is_none()
+        self.view_model().frame.can_confirm
     }
 }
 

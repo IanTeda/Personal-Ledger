@@ -243,7 +243,7 @@ pub fn edit_type<'a>(
     row.tracks_date = draft.tracks_date;
     row.remind = draft.remind;
     row.financial_year = draft.financial_year;
-    Ok(&types[index])
+    Ok(row)
 }
 
 /// Removes the type with `id`, moving its Filed files to the type named `destination`.
