@@ -9,7 +9,7 @@ pub enum Error {
     #[error("a tag name needs a letter or a digit")]
     NoLetterOrDigit,
     /// Another Tag already has this name once normalised; carries that Tag's name.
-    #[error("{0} already exists")]
+    #[error("another tag has this name")]
     DuplicateName(String),
     #[error("tag not found")]
     NotFound,

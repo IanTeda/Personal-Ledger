@@ -197,7 +197,12 @@ fn limit_of(kind: &str, amount: Option<Money>, rollover: &str) -> Result<Limit> 
         ("month_only", Some(amount)) => Ok(Limit::MonthOnly { amount, rollover }),
         ("stop", None) => Ok(Limit::Stop),
         (kind, amount) => Err(Error::Validation(format!(
-            "a {kind:?} record with amount {amount:?}"
+            "a {kind:?} record with {}",
+            if amount.is_some() {
+                "an amount"
+            } else {
+                "no amount"
+            }
         ))),
     }
 }

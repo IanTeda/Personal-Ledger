@@ -8,7 +8,7 @@ pub enum Error {
     #[error("an institution needs a name")]
     NameRequired,
     /// Carries the name as the Institution holding it spells it.
-    #[error("an institution named {0} already exists")]
+    #[error("another institution has this name")]
     DuplicateName(String),
     /// The Institution is no longer on the Ledger.
     #[error("the institution is not on the Ledger")]

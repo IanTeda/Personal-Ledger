@@ -28,10 +28,10 @@ pub enum Error {
     UncategorisedFixed,
     /// A Category with children can't move under a leaf that holds Splits, Bill Plans or Payee
     /// defaults: they would have no child to take them.
-    #[error("{leaf} holds rows; add a Category under it first")]
+    #[error("the leaf holds rows; add a Category under it first")]
     LeafHoldsRows { leaf: String, held: Holdings },
     /// A top-level Category can't change type while Budgets or Bill Plans use its Categories.
-    #[error("{category} can't change type while its categories are in use")]
+    #[error("a top-level category can't change type while its categories are in use")]
     TypeInUse {
         category: String,
         to: CategoryTypes,
