@@ -1,6 +1,3 @@
-mod auth;
-mod sync;
-
 use std::sync::Arc;
 
 use base64::Engine;
@@ -10,7 +7,7 @@ use rand::RngCore;
 use secrecy::SecretString;
 use tonic::service::Routes;
 
-use bin_sync_server::Result;
+use bin_sync_server::{Result, auth, sync};
 use lib_config as config;
 use lib_rpc::{SyncServiceServer, UtilitiesService, UtilitiesServiceServer};
 use lib_tracing as telemetry;

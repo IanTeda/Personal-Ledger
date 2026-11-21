@@ -8,6 +8,8 @@
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use secrecy::{ExposeSecret, SecretString};
 
+use crate::Result;
+
 /// Access tokens are valid for 5 minutes.
 pub const ACCESS_TOKEN_TTL_SECONDS: i64 = 5 * 60;
 
@@ -29,28 +31,25 @@ pub struct Claims {
 pub fn issue_access_token(
     sync_user_id: lib_core::RowID,
     signing_key: &SecretString,
-) -> Result<String, jsonwebtoken::errors::Error> {
+) -> Result<String> {
     let now = chrono::Utc::now().timestamp();
     let claims = Claims {
         sub: sync_user_id.to_string(),
         iat: now,
         exp: now + ACCESS_TOKEN_TTL_SECONDS,
     };
-    encode(
+    Ok(encode(
         &Header::new(Algorithm::HS256),
         &claims,
         &EncodingKey::from_secret(signing_key.expose_secret().as_bytes()),
-    )
+    )?)
 }
 
 /// Verify a presented access token and return its claims.
 ///
 /// # Errors
 /// Returns an error if the token's signature, format, or expiry is invalid.
-pub fn verify_access_token(
-    token: &str,
-    signing_key: &SecretString,
-) -> Result<Claims, jsonwebtoken::errors::Error> {
+pub fn verify_access_token(token: &str, signing_key: &SecretString) -> Result<Claims> {
     let data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(signing_key.expose_secret().as_bytes()),

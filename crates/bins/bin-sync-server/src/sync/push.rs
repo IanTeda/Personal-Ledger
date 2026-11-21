@@ -5,7 +5,7 @@
 
 use lib_rpc as proto;
 
-use super::SyncResult;
+use crate::Result;
 
 /// Push one or more Change Sets into the Sync Server's durable Change Set log.
 ///
@@ -16,7 +16,7 @@ use super::SyncResult;
 pub async fn push(
     service: &super::SyncService,
     request: tonic::Request<proto::PushRequest>,
-) -> SyncResult<tonic::Response<proto::PushResponse>> {
+) -> Result<tonic::Response<proto::PushResponse>> {
     let push_request = request.into_inner();
 
     tracing::debug!(

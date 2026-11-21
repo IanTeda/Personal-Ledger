@@ -7,12 +7,14 @@
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use secrecy::{ExposeSecret, SecretString};
 
+use crate::Result;
+
 /// Hash a plaintext password into its PHC string form, for storage in
 /// `sync_users.password_hash`. A fresh random salt is generated internally per call.
 ///
 /// # Errors
 /// Returns an error if Argon2 hashing fails (should not happen for well-formed input).
-pub fn hash_password(password: &SecretString) -> Result<String, argon2::password_hash::Error> {
+pub fn hash_password(password: &SecretString) -> Result<String> {
     let hash = Argon2::default().hash_password(password.expose_secret().as_bytes())?;
     Ok(hash.to_string())
 }

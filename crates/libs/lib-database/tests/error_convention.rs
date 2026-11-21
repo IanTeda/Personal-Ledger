@@ -9,7 +9,7 @@
 //!   `pub type Result<T, E = Error> = std::result::Result<T, E>;` and no other `Result` alias in
 //!   the crate, declared from `lib.rs` as a private `mod error` and re-exported as
 //!   `pub use error::{Error, Result}`.
-//! - **Usage** (ADR-0060), on every crate not in [`PENDING`]: a `Result` in a return type with two
+//! - **Usage** (ADR-0060), on every crate: a `Result` in a return type with two
 //!   arguments fails unless its error is on [`VALUE_ERRORS`], a path-qualified `Result` fails
 //!   unless it is `crate::Result`, `std::result::Result` appears nowhere but the alias, and no
 //!   `use` brings in another crate's `Result`, under any name or through a glob. A package's own
@@ -58,11 +58,6 @@ const VALUE_ERRORS: &[&str] = &[
     "UnitKindError",
     "UrlSlugError",
 ];
-
-/// The crates that still break the usage rules, by directory name: the ratchet of the Result map
-/// (#1309). Each crate's slice deletes its own entry, a listed crate that passes fails the test
-/// as stale, and the last slice deletes the list.
-const PENDING: &[&str] = &["bin-sync-server"];
 
 /// The one shape every crate's alias takes, as `syn` prints it.
 const ALIAS: &str = "pub type Result < T , E = Error > = std :: result :: Result < T , E > ;";
@@ -717,10 +712,9 @@ fn every_crate_follows_the_error_rs_convention() {
 }
 
 #[test]
-fn every_crate_not_pending_returns_its_own_result() {
+fn every_crate_returns_its_own_result() {
     let found: Vec<String> = workspace_crates()
         .iter()
-        .filter(|dir| !PENDING.contains(&Crate::at(dir).name.as_str()))
         .flat_map(|dir| usage_violations(dir))
         .collect();
     assert!(
@@ -729,38 +723,6 @@ fn every_crate_not_pending_returns_its_own_result() {
          `Result<T, E>` for a value error on VALUE_ERRORS, and no `use` imports another crate's \
          `Result`. See /rust-style.\n  {}",
         found.join("\n  ")
-    );
-}
-
-/// The entries of `pending` that name no crate or a crate the usage rules already pass.
-fn stale_entries<'a>(pending: &[&'a str]) -> Vec<&'a str> {
-    let crates = workspace_crates();
-    pending
-        .iter()
-        .copied()
-        .filter(|pending| {
-            crates
-                .iter()
-                .find(|dir| Crate::at(dir).name == *pending)
-                .is_none_or(|dir| usage_violations(dir).is_empty())
-        })
-        .collect()
-}
-
-#[test]
-fn pending_lists_only_crates_that_still_break_the_rules() {
-    let stale = stale_entries(PENDING);
-    assert!(
-        stale.is_empty(),
-        "PENDING holds crates that pass the usage rules or don't exist; delete them: {stale:?}"
-    );
-}
-
-#[test]
-fn a_passing_or_missing_crate_on_pending_is_stale() {
-    assert_eq!(
-        stale_entries(&["lib-viper", "lib-nowhere", "bin-sync-server"]),
-        vec!["lib-viper", "lib-nowhere"]
     );
 }
 

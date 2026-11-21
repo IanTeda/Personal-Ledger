@@ -4,14 +4,13 @@
 //! Change Set log. `lib-rpc` holds the wire protocol; the handlers live here because only
 //! bins depend on `lib-database` (`docs/development/viper-architecture.md`, Dependencies).
 
-mod error;
 mod pull;
 mod push;
 
 use lib_database as database;
 use lib_rpc as proto;
 
-pub use error::{SyncError, SyncResult};
+use crate::{Error, Result};
 
 pub struct SyncService {
     database_pool: std::sync::Arc<sqlx::SqlitePool>,
@@ -44,28 +43,22 @@ pub fn to_proto(change_set: database::ChangeSet) -> proto::ChangeSet {
 }
 
 /// A pushed Change Set parsed for the log, failing on any field that doesn't parse.
-pub fn from_proto(change_set: proto::ChangeSet) -> SyncResult<database::ChangeSet> {
-    let id = change_set.id.parse().map_err(|e| {
-        SyncError::InvalidArgument(format!("Invalid Change Set id '{}': {}", change_set.id, e))
+pub fn from_proto(change_set: proto::ChangeSet) -> Result<database::ChangeSet> {
+    let row_id_field = |field, value: &str| {
+        value.parse().map_err(|source| Error::InvalidRowId {
+            field,
+            value: value.to_string(),
+            source,
+        })
+    };
+    let id = row_id_field("Change Set id", &change_set.id)?;
+    let row_id = row_id_field("Change Set row_id", &change_set.row_id)?;
+    let hlc = change_set.hlc.parse().map_err(|source| Error::InvalidHlc {
+        field: "Change Set hlc",
+        value: change_set.hlc.clone(),
+        source,
     })?;
-    let row_id = change_set.row_id.parse().map_err(|e| {
-        SyncError::InvalidArgument(format!(
-            "Invalid Change Set row_id '{}': {}",
-            change_set.row_id, e
-        ))
-    })?;
-    let hlc = change_set.hlc.parse().map_err(|e| {
-        SyncError::InvalidArgument(format!(
-            "Invalid Change Set hlc '{}': {}",
-            change_set.hlc, e
-        ))
-    })?;
-    let client_id = change_set.client_id.parse().map_err(|e| {
-        SyncError::InvalidArgument(format!(
-            "Invalid Change Set client_id '{}': {}",
-            change_set.client_id, e
-        ))
-    })?;
+    let client_id = row_id_field("Change Set client_id", &change_set.client_id)?;
 
     Ok(database::change_sets::ChangeSetBuilder::new()
         .with_id(id)

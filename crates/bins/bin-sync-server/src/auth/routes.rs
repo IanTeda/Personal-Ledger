@@ -21,6 +21,7 @@ use sha2::{Digest, Sha256};
 
 use super::codes::CodeStore;
 use super::{jwt, password, pkce};
+use crate::{Error, Result};
 
 /// Shared state for the `/authorize` and `/token` handlers.
 #[derive(Clone)]
@@ -137,10 +138,7 @@ async fn post_authorize(
             Ok(None) => {
                 return (StatusCode::UNAUTHORIZED, "invalid username or password").into_response();
             }
-            Err(e) => {
-                tracing::error!("Failed to look up sync user during login: {e}");
-                return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
-            }
+            Err(e) => return Error::from(e).into_response(),
         };
 
     let password = SecretString::from(form.password.clone());
@@ -189,124 +187,84 @@ pub struct TokenResponse {
 async fn post_token(
     State(state): State<AuthState>,
     Form(form): Form<TokenForm>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
     let sync_user_id = match form.grant_type.as_str() {
-        "authorization_code" => match redeem_authorization_code(&state, &form) {
-            Ok(sync_user_id) => sync_user_id,
-            Err(response) => return response.into_response(),
-        },
-        "refresh_token" => match redeem_refresh_token(&state, &form).await {
-            Ok(sync_user_id) => sync_user_id,
-            Err(response) => return response.into_response(),
-        },
+        "authorization_code" => redeem_authorization_code(&state, &form),
+        "refresh_token" => redeem_refresh_token(&state, &form).await,
         _ => return (StatusCode::BAD_REQUEST, "unsupported grant_type").into_response(),
     };
 
-    issue_token_pair(&state, sync_user_id).await
+    match sync_user_id {
+        Ok(sync_user_id) => match issue_token_pair(&state, sync_user_id).await {
+            Ok(token_pair) => Json(token_pair).into_response(),
+            Err(e) => e.into_response(),
+        },
+        Err(e) => e.into_response(),
+    }
 }
 
-/// A small `Copy`-able error response, so the `Result::Err` variant these helpers
-/// return stays cheap instead of embedding a full `axum::response::Response`
-/// (clippy's `result_large_err`).
-type TokenError = (StatusCode, &'static str);
-
-fn redeem_authorization_code(
-    state: &AuthState,
-    form: &TokenForm,
-) -> Result<lib_core::RowID, TokenError> {
-    let code = form
-        .code
-        .as_deref()
-        .ok_or((StatusCode::BAD_REQUEST, "missing code"))?;
+fn redeem_authorization_code(state: &AuthState, form: &TokenForm) -> Result<lib_core::RowID> {
+    let code = form.code.as_deref().ok_or(Error::MissingField("code"))?;
     let code_verifier = form
         .code_verifier
         .as_deref()
-        .ok_or((StatusCode::BAD_REQUEST, "missing code_verifier"))?;
+        .ok_or(Error::MissingField("code_verifier"))?;
     let redirect_uri = form
         .redirect_uri
         .as_deref()
-        .ok_or((StatusCode::BAD_REQUEST, "missing redirect_uri"))?;
+        .ok_or(Error::MissingField("redirect_uri"))?;
 
-    let entry = state
-        .codes
-        .redeem(code)
-        .ok_or((StatusCode::BAD_REQUEST, "invalid or expired code"))?;
+    let entry = state.codes.redeem(code).ok_or(Error::InvalidCode)?;
 
     if entry.redirect_uri != redirect_uri {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "redirect_uri does not match the authorization request",
-        ));
+        return Err(Error::RedirectMismatch);
     }
 
     if !pkce::verify(code_verifier, &entry.code_challenge) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "code_verifier does not match code_challenge",
-        ));
+        return Err(Error::PkceMismatch);
     }
 
     Ok(entry.sync_user_id)
 }
 
-async fn redeem_refresh_token(
-    state: &AuthState,
-    form: &TokenForm,
-) -> Result<lib_core::RowID, TokenError> {
+async fn redeem_refresh_token(state: &AuthState, form: &TokenForm) -> Result<lib_core::RowID> {
     let refresh_token = form
         .refresh_token
         .as_deref()
-        .ok_or((StatusCode::BAD_REQUEST, "missing refresh_token"))?;
+        .ok_or(Error::MissingField("refresh_token"))?;
 
     let sync_user = lib_database::SyncUser::find_only(&state.pool)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to look up sync user during refresh: {e}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "internal error")
-        })?
-        .ok_or((StatusCode::UNAUTHORIZED, "no sync user provisioned"))?;
+        .await?
+        .ok_or(Error::NoSyncUser)?;
 
     let presented_hash = hash_token(refresh_token);
     if sync_user.refresh_token_hash.as_deref() != Some(presented_hash.as_str()) {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            "invalid or already-rotated refresh token",
-        ));
+        return Err(Error::RefreshTokenRejected);
     }
 
     Ok(sync_user.id)
 }
 
+/// Mint an access token and rotate the refresh token, so the old one stops redeeming.
 async fn issue_token_pair(
     state: &AuthState,
     sync_user_id: lib_core::RowID,
-) -> axum::response::Response {
-    let access_token = match jwt::issue_access_token(sync_user_id, &state.signing_key) {
-        Ok(token) => token,
-        Err(e) => {
-            tracing::error!("Failed to issue access token: {e}");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
-        }
-    };
+) -> Result<TokenResponse> {
+    let access_token = jwt::issue_access_token(sync_user_id, &state.signing_key)?;
 
     let refresh_token = random_token();
     let refresh_token_hash = hash_token(&refresh_token);
-    if let Err(e) = lib_database::SyncUser::update_refresh_token_hash(
+    lib_database::SyncUser::update_refresh_token_hash(
         sync_user_id,
         Some(&refresh_token_hash),
         &state.pool,
     )
-    .await
-    {
-        tracing::error!("Failed to persist rotated refresh token: {e}");
-        return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
-    }
+    .await?;
 
-    Json(TokenResponse {
+    Ok(TokenResponse {
         access_token,
         refresh_token,
         token_type: "Bearer",
         expires_in: jwt::ACCESS_TOKEN_TTL_SECONDS,
     })
-    .into_response()
 }
