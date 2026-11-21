@@ -2,6 +2,9 @@
 
 use config::ConfigError as ConfigLibError;
 
+/// Result alias for this crate's [`Error`].
+pub type Result<T> = std::result::Result<T, Error>;
+
 /// Errors produced while loading or validating configuration.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {

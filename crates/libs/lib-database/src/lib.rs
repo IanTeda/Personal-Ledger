@@ -137,14 +137,7 @@ mod restart_tests;
 
 /// Crate error type for all database operations.
 mod error;
-pub use error::Error;
-
-/// Crate Result type alias used across database modules.
-///
-/// Use `Result<T>` for functions that return `T` or a `Error`.
-/// This keeps signatures concise and makes it clear the function is database-related.
-/// TODO: Move this to crate namespace, need to add bin errors and results
-pub type Result<T> = std::result::Result<T, Error>;
+pub use error::{Error, Result};
 
 mod connection;
 /// Database connection management and pool handling.

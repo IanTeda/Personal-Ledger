@@ -3,6 +3,9 @@
     reason = "error variants are defined ahead of the call sites that will return them"
 )]
 
+/// Result alias for this crate's [`Error`].
+pub type Result<T> = std::result::Result<T, Error>;
+
 /// Telemetry-specific error types for logging and tracing operations.
 ///
 /// This enum provides detailed error classification for telemetry-related failures,

@@ -33,6 +33,9 @@
 //! Error construction is lightweight, but avoid creating errors in hot paths. Use error variants
 //! efficiently to minimise allocations.
 
+/// Result alias for this crate's [`Error`].
+pub type Result<T> = std::result::Result<T, Error>;
+
 #[derive(thiserror::Error, Debug)]
 /// Errors produced during database operations.
 ///
@@ -218,14 +221,14 @@ mod tests {
     #[test]
     fn test_database_result_type_alias() {
         // Test that DatabaseResult<T> is equivalent to Result<T, DatabaseError>
-        let ok_result: crate::Result<i32> = Ok(42);
+        let ok_result: Result<i32> = Ok(42);
         assert_eq!(ok_result, Ok(42));
 
-        let err_result: crate::Result<i32> = Err(Error::Validation("test".to_string()));
+        let err_result: Result<i32> = Err(Error::Validation("test".to_string()));
         assert!(err_result.is_err());
         assert!(matches!(err_result, Err(Error::Validation(_))));
 
-        let cb_result: crate::Result<i32> = Err(Error::CategoryBuilder("test".to_string()));
+        let cb_result: Result<i32> = Err(Error::CategoryBuilder("test".to_string()));
         assert!(cb_result.is_err());
         assert!(matches!(cb_result, Err(Error::CategoryBuilder(_))));
     }

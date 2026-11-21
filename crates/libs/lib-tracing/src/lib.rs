@@ -4,7 +4,7 @@ mod init;
 mod levels;
 
 // Re-export main types for easier access
-pub use error::Error;
+pub use error::{Error, Result};
 
 // Re-export log level types
 pub use levels::{Levels, level_filter};
@@ -14,8 +14,3 @@ pub use capture::{LOG_CAPACITY, LogBuffer, LogEntry};
 
 // Reexport init module
 pub use init::init;
-
-/// Result type alias for telemetry operations.
-/// This type simplifies function signatures by standardizing the return type for
-/// operations that result in a `TelemetryError`.
-pub(crate) type Result<T> = std::result::Result<T, Error>;

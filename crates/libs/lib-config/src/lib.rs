@@ -49,10 +49,7 @@ mod theme;
 mod writer;
 
 /// Re-export settings [`Error`] type.
-pub use error::Error;
-
-/// Re-export [`Result`] type alias used across configuration module.
-pub(crate) type Result<T> = std::result::Result<T, Error>;
+pub use error::{Error, Result};
 
 /// The top-level application configuration type, shared by all three consumers.
 pub use ledger::LedgerConfig as Config;
