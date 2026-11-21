@@ -2,7 +2,7 @@
 
 use super::Rows;
 use crate::protocols::BillsRepository;
-use crate::{EntryId, Error, unskip};
+use crate::{EntryId, Result, unskip};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnskipBill {
@@ -14,7 +14,7 @@ impl UnskipBill {
     ///
     /// # Errors
     /// `EntryNotFound` for an entry that is gone and `NotSkipped` for one that isn't Skipped.
-    pub fn run(self, bills: &mut dyn BillsRepository) -> Result<(), Error> {
+    pub fn run(self, bills: &mut dyn BillsRepository) -> Result<()> {
         let outcome = self.apply(bills);
         let (plan, due) = (self.entry.plan_id, self.entry.due);
         match &outcome {
@@ -26,7 +26,7 @@ impl UnskipBill {
         outcome
     }
 
-    fn apply(self, bills: &mut dyn BillsRepository) -> Result<(), Error> {
+    fn apply(self, bills: &mut dyn BillsRepository) -> Result<()> {
         let mut rows = Rows::read(bills);
         unskip(&mut rows.entries, self.entry)?;
         rows.write_back(bills);
@@ -37,6 +37,7 @@ impl UnskipBill {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::interactor::SkipBill;
     use crate::interactor::test_support::{date, entry_of, sample, today};
     use crate::{BillStatus, entry, status};

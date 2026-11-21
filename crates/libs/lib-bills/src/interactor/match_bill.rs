@@ -7,7 +7,7 @@ use chrono::Duration;
 use super::Rows;
 use crate::protocols::{BillAccounts, BillCategories, BillTransactions, BillsRepository};
 use crate::{
-    BillSplit, EntryId, Error, MATCH_WINDOW_DAYS, SplitRef, match_candidates, match_split,
+    BillSplit, EntryId, MATCH_WINDOW_DAYS, Result, SplitRef, match_candidates, match_split,
     preselected_candidate,
 };
 
@@ -68,7 +68,7 @@ impl MatchBill {
         transactions: &dyn BillTransactions,
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let outcome = self.apply(bills, transactions, accounts, categories);
         let (plan, due) = (self.entry.plan_id, self.entry.due);
         let (transaction_id, split) = (self.split.transaction_id, self.split.split_index);
@@ -98,7 +98,7 @@ impl MatchBill {
         transactions: &dyn BillTransactions,
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let mut rows = Rows::read(bills);
         match_split(
             &rows.plans,
@@ -119,6 +119,7 @@ mod tests {
     use lib_core::{AccountId, CategoryId, PayeeId, TransactionId};
 
     use super::*;
+    use crate::Error;
     use crate::fake::InMemoryPorts;
     use crate::interactor::test_support::{cents, date, entry_of, sample};
     use crate::{Resolution, entry};

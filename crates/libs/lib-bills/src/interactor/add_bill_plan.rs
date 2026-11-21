@@ -6,7 +6,7 @@ use lib_core::BillPlanId;
 
 use super::Rows;
 use crate::protocols::{BillAccounts, BillCategories, BillsRepository};
-use crate::{BillPlanDraft, Error, insert_plan};
+use crate::{BillPlanDraft, Result, insert_plan};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddBillPlan {
@@ -25,7 +25,7 @@ impl AddBillPlan {
         bills: &mut dyn BillsRepository,
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
-    ) -> Result<BillPlanId, Error> {
+    ) -> Result<BillPlanId> {
         let outcome = self.apply(bills, accounts, categories);
         match &outcome {
             Ok(id) => tracing::info!(bill_plan_id = %id, "Added a Bill Plan"),
@@ -39,7 +39,7 @@ impl AddBillPlan {
         bills: &mut dyn BillsRepository,
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
-    ) -> Result<BillPlanId, Error> {
+    ) -> Result<BillPlanId> {
         let mut rows = Rows::read(bills);
         let id = insert_plan(
             &mut rows.plans,
@@ -59,13 +59,11 @@ mod tests {
     use lib_core::CategoryId;
 
     use super::*;
+    use crate::Error;
     use crate::Recurrence;
     use crate::interactor::test_support::{draft, dues, sample, today};
 
-    fn add(
-        ports: &mut crate::fake::InMemoryPorts,
-        draft: BillPlanDraft,
-    ) -> Result<BillPlanId, Error> {
+    fn add(ports: &mut crate::fake::InMemoryPorts, draft: BillPlanDraft) -> Result<BillPlanId> {
         let ports = &mut *ports;
         AddBillPlan {
             draft,

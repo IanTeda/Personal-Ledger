@@ -125,7 +125,7 @@ fn delete(
     id: UnitId,
     new_base: Option<UnitId>,
     replacements: Vec<Replacement>,
-) -> Result<crate::UnitDeleted, Error> {
+) -> Result<crate::UnitDeleted> {
     DeleteUnit {
         id,
         new_base,

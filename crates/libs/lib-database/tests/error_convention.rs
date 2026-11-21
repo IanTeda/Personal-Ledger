@@ -63,9 +63,6 @@ const VALUE_ERRORS: &[&str] = &[
 /// (#1309). Each crate's slice deletes its own entry, a listed crate that passes fails the test
 /// as stale, and the last slice deletes the list.
 const PENDING: &[&str] = &[
-    "lib-bills",
-    "lib-budgets",
-    "lib-unit-deletion",
     "lib-database",
     "lib-documents",
     "lib-ledger-creation",
@@ -770,7 +767,7 @@ fn pending_lists_only_crates_that_still_break_the_rules() {
 #[test]
 fn a_passing_or_missing_crate_on_pending_is_stale() {
     assert_eq!(
-        stale_entries(&["lib-viper", "lib-nowhere", "lib-bills"]),
+        stale_entries(&["lib-viper", "lib-nowhere", "lib-database"]),
         vec!["lib-viper", "lib-nowhere"]
     );
 }

@@ -37,7 +37,7 @@ fn validate(
     draft: &BillPlanDraft,
     categories: &[CategoryRef],
     accounts: &[AccountRef],
-) -> Result<String, Error> {
+) -> Result<String> {
     let name = draft.name.trim();
     if name.is_empty() {
         return Err(Error::NameRequired);
@@ -73,7 +73,7 @@ pub fn insert_plan(
     categories: &[CategoryRef],
     accounts: &[AccountRef],
     today: NaiveDate,
-) -> Result<BillPlanId, Error> {
+) -> Result<BillPlanId> {
     insert_plan_as(
         BillPlanId::new(),
         plans,
@@ -94,7 +94,7 @@ pub(crate) fn insert_plan_as(
     categories: &[CategoryRef],
     accounts: &[AccountRef],
     today: NaiveDate,
-) -> Result<BillPlanId, Error> {
+) -> Result<BillPlanId> {
     let name = validate(draft, categories, accounts)?;
     let plan = BillPlan {
         id,
@@ -128,7 +128,7 @@ pub fn edit_plan(
     categories: &[CategoryRef],
     accounts: &[AccountRef],
     today: NaiveDate,
-) -> Result<(), Error> {
+) -> Result<()> {
     let plan = plans
         .iter_mut()
         .find(|p| p.id == id)
@@ -165,7 +165,7 @@ pub fn set_active(
     id: BillPlanId,
     is_active: bool,
     today: NaiveDate,
-) -> Result<(), Error> {
+) -> Result<()> {
     let plan = plans
         .iter_mut()
         .find(|p| p.id == id)
@@ -188,7 +188,7 @@ fn open_entry<'a>(
     plans: &'a [BillPlan],
     entries: &[BillScheduleEntry],
     id: EntryId,
-) -> Result<&'a BillPlan, Error> {
+) -> Result<&'a BillPlan> {
     let found = entry(entries, id).ok_or(Error::EntryNotFound)?;
     if !found.is_open() {
         return Err(Error::EntryNotOpen);
@@ -295,7 +295,7 @@ pub fn match_split(
     categories: &[CategoryRef],
     id: EntryId,
     split: SplitRef,
-) -> Result<(), Error> {
+) -> Result<()> {
     open_entry(plans, entries, id)?;
     if !match_candidates(plans, entries, splits, accounts, categories, id).contains(&split) {
         return Err(Error::NotACandidate);
@@ -307,11 +307,7 @@ pub fn match_split(
 }
 
 /// Skips an open entry (for a One-shot Plan, cancels the bill), snapshotting the Planned Amount.
-pub fn skip(
-    plans: &[BillPlan],
-    entries: &mut [BillScheduleEntry],
-    id: EntryId,
-) -> Result<(), Error> {
+pub fn skip(plans: &[BillPlan], entries: &mut [BillScheduleEntry], id: EntryId) -> Result<()> {
     let planned = open_entry(plans, entries, id)?.planned_amount.clone();
     if let Some(found) = entry_mut(entries, id) {
         found.resolution = Resolution::Skipped { planned };
@@ -320,7 +316,7 @@ pub fn skip(
 }
 
 /// Undoes Paid: clears the Match and leaves the Transaction in place.
-pub fn unmatch(entries: &mut [BillScheduleEntry], id: EntryId) -> Result<(), Error> {
+pub fn unmatch(entries: &mut [BillScheduleEntry], id: EntryId) -> Result<()> {
     let found = entry_mut(entries, id).ok_or(Error::EntryNotFound)?;
     if !matches!(found.resolution, Resolution::Paid(_)) {
         return Err(Error::NotPaid);
@@ -330,7 +326,7 @@ pub fn unmatch(entries: &mut [BillScheduleEntry], id: EntryId) -> Result<(), Err
 }
 
 /// Undoes Skipped.
-pub fn unskip(entries: &mut [BillScheduleEntry], id: EntryId) -> Result<(), Error> {
+pub fn unskip(entries: &mut [BillScheduleEntry], id: EntryId) -> Result<()> {
     let found = entry_mut(entries, id).ok_or(Error::EntryNotFound)?;
     if !matches!(found.resolution, Resolution::Skipped { .. }) {
         return Err(Error::NotSkipped);

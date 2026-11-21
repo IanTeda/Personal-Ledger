@@ -3,7 +3,7 @@
 
 use super::Rows;
 use crate::protocols::BillsRepository;
-use crate::{EntryId, Error, skip};
+use crate::{EntryId, Result, skip};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SkipBill {
@@ -16,7 +16,7 @@ impl SkipBill {
     /// # Errors
     /// `EntryNotFound` for an entry that is gone, `EntryNotOpen` for one already settled or
     /// superseded, and `PlanNotFound` for an entry whose Plan is gone.
-    pub fn run(self, bills: &mut dyn BillsRepository) -> Result<(), Error> {
+    pub fn run(self, bills: &mut dyn BillsRepository) -> Result<()> {
         let outcome = self.apply(bills);
         let (plan, due) = (self.entry.plan_id, self.entry.due);
         match &outcome {
@@ -28,7 +28,7 @@ impl SkipBill {
         outcome
     }
 
-    fn apply(self, bills: &mut dyn BillsRepository) -> Result<(), Error> {
+    fn apply(self, bills: &mut dyn BillsRepository) -> Result<()> {
         let mut rows = Rows::read(bills);
         skip(&rows.plans, &mut rows.entries, self.entry)?;
         rows.write_back(bills);
@@ -41,6 +41,7 @@ mod tests {
     use lib_core::BillPlanId;
 
     use super::*;
+    use crate::Error;
     use crate::interactor::test_support::{cents, date, entry_of, sample, today};
     use crate::{Resolution, entry};
 

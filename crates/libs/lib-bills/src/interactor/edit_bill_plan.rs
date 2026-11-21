@@ -6,7 +6,7 @@ use lib_core::BillPlanId;
 
 use super::Rows;
 use crate::protocols::{BillAccounts, BillCategories, BillsRepository};
-use crate::{BillPlanDraft, Error, edit_plan, set_active};
+use crate::{BillPlanDraft, Result, edit_plan, set_active};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditBillPlan {
@@ -28,7 +28,7 @@ impl EditBillPlan {
         bills: &mut dyn BillsRepository,
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let (id, is_active) = (self.id, self.is_active);
         let outcome = self.apply(bills, accounts, categories);
         match &outcome {
@@ -45,7 +45,7 @@ impl EditBillPlan {
         bills: &mut dyn BillsRepository,
         accounts: &dyn BillAccounts,
         categories: &dyn BillCategories,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let mut rows = Rows::read(bills);
         edit_plan(
             &mut rows.plans,
@@ -73,6 +73,7 @@ mod tests {
     use lib_core::UnitId;
 
     use super::*;
+    use crate::Error;
     use crate::fake::InMemoryPorts;
     use crate::interactor::AddBillPlan;
     use crate::interactor::test_support::{date, draft, dues, sample, today};
@@ -92,7 +93,7 @@ mod tests {
         id: BillPlanId,
         draft: BillPlanDraft,
         is_active: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         EditBillPlan {
             id,
             draft,

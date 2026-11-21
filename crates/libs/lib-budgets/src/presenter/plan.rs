@@ -18,8 +18,8 @@ use super::{EMPTY_CELL, money, range_label};
 use crate::interactor::{CycleRollover, SaveCell};
 use crate::protocols::{BudgetCategories, BudgetReads, BudgetsRouter};
 use crate::{
-    Budget, PLAN_MONTHS, PLAN_ROLLOVER_COLUMN, Plan, PlanEdit, Rollover, Span, default_plan_start,
-    fill_target, msg, plan, plan_start_bounds,
+    Budget, PLAN_MONTHS, PLAN_ROLLOVER_COLUMN, Plan, PlanEdit, Result, Rollover, Span,
+    default_plan_start, fill_target, msg, plan, plan_start_bounds,
 };
 
 /// What the Plan tab is told.
@@ -336,7 +336,7 @@ impl BudgetsPagePresenter {
         month: Period,
         span: Span,
         text: &str,
-    ) -> Result<bool, crate::Error> {
+    ) -> Result<bool> {
         let today = self.today();
         let mut ports = self.ports.borrow_mut();
         let ports = ports.split_mut();

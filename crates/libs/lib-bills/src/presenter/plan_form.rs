@@ -54,6 +54,14 @@ pub enum PlanField {
     Active,
 }
 
+/// What the lead's text reads as: form-only state, so neither a value type nor a crate failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Lead {
+    Blank,
+    Days(u32),
+    Invalid,
+}
+
 impl PlanField {
     const ORDER: [Self; 12] = [
         Self::Name,
@@ -568,10 +576,10 @@ impl PlanFormPresenter {
         parse_positive_amount(&self.amount)
     }
 
-    fn lead_days(&self) -> Result<Option<u32>, ()> {
+    fn lead_days(&self) -> Lead {
         match self.lead.trim() {
-            "" => Ok(None),
-            text => text.parse().map(Some).map_err(|_| ()),
+            "" => Lead::Blank,
+            text => text.parse().map_or(Lead::Invalid, Lead::Days),
         }
     }
 
@@ -595,7 +603,7 @@ impl PlanFormPresenter {
             ends_on: ends_on.err().map(|e| self.date_message(&e)).or_else(|| {
                 ends_before_first_due.then(msg::bills_plan_error_ends_before_first_due)
             }),
-            lead: self.lead_days().is_err().then(msg::bills_plan_error_lead),
+            lead: (self.lead_days() == Lead::Invalid).then(msg::bills_plan_error_lead),
         }
     }
 
@@ -620,7 +628,11 @@ impl PlanFormPresenter {
             } else {
                 None
             },
-            attention_lead: self.lead_days().ok()?,
+            attention_lead: match self.lead_days() {
+                Lead::Blank => None,
+                Lead::Days(days) => Some(days),
+                Lead::Invalid => return None,
+            },
         })
     }
 
