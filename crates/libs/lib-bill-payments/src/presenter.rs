@@ -19,8 +19,8 @@ use lib_bills::presenter::money;
 use lib_bills::{EntryId, MATCH_WINDOW_DAYS, PayRequest, SharedPorts, SplitRef};
 use lib_core::{Clock, DateStyle, Money};
 use lib_locale::format::{
-    AmountStyle, DateInputError, DateInputOptions, date_error_message, format_amount,
-    format_date_input, format_month_day, parse_date_with, parse_positive_amount, upper,
+    AmountStyle, DateInputError, date_error_message, format_amount, format_date_input,
+    format_month_day, optional_date_options, parse_optional_date, parse_positive_amount, upper,
 };
 use lib_toast::Notice;
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
@@ -384,37 +384,19 @@ impl PayPresenter {
         parse_positive_amount(&self.amount)
     }
 
-    fn date_options(&self) -> DateInputOptions {
-        DateInputOptions {
-            style: self.date_style,
-            allow_yearless: true,
-        }
-    }
-
     /// The typed Date: `None` for empty, the date otherwise. Day-and-month alone takes today's
     /// year.
-    fn parse_date(&self) -> Result<Option<NaiveDate>> {
-        match parse_date_with(&self.date, self.clock.today(), &self.date_options()) {
-            Ok(date) => Ok(Some(date)),
-            Err(DateInputError::Empty) => Ok(None),
-            Err(error) => Err(error.into()),
-        }
+    fn parse_date(&self) -> Result<Option<NaiveDate>, DateInputError> {
+        parse_optional_date(&self.date, self.clock.today(), self.date_style)
     }
 
     /// The Message under the Date for a refused parse.
-    fn date_message(&self, error: &Error) -> String {
-        match error {
-            Error::PayDate(error) => {
-                date_error_message(error, self.clock.today(), &self.date_options())
-            }
-            _ => {
-                debug_assert!(
-                    false,
-                    "a date parse refuses only with PayDate, not {error:?}"
-                );
-                refusal_text(error)
-            }
-        }
+    fn date_message(&self, error: &DateInputError) -> String {
+        date_error_message(
+            error,
+            self.clock.today(),
+            &optional_date_options(self.date_style),
+        )
     }
 
     /// The status line's hints: `←`/`→` switch panel on either.

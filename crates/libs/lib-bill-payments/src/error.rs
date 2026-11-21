@@ -1,5 +1,3 @@
-use lib_locale::format::DateInputError;
-
 /// Refusals for the Bill Payments module: typed, never a string. The `#[error]` text is for logs;
 /// the Pay Dialog's Presenter maps a variant to its `msg::` Message.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -18,9 +16,6 @@ pub enum Error {
     /// A refusal from `lib-bills`' Match, which the Pay Dialog's Match panel runs.
     #[error(transparent)]
     Bills(#[from] lib_bills::Error),
-    /// A typed payment date that doesn't parse, wrapping the value-type error from `lib-locale`.
-    #[error("the payment date is invalid: {0}")]
-    PayDate(#[from] DateInputError),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
