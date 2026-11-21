@@ -434,11 +434,7 @@ impl<'a> Harness<'a> {
         persisted: PersistedState,
         device: Device<'_>,
     ) -> Self {
-        let failure = match &started {
-            bin_desktop::Started::Failed(failure) => Some(failure.clone()),
-            _ => None,
-        };
-        let (stores, commits) = match started {
+        let (stores, commits, failure) = match started {
             bin_desktop::Started::Opened { path, storage } => {
                 let writer = storage.writer.clone();
                 let (stores, commits) = counted(Stores::from(*storage));
@@ -447,9 +443,13 @@ impl<'a> Harness<'a> {
                 (
                     Some((router::LedgerFile::on(path, writer, shared), kept)),
                     commits,
+                    None,
                 )
             }
-            _ => (None, Rc::new(Cell::new(0))),
+            bin_desktop::Started::Failed { path, error } => {
+                (None, Rc::new(Cell::new(0)), Some((path, error)))
+            }
+            bin_desktop::Started::NoLedger => (None, Rc::new(Cell::new(0)), None),
         };
         let ui = Self::build_on(
             app,
@@ -460,9 +460,9 @@ impl<'a> Harness<'a> {
             persisted,
             device,
         );
-        if let Some(failure) = failure {
+        if let Some((path, error)) = failure {
             ui.shell
-                .update(ui.cx, |shell, _| shell.ledger_open_failed(&failure));
+                .update(ui.cx, |shell, _| shell.ledger_open_failed(&path, &error));
         }
         ui
     }

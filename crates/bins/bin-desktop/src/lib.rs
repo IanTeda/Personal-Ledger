@@ -98,16 +98,12 @@ pub enum Started {
     },
     /// On start names no Ledger file, so the Desktop starts with no Ledger open.
     NoLedger,
-    /// The named file is missing or won't open, so the Desktop starts with no Ledger open and says
-    /// why.
-    Failed(OpenFailure),
-}
-
-/// A Ledger file start-up was told to open and couldn't: its path and why, as the Toast says it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpenFailure {
-    pub path: std::path::PathBuf,
-    pub reason: String,
+    /// The named file at `path` is missing or won't open, so the Desktop starts with no Ledger
+    /// open and says why, its Message picked from `error`'s variant.
+    Failed {
+        path: std::path::PathBuf,
+        error: Error,
+    },
 }
 
 impl Started {
@@ -115,7 +111,7 @@ impl Started {
     pub fn path(&self) -> Option<&std::path::Path> {
         match self {
             Self::Opened { path, .. } => Some(path),
-            Self::NoLedger | Self::Failed(_) => None,
+            Self::NoLedger | Self::Failed { .. } => None,
         }
     }
 
@@ -125,7 +121,7 @@ impl Started {
     pub fn storage(self) -> Option<Storage> {
         match self {
             Self::Opened { storage, .. } => Some(*storage),
-            Self::NoLedger | Self::Failed(_) => None,
+            Self::NoLedger | Self::Failed { .. } => None,
         }
     }
 }
@@ -164,24 +160,16 @@ fn start_with(
             path,
             storage: Box::new(storage),
         },
-        Err(failure) => Started::Failed(failure),
+        Err(error) => Started::Failed { path, error },
     }
 }
 
-/// Opens the Ledger file at `path` as start-up and `:open` do, then generates the Bill Schedule through the horizon and commits the new entries (ADR-0019).
-/// Never creates a Ledger file: a missing or empty file, a folder, or one that isn't a Ledger is
-/// an [`OpenFailure`], written for the Toast that says so.
-pub fn open_ledger_file(
-    path: &std::path::Path,
-    today: chrono::NaiveDate,
-) -> std::result::Result<Storage, OpenFailure> {
-    let failed = |reason: String| OpenFailure {
-        path: path.to_path_buf(),
-        reason,
-    };
-    if let Some(reason) = unopenable(path) {
-        return Err(failed(reason));
-    }
+/// Opens the Ledger file at `path` as start-up and `:open` do, then generates the Bill Schedule
+/// through the horizon and commits the new entries (ADR-0019). Never creates a Ledger file: a
+/// missing or empty file, a folder, or one that isn't a Ledger is an error whose variant the Toast
+/// that says so is worded from ([`open_failure_reason`]).
+pub fn open_ledger_file(path: &std::path::Path, today: chrono::NaiveDate) -> Result<Storage> {
+    unopenable(path)?;
     match open_and_generate(path, today) {
         Ok(storage) => {
             tracing::info!(path = %path.display(), "Opened the Ledger file");
@@ -191,25 +179,36 @@ pub fn open_ledger_file(
             // Recovered: the Desktop keeps whatever Ledger was open, or none, and a Toast says why.
             // The error's own text is for the log, never spliced into a Message.
             tracing::warn!(%error, path = %path.display(), "Failed to open the Ledger");
-            Err(failed(match error {
-                lib_database::Error::LedgerOutOfDate(_) if error.is_ledger_from_newer_build() => {
-                    msg::desktop_ledger_open_newer()
-                }
-                lib_database::Error::LedgerOutOfDate(_) => msg::desktop_ledger_open_out_of_date(),
-                lib_database::Error::NotALedger => msg::desktop_ledger_open_not_a_ledger(),
-                lib_database::Error::IncompleteLedger => msg::desktop_ledger_open_incomplete(),
-                _ => msg::desktop_ledger_open_unreadable(),
-            }))
+            Err(error)
         }
+    }
+}
+
+/// Why a Ledger file didn't open, as the Toast that says so words it, picked by `error`'s variant.
+pub(crate) fn open_failure_reason(error: &Error) -> String {
+    match error {
+        Error::LedgerMissing => msg::desktop_ledger_open_missing(),
+        Error::LedgerNotAFile => msg::desktop_ledger_open_not_a_file(),
+        Error::LedgerEmpty => msg::desktop_ledger_open_empty(),
+        Error::Database(error @ lib_database::Error::LedgerOutOfDate(_))
+            if error.is_ledger_from_newer_build() =>
+        {
+            msg::desktop_ledger_open_newer()
+        }
+        Error::Database(lib_database::Error::LedgerOutOfDate(_)) => {
+            msg::desktop_ledger_open_out_of_date()
+        }
+        Error::Database(lib_database::Error::NotALedger) => msg::desktop_ledger_open_not_a_ledger(),
+        Error::Database(lib_database::Error::IncompleteLedger) => {
+            msg::desktop_ledger_open_incomplete()
+        }
+        _ => msg::desktop_ledger_open_unreadable(),
     }
 }
 
 /// Opens the Ledger file at `path` through `open_storage`, then generates the Bill Schedule
 /// through the horizon and commits the new entries (ADR-0019).
-fn open_and_generate(
-    path: &std::path::Path,
-    today: chrono::NaiveDate,
-) -> lib_database::Result<Storage> {
+fn open_and_generate(path: &std::path::Path, today: chrono::NaiveDate) -> Result<Storage> {
     let mut storage = open_storage(path)?;
     bills::generate(&mut storage.bills, today);
     lib_database::Commit::commit(&storage.pending);
@@ -222,34 +221,28 @@ fn open_and_generate(
 pub fn open_created_ledger_file(
     path: &std::path::Path,
     today: chrono::NaiveDate,
-) -> std::result::Result<Storage, OpenFailure> {
+) -> Result<Storage> {
     open_ledger_file(path, today).inspect_err(|_| {
         tracing::warn!(path = %path.display(), "Removed a created Ledger file that wouldn't open");
         lib_database::remove_ledger_files(path);
     })
 }
 
-/// Why `path` can't be opened without writing to it, or `None` if `open_storage` may open it.
-/// SQLite takes an empty file for a new database that it then migrates, before `open_storage`
+/// Refuses `path` if it can't be opened without writing to it, or `Ok` if `open_storage` may open
+/// it. SQLite takes an empty file for a new database that it then migrates, before `open_storage`
 /// refuses it as an incomplete Ledger, so start-up refuses an empty file first and leaves it as it
-/// was (#977), and a missing one with its own reason.
-fn unopenable(path: &std::path::Path) -> Option<String> {
-    let reason = match std::fs::metadata(path) {
-        Ok(metadata) if !metadata.is_file() => msg::desktop_ledger_open_not_a_file(),
-        Ok(metadata) if metadata.len() == 0 => msg::desktop_ledger_open_empty(),
-        Ok(_) => return None,
-        Err(error) => {
-            // The error's own text is for the log, never spliced into a Message.
-            tracing::warn!(%error, path = %path.display(), "Couldn't open the Ledger file");
-            return Some(if error.kind() == std::io::ErrorKind::NotFound {
-                msg::desktop_ledger_open_missing()
-            } else {
-                msg::desktop_ledger_open_unreadable()
-            });
-        }
+/// was (#977), and a missing one with its own variant.
+fn unopenable(path: &std::path::Path) -> Result<()> {
+    let error = match std::fs::metadata(path) {
+        Ok(metadata) if !metadata.is_file() => Error::LedgerNotAFile,
+        Ok(metadata) if metadata.len() == 0 => Error::LedgerEmpty,
+        Ok(_) => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Error::LedgerMissing,
+        Err(error) => Error::LedgerUnreadable(error),
     };
-    tracing::warn!(path = %path.display(), %reason, "Couldn't open the Ledger file");
-    Some(reason)
+    // The error's own text is for the log, never spliced into a Message.
+    tracing::warn!(%error, path = %path.display(), "Couldn't open the Ledger file");
+    Err(error)
 }
 
 /// The Settings page the state file remembers at quit: the one on show, unless no Ledger is open
@@ -297,7 +290,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
             None,
         ),
         Started::NoLedger => (None, None),
-        Started::Failed(failure) => (None, Some(failure)),
+        Started::Failed { path, error } => (None, Some((path, error))),
     };
     let configured_level = Some(config.logs_config().log());
     config.theme_config().warn_invalid();
@@ -416,8 +409,8 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                             cx,
                         );
                         shell.set_last_ledger(last_ledger, cx);
-                        if let Some(failure) = &failure {
-                            shell.ledger_open_failed(failure);
+                        if let Some((path, error)) = &failure {
+                            shell.ledger_open_failed(path, error);
                         }
                         shell
                     })
@@ -619,11 +612,11 @@ mod tests {
                 },
             ),
         ] {
-            let Started::Failed(failure) = start_with(&config, &persisted, today()) else {
+            let Started::Failed { path, error } = start_with(&config, &persisted, today()) else {
                 panic!("a missing Ledger file fails to open");
             };
-            assert_eq!(failure.path, missing);
-            assert_eq!(failure.reason, "no such file");
+            assert_eq!(path, missing);
+            assert_eq!(open_failure_reason(&error), "no such file");
             assert_eq!(entries(data.path()), 0, "start-up creates no Ledger file");
         }
     }
@@ -639,7 +632,7 @@ mod tests {
             &PersistedState::default(),
             today(),
         );
-        assert!(matches!(started, Started::Failed(failure) if failure.path == file));
+        assert!(matches!(started, Started::Failed { path, .. } if path == file));
     }
 
     #[test]
@@ -666,14 +659,14 @@ mod tests {
         let folder = data.path().join("folder.pldb");
         std::fs::create_dir(&folder).expect("a new folder");
         for (path, reason) in [(&empty, "the file is empty"), (&folder, "not a file")] {
-            let Started::Failed(failure) = start_with(
+            let Started::Failed { error, .. } = start_with(
                 &config_in(data.path(), Some(path)),
                 &PersistedState::default(),
                 today(),
             ) else {
                 panic!("{} fails to open", path.display());
             };
-            assert_eq!(failure.reason, reason);
+            assert_eq!(open_failure_reason(&error), reason);
         }
         assert_eq!(
             std::fs::metadata(&empty).expect("still there").len(),

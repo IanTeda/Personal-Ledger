@@ -17,7 +17,8 @@
 mod router;
 pub(crate) mod view;
 
-pub use lib_bills::*;
+pub use lib_bills::EntryId;
+use lib_bills::{BillsRepository, SharedPorts, presenter};
 pub use router::bills_page;
 pub use view::page::BillsPage;
 pub use view::snapshot::{BillRowSnapshot, BillsSnapshot};

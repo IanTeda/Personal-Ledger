@@ -10,4 +10,7 @@ pub mod router;
 pub(crate) mod types;
 pub mod view;
 
-pub use lib_documents::*;
+pub use lib_documents::{
+    Document, DocumentFiles, DocumentsMode, LibraryScope, LibrarySort, RailEntry, Signals,
+    protocols,
+};

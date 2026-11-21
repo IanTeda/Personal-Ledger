@@ -589,7 +589,7 @@ impl SettingsView {
         &mut self,
         changes: &[(lib_core::configuration::ConfigKey, Option<String>)],
         cx: &mut Context<'_, Self>,
-    ) -> lib_shell::Result<()> {
+    ) -> crate::Result<()> {
         let mut restored = 0;
         let mut outcome = Ok(());
         for (key, value) in changes {
@@ -639,18 +639,19 @@ impl SettingsView {
 fn refused(
     answer: lib_settings::DeviceAnswer<()>,
     key: lib_core::configuration::ConfigKey,
-) -> lib_shell::Result<()> {
+) -> crate::Result<()> {
     use lib_settings::{DeviceAnswer, Error};
-    match answer {
-        DeviceAnswer::Saved { .. } => Ok(()),
+    let refusal = match answer {
+        DeviceAnswer::Saved { .. } => return Ok(()),
         DeviceAnswer::Shadowed { source } => {
-            Err(lib_shell::Error::ConfigurationShadowed { key, source })
+            lib_shell::Error::ConfigurationShadowed { key, source }
         }
-        DeviceAnswer::Refused(Error::NoFile) => Err(lib_shell::Error::ConfigurationNoFile { key }),
+        DeviceAnswer::Refused(Error::NoFile) => lib_shell::Error::ConfigurationNoFile { key },
         DeviceAnswer::Refused(Error::WriteFailed) => {
-            Err(lib_shell::Error::ConfigurationNotWritten { key })
+            lib_shell::Error::ConfigurationNotWritten { key }
         }
-    }
+    };
+    Err(refusal.into())
 }
 
 /// Every page's events re-emitted for `Root`, its changes repainting this View and its row clicks

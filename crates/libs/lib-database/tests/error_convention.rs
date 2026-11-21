@@ -62,7 +62,7 @@ const VALUE_ERRORS: &[&str] = &[
 /// The crates that still break the usage rules, by directory name: the ratchet of the Result map
 /// (#1309). Each crate's slice deletes its own entry, a listed crate that passes fails the test
 /// as stale, and the last slice deletes the list.
-const PENDING: &[&str] = &["bin-desktop", "bin-sync-server"];
+const PENDING: &[&str] = &["bin-sync-server"];
 
 /// The one shape every crate's alias takes, as `syn` prints it.
 const ALIAS: &str = "pub type Result < T , E = Error > = std :: result :: Result < T , E > ;";
@@ -759,7 +759,7 @@ fn pending_lists_only_crates_that_still_break_the_rules() {
 #[test]
 fn a_passing_or_missing_crate_on_pending_is_stale() {
     assert_eq!(
-        stale_entries(&["lib-viper", "lib-nowhere", "bin-desktop"]),
+        stale_entries(&["lib-viper", "lib-nowhere", "bin-sync-server"]),
         vec!["lib-viper", "lib-nowhere"]
     );
 }

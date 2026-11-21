@@ -22,7 +22,7 @@
 mod router;
 mod view;
 
-pub use lib_inventory::*;
+use lib_inventory::SharedInventory;
 pub use router::inventory_page;
 
 use lib_inventory::SharedReads;

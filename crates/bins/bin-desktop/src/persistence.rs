@@ -129,19 +129,20 @@ pub fn load() -> PersistedState {
 }
 
 /// Saves `state` to `path`, creating its parent directory if needed.
-pub fn save_to(path: &Path, state: &PersistedState) -> io::Result<()> {
+pub fn save_to(path: &Path, state: &PersistedState) -> crate::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let contents = serde_json::to_string_pretty(state)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    std::fs::write(path, contents)
+    std::fs::write(path, contents)?;
+    Ok(())
 }
 
 /// Saves to the real platform state file (see [`state_file_path`]). A no-op (not an error) if
 /// the platform has no usable directory -- there's nowhere to put it, and losing restart
 /// persistence isn't worth failing shutdown over.
-pub fn save(state: &PersistedState) -> io::Result<()> {
+pub fn save(state: &PersistedState) -> crate::Result<()> {
     match state_file_path() {
         Some(path) => save_to(&path, state),
         None => Ok(()),

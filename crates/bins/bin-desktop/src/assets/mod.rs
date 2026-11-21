@@ -9,7 +9,7 @@ pub(crate) mod icon;
 
 use std::borrow::Cow;
 
-use gpui::{AssetSource, Result, SharedString};
+use gpui::{AssetSource, SharedString};
 
 /// Embeds one bundled icon at `path` (relative to `assets/icons/`) under the asset path
 /// `crate::assets::icon::DesktopIcon::path` hands to `gpui_component::Icon::path`.
@@ -77,14 +77,14 @@ const ICONS: &[(&str, &[u8])] = &[
 pub struct Assets;
 
 impl AssetSource for Assets {
-    fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
+    fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
         Ok(ICONS
             .iter()
             .find(|(name, _)| *name == path)
             .map(|(_, bytes)| Cow::Borrowed(*bytes)))
     }
 
-    fn list(&self, path: &str) -> Result<Vec<SharedString>> {
+    fn list(&self, path: &str) -> gpui::Result<Vec<SharedString>> {
         Ok(ICONS
             .iter()
             .filter(|(name, _)| name.starts_with(path))

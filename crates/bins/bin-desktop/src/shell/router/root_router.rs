@@ -115,10 +115,13 @@ impl ShellRouter for RootRouter<'_, '_> {
     ///
     /// [`ConfigReversal::writes`]: crate::reversal::ConfigReversal::writes
     fn step(&mut self, reversal: &Reversal, step: Step) -> lib_shell::Result<()> {
-        if let Some(ledger) = &reversal.ledger {
-            self.step_ledger(|ports| ports.step(ledger, step))?;
-        }
-        self.restore(&reversal.configuration.writes(step))
+        let stepped = match &reversal.ledger {
+            Some(ledger) => self.step_ledger(|ports| ports.step(ledger, step)),
+            None => Ok(()),
+        };
+        stepped
+            .and_then(|()| self.restore(&reversal.configuration.writes(step)))
+            .map_err(shell_error)
     }
 
     /// The handoff: "`g` + an unbound key is a no-op: clear the pending prefix and flash the hint
@@ -300,8 +303,8 @@ impl ShellRouter for RootRouter<'_, '_> {
                 ));
                 true
             }
-            Err(failure) => {
-                self.notify(ledger_open_failed(&failure));
+            Err(error) => {
+                self.notify(ledger_open_failed(path, &error));
                 false
             }
         }
@@ -346,18 +349,15 @@ impl RootRouter<'_, '_> {
     /// domain, and the step returns [`lib_shell::Error::LedgerNotSaved`] for the Shell to word. A failure from an earlier input still waiting to be read is
     /// rolled back first, so it isn't taken for this step's. With no Ledger open there is nothing
     /// to step, which can't happen: a closed Ledger's parts leave History.
-    fn step_ledger(
-        &mut self,
-        step: impl FnOnce(&lib_database::LedgerPorts),
-    ) -> lib_shell::Result<()> {
+    fn step_ledger(&mut self, step: impl FnOnce(&lib_database::LedgerPorts)) -> crate::Result<()> {
         let Some(open) = self.open.as_ref() else {
-            return Err(lib_shell::Error::LedgerNotSaved { reloaded: false });
+            return Err(lib_shell::Error::LedgerNotSaved { reloaded: false }.into());
         };
         for failure in open.flush_and_take_failures() {
             self.write_failed(failure);
         }
         let Some(open) = self.open.as_ref() else {
-            return Err(lib_shell::Error::LedgerNotSaved { reloaded: false });
+            return Err(lib_shell::Error::LedgerNotSaved { reloaded: false }.into());
         };
         step(&open.ports);
         crate::input::commit_now(self.cx);
@@ -380,7 +380,7 @@ impl RootRouter<'_, '_> {
             self.notify(notice);
         }
         if failed {
-            Err(lib_shell::Error::LedgerNotSaved { reloaded })
+            Err(lib_shell::Error::LedgerNotSaved { reloaded }.into())
         } else {
             Ok(())
         }
@@ -389,7 +389,7 @@ impl RootRouter<'_, '_> {
     /// Puts `changes` back in the configuration file through Settings, whose pages repaint from what
     /// the file then reads and route what takes effect at once as a write does. The first that
     /// didn't go back is returned.
-    fn restore(&mut self, changes: &[(ConfigKey, Option<String>)]) -> lib_shell::Result<()> {
+    fn restore(&mut self, changes: &[(ConfigKey, Option<String>)]) -> crate::Result<()> {
         self.settings
             .update(self.cx, |view, cx| view.restore_device(changes, cx))
     }
@@ -409,8 +409,8 @@ impl RootRouter<'_, '_> {
                 ));
                 true
             }
-            Err(failure) => {
-                self.notify(ledger_open_failed(&failure));
+            Err(error) => {
+                self.notify(ledger_open_failed(path, &error));
                 false
             }
         }
@@ -639,11 +639,32 @@ fn display_hosted_pages(
     }
 }
 
-/// An Error Toast saying a Ledger file couldn't be opened, naming it and why (#977).
-pub(super) fn ledger_open_failed(failure: &crate::OpenFailure) -> Notice {
+/// The Undo or Redo step's failure as `lib-shell` words it on the status line. Only
+/// [`crate::Error::Shell`] reaches here, from [`RootRouter::step_ledger`] and
+/// [`RootRouter::restore`]; any other variant is logged and said as the Ledger not saving.
+fn shell_error(error: crate::Error) -> lib_shell::Error {
+    match error {
+        crate::Error::Shell(error) => error,
+        other => {
+            debug_assert!(
+                false,
+                "an Undo or Redo step failed outside lib-shell: {other}"
+            );
+            tracing::error!(error = %other, "An Undo or Redo step failed");
+            lib_shell::Error::LedgerNotSaved { reloaded: false }
+        }
+    }
+}
+
+/// An Error Toast saying the Ledger file at `path` couldn't be opened, naming it and why, the why
+/// picked by `error`'s variant (#977).
+pub(super) fn ledger_open_failed(path: &Path, error: &crate::Error) -> Notice {
     Notice::Toast(
         ToastKind::Error,
-        lib_locale::msg::toast_ledger_open_failed(&file_name(&failure.path), &failure.reason),
+        lib_locale::msg::toast_ledger_open_failed(
+            &file_name(path),
+            &crate::open_failure_reason(error),
+        ),
     )
 }
 

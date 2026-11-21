@@ -9,7 +9,7 @@ pub mod view;
 
 pub use view::page::BudgetsPage;
 
-pub use lib_budgets::*;
+use lib_budgets::{SharedPorts, presenter};
 
 /// What the Budgets page's Router is built from for each call (its `PageView::Setup`): the ports
 /// its Dialogs open on, the Clock whose day they open on and the Dialog keys their hints show.

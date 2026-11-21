@@ -40,9 +40,9 @@ impl Root {
 
     /// Says a Ledger file start-up or `:open` was told to open couldn't be, as an Error Toast naming
     /// it and why (#977). The Shell keeps whatever Ledger was open, or none.
-    pub fn ledger_open_failed(&mut self, failure: &crate::OpenFailure) {
+    pub fn ledger_open_failed(&mut self, path: &std::path::Path, error: &crate::Error) {
         self.presenter.show(
-            super::root_router::ledger_open_failed(failure),
+            super::root_router::ledger_open_failed(path, error),
             Local::now(),
         );
     }

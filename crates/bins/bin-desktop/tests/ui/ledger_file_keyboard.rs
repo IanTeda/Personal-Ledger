@@ -55,7 +55,7 @@ fn a_missing_named_ledger_starts_with_none_open_creates_nothing_and_says_so(
     let missing = dir.path().join("missing.pldb");
 
     let started = bin_desktop::start_on(&config_for(&missing), common::today());
-    assert!(matches!(&started, Started::Failed(failure) if failure.path == missing));
+    assert!(matches!(&started, Started::Failed { path, .. } if *path == missing));
     let mut ui = Harness::starting(app, started, PersistedState::default());
 
     assert!(!missing.exists(), "start-up never creates a Ledger file");
