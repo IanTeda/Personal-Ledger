@@ -9,11 +9,15 @@ This codebase follows Rust conventions and patterns enforced by clippy lints (se
 
 ## Error handling
 
-Every crate has a private `error.rs` module exporting `Error` and `Result<T>`, re-exported from `lib.rs` as `pub use error::{Error, Result};`. This has no exemption: a crate with nothing fallible yet (`lib-list-cursor`, `lib-toast`, `lib-viper`) still has one, so a developer never has to decide whether it is needed. Use it for every fallible function rather than `Box<dyn Error>` or `panic!`. A lookup that may find nothing returns `Option`, since absence isn't a failure.
+Every crate, library or bin, has a private `error.rs` module exporting `Error` and `pub type Result<T, E = Error> = std::result::Result<T, E>;`, re-exported from a library's `lib.rs` as `pub use error::{Error, Result};`. This has no exemption: a crate with nothing fallible yet (`lib-list-cursor`, `lib-toast`, `lib-viper`) still has one, so a developer never has to decide whether it is needed. Every fallible function, public or private, returns the crate's `Result` (ADR-0060), never `std::result::Result`, `io::Result`, `Box<dyn Error>` or `panic!`. A lookup that may find nothing returns `Option`, since absence isn't a failure.
 
-No public function returns `Result<_, String>`: a `String` error is English the person can't have translated and text a caller can't match on. Make the failure a typed variant instead.
+A crate never returns another crate's `Result` or `Error`, and never imports another crate's `Result`. Where a workflow carries a library error up with `?`, wrap it in a `#[from]` variant of your own `Error`, as `lib-bill-payments` wraps `lib_bills::Error`. Importing another crate's `Error` to match on it, map it or implement its port is fine.
 
-Small value-type errors (a name, an area, a parse of one type) stay beside their type in that type's module, and `Error` wraps them with a `#[from]` variant, so parse failures never mix with workflow refusals. `Error` wraps a value-type error only where the crate's own `Result<T>` functions return it; a value-type error that a public function returns directly needs no wrapping variant, since that variant would be one nothing constructs.
+No function returns `Result<_, String>`: a `String` error is English the person can't have translated and text a caller can't match on. Make the failure a typed variant instead.
+
+**Value errors** are the one exception (ADR-0060): an enum declared beside one value type, naming only the ways a text or number fails to become that value, reading no port and doing no I/O. Its parse or validate function returns `Result<T, ItsValueError>` through the crate's alias, so a caller matches exactly those failures. Any crate may name another crate's value error in a signature. `Error` wraps a value error with `#[from]` only where one of the crate's workflows carries it up with `?`. A refusal that reads ports or the disk is not a value error and belongs in `Error`. Every value error is named on the `VALUE_ERRORS` list in `crates/libs/lib-database/tests/error_convention.rs`; adding one is a reviewed edit.
+
+**Signatures fixed from outside** are exempt, and the convention test recognises them by syntax with no marker: a method inside `impl Trait for Type` (`FromStr`, `TryFrom`, serde, sqlx, tonic), an error that is a generic parameter's associated type (`D::Error`), `fmt::Result`, and an error that is the function's or impl's own generic parameter.
 
 **Infrastructure crates** (`lib-config`, `lib-database`, `lib-locale`, `lib-locale-build`, `lib-rpc`, `lib-tracing`): start the enum with a single `Generic(String)` catch-all variant. `Generic` is for infrastructure crates only: a domain or feature crate has no `Generic` and is typed only, like `lib-core`, so a domain failure can't hide in a string:
 
@@ -40,7 +44,9 @@ pub enum Error {
 }
 ```
 
-**External crate errors:** Map them with `#[from]` so `?` converts them automatically. Never flatten into `Generic` via `to_string()`.
+**External crate errors:** Map them with `#[from]` so `?` converts them automatically. Never flatten into `Generic` via `to_string()` or `format!`: `Generic` is for the crate's own failures, never another error's text.
+
+**Bin crates** (`bin-desktop`, `bin-tui`, `bin-sync-server`): `Error` is typed only, with no `Generic`. It holds the bin's fatal failures (start-up and shutdown) and the typed failures its own functions return, wrapping a library error with `#[from]` only where one of its functions carries it up. Before the UI runs and after it quits, a library error goes up with `?` to `main`, which returns `Result<()>`. While the UI runs, handle it where it's received: log its text with `tracing` and show a Message (an Error Toast, or the status line for a Refusal) chosen by matching on its variant. An error's `Display` text never goes into a Message. The Sync Server maps its `Error` to `tonic::Status` and `IntoResponse` at the boundary.
 
 **Feature crates** (the VIPER domain crates: `lib-units`, `lib-bills`, …): `Error` is the crate's Refusals (`GLOSSARY.md`). Workflow refusals are flat variants of this one `Error`, never a per-function or per-entity error type; an old one is removed when its variants move in. It is one flat enum with a variant per rule, named for what the rule forbids, and each variant carries the data the Presenter needs for its Message (counts, ids). It never holds a pre-formatted string, which would be English the person can't have translated and would hide the counts that plural Messages need. The `#[error]` text is for logs and `Display`; the person sees the Presenter's `msg::` Message. Interactors log that text as the refusal, so `/tracing`'s rule holds for it: ids, counts, dates and codes, never a name, an amount or anything the person typed; the data a Message needs stays in the variant's fields. Every fallible Interactor `run` returns `Result<T>`. A Presenter maps each variant it can receive to a Message, and its `_ =>` arm shows a generic Message with a `debug_assert!`, never `panic!` or `unreachable!`.
 
@@ -56,7 +62,7 @@ pub enum Error {
 }
 ```
 
-Feature crates never depend on `sqlx` or `lib-database`. Ports are infallible (ADR-0046): a failed write reaches the person as an error Toast through the writer channel, not through the Interactor. If a port ever has to fail, it returns a type the feature crate owns, and the `lib-database` adapter converts into it.
+Feature crates never depend on `sqlx` or `lib-database`. Ports are infallible (ADR-0046): a failed write reaches the person as an error Toast through the writer channel, not through the Interactor. If a port ever has to fail, as `LedgerCreation` does, it returns the feature crate's `Result<T>`, and the `lib-database` adapter converts its own errors into the feature crate's `Error`.
 
 **Invariants in expect:** Any remaining `expect` outside tests must state the invariant in the message:
 
@@ -114,10 +120,12 @@ let token: SecretString = api_response.token.into();
 - [ ] No Rust code examples in doc comments; usage is covered by unit tests.
 - [ ] Australian English in comments and docs.
 - [ ] No `unsafe` code.
-- [ ] All fallible functions return the crate's `Result` (or a compatible error type); a lookup that may find nothing returns `Option`.
-- [ ] Every crate has a private `error.rs` exporting `Error` and `Result<T>`, re-exported from `lib.rs`, including crates with nothing fallible.
-- [ ] No public function returns `Result<_, String>`.
-- [ ] Infrastructure crates map external errors with `#[from]` and may use `Generic(String)`; feature crates hold typed Refusal variants, never `Generic` or strings, and don't depend on `sqlx`.
+- [ ] Every fallible function, private ones included, returns the crate's `Result<T>`, or `Result<T, ItsValueError>` for a value error on `VALUE_ERRORS` (ADR-0060); a lookup that may find nothing returns `Option`.
+- [ ] No function returns another crate's `Result` or `Error`, and no `use` imports another crate's `Result`; a carried library error is a `#[from]` variant.
+- [ ] Every crate, bins included, has a private `error.rs` exporting `Error` and `Result<T, E = Error>`, re-exported from a library's `lib.rs`, including crates with nothing fallible.
+- [ ] No function returns `Result<_, String>`.
+- [ ] Infrastructure libraries map external errors with `#[from]` and may use `Generic(String)` for their own failures only; feature crates and bins are typed only, never `Generic` or strings, and feature crates don't depend on `sqlx`.
+- [ ] No error's `Display` text goes into a Message; a bin picks the Message by matching the variant.
 
 ## Further reading
 
