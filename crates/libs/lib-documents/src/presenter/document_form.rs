@@ -32,8 +32,8 @@ use crate::interactor::{AddDocument, EditDocument};
 use crate::protocols::DocumentsOutcome;
 use crate::types::{DocumentTypeRow, fallback_id};
 use crate::{
-    Document, DocumentType, KeyDate, KeyDateKind, LibraryScope, NewDocument, PathRefusal,
-    check_path, date_for_scope, default_title, get, msg,
+    Document, DocumentType, Error, KeyDate, KeyDateKind, LibraryScope, NewDocument, check_path,
+    date_for_scope, default_title, get, msg,
 };
 
 /// The Key date select's options, in order; `None` is no Key Date.
@@ -478,7 +478,7 @@ impl DocumentFormPresenter {
 /// What a form's fields refuse.
 #[derive(Debug, Default)]
 struct Problems {
-    path: Option<PathRefusal>,
+    path: Option<Error>,
     /// The date parser's own hint.
     date: Option<String>,
     key_date: Option<String>,
@@ -598,9 +598,13 @@ impl Presenter for DocumentFormPresenter {
                 )
             }),
             path_error: problems.path.map(|problem| match problem {
-                PathRefusal::Unsupported => msg::documents_dialog_error_unsupported(),
-                PathRefusal::Already(title) => msg::documents_dialog_error_already(&title),
-                PathRefusal::NotFound => msg::documents_dialog_error_path_missing(self.path.trim()),
+                Error::UnsupportedFile => msg::documents_dialog_error_unsupported(),
+                Error::AlreadyInLibrary(title) => msg::documents_dialog_error_already(&title),
+                Error::PathMissing => msg::documents_dialog_error_path_missing(self.path.trim()),
+                other => {
+                    debug_assert!(false, "a typed path is never refused with {other:?}");
+                    msg::documents_dialog_error_path_missing(self.path.trim())
+                }
             }),
             title: text(
                 msg::documents_dialog_field_title(),

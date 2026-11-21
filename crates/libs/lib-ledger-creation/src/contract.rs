@@ -14,8 +14,9 @@ use lib_documents::types::DocumentTypeRow;
 use lib_institutions::Institution;
 use lib_units::{Precision, PriceLink, UnitKind, UnitRow};
 
+use crate::Error;
 use crate::fake::InMemoryLedgerCreation;
-use crate::protocols::{CreationFailure, LedgerCreation};
+use crate::protocols::LedgerCreation;
 use crate::starting::NewLedger;
 
 /// What a Ledger file holds, read back as opening it would.
@@ -136,10 +137,7 @@ pub fn an_existing_file_is_never_overwritten<F: CreationFactory>(factory: &mut F
     let path = factory.free_path();
     factory.occupy(&mut port, &path);
 
-    assert_eq!(
-        port.create_ledger(&path, &usd_ledger()),
-        Err(CreationFailure::Exists)
-    );
+    assert_eq!(port.create_ledger(&path, &usd_ledger()), Err(Error::Exists));
 
     assert!(
         factory.still_occupied(&port, &path),
@@ -155,10 +153,7 @@ pub fn a_ledger_is_never_created_over<F: CreationFactory>(factory: &mut F) {
     port.create_ledger(&path, &first)
         .expect("nothing is at the path");
 
-    assert_eq!(
-        port.create_ledger(&path, &usd_ledger()),
-        Err(CreationFailure::Exists)
-    );
+    assert_eq!(port.create_ledger(&path, &usd_ledger()), Err(Error::Exists));
 
     assert_eq!(factory.stored(&port, &path), Some(Stored::of(&first)));
 }
@@ -171,7 +166,7 @@ pub fn a_failed_create_leaves_no_file<F: CreationFactory>(factory: &mut F) {
 
     assert_eq!(
         port.create_ledger(&path, &usd_ledger()),
-        Err(CreationFailure::Unwritable)
+        Err(Error::Unwritable)
     );
 
     assert_eq!(factory.stored(&port, &path), None);

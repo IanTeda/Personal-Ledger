@@ -13,7 +13,7 @@ use lib_units::{Precision, PriceLink, UnitKind, UnitRow, price_source_exists};
 
 use crate::error::{Error, Result};
 use crate::msg;
-use crate::protocols::{CreationFailure, LedgerCreation};
+use crate::protocols::LedgerCreation;
 use crate::starting::NewLedger;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,8 +136,8 @@ fn reason(refusal: Error) -> String {
             debug_assert!(false, "creating a Ledger never refuses with {other:?}");
             msg::ledger_creation_base_unit_invalid()
         }
-        Error::Failed(CreationFailure::Exists) => msg::ledger_creation_exists(),
-        Error::Failed(CreationFailure::Unwritable) => msg::ledger_creation_unwritable(),
+        Error::Exists => msg::ledger_creation_exists(),
+        Error::Unwritable => msg::ledger_creation_unwritable(),
     }
 }
 
@@ -330,7 +330,7 @@ mod tests {
 
         let (outcome, notices) = create(&mut port, aud());
 
-        assert_eq!(outcome, Err(Error::Failed(CreationFailure::Exists)));
+        assert_eq!(outcome, Err(Error::Exists));
         assert!(port.ledgers.is_empty());
         assert_eq!(
             notices,
@@ -350,7 +350,7 @@ mod tests {
 
         let (outcome, notices) = create(&mut port, aud());
 
-        assert_eq!(outcome, Err(Error::Failed(CreationFailure::Unwritable)));
+        assert_eq!(outcome, Err(Error::Unwritable));
         assert_eq!(port.calls, 1);
         assert_eq!(
             notices,

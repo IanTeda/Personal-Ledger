@@ -4,8 +4,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use crate::protocols::{CreationFailure, LedgerCreation};
+use crate::protocols::LedgerCreation;
 use crate::starting::NewLedger;
+use crate::{Error, Result};
 
 /// Ledger files in memory, by path.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -21,13 +22,13 @@ pub struct InMemoryLedgerCreation {
 }
 
 impl LedgerCreation for InMemoryLedgerCreation {
-    fn create_ledger(&mut self, path: &Path, ledger: &NewLedger) -> Result<(), CreationFailure> {
+    fn create_ledger(&mut self, path: &Path, ledger: &NewLedger) -> Result<()> {
         self.calls += 1;
         if self.occupied.contains(path) || self.ledgers.contains_key(path) {
-            return Err(CreationFailure::Exists);
+            return Err(Error::Exists);
         }
         if self.broken {
-            return Err(CreationFailure::Unwritable);
+            return Err(Error::Unwritable);
         }
         self.ledgers.insert(path.to_path_buf(), ledger.clone());
         Ok(())

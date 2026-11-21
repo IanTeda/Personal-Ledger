@@ -9,7 +9,7 @@ use std::time::SystemTime;
 use chrono::NaiveDate;
 use lib_toast::{Notice, Notify};
 
-use crate::explorer::{EntryKind, FolderEntry, FolderUnreadable, LedgerFolders};
+use crate::explorer::{EntryKind, FolderEntry, LedgerFolders};
 use crate::help::HelpGroup;
 use crate::navigation::{Movement, Noun};
 use crate::palette::PaletteRun;
@@ -248,12 +248,14 @@ impl FakeLedgerFolders {
 }
 
 impl LedgerFolders for FakeLedgerFolders {
-    fn read_folder(&self, folder: &Path) -> Result<Vec<FolderEntry>, FolderUnreadable> {
-        if self.unreadable.contains(folder) || self.paths.get(folder) != Some(&true) {
-            return Err(FolderUnreadable(format!(
-                "{} can't be read",
-                folder.display()
-            )));
+    fn read_folder(&self, folder: &Path) -> crate::Result<Vec<FolderEntry>> {
+        if self.unreadable.contains(folder) {
+            return Err(crate::Error::FolderUnreadable(
+                std::io::ErrorKind::PermissionDenied,
+            ));
+        }
+        if self.paths.get(folder) != Some(&true) {
+            return Err(crate::Error::FolderUnreadable(std::io::ErrorKind::NotFound));
         }
         Ok(self
             .paths
@@ -271,5 +273,30 @@ impl LedgerFolders for FakeLedgerFolders {
 
     fn exists(&self, path: &Path) -> bool {
         self.paths.contains_key(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::ErrorKind;
+
+    use super::*;
+    use crate::Error;
+
+    #[test]
+    fn a_folder_the_fake_cannot_read_fails_with_its_kind() {
+        let locked = PathBuf::from("/locked");
+        let folders = FakeLedgerFolders::default()
+            .folder(locked.clone())
+            .unreadable(locked.clone());
+
+        assert_eq!(
+            folders.read_folder(&locked),
+            Err(Error::FolderUnreadable(ErrorKind::PermissionDenied))
+        );
+        assert_eq!(
+            folders.read_folder(Path::new("/gone")),
+            Err(Error::FolderUnreadable(ErrorKind::NotFound))
+        );
     }
 }

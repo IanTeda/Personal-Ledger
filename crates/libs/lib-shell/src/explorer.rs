@@ -29,6 +29,7 @@ use std::time::SystemTime;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{BACK, Keymap};
 
+use crate::Result;
 use crate::dialog::DialogCommand;
 
 /// Which command opened the explorer: `:open` browses to a Ledger file to open, `:new` names a
@@ -89,14 +90,14 @@ pub struct FolderEntry {
     pub modified: Option<SystemTime>,
 }
 
-/// A folder that couldn't be read (permissions, or gone), with why.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FolderUnreadable(pub String);
-
 /// The folders the explorer browses, which the Client reads from its file system.
 pub trait LedgerFolders {
     /// Every entry in `folder`, in any order.
-    fn read_folder(&self, folder: &Path) -> Result<Vec<FolderEntry>, FolderUnreadable>;
+    ///
+    /// # Errors
+    /// [`crate::Error::FolderUnreadable`] with the I/O error's kind when `folder` can't be read
+    /// (permissions, or gone).
+    fn read_folder(&self, folder: &Path) -> Result<Vec<FolderEntry>>;
 
     /// Whether anything, a file, folder or link, is at `path`.
     fn exists(&self, path: &Path) -> bool;

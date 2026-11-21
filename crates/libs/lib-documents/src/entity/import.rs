@@ -39,29 +39,16 @@ pub fn find_by_path<'a>(documents: &'a [Document], path: &Path) -> Option<&'a Do
     documents.iter().find(|document| document.path == path)
 }
 
-/// Why a path typed for `+ Add` or `Import…` can't become a Document.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum PathRefusal {
-    /// Only PDF, JPG and PNG files are Documents.
-    #[error("only PDF, JPG and PNG files are documents")]
-    Unsupported,
-    /// One Document per path: the Library already holds this one, under this Title.
-    #[error("the library already holds this file")]
-    Already(String),
-    /// No file is there.
-    #[error("no file is at the path")]
-    NotFound,
-}
-
-/// What Add and Import refuse of a resolved path, in order: a file that is not a Document, then
-/// a path the Library already holds, then a file that is not on disk.
-fn path_refusal(documents: &[Document], path: &Path, exists: bool) -> Option<PathRefusal> {
+/// What Add and Import refuse of a resolved path, in order: a file that is not a Document
+/// ([`Error::UnsupportedFile`]), then a path the Library already holds
+/// ([`Error::AlreadyInLibrary`]), then a file that is not on disk ([`Error::PathMissing`]).
+fn path_refusal(documents: &[Document], path: &Path, exists: bool) -> Option<Error> {
     if FileKind::from_path(path).is_none() {
-        Some(PathRefusal::Unsupported)
+        Some(Error::UnsupportedFile)
     } else if let Some(existing) = find_by_path(documents, path) {
-        Some(PathRefusal::Already(existing.title.clone()))
+        Some(Error::AlreadyInLibrary(existing.title.clone()))
     } else if !exists {
-        Some(PathRefusal::NotFound)
+        Some(Error::PathMissing)
     } else {
         None
     }
@@ -69,11 +56,15 @@ fn path_refusal(documents: &[Document], path: &Path, exists: bool) -> Option<Pat
 
 /// Resolves a typed path through `files` and checks it as Add and Import do, returning the path
 /// when it can become a Document.
+///
+/// # Errors
+/// [`Error::UnsupportedFile`], [`Error::AlreadyInLibrary`] or [`Error::PathMissing`], in that
+/// order.
 pub fn check_path(
     files: &dyn DocumentFiles,
     documents: &[Document],
     typed: &str,
-) -> std::result::Result<PathBuf, PathRefusal> {
+) -> Result<PathBuf> {
     let path = files.resolve(typed);
     let exists = files.exists(&path);
     match path_refusal(documents, &path, exists) {
@@ -248,11 +239,15 @@ pub fn import_batch(
         .iter()
         .map(|line| {
             match path_refusal(documents, &line.path, line.exists) {
-                Some(PathRefusal::Unsupported) => {
+                Some(Error::UnsupportedFile) => {
                     return ImportOutcome::Unsupported(line.typed.clone());
                 }
-                Some(PathRefusal::Already(title)) => return ImportOutcome::Already(title),
-                Some(PathRefusal::NotFound) => return ImportOutcome::NotFound(line.typed.clone()),
+                Some(Error::AlreadyInLibrary(title)) => return ImportOutcome::Already(title),
+                Some(Error::PathMissing) => return ImportOutcome::NotFound(line.typed.clone()),
+                Some(other) => {
+                    debug_assert!(false, "a path is never refused with {other:?}");
+                    return ImportOutcome::NotFound(line.typed.clone());
+                }
                 None => {}
             }
             match import_path(

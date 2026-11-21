@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use lib_shell::{EntryKind, FolderEntry, FolderUnreadable, LedgerFolders};
+use lib_shell::{EntryKind, FolderEntry, LedgerFolders};
 
 /// The explorer's folders, read from the disk. An entry whose metadata can't be read (a race
 /// with its deletion) is left out.
@@ -15,9 +15,12 @@ use lib_shell::{EntryKind, FolderEntry, FolderUnreadable, LedgerFolders};
 pub struct FsLedgerFolders;
 
 impl LedgerFolders for FsLedgerFolders {
-    fn read_folder(&self, folder: &Path) -> Result<Vec<FolderEntry>, FolderUnreadable> {
-        let read_dir =
-            std::fs::read_dir(folder).map_err(|error| FolderUnreadable(error.to_string()))?;
+    /// The `io::Error` is logged here, since only its kind goes back.
+    fn read_folder(&self, folder: &Path) -> lib_shell::Result<Vec<FolderEntry>> {
+        let read_dir = std::fs::read_dir(folder).map_err(|error| {
+            tracing::warn!(%error, folder = %folder.display(), "Couldn't read a folder");
+            lib_shell::Error::FolderUnreadable(error.kind())
+        })?;
         Ok(read_dir
             .flatten()
             .filter_map(|entry| {
@@ -76,6 +79,18 @@ mod tests {
             FsLedgerFolders
                 .read_folder(&dir.path().join("missing"))
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn a_missing_folder_is_unreadable_by_its_kind() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+
+        assert_eq!(
+            FsLedgerFolders.read_folder(&dir.path().join("missing")),
+            Err(lib_shell::Error::FolderUnreadable(
+                std::io::ErrorKind::NotFound
+            ))
         );
     }
 

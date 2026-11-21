@@ -757,15 +757,15 @@ fn add_refuses_an_unsupported_file_then_a_held_path_then_a_missing_file() {
     );
     assert_eq!(
         check_path(&files, &documents, "~/notes.txt"),
-        Err(PathRefusal::Unsupported)
+        Err(Error::UnsupportedFile)
     );
     assert_eq!(
         check_path(&files, &documents, "~/held.pdf"),
-        Err(PathRefusal::Already("Held".to_string()))
+        Err(Error::AlreadyInLibrary("Held".to_string()))
     );
     assert_eq!(
         check_path(&files, &documents, "missing.pdf"),
-        Err(PathRefusal::NotFound)
+        Err(Error::PathMissing)
     );
 }
 

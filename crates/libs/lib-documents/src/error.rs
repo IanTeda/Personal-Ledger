@@ -1,7 +1,6 @@
 //! The Documents Refusals (`GLOSSARY.md`): one variant per rule a Document, filing or Document
 //! Type write enforces. A Document Type name the rules refuse keeps its own small error beside its
-//! check (`NameError`), wrapped here; a typed path's `PathRefusal` is returned directly, never
-//! through `Result<T>`, so it isn't. The `#[error]` text is for logs, and carries no Title or
+//! check (`NameError`), wrapped here. The `#[error]` text is for logs, and carries no Title or
 //! name (ADR-0047); the person sees the Presenter's `msg::` Message.
 
 use crate::types::NameError;
@@ -23,6 +22,9 @@ pub enum Error {
     /// One Document per path: the Library already holds this one, under this Title.
     #[error("the library already holds this file")]
     AlreadyInLibrary(String),
+    /// No file is at the typed path.
+    #[error("no file is at the path")]
+    PathMissing,
     /// A blank Title.
     #[error("a document needs a title")]
     NoTitle,

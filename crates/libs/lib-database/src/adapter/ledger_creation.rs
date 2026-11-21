@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use lib_ledger_creation::{CreationFailure, LedgerCreation, NewLedger};
+use lib_ledger_creation::{LedgerCreation, NewLedger};
 
 use crate::adapter::budgets::BudgetsAdapter;
 use crate::adapter::documents::DocumentsAdapter;
@@ -41,7 +41,7 @@ impl LedgerCreation for LedgerCreationAdapter {
         &mut self,
         path: &Path,
         ledger: &NewLedger,
-    ) -> std::result::Result<(), CreationFailure> {
+    ) -> lib_ledger_creation::Result<()> {
         // A stale journal beside the name would replay into the new file, so it counts as taken.
         if lib_shell::explorer::ledger_files(path)
             .iter()
@@ -49,7 +49,7 @@ impl LedgerCreation for LedgerCreationAdapter {
             .any(|journal| journal.exists())
         {
             tracing::error!(path = %path.display(), "A journal is already beside the new Ledger file");
-            return Err(CreationFailure::Exists);
+            return Err(lib_ledger_creation::Error::Exists);
         }
         // `create_new` claims the name atomically, so a file made after the explorer checked the
         // name is refused rather than overwritten.
@@ -60,9 +60,9 @@ impl LedgerCreation for LedgerCreationAdapter {
         {
             tracing::error!(%error, path = %path.display(), "Couldn't claim the new Ledger file");
             return Err(if error.kind() == std::io::ErrorKind::AlreadyExists {
-                CreationFailure::Exists
+                lib_ledger_creation::Error::Exists
             } else {
-                CreationFailure::Unwritable
+                lib_ledger_creation::Error::Unwritable
             });
         }
         match write(path, ledger.clone(), self.fail_before_commit) {
@@ -73,7 +73,7 @@ impl LedgerCreation for LedgerCreationAdapter {
             Err(error) => {
                 tracing::error!(%error, path = %path.display(), "Failed to create the Ledger file");
                 remove_ledger_files(path);
-                Err(CreationFailure::Unwritable)
+                Err(lib_ledger_creation::Error::Unwritable)
             }
         }
     }
@@ -234,7 +234,7 @@ mod tests {
 
         assert_eq!(
             LedgerCreationAdapter::new().create_ledger(&path, &contract::usd_ledger()),
-            Err(CreationFailure::Exists)
+            Err(lib_ledger_creation::Error::Exists)
         );
 
         assert!(!path.exists());
@@ -257,7 +257,7 @@ mod tests {
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755))
             .expect("the folder writable again, for the clean-up");
 
-        assert_eq!(created, Err(CreationFailure::Unwritable));
+        assert_eq!(created, Err(lib_ledger_creation::Error::Unwritable));
         assert_eq!(std::fs::read_dir(&locked).expect("the folder").count(), 0);
     }
 }

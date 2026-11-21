@@ -1,4 +1,5 @@
-//! Why an Undo or Redo step didn't apply, as the Client's Router reports it. Typed, never a
+//! Why an Undo or Redo step didn't apply, as the Client's Router reports it, or a folder the
+//! explorer browses couldn't be read, as the `LedgerFolders` port reports it. Typed, never a
 //! pre-formatted string: the Shell words the status line from the variant, and the `Display` text
 //! is for logs.
 
@@ -16,6 +17,9 @@ pub enum Error {
     ConfigurationNoFile { key: ConfigKey },
     /// Writing the key to the configuration file failed.
     ConfigurationNotWritten { key: ConfigKey },
+    /// A folder the explorer browses couldn't be read (permissions, or gone), by the I/O error's
+    /// kind. The adapter logs the error itself.
+    FolderUnreadable(std::io::ErrorKind),
 }
 
 // By hand, not `thiserror`: it reads a field named `source` as the error's cause, and this one is
@@ -39,6 +43,7 @@ impl fmt::Display for Error {
             Self::ConfigurationNotWritten { key } => {
                 write!(f, "{} wasn't written to the configuration file", key.name())
             }
+            Self::FolderUnreadable(kind) => write!(f, "the folder couldn't be read: {kind}"),
         }
     }
 }

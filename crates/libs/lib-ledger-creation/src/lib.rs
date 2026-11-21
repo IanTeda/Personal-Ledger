@@ -31,5 +31,5 @@ pub mod protocols;
 mod starting;
 
 pub use error::{Error, Result};
-pub use protocols::{CreationFailure, LedgerCreation};
+pub use protocols::LedgerCreation;
 pub use starting::NewLedger;

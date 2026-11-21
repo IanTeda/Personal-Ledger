@@ -142,7 +142,7 @@ pub enum Error {
     /// `lib-ledger-creation`'s port wrote no file: one was already there, or it couldn't be
     /// written. Nothing is left at the path.
     #[error("The Ledger file couldn't be created: {0}")]
-    LedgerCreation(#[from] lib_ledger_creation::CreationFailure),
+    LedgerCreation(#[from] lib_ledger_creation::Error),
 
     /// File system or thread error
     ///

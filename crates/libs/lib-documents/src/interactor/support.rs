@@ -37,8 +37,8 @@ pub(super) fn logged_type<R>(intent: &str, id: DocumentTypeId, outcome: Result<R
 /// Runs `rule` on a copy of the Documents and writes each Document it added or changed.
 pub(super) fn write_documents<R, E>(
     repo: &mut dyn DocumentRepository,
-    rule: impl FnOnce(&[DocumentTypeRow], &mut Vec<Document>) -> std::result::Result<R, E>,
-) -> std::result::Result<R, E> {
+    rule: impl FnOnce(&[DocumentTypeRow], &mut Vec<Document>) -> Result<R, E>,
+) -> Result<R, E> {
     let types = repo.document_types();
     let before = repo.documents();
     let mut after = before.clone();

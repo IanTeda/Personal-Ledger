@@ -43,7 +43,7 @@ pub use dialog::{DialogCommand, dialog_keymap};
 pub use error::{Error, Result};
 pub use explorer::{
     EntryKind, ExplorerChoice, ExplorerFilter, ExplorerFilters, ExplorerMode, ExplorerOutcome,
-    ExplorerViewModel, FolderEntry, FolderUnreadable, LedgerFolders,
+    ExplorerViewModel, FolderEntry, LedgerFolders,
 };
 pub use help::{HelpEvent, HelpGroup, HelpPresenter, HelpViewModel};
 pub use history::{Entry, History, HistoryRow, HistoryViewModel, Step, Stepped, Steps};

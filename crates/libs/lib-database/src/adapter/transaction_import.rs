@@ -11,9 +11,7 @@
 //! [`PendingWrites`]: crate::PendingWrites
 
 use lib_payees::Payee;
-use lib_transaction_import::{
-    ImportCommitted, ImportPayees, ImportPlan, Result, TransactionImport,
-};
+use lib_transaction_import::{ImportCommitted, ImportPayees, ImportPlan, TransactionImport};
 
 use super::store::{SharedPayeesStore, SharedTransactionsStore};
 
@@ -34,7 +32,7 @@ impl TransactionImportAdapter {
 
 impl TransactionImport for TransactionImportAdapter {
     /// The Payees first: each Transaction's Split names one, which must be stored before it.
-    fn commit(&mut self, plan: ImportPlan) -> Result<ImportCommitted> {
+    fn commit(&mut self, plan: ImportPlan) -> lib_transaction_import::Result<ImportCommitted> {
         let committed = plan.check(&self.payees.borrow().payees().payees())?;
         {
             let mut store = self.payees.borrow_mut();

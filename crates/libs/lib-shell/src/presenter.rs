@@ -1062,6 +1062,13 @@ fn failure_message(error: &crate::Error) -> String {
         }
         Error::ConfigurationNoFile { key } => msg::settings_device_no_file(key.name()),
         Error::ConfigurationNotWritten { key } => msg::settings_device_write_failed(key.name()),
+        Error::FolderUnreadable(_) => {
+            debug_assert!(
+                false,
+                "an Undo or Redo step never fails on a folder: {error:?}"
+            );
+            msg::status_step_not_saved_unsaved()
+        }
     }
 }
 
