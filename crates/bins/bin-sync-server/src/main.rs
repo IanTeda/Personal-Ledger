@@ -1,5 +1,4 @@
 mod auth;
-mod error;
 mod sync;
 
 use std::sync::Arc;
@@ -11,7 +10,7 @@ use rand::RngCore;
 use secrecy::SecretString;
 use tonic::service::Routes;
 
-use error::SyncServerResult;
+use bin_sync_server::Result;
 use lib_config as config;
 use lib_rpc::{SyncServiceServer, UtilitiesService, UtilitiesServiceServer};
 use lib_tracing as telemetry;
@@ -31,7 +30,7 @@ struct Cli {
 }
 
 #[tokio::main]
-async fn main() -> SyncServerResult<()> {
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     // `parse_for_sync_server`, not `parse` -- ADR-0014's reduced defaults -> explicit path ->
     // env chain, skipping the Client-only system/user/executable-directory/working-directory
@@ -105,7 +104,7 @@ fn generate_signing_key() -> String {
 }
 
 /// Create the single bootstrap sync user on first run, if the `sync_users` table is empty.
-async fn bootstrap_account(pool: &sqlx::SqlitePool) -> SyncServerResult<()> {
+async fn bootstrap_account(pool: &sqlx::SqlitePool) -> Result<()> {
     if lib_database::SyncUser::find_only(pool).await?.is_some() {
         return Ok(());
     }

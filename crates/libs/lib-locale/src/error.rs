@@ -15,4 +15,4 @@ pub enum Error {
 }
 
 /// Result alias for the localisation crate.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T, E = Error> = std::result::Result<T, E>;

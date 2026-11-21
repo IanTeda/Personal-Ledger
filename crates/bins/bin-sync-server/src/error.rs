@@ -1,13 +1,13 @@
 //! Crate error type for the Sync Server binary.
 //!
-//! `SyncServerError` wraps the lower-level errors `main.rs`'s startup and bootstrap flow
+//! `Error` wraps the lower-level errors `main.rs`'s startup and bootstrap flow
 //! surfaces while parsing configuration, initialising telemetry, connecting/migrating its
 //! durable store, hashing the bootstrap account's password, and binding its listener, so that
-//! flow returns a single `SyncServerResult<T>` alias rather than a mix of `io::Result`,
+//! flow returns a single `Result<T>` alias rather than a mix of `io::Result`,
 //! `lib_database::Result`, and ad hoc `Box<dyn Error>`.
 
 #[derive(thiserror::Error, Debug)]
-pub enum SyncServerError {
+pub enum Error {
     /// Configuration loading/validation failures.
     #[error("Configuration error: {0}")]
     Config(#[from] lib_config::Error),
@@ -34,7 +34,5 @@ pub enum SyncServerError {
     PasswordHash(#[from] argon2::password_hash::Error),
 }
 
-/// Crate Result type alias used across the Sync Server binary.
-///
-/// Use `SyncServerResult<T>` for functions that return `T` or a `SyncServerError`.
-pub type SyncServerResult<T> = Result<T, SyncServerError>;
+/// This crate's fallible results.
+pub type Result<T, E = Error> = std::result::Result<T, E>;

@@ -64,4 +64,4 @@ pub enum Error {
 /// Result type alias for domain operations.
 ///
 /// Use `Result<T>` for functions that return `T` or a domain error.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T, E = Error> = std::result::Result<T, E>;

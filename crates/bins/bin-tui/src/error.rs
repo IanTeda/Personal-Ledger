@@ -1,8 +1,8 @@
 //! Crate error type for the TUI binary.
 //!
-//! `TuiError` wraps the lower-level errors the TUI surfaces while parsing configuration,
+//! `Error` wraps the lower-level errors the TUI surfaces while parsing configuration,
 //! initialising telemetry, driving the terminal, and reading/writing its local Ledger store,
-//! so every fallible path across the crate returns the same `TuiResult<T>` alias rather than a
+//! so every fallible path across the crate returns the same `Result<T>` alias rather than a
 //! mix of `io::Result`, `lib_database::Result`, and ad hoc `Box<dyn Error>`.
 
 #[derive(thiserror::Error, Debug)]
@@ -24,3 +24,6 @@ pub enum Error {
     #[error("Database error: {0}")]
     Database(#[from] lib_database::Error),
 }
+
+/// This crate's fallible results.
+pub type Result<T, E = Error> = std::result::Result<T, E>;

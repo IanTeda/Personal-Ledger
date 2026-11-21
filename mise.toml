@@ -54,11 +54,12 @@ run = "bacon desktop"
 # green Lint workflow. SQLX_OFFLINE forces lib-database's query macros onto the checked-in `.sqlx`
 # cache, as in CI, instead of the live dev DB that `.env` points a local build at.
 [tasks.lint]
-description = "Run the CI lint checks locally: rustfmt check and clippy with warnings denied"
+description = "Run the CI lint checks locally: rustfmt check, clippy with warnings denied and the convention tests"
 env = { SQLX_OFFLINE = "true" }
 run = [
   "cargo fmt --check",
   "cargo clippy --workspace --all-targets -- -D warnings",
+  "cargo test --package lib_database --test error_convention --test viper_dependencies",
 ]
 
 # Headless Desktop UI integration tests (ADR-0030). `bin_desktop`'s self dev-dependency already

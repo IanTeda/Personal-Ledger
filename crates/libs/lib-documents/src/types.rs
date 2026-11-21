@@ -30,7 +30,7 @@ pub fn check_name(
     types: &[DocumentTypeRow],
     name: &str,
     own_id: Option<DocumentTypeId>,
-) -> std::result::Result<(), NameError> {
+) -> Result<(), NameError> {
     let name = name.trim();
     if name.is_empty() {
         return Err(NameError::Empty);

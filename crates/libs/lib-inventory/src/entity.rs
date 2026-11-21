@@ -165,7 +165,7 @@ pub struct CoverDraft {
 
 impl CoverDraft {
     /// `Ok(None)` when there is no insurer, which clears all five fields.
-    pub fn validate(&self) -> std::result::Result<Option<Cover>, CoverError> {
+    pub fn validate(&self) -> Result<Option<Cover>, CoverError> {
         let insurer = self.insurer.trim();
         if insurer.is_empty() {
             return Ok(None);

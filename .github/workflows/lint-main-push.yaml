@@ -40,6 +40,11 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # The workspace conventions clippy can't see: every crate's error.rs and Result (ADR-0060)
+      # and the VIPER dependency rule.
+      - name: Run the convention tests
+        run: cargo test --package lib_database --test error_convention --test viper_dependencies
+
   # Dependency policy (deny.toml). Advisories are split out and non-blocking so a newly published
   # RustSec advisory against an existing dependency doesn't fail unrelated pushes; licences, bans
   # and sources only change when Cargo.lock does, so those block.

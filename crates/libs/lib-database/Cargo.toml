@@ -80,6 +80,10 @@ lib_ledger_creation = { path = "../../../crates/libs/lib-ledger-creation", featu
 lib_tag_removal = { path = "../../../crates/libs/lib-tag-removal", features = ["contract-tests"] }
 lib_category_deletion = { path = "../../../crates/libs/lib-category-deletion", features = ["contract-tests"] }
 lib_transaction_import = { path = "../../../crates/libs/lib-transaction-import", features = ["contract-tests"] }
+## The error convention test (`tests/error_convention.rs`) parses every crate's source.
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full", "visit"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 

@@ -3,7 +3,7 @@
 use config::ConfigError as ConfigLibError;
 
 /// Result alias for this crate's [`Error`].
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Errors produced while loading or validating configuration.
 #[derive(thiserror::Error, Debug)]

@@ -58,18 +58,13 @@ use gpui::{
     size,
 };
 
-pub use error::Error;
+pub use error::{Error, Result};
 use lib_database::{FsLedgerFolders, LedgerCreationAdapter, Storage, open_storage};
 use lib_ledger_creation::presenter::SharedLedgerCreation;
 use lib_shell::LedgerFolders;
 use persistence::{PersistedState, WindowGeometry};
 pub use settings::device::{ConfiguredDevice, DeviceConfigFile};
 pub use shell::view::window_size::{WindowSize, WindowSizeExt};
-
-/// Crate Result type alias used across the Desktop binary.
-///
-/// Use `crate::Result<T>` for functions that return `T` or a `crate::Error`.
-pub type Result<T> = std::result::Result<T, Error>;
 
 /// Archivo (400/600/800), bundled at compile time rather than fetched from Google Fonts at
 /// runtime the way the handoff's own mockup does -- the client is local-first and must render

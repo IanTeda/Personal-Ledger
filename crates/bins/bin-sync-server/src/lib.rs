@@ -3,4 +3,7 @@
 //! otherwise keep private to `main.rs`. `main.rs` stays the actual entry point.
 
 pub mod auth;
+mod error;
 pub mod sync;
+
+pub use error::{Error, Result};

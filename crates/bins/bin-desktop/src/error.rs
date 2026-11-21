@@ -1,8 +1,8 @@
 //! Crate error type for the Desktop binary.
 //!
-//! `DesktopError` wraps the lower-level errors the Desktop app surfaces while parsing
+//! `Error` wraps the lower-level errors the Desktop app surfaces while parsing
 //! configuration, initialising telemetry, and reading/writing its embedded Ledger store, so
-//! every fallible path across the crate returns the same `DesktopResult<T>` alias rather than a
+//! every fallible path across the crate returns the same `Result<T>` alias rather than a
 //! mix of `lib_database::Result` and ad hoc `Box<dyn Error>`.
 
 #[derive(thiserror::Error, Debug)]
@@ -23,3 +23,6 @@ pub enum Error {
     #[error("Desktop error: {0}")]
     Generic(String),
 }
+
+/// This crate's fallible results.
+pub type Result<T, E = Error> = std::result::Result<T, E>;

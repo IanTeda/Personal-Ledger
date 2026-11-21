@@ -5,7 +5,7 @@
 mod account;
 mod category;
 pub mod colours;
-pub mod error;
+mod error;
 pub mod event;
 mod fixture;
 mod format;
@@ -27,16 +27,11 @@ mod msg {
     include!(concat!(env!("OUT_DIR"), "/msg.rs"));
 }
 
-pub use error::Error;
+pub use error::{Error, Result};
 
 pub use shell::Shell;
 
 use lib_config::KeyBindingConfig;
-
-/// Crate Result type alias used across the TUI.
-///
-/// Use `TuiResult<T>` for functions that return `T` or a `TuiError`.
-pub type Result<T> = std::result::Result<T, Error>;
 
 /// Builds the `Shell` the way `main` does, from the key bindings and the Colours already
 /// resolved, with no Ledger open: `:open` and `:new` open a Ledger file, and a bare `:open` opens
