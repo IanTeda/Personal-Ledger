@@ -36,7 +36,7 @@ impl DeviceConfigFile {
     }
 }
 
-/// Logs a failed write's cause, which the policy only sees as a [`Error`].
+/// Logs a failed write's cause, which the policy only sees as an [`Error`].
 fn failed(key: ConfigKey) -> impl FnOnce(lib_config::Error) -> Error {
     move |error| {
         tracing::error!(%error, key = key.name(), "Couldn't write a device's setting");
