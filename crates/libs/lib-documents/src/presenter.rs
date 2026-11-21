@@ -45,6 +45,7 @@ pub use link_picker::{
     PickerRowView, PickerTypeLine, Purpose,
 };
 
+pub use crate::types::{NAME_MAX, NameError};
 pub use default_notice::{DefaultNoticeEvent, DefaultNoticePresenter, DefaultNoticeViewModel};
 pub use delete_document::{DeleteDocumentEvent, DeleteDocumentPresenter, DeleteDocumentViewModel};
 pub use documents_page::{
@@ -53,8 +54,8 @@ pub use documents_page::{
 };
 pub use remove_type::{RemoveTypeEvent, RemoveTypePresenter, RemoveTypeViewModel};
 pub use type_form::{
-    DocumentTypeField, NAME_MAX, NameError, REMIND_OPTIONS, TRACKS_OPTIONS, TypeFormEvent,
-    TypeFormPresenter, TypeFormViewModel,
+    DocumentTypeField, REMIND_OPTIONS, TRACKS_OPTIONS, TypeFormEvent, TypeFormPresenter,
+    TypeFormViewModel,
 };
 pub use types_page::{
     DocumentTypesPageEvent, DocumentTypesPagePresenter, DocumentTypesPageViewModel, TypeColumns,

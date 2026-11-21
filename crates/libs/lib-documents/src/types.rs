@@ -9,6 +9,43 @@ use lib_core::DocumentTypeId;
 
 use crate::{Error, Result};
 
+/// Longest Document Type name, in characters (#477).
+pub const NAME_MAX: usize = 40;
+
+/// Why a Document Type name can't be saved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum NameError {
+    #[error("the name is empty")]
+    Empty,
+    #[error("the name is too long")]
+    TooLong,
+    /// Another type already has the name, ignoring case.
+    #[error("the name is taken")]
+    Taken,
+}
+
+/// Checks a Document Type name: trimmed, it is not empty, not over `NAME_MAX` characters and not
+/// another type's name ignoring case. On an edit `own_id`'s own name doesn't count.
+pub fn check_name(
+    types: &[DocumentTypeRow],
+    name: &str,
+    own_id: Option<DocumentTypeId>,
+) -> std::result::Result<(), NameError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(NameError::Empty);
+    }
+    if name.chars().count() > NAME_MAX {
+        return Err(NameError::TooLong);
+    }
+    let lower = name.to_lowercase();
+    let taken = types
+        .iter()
+        .filter(|row| Some(row.id) != own_id)
+        .any(|row| row.name.trim().to_lowercase() == lower);
+    if taken { Err(NameError::Taken) } else { Ok(()) }
+}
+
 /// The kind of Key Date a type tracks (`GLOSSARY.md`'s Key Date).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TracksDate {

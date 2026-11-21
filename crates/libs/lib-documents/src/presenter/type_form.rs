@@ -22,10 +22,10 @@ use super::tracks_label;
 use crate::interactor::{AddDocumentType, EditDocumentType};
 use crate::msg;
 use crate::protocols::{DocumentTypesOutcome, SharedRepository, TypeChange};
-use crate::types::{DocumentTypeDraft, DocumentTypeRow, RemindLead, TracksDate, get};
-
-/// Longest Document Type name, in characters (#477).
-pub const NAME_MAX: usize = 40;
+use crate::types::{
+    DocumentTypeDraft, DocumentTypeRow, NAME_MAX, NameError, RemindLead, TracksDate, check_name,
+    get,
+};
 
 /// The Tracks date control's options, in order; `None` tracks no date.
 pub const TRACKS_OPTIONS: [Option<TracksDate>; 5] = [
@@ -64,18 +64,6 @@ impl DocumentTypeField {
         Self::Remind,
         Self::FinancialYear,
     ];
-}
-
-/// Why a name can't be saved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum NameError {
-    #[error("the name is empty")]
-    Empty,
-    #[error("the name is too long")]
-    TooLong,
-    /// Another type already has the name, ignoring case.
-    #[error("the name is taken")]
-    Taken,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,8 +132,8 @@ pub struct TypeFormPresenter {
     focused: DocumentTypeField,
     /// Whether the name has been edited, which is when its error starts to show.
     touched: bool,
-    /// Every other type's name, trimmed and lower-cased: the ones this name must not repeat.
-    taken: Vec<String>,
+    /// The types the Dialog opened among, which the name must not repeat.
+    types: Vec<DocumentTypeRow>,
     dated: u32,
 }
 
@@ -164,7 +152,7 @@ impl TypeFormPresenter {
             financial_year: false,
             focused: DocumentTypeField::Name,
             touched: false,
-            taken: taken_names(&types, None),
+            types,
             dated: 0,
         }
     }
@@ -178,7 +166,6 @@ impl TypeFormPresenter {
         form.tracks_date = row.tracks_date;
         form.remind = row.remind;
         form.financial_year = row.financial_year;
-        form.taken = taken_names(&types, Some(id));
         form.dated = if row.tracks_date.is_some() {
             row.files
         } else {
@@ -362,16 +349,8 @@ impl TypeFormPresenter {
     }
 
     fn name_error(&self) -> Option<NameError> {
-        let name = self.name.trim();
-        if name.is_empty() {
-            return Some(NameError::Empty);
-        }
-        if name.chars().count() > NAME_MAX {
-            return Some(NameError::TooLong);
-        }
-        self.taken
-            .contains(&name.to_lowercase())
-            .then_some(NameError::Taken)
+        let own_id = self.editing.as_ref().map(|editing| editing.id);
+        check_name(&self.types, &self.name, own_id).err()
     }
 
     /// Remind is inert, and so disabled, while no date is tracked.
@@ -446,7 +425,7 @@ impl TypeFormPresenter {
             }
             .run(&mut *repository)
             .map(|()| editing.id),
-            None => Ok(AddDocumentType(draft).run(&mut *repository)),
+            None => AddDocumentType(draft).run(&mut *repository),
         };
         drop(repository);
         match saved {
@@ -474,14 +453,6 @@ fn remind_option_label(option: Option<RemindLead>) -> String {
         Some(RemindLead::Days(days)) => msg::documents_types_option_days(&days.to_string()),
         Some(RemindLead::Months(months)) => msg::documents_types_option_months(&months.to_string()),
     }
-}
-
-fn taken_names(types: &[DocumentTypeRow], own_id: Option<DocumentTypeId>) -> Vec<String> {
-    types
-        .iter()
-        .filter(|row| Some(row.id) != own_id)
-        .map(|row| row.name.trim().to_lowercase())
-        .collect()
 }
 
 fn step<T: Copy + PartialEq>(options: &[T], current: T, delta: isize) -> T {

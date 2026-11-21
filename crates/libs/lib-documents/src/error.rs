@@ -4,7 +4,7 @@
 //! logs; the person sees the Presenter's `msg::` Message.
 
 use crate::PathRefusal;
-use crate::presenter::NameError;
+use crate::types::NameError;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {

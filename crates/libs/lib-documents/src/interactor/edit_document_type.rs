@@ -4,7 +4,7 @@ use lib_core::DocumentTypeId;
 
 use super::support::logged_type;
 use crate::protocols::DocumentRepository;
-use crate::types::{DocumentTypeDraft, edit_type};
+use crate::types::{DocumentTypeDraft, check_name, edit_type, get};
 use crate::{Error, Result};
 
 /// Applies `draft` to Document Type `id`.
@@ -17,13 +17,17 @@ pub struct EditDocumentType {
 impl EditDocumentType {
     pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<()> {
         let mut types = repo.document_types();
-        let outcome = if edit_type(&mut types, self.id, &self.draft) {
-            if let Some(row) = types.iter().find(|row| row.id == self.id) {
-                repo.upsert_document_type(row);
-            }
-            Ok(())
-        } else {
+        let outcome = if get(&types, self.id).is_none() {
             Err(Error::UnknownDocumentType)
+        } else {
+            check_name(&types, &self.draft.name, Some(self.id))
+                .map_err(Error::Name)
+                .map(|()| {
+                    edit_type(&mut types, self.id, &self.draft);
+                    if let Some(row) = types.iter().find(|row| row.id == self.id) {
+                        repo.upsert_document_type(row);
+                    }
+                })
         };
         logged_type("edit document type", self.id, outcome)
     }
@@ -33,6 +37,7 @@ impl EditDocumentType {
 mod tests {
     use super::*;
     use crate::interactor::test_support::*;
+    use crate::types::NameError;
 
     #[test]
     fn edit_document_type_rewrites_the_type_in_place() {
@@ -60,5 +65,34 @@ mod tests {
             }
             .run(ports)
         });
+    }
+
+    #[test]
+    fn edit_document_type_refuses_another_types_name() {
+        let mut ports = ports();
+        let other = ports.repo.types[0].name.to_uppercase();
+
+        ports.refuses(Error::Name(NameError::Taken), |ports| {
+            EditDocumentType {
+                id: TAX.0,
+                draft: draft(&other),
+            }
+            .run(ports)
+        });
+    }
+
+    #[test]
+    fn edit_document_type_accepts_its_own_name_in_other_capitals() {
+        let mut ports = ports();
+        let own = ports.repo.types[2].name.to_uppercase();
+
+        EditDocumentType {
+            id: TAX.0,
+            draft: draft(&own),
+        }
+        .run(&mut ports)
+        .expect("its own name");
+
+        assert_eq!(ports.writes, [Write::Type(TAX.0)]);
     }
 }

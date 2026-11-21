@@ -90,7 +90,9 @@ mod tests {
     #[test]
     fn removing_an_empty_type_moves_its_documents_to_the_default() {
         let mut ports = ports();
-        let empty = AddDocumentType(draft("Medical")).run(&mut ports);
+        let empty = AddDocumentType(draft("Medical"))
+            .run(&mut ports)
+            .expect("a type");
         EditDocument {
             doc_type: DocumentType(empty),
             ..edit(LEASE, "Lease")
