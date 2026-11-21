@@ -224,11 +224,12 @@ impl Presenter for TypeFormPresenter {
             )
         };
         let max = count(NAME_MAX);
+        let name_error = self.name_error();
         TypeFormViewModel {
             frame: DialogFrame {
                 title,
                 submit,
-                can_confirm: self.can_confirm(),
+                can_confirm: name_error.is_none(),
                 destructive: false,
                 hints: Vec::new(),
             },
@@ -242,8 +243,7 @@ impl Presenter for TypeFormPresenter {
                 focused: self.focused == DocumentTypeField::Name,
             },
             name_hint: msg::documents_types_field_name_hint(max),
-            name_error: self
-                .name_error()
+            name_error: name_error
                 .filter(|_| self.touched)
                 .map(|error| match error {
                     NameError::Empty => msg::documents_types_error_name_empty(),

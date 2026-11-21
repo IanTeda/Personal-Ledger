@@ -3,9 +3,9 @@
 use lib_core::DocumentTypeId;
 
 use super::support::logged_type;
+use crate::Result;
 use crate::protocols::DocumentRepository;
-use crate::types::{DocumentTypeDraft, check_name, edit_type, get};
-use crate::{Error, Result};
+use crate::types::{DocumentTypeDraft, edit_type};
 
 /// Applies `draft` to Document Type `id`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,18 +17,8 @@ pub struct EditDocumentType {
 impl EditDocumentType {
     pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<()> {
         let mut types = repo.document_types();
-        let outcome = if get(&types, self.id).is_none() {
-            Err(Error::UnknownDocumentType)
-        } else {
-            check_name(&types, &self.draft.name, Some(self.id))
-                .map_err(Error::Name)
-                .map(|()| {
-                    edit_type(&mut types, self.id, &self.draft);
-                    if let Some(row) = types.iter().find(|row| row.id == self.id) {
-                        repo.upsert_document_type(row);
-                    }
-                })
-        };
+        let outcome =
+            edit_type(&mut types, self.id, &self.draft).map(|row| repo.upsert_document_type(row));
         logged_type("edit document type", self.id, outcome)
     }
 }
@@ -36,6 +26,7 @@ impl EditDocumentType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::interactor::test_support::*;
     use crate::types::NameError;
 

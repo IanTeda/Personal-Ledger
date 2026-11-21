@@ -3,9 +3,9 @@
 use lib_core::DocumentTypeId;
 
 use super::support::logged_type;
+use crate::Result;
 use crate::protocols::DocumentRepository;
-use crate::types::{DocumentTypeDraft, add_type, check_name};
-use crate::{Error, Result};
+use crate::types::{DocumentTypeDraft, add_type};
 
 /// Adds a Document Type at the end of the order and returns its id, a fresh one so removing the
 /// newest type never frees its id for a saved `type:<id>` filter to match a different type.
@@ -16,15 +16,10 @@ impl AddDocumentType {
     pub fn run(self, repo: &mut dyn DocumentRepository) -> Result<DocumentTypeId> {
         let id = DocumentTypeId::new();
         let mut types = repo.document_types();
-        let outcome = check_name(&types, &self.0.name, None)
-            .map_err(Error::Name)
-            .map(|()| {
-                add_type(&mut types, id, &self.0);
-                if let Some(row) = types.last() {
-                    repo.upsert_document_type(row);
-                }
-                id
-            });
+        let outcome = add_type(&mut types, id, &self.0).map(|row| {
+            repo.upsert_document_type(row);
+            id
+        });
         logged_type("add document type", id, outcome)
     }
 }
@@ -32,6 +27,7 @@ impl AddDocumentType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use crate::interactor::test_support::*;
     use crate::types::{NAME_MAX, NameError};
 

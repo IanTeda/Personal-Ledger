@@ -208,7 +208,14 @@ pub struct DocumentTypeDraft {
 
 /// Adds a type from `draft` at the end of the order with the id `id`, a fresh one so removing the
 /// newest type never frees its id for a saved `type:<id>` filter to match against a different type.
-pub fn add_type(types: &mut Vec<DocumentTypeRow>, id: DocumentTypeId, draft: &DocumentTypeDraft) {
+/// Refuses a name the rules refuse before anything is pushed, and returns the row it added.
+pub fn add_type<'a>(
+    types: &'a mut Vec<DocumentTypeRow>,
+    id: DocumentTypeId,
+    draft: &DocumentTypeDraft,
+) -> Result<&'a DocumentTypeRow> {
+    check_name(types, &draft.name, None)?;
+    let index = types.len();
     types.push(DocumentTypeRow {
         id,
         name: draft.name.trim().to_string(),
@@ -218,23 +225,25 @@ pub fn add_type(types: &mut Vec<DocumentTypeRow>, id: DocumentTypeId, draft: &Do
         files: 0,
         is_default: false,
     });
+    Ok(&types[index])
 }
 
 /// Applies `draft` to the type with `id`. The id never changes, so saved filters survive a rename.
-/// Returns whether the type exists.
-pub fn edit_type(
-    types: &mut [DocumentTypeRow],
+/// Refuses an unknown id, then a name the rules refuse, before the row is touched; returns the
+/// edited row.
+pub fn edit_type<'a>(
+    types: &'a mut [DocumentTypeRow],
     id: DocumentTypeId,
     draft: &DocumentTypeDraft,
-) -> bool {
-    let Some(row) = types.iter_mut().find(|row| row.id == id) else {
-        return false;
-    };
+) -> Result<&'a DocumentTypeRow> {
+    let index = position(types, id).ok_or(Error::UnknownDocumentType)?;
+    check_name(types, &draft.name, Some(id))?;
+    let row = &mut types[index];
     row.name = draft.name.trim().to_string();
     row.tracks_date = draft.tracks_date;
     row.remind = draft.remind;
     row.financial_year = draft.financial_year;
-    true
+    Ok(&types[index])
 }
 
 /// Removes the type with `id`, moving its Filed files to the type named `destination`.
@@ -348,32 +357,77 @@ mod tests {
     #[test]
     fn add_type_appends_a_trimmed_empty_row_with_the_given_id() {
         let mut types = default_types();
-        add_type(&mut types, DocumentTypeId::seed(10), &draft("Warranties"));
-        let row = types.last().unwrap();
+        let added = add_type(&mut types, DocumentTypeId::seed(10), &draft("Warranties"))
+            .expect("a new name")
+            .clone();
         assert_eq!(
-            (row.id, row.name.as_str(), row.files),
+            (added.id, added.name.as_str(), added.files),
             (DocumentTypeId::seed(10), "Warranties", 0)
         );
-        assert!(!row.is_default);
-        assert_eq!(row.tracks_date, Some(TracksDate::Renews));
+        assert!(!added.is_default);
+        assert_eq!(added.tracks_date, Some(TracksDate::Renews));
+        assert_eq!(types.last(), Some(&added));
     }
 
     #[test]
-    fn edit_type_keeps_the_id_and_reports_a_missing_type() {
+    fn add_type_refuses_a_name_the_rules_refuse_and_leaves_the_types_unchanged() {
         let mut types = default_types();
-        assert!(edit_type(
-            &mut types,
-            DocumentTypeId::seed(3),
-            &draft("Renamed")
-        ));
+        let before = types.clone();
+        let long = "x".repeat(NAME_MAX + 1);
+        let taken = types[2].name.to_uppercase();
+
+        assert_eq!(
+            add_type(&mut types, DocumentTypeId::seed(10), &draft("  ")).err(),
+            Some(Error::Name(NameError::Empty))
+        );
+        assert_eq!(
+            add_type(&mut types, DocumentTypeId::seed(10), &draft(&long)).err(),
+            Some(Error::Name(NameError::TooLong))
+        );
+        assert_eq!(
+            add_type(&mut types, DocumentTypeId::seed(10), &draft(&taken)).err(),
+            Some(Error::Name(NameError::Taken))
+        );
+        assert_eq!(types, before);
+    }
+
+    #[test]
+    fn edit_type_keeps_the_id_and_returns_the_edited_row() {
+        let mut types = default_types();
+        let edited = edit_type(&mut types, DocumentTypeId::seed(3), &draft("Renamed"))
+            .expect("a known type with a new name");
+        assert_eq!(
+            (edited.id, edited.name.as_str()),
+            (DocumentTypeId::seed(3), "Renamed")
+        );
         assert_eq!(
             get(&types, DocumentTypeId::seed(3)).unwrap().name,
             "Renamed"
         );
-        assert!(!edit_type(
-            &mut types,
-            DocumentTypeId::seed(99),
-            &draft("Nope")
-        ));
+    }
+
+    #[test]
+    fn edit_type_reports_a_missing_type() {
+        let mut types = default_types();
+        let before = types.clone();
+
+        assert_eq!(
+            edit_type(&mut types, DocumentTypeId::seed(99), &draft("Nope")).err(),
+            Some(Error::UnknownDocumentType)
+        );
+        assert_eq!(types, before);
+    }
+
+    #[test]
+    fn edit_type_refuses_another_types_name_and_leaves_the_row_unchanged() {
+        let mut types = default_types();
+        let before = types.clone();
+        let other = types[0].name.to_uppercase();
+
+        assert_eq!(
+            edit_type(&mut types, DocumentTypeId::seed(3), &draft(&other)).err(),
+            Some(Error::Name(NameError::Taken))
+        );
+        assert_eq!(types, before);
     }
 }
