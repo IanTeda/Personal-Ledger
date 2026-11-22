@@ -2602,10 +2602,10 @@ impl Shell {
             Some(mode) => crate::msg::tui_status_line_with_mode(&name, &upper(mode)),
             None => name,
         };
-        // Representative content -- a real last-sync time lands with the sync ticket. Blank with
-        // no Ledger open: there's nothing to have synced.
+        // Nothing syncs until a Sync Server is set up, so an open Ledger has never synced; the
+        // time of the last sync lands with the sync ticket. Blank with no Ledger open.
         let synced = if self.ledger.is_some() {
-            format!(" {} ", crate::msg::tui_status_synced("14:22"))
+            format!(" {} ", crate::msg::tui_status_never_synced())
         } else {
             String::new()
         };
@@ -3804,7 +3804,7 @@ mod tests {
             "status line missing:\n{text}"
         );
         assert!(!status.contains("Dashboard"), "{status}");
-        assert!(status.trim_end().ends_with("Synced 14:22"), "{status}");
+        assert!(status.trim_end().ends_with("Never synced"), "{status}");
     }
 
     #[test]

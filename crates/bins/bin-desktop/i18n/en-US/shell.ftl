@@ -51,9 +51,10 @@ desktop-ledger-open-newer = it was made by a newer version; update Personal Ledg
 desktop-ledger-open-not-a-ledger = it's a database, but not a Ledger file
 desktop-ledger-open-incomplete = it isn't a complete Ledger; create it again with :new
 
-## The top bar. `$time` is the time of the last sync.
+## The top bar's sync state. There is no sync yet, so it always reads Never synced; the time of
+## the last sync lands with the sync ticket.
 
-desktop-topbar-synced = Synced { $time }
+desktop-topbar-never-synced = Never synced
 
 ## The top bar's Undo list (`lib_shell::HistoryViewModel`): its heading, the marker between the
 ## entries to redo and those to undo, and its one row when there is nothing to undo.

@@ -13,9 +13,10 @@ tui-view-units-title = Units & prices
 
 tui-status-line-with-mode = { $name } · { $mode }
 
-## The status line's right side once a Ledger is open: only the time of the last sync (`$time`).
+## The status line's right side once a Ledger is open. There is no sync yet, so it always reads
+## Never synced; the time of the last sync lands with the sync ticket.
 
-tui-status-synced = Synced { $time }
+tui-status-never-synced = Never synced
 
 ## The mode names, written in sentence case; the renderer upper-cases them.
 

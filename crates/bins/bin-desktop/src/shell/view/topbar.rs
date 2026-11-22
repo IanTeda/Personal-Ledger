@@ -463,9 +463,10 @@ fn sync_indicator(cx: &App) -> impl IntoElement {
         .child(sync_text())
 }
 
-/// Representative content -- a real last-write timestamp lands with the sync ticket.
+/// Nothing syncs until a Sync Server is set up, so the Ledger has never synced; the time of the
+/// last sync lands with the sync ticket.
 fn sync_text() -> String {
-    crate::msg::desktop_topbar_synced("14:22")
+    crate::msg::desktop_topbar_never_synced()
 }
 
 /// Minimize/maximize/close, in that order -- the conventional cross-platform window-control
