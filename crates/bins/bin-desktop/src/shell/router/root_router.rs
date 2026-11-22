@@ -645,7 +645,15 @@ fn display_hosted_pages(
 fn shell_error(error: crate::Error) -> lib_shell::Error {
     match error {
         crate::Error::Shell(error) => error,
-        other => {
+        other @ (crate::Error::Config(_)
+        | crate::Error::Telemetry(_)
+        | crate::Error::Database(_)
+        | crate::Error::LedgerMissing
+        | crate::Error::LedgerNotAFile
+        | crate::Error::LedgerEmpty
+        | crate::Error::LedgerUnreadable(_)
+        | crate::Error::Io(_)
+        | crate::Error::Json(_)) => {
             debug_assert!(
                 false,
                 "an Undo or Redo step failed outside lib-shell: {other}"

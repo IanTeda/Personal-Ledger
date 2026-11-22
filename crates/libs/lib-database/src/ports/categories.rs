@@ -98,7 +98,18 @@ fn budget_refusal(error: Error) -> lib_categories::Error {
     match error {
         Error::NotAnExpenseLeaf => lib_categories::Error::NotAnExpenseLeaf,
         Error::Archived | Error::ClosedMonth => lib_categories::Error::BudgetReadOnly,
-        _ => lib_categories::Error::BudgetUnavailable,
+        Error::NotFound | Error::NegativeAmount => lib_categories::Error::BudgetUnavailable,
+        error @ (Error::NameRequired
+        | Error::NameTaken
+        | Error::DefaultCannotBeArchived
+        | Error::AccountNotFound
+        | Error::AccountNotInUnit
+        | Error::NotBudgeted
+        | Error::InvalidAmount) => {
+            debug_assert!(false, "a monthly limit write refused with {error:?}");
+            tracing::error!(error = ?error, "a monthly limit write was refused with an error it never returns");
+            lib_categories::Error::BudgetUnavailable
+        }
     }
 }
 

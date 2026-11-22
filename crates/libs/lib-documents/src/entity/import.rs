@@ -244,8 +244,18 @@ pub fn import_batch(
                 }
                 Some(Error::AlreadyInLibrary(title)) => return ImportOutcome::Already(title),
                 Some(Error::PathMissing) => return ImportOutcome::NotFound(line.typed.clone()),
-                Some(other) => {
-                    debug_assert!(false, "a path is never refused with {other:?}");
+                Some(
+                    error @ (Error::NotFound
+                    | Error::AlreadyFiled
+                    | Error::NoSuchTransaction
+                    | Error::NoTitle
+                    | Error::UnknownDocumentType
+                    | Error::DefaultDocumentType
+                    | Error::NeedsDestination
+                    | Error::Name(_)),
+                ) => {
+                    debug_assert!(false, "a path is never refused with {error:?}");
+                    tracing::error!(error = ?error, "a path was refused with an error it never returns");
                     return ImportOutcome::NotFound(line.typed.clone());
                 }
                 None => {}
@@ -260,7 +270,22 @@ pub fn import_batch(
             ) {
                 Ok(id) => ImportOutcome::Imported(id),
                 Err(Error::AlreadyInLibrary(title)) => ImportOutcome::Already(title),
-                Err(_) => ImportOutcome::Unsupported(line.typed.clone()),
+                Err(Error::UnsupportedFile) => ImportOutcome::Unsupported(line.typed.clone()),
+                Err(
+                    error @ (Error::NotFound
+                    | Error::AlreadyFiled
+                    | Error::NoSuchTransaction
+                    | Error::PathMissing
+                    | Error::NoTitle
+                    | Error::UnknownDocumentType
+                    | Error::DefaultDocumentType
+                    | Error::NeedsDestination
+                    | Error::Name(_)),
+                ) => {
+                    debug_assert!(false, "import_path never fails with {error:?}");
+                    tracing::error!(error = ?error, "import_path failed with an error it never returns");
+                    ImportOutcome::Unsupported(line.typed.clone())
+                }
             }
         })
         .collect()

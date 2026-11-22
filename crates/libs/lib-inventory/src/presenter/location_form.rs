@@ -474,9 +474,10 @@ impl LocationFormPresenter {
                 .add_location(&draft, self.unit.unwrap_or_else(UnitId::new))
                 .map(|_| ()),
         };
-        match result {
-            Err(Error::Name(error)) => Some(Problem::Name(error)),
-            _ => (self.editing.is_none() && self.unit.is_none()).then_some(Problem::UnitMissing),
+        if let Err(Error::Name(error)) = result {
+            Some(Problem::Name(error))
+        } else {
+            (self.editing.is_none() && self.unit.is_none()).then_some(Problem::UnitMissing)
         }
     }
 }

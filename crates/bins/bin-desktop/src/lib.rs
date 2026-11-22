@@ -202,7 +202,16 @@ pub(crate) fn open_failure_reason(error: &Error) -> String {
         Error::Database(lib_database::Error::IncompleteLedger) => {
             msg::desktop_ledger_open_incomplete()
         }
-        _ => msg::desktop_ledger_open_unreadable(),
+        Error::LedgerUnreadable(_) | Error::Database(_) => msg::desktop_ledger_open_unreadable(),
+        error @ (Error::Config(_)
+        | Error::Telemetry(_)
+        | Error::Io(_)
+        | Error::Json(_)
+        | Error::Shell(_)) => {
+            debug_assert!(false, "a Ledger open failed with {error:?}");
+            tracing::error!(error = ?error, "a Ledger open failed with an error it never returns");
+            msg::desktop_ledger_open_unreadable()
+        }
     }
 }
 

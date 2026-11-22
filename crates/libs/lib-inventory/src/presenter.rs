@@ -51,8 +51,15 @@ fn location_refusal_text(error: Error) -> String {
     match error {
         Error::Name(error) => location_name_error_text(error),
         Error::UnknownLocation | Error::Cover(_) => msg::inventory_refusal_gone(),
-        other => {
-            debug_assert!(false, "a Location write refused with {other:?}");
+        error @ (Error::UnknownArea
+        | Error::UnknownItem
+        | Error::ItemNameEmpty
+        | Error::ReplacementNegative
+        | Error::NeedsDestination
+        | Error::BadDestination
+        | Error::LastAreaHoldsItems) => {
+            debug_assert!(false, "a Location write refused with {error:?}");
+            tracing::error!(error = ?error, "a Location write was refused with an error it never returns");
             msg::inventory_refusal_gone()
         }
     }
@@ -67,8 +74,12 @@ fn area_refusal_text(error: Error) -> String {
         | Error::NeedsDestination
         | Error::BadDestination
         | Error::LastAreaHoldsItems => msg::inventory_refusal_gone(),
-        other => {
-            debug_assert!(false, "an Area write refused with {other:?}");
+        error @ (Error::UnknownItem
+        | Error::Cover(_)
+        | Error::ItemNameEmpty
+        | Error::ReplacementNegative) => {
+            debug_assert!(false, "an Area write refused with {error:?}");
+            tracing::error!(error = ?error, "an Area write was refused with an error it never returns");
             msg::inventory_refusal_gone()
         }
     }

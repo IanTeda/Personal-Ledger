@@ -601,8 +601,16 @@ impl Presenter for DocumentFormPresenter {
                 Error::UnsupportedFile => msg::documents_dialog_error_unsupported(),
                 Error::AlreadyInLibrary(title) => msg::documents_dialog_error_already(&title),
                 Error::PathMissing => msg::documents_dialog_error_path_missing(self.path.trim()),
-                other => {
-                    debug_assert!(false, "a typed path is never refused with {other:?}");
+                error @ (Error::NotFound
+                | Error::AlreadyFiled
+                | Error::NoSuchTransaction
+                | Error::NoTitle
+                | Error::UnknownDocumentType
+                | Error::DefaultDocumentType
+                | Error::NeedsDestination
+                | Error::Name(_)) => {
+                    debug_assert!(false, "a typed path is never refused with {error:?}");
+                    tracing::error!(error = ?error, "a typed path was refused with an error it never returns");
                     msg::documents_dialog_error_path_missing(self.path.trim())
                 }
             }),

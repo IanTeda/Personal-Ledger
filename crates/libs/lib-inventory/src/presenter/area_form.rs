@@ -266,9 +266,10 @@ impl AreaFormPresenter {
             Some(area) => scratch.edit_area(area, &self.name),
             None => scratch.add_area(self.location, &self.name).map(|_| ()),
         };
-        match result {
-            Err(Error::Name(error)) => Some(error),
-            _ => None,
+        if let Err(Error::Name(error)) = result {
+            Some(error)
+        } else {
+            None
         }
     }
 }

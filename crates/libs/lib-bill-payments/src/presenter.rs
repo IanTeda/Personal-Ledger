@@ -426,7 +426,28 @@ fn decimal_characters(text: &str) -> String {
 fn refusal_text(refusal: &Error) -> String {
     match refusal {
         Error::AmountNotPositive => msg::bill_payments_pay_error_amount(),
-        _ => msg::bill_payments_pay_error_gone(),
+        Error::Bills(
+            lib_bills::Error::EntryNotFound
+            | lib_bills::Error::EntryNotOpen
+            | lib_bills::Error::PlanNotFound
+            | lib_bills::Error::NotACandidate,
+        ) => msg::bill_payments_pay_error_gone(),
+        Error::Bills(
+            error @ (lib_bills::Error::NameRequired
+            | lib_bills::Error::CategoryNotExpenseLeaf
+            | lib_bills::Error::AccountRequired
+            | lib_bills::Error::UnitMismatch
+            | lib_bills::Error::UnitLocked(_)
+            | lib_bills::Error::AmountNotPositive
+            | lib_bills::Error::EndsBeforeFirstDue
+            | lib_bills::Error::EndsOnForOneShot
+            | lib_bills::Error::NotPaid
+            | lib_bills::Error::NotSkipped),
+        ) => {
+            debug_assert!(false, "a Pay refused with {error:?}");
+            tracing::error!(error = ?error, "a Pay was refused with an error it never returns");
+            msg::bill_payments_pay_error_gone()
+        }
     }
 }
 

@@ -1067,6 +1067,7 @@ fn failure_message(error: &crate::Error) -> String {
                 false,
                 "an Undo or Redo step never fails on a folder: {error:?}"
             );
+            tracing::error!(error = ?error, "an Undo or Redo step failed on a folder");
             msg::status_step_not_saved_unsaved()
         }
     }
