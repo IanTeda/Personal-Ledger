@@ -12,6 +12,10 @@
 //! inline, as is one whose SQLite journal is still there, and a folder it can't write keeps the
 //! Open Ledger. Start view (#983) chooses where it
 //! lands: each value with a Ledger open, and with none, where a noun lands on the Dashboard.
+//! The Create ledger Dialog is staged Base unit → Ledger (#1358): `enter` and `ctrl-enter` are Next
+//! on Base unit and Create on Ledger, which asks the Ledger name (from the file name), Owner and
+//! Financial year starts and refuses a blank or over-long name; `esc` closes an open list, goes
+//! Back on Ledger keeping everything, and cancels on Base unit; `tab` cycles within the stage.
 
 use super::common;
 use lib_database::Domain;
@@ -422,6 +426,13 @@ fn new_with_a_fresh_name_creates_the_ledger_file_and_opens_it(app: &mut TestAppC
     assert!(!created.exists(), "nothing is written until Create");
     assert!(!ui.read(|shell| shell.ledger_open()));
     ui.press("enter");
+    assert_eq!(
+        ui.dialog_value("stage").as_deref(),
+        Some("Ledger"),
+        "enter is Next"
+    );
+    assert!(!created.exists(), "Next writes nothing");
+    ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
     assert!(created.is_file(), "the file written");
@@ -525,7 +536,7 @@ fn new_in_a_folder_it_cannot_write_keeps_the_open_ledger_and_says_why(app: &mut 
     ui.press(": n e w enter");
     ui.press("t e d a enter");
     assert_eq!(ui.dialog(), Some("CreateLedger"));
-    ui.press("enter");
+    ui.press("enter enter");
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755))
         .expect("the folder writable again, for the clean-up");
 
@@ -542,6 +553,11 @@ fn new_in_a_folder_it_cannot_write_keeps_the_open_ledger_and_says_why(app: &mut 
         ui.dialog(),
         Some("CreateLedger"),
         "the Dialog stays for another try"
+    );
+    assert_eq!(
+        ui.dialog_value("stage").as_deref(),
+        Some("Ledger"),
+        "on the Ledger stage"
     );
 }
 
@@ -594,7 +610,7 @@ fn create_ledger_with_a_changed_base_unit_makes_it_the_new_ledgers_base(app: &mu
     ui.press(&"backspace ".repeat("US Dollar".len()));
     ui.press("B i t c o i n");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("Bitcoin"));
-    ui.press("enter");
+    ui.press("enter enter");
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.noun(), Noun::Dashboard);
@@ -622,7 +638,8 @@ fn create_is_off_while_a_field_is_invalid_and_enter_writes_nothing(app: &mut Tes
     assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
     ui.press("enter");
 
-    assert_eq!(ui.dialog(), Some("CreateLedger"), "Create is refused");
+    assert_eq!(ui.dialog(), Some("CreateLedger"), "Next is refused");
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("BaseUnit"));
     assert!(!dir.path().join("teda.pldb").exists());
     ui.press("u s d");
     assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
@@ -735,4 +752,223 @@ fn a_write_that_failed_just_before_close_is_reported(app: &mut TestAppContext) {
     assert_eq!(toast.kind, "Error");
     assert!(toast.text.contains("wasn't saved"), "{}", toast.text);
     assert!(!ui.read(|shell| shell.ledger_open()));
+}
+
+/// `:new` named `teda` in `dir` with no Ledger open, on the Create ledger Dialog's Base unit stage.
+fn creating_teda<'a>(app: &'a mut TestAppContext, dir: &tempfile::TempDir) -> Harness<'a> {
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(dir.path());
+    ui.press(": n e w enter");
+    ui.press("t e d a enter");
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("BaseUnit"));
+    ui
+}
+
+/// The Ledger name, Owner and Financial year start's month the Ledger file at `path` holds, read
+/// back from a fresh start on it.
+#[expect(
+    clippy::expect_used,
+    reason = "test support: a created Ledger that won't open should fail the test loudly"
+)]
+fn ledger_preferences(path: &std::path::Path) -> (String, Option<String>, u32) {
+    let storage = bin_desktop::start_on(&config_for(path), common::today())
+        .storage()
+        .expect("the created Ledger opens");
+    let ledger = storage.ledger.row();
+    (
+        ledger.name.as_str().to_string(),
+        ledger
+            .owner
+            .as_ref()
+            .map(|owner| owner.as_str().to_string()),
+        ledger.financial_year_start.month(),
+    )
+}
+
+#[gpui::test]
+fn next_shows_the_ledger_stage_prefilled_and_names_it_on_the_status_line(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = creating_teda(app, &dir);
+    assert_eq!(ui.dialog_value("submit").as_deref(), Some("Next"));
+    assert_eq!(
+        ui.dialog_value("steps").as_deref(),
+        Some("1 · Base unit|2 · Ledger")
+    );
+    let status = ui.status().expect("the status line names the stage");
+    assert_eq!(
+        status.hints[0],
+        ("Base unit".to_string(), "(1 of 2)".to_string())
+    );
+
+    ui.press("ctrl-enter");
+
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("Ledger"));
+    assert_eq!(ui.dialog_value("submit").as_deref(), Some("Create"));
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Ledger name"));
+    assert_eq!(ui.dialog_value("ledger_name").as_deref(), Some("teda"));
+    assert_eq!(ui.dialog_value("owner").as_deref(), Some(""));
+    assert_eq!(
+        ui.dialog_value("financial_year").as_deref(),
+        Some("Jan"),
+        "en-US's year"
+    );
+    assert_eq!(
+        ui.dialog_value("months")
+            .map(|months| months.split('|').count()),
+        Some(12)
+    );
+    let status = ui.status().expect("the status line names the stage");
+    assert_eq!(
+        status.hints[0],
+        ("Ledger".to_string(), "(2 of 2)".to_string())
+    );
+    assert!(
+        !dir.path().join("teda.pldb").exists(),
+        "Next writes nothing"
+    );
+}
+
+#[gpui::test]
+fn a_too_long_file_name_prefills_the_ledger_name_cut_to_sixty(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(dir.path());
+    ui.press(": n e w enter");
+    ui.press(&"a ".repeat(65));
+    ui.press("enter enter");
+
+    assert_eq!(ui.dialog_value("ledger_name"), Some("a".repeat(60)));
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
+}
+
+#[gpui::test]
+fn create_writes_the_typed_ledger_name_owner_and_financial_year_start(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let path = dir.path().join("teda.pldb");
+    let mut ui = creating_teda(app, &dir);
+    ui.press("enter");
+    ui.press("backspace backspace backspace backspace H o m e");
+    ui.press("tab I a n");
+    ui.press("tab enter down down down enter");
+    assert_eq!(ui.dialog_value("financial_year").as_deref(), Some("Apr"));
+    assert_eq!(
+        ui.dialog(),
+        Some("CreateLedger"),
+        "the list's enter only picks"
+    );
+    ui.press("ctrl-enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.ledger_path(), Some(path.clone()));
+    ui.press(": c l o s e enter");
+    drop(ui);
+    assert_eq!(
+        ledger_preferences(&path),
+        ("Home".to_string(), Some("Ian".to_string()), 4)
+    );
+}
+
+#[gpui::test]
+fn create_is_refused_while_the_ledger_name_is_blank_or_too_long(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = creating_teda(app, &dir);
+    ui.press("enter");
+    ui.press("backspace backspace backspace backspace");
+
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+    assert_eq!(
+        ui.dialog_value("ledger_name_error").as_deref(),
+        Some("A ledger needs a name")
+    );
+    let status = ui.status().expect("the status line");
+    assert_eq!(
+        status.hints.last().map(|(_, action)| action.as_str()),
+        Some("A ledger needs a name"),
+        "the status line says why"
+    );
+    ui.press("enter ctrl-enter");
+    assert_eq!(
+        ui.dialog_value("stage").as_deref(),
+        Some("Ledger"),
+        "refused"
+    );
+
+    ui.press(&"x ".repeat(61));
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+    assert_eq!(
+        ui.dialog_value("ledger_name_error").as_deref(),
+        Some("A ledger name is at most 60 characters")
+    );
+    ui.press("ctrl-enter");
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("Ledger"));
+    assert_eq!(
+        ui.dialog_value("ledger_name"),
+        Some("x".repeat(61)),
+        "the text is kept"
+    );
+    assert!(!dir.path().join("teda.pldb").exists());
+
+    ui.press("backspace");
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
+}
+
+#[gpui::test]
+fn esc_goes_back_from_the_ledger_stage_keeping_everything_and_cancels_on_base_unit(
+    app: &mut TestAppContext,
+) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = creating_teda(app, &dir);
+    ui.press("backspace backspace backspace e u r");
+    ui.press("enter");
+    ui.press("space 2 0 2 7 tab I a n");
+
+    ui.press("escape");
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("BaseUnit"));
+    assert_eq!(
+        ui.dialog_value("field").as_deref(),
+        Some("Code"),
+        "its first field"
+    );
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("eur"));
+
+    ui.press("enter");
+    assert_eq!(ui.dialog_value("ledger_name").as_deref(), Some("teda 2027"));
+    assert_eq!(ui.dialog_value("owner").as_deref(), Some("Ian"));
+
+    ui.press("escape escape");
+    assert_eq!(ui.dialog(), None, "esc on Base unit cancels");
+    assert!(!dir.path().join("teda.pldb").exists(), "nothing written");
+}
+
+#[gpui::test]
+fn esc_closes_the_open_month_list_before_going_back(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = creating_teda(app, &dir);
+    ui.press("enter shift-tab enter");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("true"));
+
+    ui.press("escape");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("false"));
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("Ledger"));
+    ui.press("escape");
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("BaseUnit"));
+}
+
+#[gpui::test]
+fn tab_cycles_within_the_ledger_stage(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = creating_teda(app, &dir);
+    ui.press("enter");
+
+    for field in ["Owner", "Financial year starts", "Ledger name"] {
+        ui.press("tab");
+        assert_eq!(ui.dialog_value("field").as_deref(), Some(field));
+    }
+    ui.press("shift-tab");
+    assert_eq!(
+        ui.dialog_value("field").as_deref(),
+        Some("Financial year starts"),
+        "never back onto Base unit's fields"
+    );
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("Ledger"));
 }

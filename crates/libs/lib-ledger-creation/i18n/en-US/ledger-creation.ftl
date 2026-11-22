@@ -20,3 +20,24 @@ ledger-creation-title = Create ledger
 ledger-creation-submit = Create
 ledger-creation-field-file = File
 ledger-creation-base-unit-help = The base unit is what your accounts and totals are kept in. It can't be changed once an account uses it.
+
+## The Create ledger Dialog's two stages (#1344): Base unit, then Ledger, with Create on the last.
+## Each stage's name heads its step in the strip under the title, `$number · $stage`, and the
+## status line names the stage showing, `$stage ($number of $total)`, the name in bold.
+
+ledger-creation-stage-base-unit = Base unit
+ledger-creation-stage-ledger = Ledger
+ledger-creation-step = { $number } · { $stage }
+ledger-creation-stage-count = ({ $number } of { $total })
+ledger-creation-next = Next
+ledger-creation-back = Back
+
+## The Ledger stage's fields, each with its line of help.
+
+ledger-creation-ledger-help = Who and what this ledger is. All three can be changed later on Settings › Ledger.
+ledger-creation-field-ledger-name = Ledger name
+ledger-creation-ledger-name-help = Prefilled from the file name. Renaming one never renames the other.
+ledger-creation-field-owner = Owner
+ledger-creation-owner-help = Who the ledger belongs to. Free text, and it can be left empty.
+ledger-creation-field-financial-year = Financial year starts
+ledger-creation-financial-year-help = Bills and Documents count their years from the 1st of this month.

@@ -18,9 +18,9 @@ use lib_ledger_creation::presenter::{CreateLedgerPresenter, SharedLedgerCreation
 use crate::shell::view::dialog_entity::ModuleDialog;
 
 /// The Create ledger Dialog for the Ledger file at `path`, over `creation`, the port the composition
-/// root built, and prefilled from the Locale's Currency. The Ledger is named for its file, with no
-/// Owner and the Locale's Financial year start, none of them asked yet (ADR-0061). `created` runs
-/// with the Ledger once Create has written it.
+/// root built, and prefilled from the Locale's Currency. Its Ledger stage starts on the name of the
+/// file, no Owner and the Locale's Financial year start (ADR-0061). `created` runs with the Ledger
+/// once Create has written it.
 pub(crate) fn open(
     path: PathBuf,
     creation: SharedLedgerCreation,

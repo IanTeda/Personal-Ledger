@@ -5,7 +5,9 @@
 //! Every key reaches the open Dialog through `lib-shell`'s Dialog keymap ([`DialogCommand`]), so
 //! `Enter`, `Esc`, `Tab` and select stepping are the same in each Dialog and follow
 //! `[keybindings]`. What a command means is the Dialog's call, except `back`, which the Shell
-//! decides: it closes an open select first, otherwise cancels the Dialog and closes it. A key the
+//! decides: it closes an open select first, otherwise sends the Presenter's
+//! [`DialogPresenter::back_event`], which cancels every Dialog but a staged one (the Create ledger
+//! Dialog steps back a stage). The Cancel button always sends [`DialogPresenter::cancel_event`]. A key the
 //! keymap doesn't bind types into the focused field.
 //!
 //! Every Dialog's Presenter takes `lib-viper`'s [`DialogInput`]s: each command and typed key is one
@@ -145,7 +147,7 @@ trait AnyHosted {
     fn typed(&self, key: DialogKey, cx: &mut App);
     fn close_open_select(&self, cx: &mut App) -> bool;
     fn steps_list(&self, cx: &App) -> bool;
-    fn cancel(&self, cx: &mut App);
+    fn back(&self, cx: &mut App) -> bool;
     fn hints(&self, cx: &App) -> Option<Vec<Hint>>;
     fn readback(&self, cx: &App) -> DialogReadback;
     fn view(&self) -> AnyView;
@@ -184,10 +186,12 @@ impl<P: DialogView> AnyHosted for Entity<ModuleDialog<P>> {
         self.read(cx).presenter.steps_list()
     }
 
-    fn cancel(&self, cx: &mut App) {
+    fn back(&self, cx: &mut App) -> bool {
         self.update(cx, |dialog, cx| {
-            dialog.handle(P::cancel_event(), cx);
-        });
+            let closed = dialog.handle(P::back_event(), cx);
+            cx.notify();
+            closed
+        })
     }
 
     /// The view model's hints, whose chords the Presenter took from the Dialog keys at open. A
@@ -265,8 +269,10 @@ impl DialogHandle {
         self.0.steps_list(cx)
     }
 
-    pub fn cancel(&self, cx: &mut App) {
-        self.0.cancel(cx);
+    /// `back` once no select is open: the Presenter's `back_event`. Returns whether it closed the
+    /// Dialog, which a staged Dialog stepping back a stage doesn't.
+    pub fn back(&self, cx: &mut App) -> bool {
+        self.0.back(cx)
     }
 
     pub fn hints(&self, cx: &App) -> Option<Vec<Hint>> {

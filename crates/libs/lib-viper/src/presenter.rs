@@ -150,8 +150,15 @@ pub trait DialogPresenter:
     /// refusal stays on the form.
     fn confirm_event() -> Self::Event;
 
-    /// The event `back` and a cancel button send, which closes the Dialog having written nothing.
+    /// The event a cancel button sends, which closes the Dialog having written nothing.
     fn cancel_event() -> Self::Event;
+
+    /// The event `back` sends once no select is open. A staged Dialog steps back a stage with it
+    /// (the Create ledger Dialog's Ledger stage), so it differs from the Cancel button's; every
+    /// other Dialog cancels, the default.
+    fn back_event() -> Self::Event {
+        Self::cancel_event()
+    }
 
     /// Whether the form would confirm now, which enables its confirm button.
     fn can_confirm(&self) -> bool;
@@ -438,5 +445,16 @@ mod tests {
         assert!(!dialog.close_open_select());
         assert!(!dialog.steps_list());
         assert!(dialog.takes(&DialogEvent::Cancel));
+    }
+
+    #[test]
+    fn back_cancels_a_dialog_that_doesnt_say_otherwise() {
+        let mut log = Vec::new();
+        let mut dialog = ToyDialog::default();
+
+        dialog.handle(ToyDialog::back_event(), &mut Borrowing { log: &mut log });
+
+        assert_eq!(ToyDialog::back_event(), DialogEvent::Cancel);
+        assert_eq!(log, ["close None"]);
     }
 }

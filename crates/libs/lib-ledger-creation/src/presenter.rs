@@ -1,5 +1,8 @@
-//! The Create ledger Dialog's Presenter: the base Unit as Add unit asks for it, prefilled from the
-//! Locale's Currency, over the file name the person chose. Nothing is written until Create, which
+//! The Create ledger Dialog's Presenter, in two stages (#1344): Base unit, the base Unit as Add
+//! unit asks for it, prefilled from the Locale's Currency, over the file name the person chose;
+//! then Ledger, the Ledger name (prefilled from the file name), Owner and Financial year start
+//! (ADR-0061). The Presenter holds one form and the stage only decides which fields show, so Back
+//! keeps everything typed, both ways. Nothing is written until Create on the Ledger stage, which
 //! runs the Interactor once; a cancel writes nothing. The Price Source is Manual entry, so Add
 //! unit's Source, Symbol and Quoted in fields, which only matter to a Unit priced from elsewhere
 //! and quoted in another, are not asked.
@@ -8,7 +11,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId};
+use lib_core::{FinancialYearStart, LedgerName, LedgerNameError, Owner, UnitId};
 use lib_locale::Currency;
 use lib_locale::Label as _;
 use lib_units::interactor::AddUnit;
@@ -16,7 +19,7 @@ use lib_units::{Precision, PriceLink, UnitKind};
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{
-    Choice, DialogFrame, DialogHint, SelectList, SelectMove, SelectView, TextFieldView,
+    Choice, DialogFrame, DialogHint, Hint, SelectList, SelectMove, SelectView, TextFieldView,
 };
 
 use crate::interactor::{CreateLedger, LedgerCreated, base_unit_for};
@@ -26,7 +29,51 @@ use crate::protocols::LedgerCreation;
 /// The creation port a Dialog shares with its Client.
 pub type SharedLedgerCreation = Rc<RefCell<dyn LedgerCreation>>;
 
-/// The form's fields, in `Tab` order.
+/// The Dialog's stages, in order: the base Unit, then the Ledger's own Preferences.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LedgerStage {
+    #[default]
+    BaseUnit,
+    Ledger,
+}
+
+impl LedgerStage {
+    const ALL: [Self; 2] = [Self::BaseUnit, Self::Ledger];
+
+    /// The stage's place, counted from 1, as its step and the status line show it.
+    fn number(self) -> usize {
+        match self {
+            Self::BaseUnit => 1,
+            Self::Ledger => 2,
+        }
+    }
+
+    fn label(self) -> String {
+        match self {
+            Self::BaseUnit => msg::ledger_creation_stage_base_unit(),
+            Self::Ledger => msg::ledger_creation_stage_ledger(),
+        }
+    }
+
+    /// The stage's fields, in `Tab` order: `Tab` cycles within a stage and never crosses one.
+    fn order(self) -> &'static [LedgerField] {
+        match self {
+            Self::BaseUnit => &[
+                LedgerField::Code,
+                LedgerField::Type,
+                LedgerField::Name,
+                LedgerField::Precision,
+            ],
+            Self::Ledger => &[
+                LedgerField::LedgerName,
+                LedgerField::Owner,
+                LedgerField::FinancialYearStart,
+            ],
+        }
+    }
+}
+
+/// The form's fields, the base Unit's then the Ledger's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LedgerField {
     #[default]
@@ -34,37 +81,62 @@ pub enum LedgerField {
     Type,
     Name,
     Precision,
+    LedgerName,
+    Owner,
+    FinancialYearStart,
 }
 
 impl LedgerField {
-    const ORDER: [Self; 4] = [Self::Code, Self::Type, Self::Name, Self::Precision];
+    /// Whether the field is a select, which swallows typing.
+    fn is_select(self) -> bool {
+        matches!(self, Self::Type | Self::FinancialYearStart)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CreateLedgerEvent {
-    /// A Dialog command or typed key: the field keys move focus, `select` and `submit` confirm a
-    /// valid form (`select` opens and commits the Type list on that field), and typing edits the
-    /// focused text field.
+    /// A Dialog command or typed key: the field keys move focus within the stage, `select` and
+    /// `submit` confirm a valid stage (`select` opens and commits a select's list on that field),
+    /// and typing edits the focused text field.
     Input(DialogInput),
     /// A text field's whole new text.
     Code(String),
     Name(String),
     Precision(String),
+    LedgerName(String),
+    Owner(String),
     /// A Type picked, closing its list.
     Kind(UnitKind),
     /// A click on the Type select: focuses it and opens or closes its list.
     ToggleKind,
+    /// A month picked for the Financial year start, closing its list.
+    Month(FinancialYearStart),
+    /// A click on the Financial year starts select: focuses it and opens or closes its list.
+    ToggleMonth,
     /// A click on a text field, which closes an open list.
     Focus(LedgerField),
+    /// A click on a step: Base unit goes Back, Ledger goes there only when Next would.
+    Step(LedgerStage),
     /// Closes the open list without picking: the Desktop host's `back`.
     CloseList,
+    /// Next on Base unit, Create on Ledger.
     Confirm,
+    /// `back`: to Base unit from Ledger, keeping everything typed; a cancel on Base unit.
+    Back,
     Cancel,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateLedgerViewModel {
     pub frame: DialogFrame,
+    /// The stage showing, which decides the fields drawn and the footer's buttons.
+    pub stage: LedgerStage,
+    /// Each stage's step, `1 · Base unit` and `2 · Ledger`, in order, beside its stage.
+    pub steps: Vec<(LedgerStage, String)>,
+    /// The Back button's label, drawn on the Ledger stage.
+    pub back: String,
+    /// The status line: the stage showing and, while the Ledger name is refused, why.
+    pub hints: Vec<Hint>,
     /// The chosen file's name, shown read-only.
     pub file: TextFieldView,
     pub code: TextFieldView,
@@ -74,6 +146,17 @@ pub struct CreateLedgerViewModel {
     pub precision_help: String,
     /// Why the base Unit matters.
     pub help: String,
+    /// What the Ledger stage asks for.
+    pub ledger_help: String,
+    pub ledger_name: TextFieldView,
+    pub ledger_name_help: String,
+    /// Why the Ledger name can't be created with, while it can't.
+    pub ledger_name_error: Option<String>,
+    pub owner: TextFieldView,
+    pub owner_help: String,
+    pub financial_year: SelectView<FinancialYearStart>,
+    pub financial_year_help: String,
+    /// The focused select's list: Type's on Base unit, Financial year starts' on Ledger.
     pub list: SelectList,
 }
 
@@ -81,10 +164,10 @@ pub struct CreateLedgerPresenter {
     creation: SharedLedgerCreation,
     path: PathBuf,
     personal: String,
-    /// The Ledger name, Owner and Financial year start, passed through unasked until the Dialog
-    /// asks for them (ADR-0061).
-    ledger_name: LedgerName,
-    owner: Option<Owner>,
+    stage: LedgerStage,
+    /// The Ledger name as typed, prefilled once from the file, which is fixed for the Dialog's life.
+    ledger_name: String,
+    owner: String,
     financial_year_start: FinancialYearStart,
     id: UnitId,
     code: String,
@@ -99,8 +182,8 @@ pub struct CreateLedgerPresenter {
 
 impl CreateLedgerPresenter {
     /// The Dialog for the Ledger file at `path`, prefilled with `currency`, the Locale's, and the
-    /// Personal Institution named `personal`, creating the Ledger as `ledger_name`, owned by `owner`,
-    /// with its Financial Year starting in `financial_year_start`.
+    /// Personal Institution named `personal`, its Ledger stage prefilled with `ledger_name`,
+    /// `owner` and `financial_year_start`.
     pub fn new(
         creation: SharedLedgerCreation,
         path: PathBuf,
@@ -115,8 +198,11 @@ impl CreateLedgerPresenter {
             creation,
             path,
             personal,
-            ledger_name,
-            owner,
+            stage: LedgerStage::default(),
+            ledger_name: ledger_name.as_str().to_string(),
+            owner: owner
+                .map(|owner| owner.as_str().to_string())
+                .unwrap_or_default(),
             financial_year_start,
             id: base.id,
             code: base.code,
@@ -133,8 +219,9 @@ impl CreateLedgerPresenter {
         match input {
             DialogInput::NextField | DialogInput::PreviousField => {
                 self.list.close();
-                let count = LedgerField::ORDER.len();
-                let at = LedgerField::ORDER
+                let order = self.stage.order();
+                let count = order.len();
+                let at = order
                     .iter()
                     .position(|field| *field == self.focused)
                     .unwrap_or(0);
@@ -143,11 +230,11 @@ impl CreateLedgerPresenter {
                 } else {
                     (at + count - 1) % count
                 };
-                self.focused = LedgerField::ORDER[to];
+                self.focused = order[to];
             }
             DialogInput::Submit => self.confirm(router),
             // A select swallows typing, so it never reaches a text field.
-            _ if self.focused == LedgerField::Type => self.kind_input(input),
+            _ if self.focused.is_select() => self.select_input(input),
             DialogInput::Select => self.confirm(router),
             DialogInput::Char(ch) => {
                 if let Some(text) = self.text_mut() {
@@ -165,11 +252,19 @@ impl CreateLedgerPresenter {
         }
     }
 
-    /// `input` on the Type select: `select` opens a closed list and commits an open one, the
+    /// `input` on the focused select: `select` opens a closed list and commits an open one, the
     /// arrows step the value or the highlight, and `submit` alone confirms from here.
-    fn kind_input(&mut self, input: DialogInput) {
+    fn select_input(&mut self, input: DialogInput) {
         let view = self.view_model();
-        if let SelectMove::Chose(kind) =
+        if self.focused == LedgerField::FinancialYearStart {
+            let select = &view.financial_year;
+            if let SelectMove::Chose(start) =
+                self.list
+                    .input(input, &select.options, select.chosen.as_ref())
+            {
+                self.financial_year_start = start;
+            }
+        } else if let SelectMove::Chose(kind) =
             self.list
                 .input(input, &view.kind.options, view.kind.chosen.as_ref())
         {
@@ -182,7 +277,9 @@ impl CreateLedgerPresenter {
             LedgerField::Code => Some(&mut self.code),
             LedgerField::Name => Some(&mut self.name),
             LedgerField::Precision => Some(&mut self.precision),
-            LedgerField::Type => None,
+            LedgerField::LedgerName => Some(&mut self.ledger_name),
+            LedgerField::Owner => Some(&mut self.owner),
+            LedgerField::Type | LedgerField::FinancialYearStart => None,
         }
     }
 
@@ -200,14 +297,62 @@ impl CreateLedgerPresenter {
     }
 
     /// Code, Name and a Precision in range are required, as Add unit requires them.
-    fn is_valid(&self) -> bool {
+    fn base_unit_is_valid(&self) -> bool {
         !self.code.trim().is_empty()
             && !self.name.trim().is_empty()
             && Precision::parse(&self.precision).is_some()
     }
 
+    /// Whether the showing stage would confirm: Next on Base unit, Create on Ledger.
+    fn is_valid(&self) -> bool {
+        match self.stage {
+            LedgerStage::BaseUnit => self.base_unit_is_valid(),
+            LedgerStage::Ledger => {
+                self.base_unit_is_valid() && LedgerName::new(&self.ledger_name).is_ok()
+            }
+        }
+    }
+
+    /// Why the typed Ledger name can't be created with, `None` while it can.
+    fn ledger_name_error(&self) -> Option<String> {
+        match LedgerName::new(&self.ledger_name) {
+            Ok(_) => None,
+            Err(LedgerNameError::Blank) => Some(lib_locale::msg::ledger_name_error_blank()),
+            Err(LedgerNameError::TooLong) => Some(lib_locale::msg::ledger_name_error_too_long(
+                i64::try_from(LedgerName::NAME_MAX).unwrap_or(i64::MAX),
+            )),
+        }
+    }
+
+    /// Shows `stage`, focusing its first field.
+    fn show(&mut self, stage: LedgerStage) {
+        self.list.close();
+        self.stage = stage;
+        self.focused = stage.order()[0];
+    }
+
+    fn back(&mut self, router: &mut dyn DialogRouter<LedgerCreated>) {
+        match self.stage {
+            LedgerStage::Ledger => self.show(LedgerStage::BaseUnit),
+            LedgerStage::BaseUnit => router.close(None),
+        }
+    }
+
     fn confirm(&mut self, router: &mut dyn DialogRouter<LedgerCreated>) {
-        let Some(precision) = Precision::parse(&self.precision).filter(|_| self.is_valid()) else {
+        if !self.is_valid() {
+            return;
+        }
+        match self.stage {
+            LedgerStage::BaseUnit => self.show(LedgerStage::Ledger),
+            LedgerStage::Ledger => self.create(router),
+        }
+    }
+
+    fn create(&mut self, router: &mut dyn DialogRouter<LedgerCreated>) {
+        let (Some(precision), Ok(name)) = (
+            Precision::parse(&self.precision),
+            LedgerName::new(&self.ledger_name),
+        ) else {
             return;
         };
         let created = CreateLedger {
@@ -221,14 +366,33 @@ impl CreateLedgerPresenter {
                 link: PriceLink::manual(self.id),
             },
             personal: self.personal.clone(),
-            name: self.ledger_name.clone(),
-            owner: self.owner.clone(),
+            name,
+            owner: Owner::new(&self.owner),
             financial_year_start: self.financial_year_start,
         }
         .run(&mut *self.creation.borrow_mut(), router);
-        // A refusal has raised its Error Toast; the Dialog stays for another try or a cancel.
+        // A refusal has raised its Error Toast; the Dialog stays on this stage for another try or
+        // a cancel.
         if let Ok(created) = created {
             router.close(Some(created));
+        }
+    }
+
+    /// Opens or closes `field`'s list, focusing it first.
+    fn toggle(&mut self, field: LedgerField) {
+        if self.focused != field {
+            self.list.close();
+            self.focused = field;
+        }
+        let view = self.view_model();
+        if field == LedgerField::FinancialYearStart {
+            self.list.toggle(
+                &view.financial_year.options,
+                view.financial_year.chosen.as_ref(),
+            );
+        } else {
+            self.list
+                .toggle(&view.kind.options, view.kind.chosen.as_ref());
         }
     }
 }
@@ -247,27 +411,37 @@ impl Presenter for CreateLedgerPresenter {
                 self.precision = text;
                 self.precision_typed = true;
             }
+            CreateLedgerEvent::LedgerName(text) => self.ledger_name = text,
+            CreateLedgerEvent::Owner(text) => self.owner = text,
             CreateLedgerEvent::Kind(kind) => {
                 self.list.close();
                 self.pick_kind(kind);
             }
-            CreateLedgerEvent::ToggleKind => {
-                if self.focused != LedgerField::Type {
-                    self.list.close();
-                    self.focused = LedgerField::Type;
-                }
-                let view = self.view_model();
-                self.list
-                    .toggle(&view.kind.options, view.kind.chosen.as_ref());
+            CreateLedgerEvent::ToggleKind => self.toggle(LedgerField::Type),
+            CreateLedgerEvent::Month(start) => {
+                self.list.close();
+                self.financial_year_start = start;
             }
+            CreateLedgerEvent::ToggleMonth => self.toggle(LedgerField::FinancialYearStart),
             CreateLedgerEvent::Focus(field) => {
                 self.list.close();
                 self.focused = field;
+            }
+            CreateLedgerEvent::Step(LedgerStage::BaseUnit) => {
+                if self.stage == LedgerStage::Ledger {
+                    self.show(LedgerStage::BaseUnit);
+                }
+            }
+            CreateLedgerEvent::Step(LedgerStage::Ledger) => {
+                if self.stage == LedgerStage::BaseUnit {
+                    self.confirm(router);
+                }
             }
             CreateLedgerEvent::CloseList => {
                 self.list.close();
             }
             CreateLedgerEvent::Confirm => self.confirm(router),
+            CreateLedgerEvent::Back => self.back(router),
             CreateLedgerEvent::Cancel => router.close(None),
         }
     }
@@ -279,14 +453,40 @@ impl Presenter for CreateLedgerPresenter {
             placeholder,
             focused: self.focused == field,
         };
+        let total = LedgerStage::ALL.len().to_string();
+        let ledger_name_error = self.ledger_name_error();
+        let mut hints = vec![Hint::new(
+            self.stage.label(),
+            msg::ledger_creation_stage_count(&self.stage.number().to_string(), &total),
+        )];
+        if self.stage == LedgerStage::Ledger
+            && let Some(error) = &ledger_name_error
+        {
+            hints.push(Hint::new(String::new(), error.clone()));
+        }
         CreateLedgerViewModel {
             frame: DialogFrame {
                 title: msg::ledger_creation_title(),
-                submit: msg::ledger_creation_submit(),
+                submit: match self.stage {
+                    LedgerStage::BaseUnit => msg::ledger_creation_next(),
+                    LedgerStage::Ledger => msg::ledger_creation_submit(),
+                },
                 can_confirm: self.is_valid(),
                 destructive: false,
                 hints: Vec::<DialogHint>::new(),
             },
+            stage: self.stage,
+            steps: LedgerStage::ALL
+                .iter()
+                .map(|stage| {
+                    (
+                        *stage,
+                        msg::ledger_creation_step(&stage.number().to_string(), &stage.label()),
+                    )
+                })
+                .collect(),
+            back: msg::ledger_creation_back(),
+            hints,
             file: TextFieldView {
                 label: msg::ledger_creation_field_file(),
                 text: self
@@ -330,6 +530,35 @@ impl Presenter for CreateLedgerPresenter {
             ),
             precision_help: lib_units::msg::units_precision_help(),
             help: msg::ledger_creation_base_unit_help(),
+            ledger_help: msg::ledger_creation_ledger_help(),
+            ledger_name: text(
+                msg::ledger_creation_field_ledger_name(),
+                &self.ledger_name,
+                lib_locale::msg::ledger_name_fallback(),
+                LedgerField::LedgerName,
+            ),
+            ledger_name_help: msg::ledger_creation_ledger_name_help(),
+            ledger_name_error,
+            owner: text(
+                msg::ledger_creation_field_owner(),
+                &self.owner,
+                String::new(),
+                LedgerField::Owner,
+            ),
+            owner_help: msg::ledger_creation_owner_help(),
+            financial_year: SelectView {
+                label: msg::ledger_creation_field_financial_year(),
+                options: (1..=12)
+                    .filter_map(|month| FinancialYearStart::new(month).ok())
+                    .map(|start| Choice {
+                        value: start,
+                        label: lib_locale::format::format_month(start.month()),
+                    })
+                    .collect(),
+                chosen: Some(self.financial_year_start),
+                focused: self.focused == LedgerField::FinancialYearStart,
+            },
+            financial_year_help: msg::ledger_creation_financial_year_help(),
             list: self.list,
         }
     }
@@ -348,6 +577,11 @@ impl DialogPresenter for CreateLedgerPresenter {
 
     fn cancel_event() -> CreateLedgerEvent {
         CreateLedgerEvent::Cancel
+    }
+
+    /// Back on Ledger, a cancel on Base unit.
+    fn back_event() -> CreateLedgerEvent {
+        CreateLedgerEvent::Back
     }
 
     fn can_confirm(&self) -> bool {
@@ -452,7 +686,11 @@ mod tests {
         let dialog = Dialog::new(Currency::Aud);
         let view = dialog.presenter.view_model();
         assert_eq!(view.frame.title, "Create ledger");
-        assert_eq!(view.frame.submit, "Create");
+        assert_eq!(
+            view.frame.submit, "Next",
+            "Create waits on the Ledger stage"
+        );
+        assert_eq!(view.stage, LedgerStage::BaseUnit);
         assert_eq!(view.file.text, "teda.pldb");
     }
 
@@ -466,16 +704,20 @@ mod tests {
         ] {
             let mut dialog_one = Dialog::new(Currency::Aud);
             dialog_one.send([event, CreateLedgerEvent::Confirm]);
-            assert!(
-                !dialog_one.presenter.view_model().frame.can_confirm,
-                "{label}"
+            let view = dialog_one.presenter.view_model();
+            assert!(!view.frame.can_confirm, "{label}");
+            assert_eq!(
+                view.stage,
+                LedgerStage::BaseUnit,
+                "Next is refused: {label}"
             );
             assert_eq!(dialog_one.port.borrow().calls, 0, "{label}");
             assert!(dialog_one.router.closed.is_empty(), "{label}");
         }
         dialog.send([CreateLedgerEvent::Precision("x".into())]);
-        dialog.press([DialogInput::Submit]);
+        dialog.press([DialogInput::Submit, DialogInput::Submit]);
         assert_eq!(dialog.port.borrow().calls, 0);
+        assert_eq!(dialog.presenter.view_model().stage, LedgerStage::BaseUnit);
     }
 
     #[test]
@@ -498,6 +740,8 @@ mod tests {
         assert_eq!(dialog.presenter.view_model().precision.text, "8");
 
         dialog.press([DialogInput::Submit]);
+        assert_eq!(dialog.port.borrow().calls, 0, "Next writes nothing");
+        dialog.press([DialogInput::Submit]);
 
         assert_eq!(dialog.port.borrow().calls, 1);
         let [Some(created)] = dialog.router.closed.as_slice() else {
@@ -517,13 +761,16 @@ mod tests {
                 ledger.financial_year_start
             ),
             ("teda", &None, FinancialYearStart::APRIL),
-            "the Ledger's Preferences pass through unasked"
+            "the Ledger stage's prefill, unedited"
         );
     }
 
     #[test]
-    fn enter_creates_from_a_text_field_and_submit_from_the_type_select() {
+    fn enter_goes_next_then_creates_from_a_text_field_and_submit_from_the_type_select() {
         let mut dialog = Dialog::new(Currency::Aud);
+        dialog.press([DialogInput::Select]);
+        assert_eq!(dialog.presenter.view_model().stage, LedgerStage::Ledger);
+        assert_eq!(dialog.port.borrow().calls, 0);
         dialog.press([DialogInput::Select]);
         assert_eq!(dialog.port.borrow().calls, 1);
 
@@ -535,6 +782,8 @@ mod tests {
         );
         assert_eq!(dialog.port.borrow().calls, 0);
         dialog.press([DialogInput::Select, DialogInput::Submit]);
+        assert_eq!(dialog.presenter.view_model().stage, LedgerStage::Ledger);
+        dialog.press([DialogInput::Submit]);
         assert_eq!(dialog.port.borrow().calls, 1);
     }
 
@@ -580,9 +829,14 @@ mod tests {
         let mut dialog = Dialog::new(Currency::Aud);
         dialog.port.borrow_mut().broken = true;
 
-        dialog.press([DialogInput::Submit]);
+        dialog.press([DialogInput::Submit, DialogInput::Submit]);
 
         assert!(dialog.router.closed.is_empty());
+        assert_eq!(
+            dialog.presenter.view_model().stage,
+            LedgerStage::Ledger,
+            "a refusal keeps the Ledger stage"
+        );
         assert_eq!(
             dialog.router.notices,
             [Notice::Toast(
@@ -591,5 +845,223 @@ mod tests {
             )]
         );
         assert!(dialog.port.borrow().ledgers.is_empty());
+    }
+
+    /// The Dialog on its Ledger stage, reached by Next.
+    fn on_ledger() -> Dialog {
+        let mut dialog = Dialog::new(Currency::Aud);
+        dialog.press([DialogInput::Submit]);
+        dialog
+    }
+
+    #[test]
+    fn next_shows_the_ledger_stage_prefilled_and_focused_on_its_name() {
+        let dialog = on_ledger();
+        let view = dialog.presenter.view_model();
+
+        assert_eq!(view.stage, LedgerStage::Ledger);
+        assert_eq!(view.frame.submit, "Create");
+        assert!(view.frame.can_confirm);
+        assert!(view.ledger_name.focused, "its first field");
+        assert_eq!(view.ledger_name.text, "teda", "the file name without .pldb");
+        assert_eq!(view.owner.text, "");
+        assert_eq!(view.financial_year.chosen, Some(FinancialYearStart::APRIL));
+        let months: Vec<_> = view
+            .financial_year
+            .options
+            .iter()
+            .map(|choice| choice.label.as_str())
+            .collect();
+        assert_eq!(months.len(), 12);
+        assert_eq!((months[0], months[11]), ("Jan", "Dec"));
+        assert_eq!(view.ledger_name_error, None);
+        assert_eq!(dialog.port.borrow().calls, 0);
+    }
+
+    #[test]
+    fn the_steps_and_the_status_line_name_the_stage() {
+        let mut dialog = Dialog::new(Currency::Aud);
+        let view = dialog.presenter.view_model();
+        assert_eq!(
+            view.steps,
+            [
+                (LedgerStage::BaseUnit, "1 · Base unit".to_string()),
+                (LedgerStage::Ledger, "2 · Ledger".to_string()),
+            ]
+        );
+        assert_eq!(view.hints, [Hint::new("Base unit", "(1 of 2)")]);
+
+        dialog.press([DialogInput::Submit]);
+        assert_eq!(
+            dialog.presenter.view_model().hints,
+            [Hint::new("Ledger", "(2 of 2)")]
+        );
+    }
+
+    #[test]
+    fn create_is_refused_while_the_ledger_name_is_blank_or_too_long() {
+        for (text, error) in [
+            ("   ", "A ledger needs a name"),
+            (
+                &"x".repeat(61) as &str,
+                "A ledger name is at most 60 characters",
+            ),
+        ] {
+            let mut dialog = on_ledger();
+            dialog.send([CreateLedgerEvent::LedgerName(text.into())]);
+            dialog.press([DialogInput::Submit]);
+            dialog.send([CreateLedgerEvent::Confirm]);
+
+            let view = dialog.presenter.view_model();
+            assert!(!view.frame.can_confirm, "{error}");
+            assert_eq!(view.ledger_name_error.as_deref(), Some(error));
+            assert_eq!(
+                view.hints[1],
+                Hint::new("", error),
+                "the status line says why"
+            );
+            assert_eq!(view.stage, LedgerStage::Ledger);
+            assert_eq!(view.ledger_name.text, text, "the typed text is kept");
+            assert_eq!(dialog.port.borrow().calls, 0);
+            assert!(dialog.router.closed.is_empty());
+        }
+        let mut dialog = on_ledger();
+        dialog.send([CreateLedgerEvent::LedgerName("x".repeat(60))]);
+        assert!(dialog.presenter.view_model().frame.can_confirm, "60 fits");
+    }
+
+    #[test]
+    fn create_writes_the_typed_name_owner_and_month() {
+        let mut dialog = on_ledger();
+        dialog.press([
+            DialogInput::Backspace,
+            DialogInput::Backspace,
+            DialogInput::Char('x'),
+        ]);
+        dialog.press([DialogInput::NextField]);
+        dialog.press("  Ian ".chars().map(DialogInput::Char));
+        dialog.send([CreateLedgerEvent::Month(FinancialYearStart::JULY)]);
+
+        dialog.press([DialogInput::Submit]);
+
+        let [Some(created)] = dialog.router.closed.as_slice() else {
+            panic!("one confirmed close, not {:?}", dialog.router.closed);
+        };
+        let port = dialog.port.borrow();
+        let ledger = &port.ledgers[&created.path];
+        assert_eq!(ledger.name.as_str(), "tex");
+        assert_eq!(ledger.owner.as_ref().map(Owner::as_str), Some("Ian"));
+        assert_eq!(ledger.financial_year_start, FinancialYearStart::JULY);
+    }
+
+    #[test]
+    fn back_keeps_everything_typed_both_ways() {
+        let mut dialog = Dialog::new(Currency::Aud);
+        dialog.send([CreateLedgerEvent::Code("btc".into())]);
+        dialog.press([DialogInput::Submit]);
+        dialog.send([
+            CreateLedgerEvent::LedgerName("Household".into()),
+            CreateLedgerEvent::Owner("Ian".into()),
+        ]);
+
+        dialog.send([CreateLedgerEvent::Back]);
+        let view = dialog.presenter.view_model();
+        assert_eq!(view.stage, LedgerStage::BaseUnit);
+        assert!(view.code.focused, "its first field");
+        assert_eq!(view.code.text, "btc");
+        assert!(dialog.router.closed.is_empty(), "Back closes nothing");
+
+        dialog.press([DialogInput::Submit]);
+        let view = dialog.presenter.view_model();
+        assert_eq!(
+            (view.ledger_name.text.as_str(), view.owner.text.as_str()),
+            ("Household", "Ian")
+        );
+        assert_eq!(dialog.port.borrow().calls, 0);
+    }
+
+    #[test]
+    fn back_on_the_base_unit_cancels_and_the_cancel_event_always_does() {
+        let mut dialog = Dialog::new(Currency::Aud);
+        dialog.send([CreateLedgerPresenter::back_event()]);
+        assert_eq!(dialog.router.closed, [None]);
+
+        let mut dialog = on_ledger();
+        dialog.send([CreateLedgerPresenter::cancel_event()]);
+        assert_eq!(dialog.router.closed, [None], "Cancel on Ledger cancels");
+        assert_eq!(dialog.port.borrow().calls, 0);
+    }
+
+    #[test]
+    fn tab_cycles_within_the_ledger_stage() {
+        let mut dialog = on_ledger();
+        let focused = |dialog: &Dialog| {
+            let view = dialog.presenter.view_model();
+            [
+                view.ledger_name.focused,
+                view.owner.focused,
+                view.financial_year.focused,
+            ]
+        };
+        dialog.press([DialogInput::NextField]);
+        assert_eq!(focused(&dialog), [false, true, false]);
+        dialog.press([DialogInput::NextField]);
+        assert_eq!(focused(&dialog), [false, false, true]);
+        dialog.press([DialogInput::NextField]);
+        assert_eq!(
+            focused(&dialog),
+            [true, false, false],
+            "wraps within the stage"
+        );
+        dialog.press([DialogInput::PreviousField]);
+        assert_eq!(focused(&dialog), [false, false, true]);
+    }
+
+    #[test]
+    fn the_month_list_opens_steps_and_commits_without_creating() {
+        let mut dialog = on_ledger();
+        dialog.press([DialogInput::PreviousField, DialogInput::Select]);
+        assert!(dialog.presenter.view_model().list.is_open());
+        assert!(
+            dialog.presenter.close_open_select(),
+            "back closes the list first"
+        );
+        dialog.send([CreateLedgerEvent::ToggleMonth]);
+        dialog.press([DialogInput::SelectNext, DialogInput::Select]);
+
+        let view = dialog.presenter.view_model();
+        assert!(!view.list.is_open());
+        assert_eq!(view.financial_year.chosen, FinancialYearStart::new(5).ok());
+        assert_eq!(dialog.port.borrow().calls, 0);
+    }
+
+    #[test]
+    fn a_step_click_goes_back_or_on_only_when_next_would() {
+        let mut dialog = Dialog::new(Currency::Aud);
+        dialog.send([
+            CreateLedgerEvent::Code(String::new()),
+            CreateLedgerEvent::Step(LedgerStage::Ledger),
+        ]);
+        assert_eq!(dialog.presenter.view_model().stage, LedgerStage::BaseUnit);
+
+        dialog.send([
+            CreateLedgerEvent::Code("aud".into()),
+            CreateLedgerEvent::Step(LedgerStage::Ledger),
+        ]);
+        assert_eq!(dialog.presenter.view_model().stage, LedgerStage::Ledger);
+        dialog.send([CreateLedgerEvent::Step(LedgerStage::Ledger)]);
+        assert_eq!(
+            dialog.port.borrow().calls,
+            0,
+            "the current step creates nothing"
+        );
+
+        dialog.send([CreateLedgerEvent::Step(LedgerStage::BaseUnit)]);
+        assert_eq!(dialog.presenter.view_model().stage, LedgerStage::BaseUnit);
+        dialog.send([CreateLedgerEvent::Step(LedgerStage::BaseUnit)]);
+        assert!(
+            dialog.router.closed.is_empty(),
+            "the current step cancels nothing"
+        );
     }
 }

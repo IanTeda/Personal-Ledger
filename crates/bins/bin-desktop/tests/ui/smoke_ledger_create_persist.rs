@@ -1,7 +1,8 @@
 //! The Create ledger end-to-end smoke test: the Desktop's real start-up and a real SQLite file.
 //! `:new` creates a Ledger with a base Unit the person chose, `:close` flushes it, and a restart
 //! opens the file with that base Unit and what every new Ledger starts with (#1068, ADR-0054),
-//! its Ledger name, Owner and Financial year start among them (ADR-0061). Run
+//! its Ledger name, Owner and Financial year start as the Dialog's Ledger stage took them
+//! (ADR-0061, #1358). Run
 //! with the other smoke tests (`mise run end-to-end-ui smoke`).
 
 use super::common;
@@ -47,6 +48,11 @@ fn a_created_ledger_is_there_with_its_base_unit_and_starting_rows_after_a_restar
         ui.press(&"backspace ".repeat("US Dollar".len()));
         ui.press("B i t c o i n");
         ui.press("enter");
+        assert_eq!(ui.dialog_value("stage").as_deref(), Some("Ledger"));
+        ui.press("space h o u s e h o l d");
+        ui.press("tab I a n");
+        ui.press("tab enter down down down down down down enter");
+        ui.press("ctrl-enter");
         assert_eq!(ui.noun(), Noun::Dashboard);
         assert_eq!(ui.base_unit_code().as_deref(), Some("btc"));
         // Closing flushes the Ledger's writes into the file, as quitting does.
@@ -61,11 +67,11 @@ fn a_created_ledger_is_there_with_its_base_unit_and_starting_rows_after_a_restar
     assert_eq!(
         (
             ledger.name.as_str(),
-            ledger.owner.is_none(),
+            ledger.owner.as_ref().map(lib_core::Owner::as_str),
             ledger.financial_year_start.month()
         ),
-        ("teda", true, 1),
-        "named for its file, with no Owner and en-US's January year, unasked (ADR-0061)"
+        ("teda household", Some("Ian"), 7),
+        "as the Ledger stage took them (ADR-0061)"
     );
     let mut ui = Harness::with_storage(app, storage);
     assert_eq!(

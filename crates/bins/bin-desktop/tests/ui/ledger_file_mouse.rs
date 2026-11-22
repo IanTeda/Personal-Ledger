@@ -8,6 +8,9 @@
 //! `:close` Back has nowhere to go, a Ledger opened by click gets the remembered Documents view,
 //! and a swap reports the replaced Ledger's lost write as `:close` does. State is read back from
 //! `Root`.
+//! The Create ledger Dialog's stages by click (#1358): its confirm button is Next, then Create;
+//! Back and the Base unit step go back keeping everything, the Ledger step goes on only when Next
+//! would, Cancel always cancels, and the Ledger stage's fields and month list take clicks.
 
 #![expect(
     clippy::expect_used,
@@ -368,6 +371,9 @@ fn clicking_create_makes_the_named_ledger_in_place_of_the_open_one(app: &mut Tes
     assert!(!created.exists(), "nothing is written until Create");
     assert_eq!(ui.ledger_path(), Some(folder.household()), "still open");
     ui.click("create-ledger-confirm");
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("Ledger"), "Next");
+    assert!(!created.exists(), "Next writes nothing");
+    ui.click("create-ledger-confirm");
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.ledger_path(), Some(created.clone()));
@@ -432,6 +438,7 @@ fn in_new_clicking_a_folder_creates_the_ledger_in_it(app: &mut TestAppContext) {
     ui.press("t e d a");
     ui.click("explorer-open");
     ui.click("create-ledger-confirm");
+    ui.click("create-ledger-confirm");
 
     assert_eq!(ui.ledger_path(), Some(ledgers.join("teda.pldb")));
 }
@@ -478,6 +485,7 @@ fn clicking_a_changed_base_unit_through_the_dialog_makes_it_the_new_ledgers_base
     ui.press(&"backspace ".repeat("US Dollar".len()));
     ui.press("E t h e r");
     ui.click("create-ledger-confirm");
+    ui.click("create-ledger-confirm");
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.base_unit_code().as_deref(), Some("eth"));
@@ -503,6 +511,11 @@ fn create_does_nothing_while_a_field_is_invalid(app: &mut TestAppContext) {
     ui.click("create-ledger-confirm");
 
     assert_eq!(ui.dialog(), Some("CreateLedger"));
+    assert_eq!(
+        ui.dialog_value("stage").as_deref(),
+        Some("BaseUnit"),
+        "Next is refused"
+    );
     assert_eq!(folder.entries(), entries, "nothing written");
 }
 
@@ -601,5 +614,107 @@ fn a_write_that_failed_just_before_a_swap_is_reported(app: &mut TestAppContext) 
             .iter()
             .any(|toast| toast.kind == "Error" && toast.text.contains("wasn't saved")),
         "{toasts:?}"
+    );
+}
+
+/// `:new` named `emma` in `folder` with no Ledger open, on the Create ledger Dialog's Base unit
+/// stage.
+fn creating_emma<'a>(app: &'a mut TestAppContext, folder: &Folder) -> Harness<'a> {
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(folder.path());
+    ui.click("no-ledger-new");
+    ui.press("e m m a");
+    ui.click("explorer-open");
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("BaseUnit"));
+    ui
+}
+
+#[gpui::test]
+fn the_steps_go_back_by_click_and_on_only_when_next_would(app: &mut TestAppContext) {
+    let folder = Folder::new();
+    let mut ui = creating_emma(app, &folder);
+    assert!(
+        !ui.is_drawn("create-ledger-back"),
+        "no Back on the first stage"
+    );
+    ui.click("create-ledger-code");
+    ui.press("backspace backspace backspace");
+    ui.click("create-ledger-step-ledger");
+    assert_eq!(
+        ui.dialog_value("stage").as_deref(),
+        Some("BaseUnit"),
+        "not while Next is refused"
+    );
+
+    ui.press("e u r");
+    ui.click("create-ledger-step-ledger");
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("Ledger"));
+    ui.click("create-ledger-owner");
+    ui.press("I a n");
+    ui.click("create-ledger-step-base-unit");
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("BaseUnit"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("eur"), "kept");
+
+    ui.click("create-ledger-confirm");
+    assert_eq!(ui.dialog_value("owner").as_deref(), Some("Ian"), "kept");
+    ui.click("create-ledger-back");
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("BaseUnit"));
+    assert_eq!(ui.dialog(), Some("CreateLedger"), "Back closes nothing");
+}
+
+#[gpui::test]
+fn cancel_on_the_ledger_stage_writes_nothing(app: &mut TestAppContext) {
+    let folder = Folder::new();
+    let entries = folder.entries();
+    let mut ui = creating_emma(app, &folder);
+    ui.click("create-ledger-confirm");
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("Ledger"));
+
+    ui.click("create-ledger-cancel");
+
+    assert_eq!(ui.dialog(), None, "Cancel cancels on either stage");
+    assert_eq!(folder.entries(), entries, "nothing written");
+    assert!(!ui.read(|shell| shell.ledger_open()));
+}
+
+#[gpui::test]
+fn clicking_the_ledger_fields_creates_with_them(app: &mut TestAppContext) {
+    let folder = Folder::new();
+    let path = folder.path().join("emma.pldb");
+    let mut ui = creating_emma(app, &folder);
+    ui.click("create-ledger-confirm");
+    assert_eq!(ui.dialog_value("ledger_name").as_deref(), Some("emma"));
+
+    ui.click("create-ledger-financial-year");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("true"));
+    ui.click("create-ledger-financial-year-option-3");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("false"));
+    assert_eq!(ui.dialog_value("financial_year").as_deref(), Some("Apr"));
+    ui.click("create-ledger-ledger-name");
+    ui.press(&"backspace ".repeat(4));
+    assert!(ui.is_drawn("create-ledger-ledger-name-error"));
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+    ui.click("create-ledger-confirm");
+    assert_eq!(ui.dialog(), Some("CreateLedger"), "Create is refused");
+    ui.press("H o m e");
+    ui.click("create-ledger-owner");
+    ui.press("E m m a");
+    ui.click("create-ledger-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.ledger_path(), Some(path.clone()));
+    ui.press(": c l o s e enter");
+    drop(ui);
+    let storage = bin_desktop::start_on(&config_for(&path), common::today())
+        .storage()
+        .expect("the created Ledger opens");
+    let ledger = storage.ledger.row();
+    assert_eq!(
+        (
+            ledger.name.as_str(),
+            ledger.owner.as_ref().map(lib_core::Owner::as_str),
+            ledger.financial_year_start.month()
+        ),
+        ("Home", Some("Emma"), 4)
     );
 }

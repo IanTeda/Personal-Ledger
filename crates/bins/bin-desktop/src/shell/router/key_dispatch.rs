@@ -154,8 +154,8 @@ impl Root {
     }
 
     /// A key while a module's Dialog is open, as one input: resolved through the Dialog keymap,
-    /// with `back` the host's own (an open select closes first, otherwise the Dialog cancels and
-    /// closes), and any key the keymap doesn't bind typed into the focused field.
+    /// with `back` the host's own (an open select closes first, otherwise the Dialog's
+    /// `back_event`, which closes it unless a staged Dialog steps back a stage), and any key the keymap doesn't bind typed into the focused field.
     fn handle_hosted_dialog_key(
         &mut self,
         dialog: &DialogHandle,
@@ -166,8 +166,7 @@ impl Root {
             chord(keystroke).and_then(|chord| self.presenter.dialog_keymap().event(&chord));
         input::send(cx, |cx| match command {
             Some(DialogCommand::Back) => {
-                if !dialog.close_open_select(cx) {
-                    dialog.cancel(cx);
+                if !dialog.close_open_select(cx) && dialog.back(cx) {
                     self.close_dialog();
                 }
             }
