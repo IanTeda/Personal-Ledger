@@ -70,6 +70,13 @@ const VALUE_ERRORS: &[(&str, &str)] = &[
     ("lib_core", "UrlSlugError"),
 ];
 
+/// Whether `name` is on [`VALUE_ERRORS`] as a value error of the crate `krate`, by its lib name.
+fn is_value_error(krate: &str, name: &str) -> bool {
+    VALUE_ERRORS
+        .iter()
+        .any(|(listed, listed_name)| *listed == krate && *listed_name == name)
+}
+
 /// The one shape every crate's alias takes, as `syn` prints it.
 const ALIAS: &str = "pub type Result < T , E = Error > = std :: result :: Result < T , E > ;";
 
@@ -327,6 +334,23 @@ fn segments(path: &syn::Path) -> Vec<String> {
     path.segments.iter().map(|s| s.ident.to_string()).collect()
 }
 
+/// The `use` leaves of `import` that start from another crate of `krate`, each paired with the
+/// crate its path's root names, so the import rule and the import map read one expansion.
+fn leaves_from_other_crates(import: &syn::ItemUse, krate: &Crate) -> Vec<(String, Leaf)> {
+    let mut leaves = Vec::new();
+    use_leaves(&import.tree, &mut Vec::new(), &mut leaves);
+    leaves
+        .into_iter()
+        .filter_map(|leaf| {
+            let other = leaf
+                .0
+                .first()
+                .and_then(|root| krate.other_crates.get(root))?;
+            Some((other.clone(), leaf))
+        })
+        .collect()
+}
+
 /// Whether `lib_rs` re-exports both `Error` and `Result` from its `error` module.
 fn reexports_error(lib_rs: &syn::File) -> bool {
     lib_rs.items.iter().any(|item| {
@@ -387,8 +411,9 @@ fn use_leaves(tree: &syn::UseTree, prefix: &mut Vec<String>, out: &mut Vec<Leaf>
     }
 }
 
-/// Everything the structural check flags in `krate`, as `"<crate>: <what>"`.
-fn structural_violations(krate: &Crate) -> Vec<String> {
+/// Everything the structural check flags in `krate`, given its `sources` from [`crate_sources`],
+/// as `"<crate>: <what>"`.
+fn structural_violations(krate: &Crate, sources: &[(PathBuf, syn::File)]) -> Vec<String> {
     let dir = krate.dir.as_path();
     let name = &krate.name;
     let mut found = Vec::new();
@@ -396,7 +421,6 @@ fn structural_violations(krate: &Crate) -> Vec<String> {
     if !error_rs.is_file() {
         found.push(format!("{name}: has no src/error.rs"));
     }
-    let sources = crate_sources(dir);
     let lib_rs = dir.join("src/lib.rs");
     if let Some((_, parsed)) = sources.iter().find(|(file, _)| *file == lib_rs) {
         if !reexports_error(parsed) {
@@ -411,12 +435,12 @@ fn structural_violations(krate: &Crate) -> Vec<String> {
     let mut aliases_in_error_rs = 0;
     for (file, parsed) in sources {
         let mut aliases = ResultAliases::default();
-        aliases.visit_file(&parsed);
+        aliases.visit_file(parsed);
         let top_level = parsed.items.iter().filter_map(|item| match item {
             syn::Item::Type(alias) if alias.ident == "Result" => Some(alias),
             _ => None,
         });
-        if file == error_rs {
+        if *file == error_rs {
             for alias in top_level {
                 aliases_in_error_rs += 1;
                 // Its doc comment is the crate's own; only the declaration has one shape.
@@ -434,7 +458,7 @@ fn structural_violations(krate: &Crate) -> Vec<String> {
         if aliases.0 > 0 {
             found.push(format!(
                 "{name}: {} defines a Result alias outside src/error.rs",
-                file.strip_prefix(dir).unwrap_or(&file).display()
+                file.strip_prefix(dir).unwrap_or(file).display()
             ));
         }
     }
@@ -572,11 +596,9 @@ impl<'a> Usage<'a> {
         if names.first().is_some_and(|first| self.is_generic(first)) {
             return true;
         }
-        self.declared_as(&names).is_some_and(|(krate, name)| {
-            VALUE_ERRORS
-                .iter()
-                .any(|(listed, listed_name)| *listed == krate && *listed_name == name)
-        }) || self.globbed_value_error(&names)
+        self.declared_as(&names)
+            .is_some_and(|(krate, name)| is_value_error(&krate, &name))
+            || self.globbed_value_error(&names)
     }
 
     /// The crate the type spelt `names` is declared in and the name it has there, by how it is
@@ -615,9 +637,11 @@ impl<'a> Usage<'a> {
             return false;
         };
         !self.imports.named.contains_key(name)
-            && VALUE_ERRORS.iter().any(|(listed, listed_name)| {
-                listed_name == name && self.imports.globbed.contains(*listed)
-            })
+            && self
+                .imports
+                .globbed
+                .iter()
+                .any(|krate| is_value_error(krate, name))
     }
 
     fn check_fn(&mut self, name: &syn::Ident, sig: &syn::Signature) {
@@ -631,15 +655,7 @@ impl<'a> Usage<'a> {
     }
 
     fn check_use(&mut self, import: &syn::ItemUse) {
-        let mut leaves = Vec::new();
-        use_leaves(&import.tree, &mut Vec::new(), &mut leaves);
-        for (path, name, bound) in leaves {
-            let from_elsewhere = path
-                .first()
-                .is_some_and(|root| self.krate.other_crates.contains_key(root));
-            if !from_elsewhere {
-                continue;
-            }
+        for (_, (path, name, bound)) in leaves_from_other_crates(import, self.krate) {
             let imports_result = name == "Result" && path.last().is_none_or(|m| m != "fmt");
             let globs_result = name == "*"
                 && (path.len() == 1 || path.last().is_some_and(|m| m == "error" || m == "result"));
@@ -659,8 +675,9 @@ impl<'a> Usage<'a> {
 }
 
 /// The names a file's `use`s bind from other crates, mapped to the crate each came from and the
-/// name it has there, and the crates it globs, `#[cfg(test)]` items aside. Scope is the file: a `use` inside a function
-/// counts for the whole file, which can only let a value error through, never fail one.
+/// name it has there, and the crates it globs, `#[cfg(test)]` items aside. Scope is the file: a
+/// `use` inside a function counts for the whole file, which can only let a value error through,
+/// never fail one.
 #[derive(Default)]
 struct Imports {
     named: BTreeMap<String, (String, String)>,
@@ -681,15 +698,7 @@ impl Imports {
             }
 
             fn visit_item_use(&mut self, import: &'ast syn::ItemUse) {
-                let mut leaves = Vec::new();
-                use_leaves(&import.tree, &mut Vec::new(), &mut leaves);
-                for (path, name, bound) in leaves {
-                    let Some(krate) = path
-                        .first()
-                        .and_then(|root| self.krate.other_crates.get(root))
-                    else {
-                        continue;
-                    };
+                for (krate, (_, name, bound)) in leaves_from_other_crates(import, self.krate) {
                     if name == "*" {
                         self.imports.globbed.insert(krate.clone());
                     } else {
@@ -828,53 +837,54 @@ fn usage_violations_in(parsed: &syn::File, krate: &Crate, is_error_rs: bool) -> 
     usage.found
 }
 
-/// Everything the usage rules flag in `krate`, as `"<crate>: <file>: <what>"`.
-fn usage_violations(krate: &Crate) -> Vec<String> {
+/// Everything the usage rules flag in `krate`, given its `sources` from [`crate_sources`], as
+/// `"<crate>: <file>: <what>"`.
+fn usage_violations(krate: &Crate, sources: &[(PathBuf, syn::File)]) -> Vec<String> {
     let dir = krate.dir.as_path();
     let error_rs = krate.dir.join("src/error.rs");
     let mut found = Vec::new();
-    for (file, parsed) in crate_sources(dir) {
-        let relative = file
-            .strip_prefix(dir)
-            .unwrap_or(&file)
-            .display()
-            .to_string();
-        for what in usage_violations_in(&parsed, krate, file == error_rs) {
+    for (file, parsed) in sources {
+        let relative = file.strip_prefix(dir).unwrap_or(file).display().to_string();
+        for what in usage_violations_in(parsed, krate, *file == error_rs) {
             found.push(format!("{}: {relative}: {what}", krate.name));
         }
     }
     found
 }
 
+/// Every workspace crate follows the `error.rs` convention and returns its own `Result`. Each
+/// crate is parsed once and both rules read the same sources.
 #[test]
-fn every_crate_follows_the_error_rs_convention() {
+fn every_crate_keeps_its_own_result() {
     let crates = workspace_crates();
     assert!(
         crates.len() > 30,
         "crates/libs/* and crates/bins/* should list the crates"
     );
-    let found: Vec<String> = crates.iter().flat_map(structural_violations).collect();
-    assert!(
-        found.is_empty(),
-        "error.rs convention broken: every crate has a private src/error.rs holding `{ALIAS}`, \
-         re-exported from lib.rs as `pub use error::{{Error, Result}}`. See /rust-style.\n  {}",
-        found.join("\n  ")
-    );
-}
-
-#[test]
-fn every_crate_returns_its_own_result() {
-    let found: Vec<String> = workspace_crates()
-        .iter()
-        .flat_map(usage_violations)
-        .collect();
-    assert!(
-        found.is_empty(),
-        "ADR-0060 broken: every fallible function returns its crate's `Result<T>`, or \
-         `Result<T, E>` for a value error on VALUE_ERRORS, and no `use` imports another crate's \
-         `Result`. See /rust-style.\n  {}",
-        found.join("\n  ")
-    );
+    let mut structural = Vec::new();
+    let mut usage = Vec::new();
+    for krate in &crates {
+        let sources = crate_sources(&krate.dir);
+        structural.extend(structural_violations(krate, &sources));
+        usage.extend(usage_violations(krate, &sources));
+    }
+    let mut message = String::new();
+    if !structural.is_empty() {
+        message.push_str(&format!(
+            "error.rs convention broken: every crate has a private src/error.rs holding `{ALIAS}`, \
+             re-exported from lib.rs as `pub use error::{{Error, Result}}`. See /rust-style.\n  {}\n",
+            structural.join("\n  ")
+        ));
+    }
+    if !usage.is_empty() {
+        message.push_str(&format!(
+            "ADR-0060 broken: every fallible function returns its crate's `Result<T>`, or \
+             `Result<T, E>` for a value error on VALUE_ERRORS, and no `use` imports another crate's \
+             `Result`. See /rust-style.\n  {}\n",
+            usage.join("\n  ")
+        ));
+    }
+    assert!(structural.is_empty() && usage.is_empty(), "{message}");
 }
 
 /// A bin crate `bin_x` that depends on `lib_core`, `lib_colour_theme` and `lib_shell`.
@@ -998,7 +1008,7 @@ fn a_bins_main_may_use_its_own_lib_targets_result() {
         "{:?}",
         krate.own_names
     );
-    assert!(usage_violations(&krate).is_empty());
+    assert!(usage_violations(&krate, &crate_sources(&krate.dir)).is_empty());
 }
 
 #[test]
@@ -1076,7 +1086,7 @@ impl Drop for TempCrate {
 #[test]
 fn the_structural_check_flags_a_missing_error_file_and_re_export() {
     let krate = TempCrate::new("missing", &[("src/lib.rs", "pub fn f() {}\n")]);
-    let found = structural_violations(&Crate::at(&krate.0));
+    let found = structural_violations(&Crate::at(&krate.0), &crate_sources(&krate.0));
     assert_eq!(found.len(), 2, "{found:?}");
 }
 
@@ -1093,7 +1103,7 @@ fn the_structural_check_flags_a_public_error_module() {
         ],
     );
     let public = Crate::at(&krate.0);
-    let found = structural_violations(&public);
+    let found = structural_violations(&public, &crate_sources(&krate.0));
     assert_eq!(
         found,
         vec![
@@ -1122,7 +1132,7 @@ fn the_structural_check_holds_every_alias_to_one_shape() {
             ),
         ],
     );
-    let found = structural_violations(&Crate::at(&krate.0));
+    let found = structural_violations(&Crate::at(&krate.0), &crate_sources(&krate.0));
     assert_eq!(found.len(), 2, "{found:?}");
     assert!(found[0].contains("src/error.rs's alias is"), "{found:?}");
     assert!(
@@ -1143,7 +1153,7 @@ fn the_structural_check_passes_the_convention_and_reads_a_bin_without_lib_rs() {
             ("src/error.rs", &format!("pub enum Error {{}}\n{ALIAS}\n")),
         ],
     );
-    assert!(structural_violations(&Crate::at(&lib.0)).is_empty());
+    assert!(structural_violations(&Crate::at(&lib.0), &crate_sources(&lib.0)).is_empty());
     let bin = TempCrate::new(
         "bin_ok",
         &[
@@ -1154,8 +1164,8 @@ fn the_structural_check_passes_the_convention_and_reads_a_bin_without_lib_rs() {
             ("src/error.rs", &format!("pub enum Error {{}}\n{ALIAS}\n")),
         ],
     );
-    assert!(structural_violations(&Crate::at(&bin.0)).is_empty());
-    assert!(usage_violations(&Crate::at(&bin.0)).is_empty());
+    assert!(structural_violations(&Crate::at(&bin.0), &crate_sources(&bin.0)).is_empty());
+    assert!(usage_violations(&Crate::at(&bin.0), &crate_sources(&bin.0)).is_empty());
 }
 
 #[test]
@@ -1176,7 +1186,7 @@ fn the_module_tree_skips_test_and_generated_modules() {
             ),
         ],
     );
-    let found = usage_violations(&Crate::at(&krate.0));
+    let found = usage_violations(&Crate::at(&krate.0), &crate_sources(&krate.0));
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(found[0].contains("src/a/b.rs"), "{found:?}");
 }
@@ -1202,7 +1212,7 @@ fn the_import_rule_reads_renamed_dependencies_from_the_manifest() {
             ("lib-qux/src/lib.rs", ""),
         ],
     );
-    let found = usage_violations(&Crate::at(&krate.0));
+    let found = usage_violations(&Crate::at(&krate.0), &crate_sources(&krate.0));
     assert_eq!(found.len(), 2, "{found:?}");
     assert!(found[0].contains("`use foo::Result`"), "{found:?}");
     assert!(
