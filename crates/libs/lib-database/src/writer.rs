@@ -54,6 +54,9 @@ pub enum Domain {
     /// The Document Types, kept in the Documents store but announced on their own, so the Document
     /// Types page hears only their writes.
     DocumentTypes,
+    /// The Ledger's own Preferences, its name, Owner and Financial year start (ADR-0061). The
+    /// base Unit beside them on the `ledger` row is the Units'.
+    Ledger,
     /// The test-only second adapter, which proves one commit spans domains.
     #[cfg(test)]
     Test,

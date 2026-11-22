@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use lib_core::UnitId;
+use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId};
 use lib_locale::Currency;
 use lib_locale::Label as _;
 use lib_units::interactor::AddUnit;
@@ -81,6 +81,11 @@ pub struct CreateLedgerPresenter {
     creation: SharedLedgerCreation,
     path: PathBuf,
     personal: String,
+    /// The Ledger name, Owner and Financial year start, passed through unasked until the Dialog
+    /// asks for them (ADR-0061).
+    ledger_name: LedgerName,
+    owner: Option<Owner>,
+    financial_year_start: FinancialYearStart,
     id: UnitId,
     code: String,
     name: String,
@@ -94,18 +99,25 @@ pub struct CreateLedgerPresenter {
 
 impl CreateLedgerPresenter {
     /// The Dialog for the Ledger file at `path`, prefilled with `currency`, the Locale's, and the
-    /// Personal Institution named `personal`.
+    /// Personal Institution named `personal`, creating the Ledger as `ledger_name`, owned by `owner`,
+    /// with its Financial Year starting in `financial_year_start`.
     pub fn new(
         creation: SharedLedgerCreation,
         path: PathBuf,
         currency: Currency,
         personal: String,
+        ledger_name: LedgerName,
+        owner: Option<Owner>,
+        financial_year_start: FinancialYearStart,
     ) -> Self {
         let base = base_unit_for(currency);
         Self {
             creation,
             path,
             personal,
+            ledger_name,
+            owner,
+            financial_year_start,
             id: base.id,
             code: base.code,
             name: base.name,
@@ -209,6 +221,9 @@ impl CreateLedgerPresenter {
                 link: PriceLink::manual(self.id),
             },
             personal: self.personal.clone(),
+            name: self.ledger_name.clone(),
+            owner: self.owner.clone(),
+            financial_year_start: self.financial_year_start,
         }
         .run(&mut *self.creation.borrow_mut(), router);
         // A refusal has raised its Error Toast; the Dialog stays for another try or a cancel.
@@ -350,6 +365,8 @@ impl DialogPresenter for CreateLedgerPresenter {
 mod tests {
     use lib_toast::{Notice, Notify, ToastKind};
 
+    use std::path::Path;
+
     use super::*;
     use crate::fake::InMemoryLedgerCreation;
 
@@ -388,6 +405,9 @@ mod tests {
                     PathBuf::from("/ledgers/teda.pldb"),
                     currency,
                     "Personal".into(),
+                    crate::interactor::name_for(Path::new("/ledgers/teda.pldb")),
+                    None,
+                    FinancialYearStart::APRIL,
                 ),
                 port,
                 router: Router::default(),
@@ -489,6 +509,15 @@ mod tests {
         assert_eq!(
             (ledger.base_unit.code.as_str(), ledger.base_unit.kind),
             ("btc", UnitKind::Crypto)
+        );
+        assert_eq!(
+            (
+                ledger.name.as_str(),
+                &ledger.owner,
+                ledger.financial_year_start
+            ),
+            ("teda", &None, FinancialYearStart::APRIL),
+            "the Ledger's Preferences pass through unasked"
         );
     }
 

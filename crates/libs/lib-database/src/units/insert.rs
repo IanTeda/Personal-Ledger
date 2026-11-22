@@ -142,16 +142,22 @@ mod tests {
     async fn ledger_table_holds_one_row_pointing_at_a_unit(pool: SqlitePool) {
         let unit = crate::Units::mock().insert(&pool).await.unwrap();
 
-        sqlx::query("INSERT INTO ledger (id, base_unit_id) VALUES (1, ?)")
-            .bind(unit.id)
-            .execute(&pool)
-            .await
-            .unwrap();
+        sqlx::query(
+            "INSERT INTO ledger (id, base_unit_id, name, financial_year_start)
+             VALUES (1, ?, 'Household', 7)",
+        )
+        .bind(unit.id)
+        .execute(&pool)
+        .await
+        .unwrap();
 
-        let second = sqlx::query("INSERT INTO ledger (id, base_unit_id) VALUES (2, ?)")
-            .bind(unit.id)
-            .execute(&pool)
-            .await;
+        let second = sqlx::query(
+            "INSERT INTO ledger (id, base_unit_id, name, financial_year_start)
+             VALUES (2, ?, 'Household', 7)",
+        )
+        .bind(unit.id)
+        .execute(&pool)
+        .await;
         assert!(second.is_err(), "only id = 1 is allowed");
 
         let missing = sqlx::query("UPDATE ledger SET base_unit_id = ? WHERE id = 1")

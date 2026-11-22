@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use lib_core::UnitId;
+use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId};
 use lib_locale::Currency;
 use lib_toast::{Notice, Notify, ToastKind};
 use lib_units::interactor::AddUnit;
@@ -25,6 +25,11 @@ pub struct CreateLedger {
     pub base_unit: AddUnit,
     /// The Personal Institution's name, the Client's "Personal" Message (ADR-0049).
     pub personal: String,
+    /// The Ledger name, Owner and Financial year start the Ledger is made with (ADR-0061): a
+    /// Client passes [`name_for`] the path, no Owner and the Locale's month.
+    pub name: LedgerName,
+    pub owner: Option<Owner>,
+    pub financial_year_start: FinancialYearStart,
 }
 
 /// What a create made.
@@ -74,7 +79,14 @@ impl CreateLedger {
     fn apply(self, creation: &mut dyn LedgerCreation) -> Result<LedgerCreated> {
         let unit = checked(self.base_unit)?;
         let base_unit = unit.id;
-        creation.create_ledger(&self.path, &NewLedger::new(unit, &self.personal))?;
+        let ledger = NewLedger::new(
+            unit,
+            &self.personal,
+            self.name,
+            self.owner,
+            self.financial_year_start,
+        );
+        creation.create_ledger(&self.path, &ledger)?;
         Ok(LedgerCreated {
             path: self.path,
             base_unit,
@@ -94,6 +106,21 @@ pub fn base_unit_for(currency: Currency) -> AddUnit {
         precision: Precision::of_kind(UnitKind::Currency),
         link: PriceLink::manual(id),
     }
+}
+
+/// The name a Ledger made at `path` starts with: its file name without `.pldb`, cut to the most a
+/// name holds, or the Locale's fallback Message when that is blank (#1348).
+#[expect(
+    clippy::expect_used,
+    reason = "the fallback is a Catalogue Message, which is never blank"
+)]
+pub fn name_for(path: &Path) -> LedgerName {
+    let stem = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    LedgerName::from_file_stem(&stem, &lib_locale::msg::ledger_name_fallback())
+        .expect("the fallback ledger name Message is never blank")
 }
 
 /// The base Unit Add unit would add, as the Ledger's only Unit: no other Unit or stored Price
@@ -184,6 +211,9 @@ mod tests {
             path: path(),
             base_unit,
             personal: "Personal".into(),
+            name: name_for(&path()),
+            owner: None,
+            financial_year_start: FinancialYearStart::JULY,
         }
         .run(port, &mut notices);
         (outcome, notices)
@@ -228,6 +258,24 @@ mod tests {
         assert!(ledger.budget.account_ids.is_empty(), "on no Accounts");
         assert!(ledger.budget.limits.is_empty(), "with no amounts");
         assert_eq!(ledger.document_types, lib_documents::types::default_types());
+        assert_eq!(ledger.name.as_str(), "teda");
+        assert_eq!(ledger.owner, None);
+        assert_eq!(ledger.financial_year_start, FinancialYearStart::JULY);
+    }
+
+    #[test]
+    fn a_new_ledger_is_named_for_its_file_cut_to_sixty_characters_or_the_fallback() {
+        lib_locale::init_with_layers("en-US", &[msg::LAYER]);
+        assert_eq!(
+            name_for(Path::new("/ledgers/household.pldb")).as_str(),
+            "household"
+        );
+        let long = format!("/ledgers/{}.pldb", "a".repeat(75));
+        assert_eq!(name_for(Path::new(&long)).as_str(), "a".repeat(60));
+        assert_eq!(
+            name_for(Path::new("/ledgers/  .pldb")).as_str(),
+            "My ledger"
+        );
     }
 
     #[test]

@@ -73,8 +73,9 @@ impl UnitsAdapter {
     }
 
     /// Writes `units`, `records` and `base_unit` in one transaction, blocking until it lands. For
-    /// an empty database, before the first [`Self::load`]. A Ledger that already has a base Unit
-    /// keeps it, so seeding again never resets the person's choice.
+    /// an empty database, before the first [`Self::load`]: a file with no `ledger` row is given one
+    /// on `base_unit` with the Sample Ledger's Preferences, since the row holds both. A Ledger
+    /// that already has its row keeps it, so seeding again never resets the person's choice.
     ///
     /// [`Self::seed`] with the rows of an in-memory set, the sample's or a test's.
     ///
@@ -100,14 +101,21 @@ impl UnitsAdapter {
     ) -> Result<()> {
         writer.run(move |pool| async move {
             let mut transaction = pool.begin().await?;
-            Self::seed_in(&mut transaction, &units, &records, base_unit).await?;
+            Self::seed_in(&mut transaction, &units, &records).await?;
+            crate::adapter::ledger::seed_in(
+                &mut transaction,
+                &crate::seed::sample_ledger_row(),
+                base_unit,
+            )
+            .await?;
             transaction.commit().await?;
             Ok(())
         })
     }
 
-    /// [`Self::seed`]'s writes on `conn`, so a seed of several domains commits them in one
-    /// transaction (#886). It defers `conn`'s foreign keys to the commit.
+    /// [`Self::seed`]'s Units and Price Sources on `conn`, so a seed of several domains commits
+    /// them in one transaction (#886). It defers `conn`'s foreign keys to the commit. The base
+    /// Unit is on the `ledger` row, which the caller writes whole (`adapter::ledger`).
     ///
     /// # Errors
     /// Returns the error of a write.
@@ -115,7 +123,6 @@ impl UnitsAdapter {
         conn: &mut SqliteConnection,
         units: &[UnitRow],
         records: &[PriceSourceRecord],
-        base_unit: UnitId,
     ) -> Result<()> {
         // A seed's Units may quote one listed after them.
         sqlx::query("PRAGMA defer_foreign_keys = ON")
@@ -127,7 +134,7 @@ impl UnitsAdapter {
         for record in records {
             upsert_price_source(conn, record).await?;
         }
-        seed_base_unit(conn, base_unit).await
+        Ok(())
     }
 
     /// Drops the Units changes not yet committed and loads the rows again, blocking. For after a
@@ -259,28 +266,15 @@ async fn save(conn: &mut SqliteConnection, change: &UnitsChange) -> Result<()> {
                 .await?;
             Ok(())
         }
+        // The row is written whole as the Ledger is created, so a base Unit change only updates
+        // its own column and leaves the Ledger adapter's alone.
         UnitsChange::SetBaseUnit(id) => {
-            sqlx::query!(
-                "INSERT INTO ledger (id, base_unit_id) VALUES (1, ?)
-                 ON CONFLICT (id) DO UPDATE SET base_unit_id = excluded.base_unit_id",
-                id
-            )
-            .execute(conn)
-            .await?;
+            sqlx::query!("UPDATE ledger SET base_unit_id = ? WHERE id = 1", id)
+                .execute(conn)
+                .await?;
             Ok(())
         }
     }
-}
-
-/// Sets the base Unit only when the Ledger has none, so a re-seed keeps the person's choice.
-async fn seed_base_unit(conn: &mut SqliteConnection, id: UnitId) -> Result<()> {
-    sqlx::query!(
-        "INSERT INTO ledger (id, base_unit_id) VALUES (1, ?) ON CONFLICT (id) DO NOTHING",
-        id
-    )
-    .execute(conn)
-    .await?;
-    Ok(())
 }
 
 /// Writes the Unit and its Weekly Prices, which are written afresh: a quote change clears them all

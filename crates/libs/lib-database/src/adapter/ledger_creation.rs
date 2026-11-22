@@ -11,6 +11,7 @@ use lib_ledger_creation::{LedgerCreation, NewLedger};
 use crate::adapter::budgets::BudgetsAdapter;
 use crate::adapter::documents::DocumentsAdapter;
 use crate::adapter::institutions::InstitutionsAdapter;
+use crate::adapter::ledger::LedgerRow;
 use crate::adapter::units::UnitsAdapter;
 use crate::{Error, Result, Writer};
 
@@ -90,10 +91,19 @@ fn write(path: &Path, ledger: NewLedger, fail_before_commit: bool) -> Result<()>
             base_unit,
             budget,
             document_types,
+            name,
+            owner,
+            financial_year_start,
         } = ledger;
         let mut conn = pool.begin().await?;
         let base = base_unit.id;
-        UnitsAdapter::seed_in(&mut conn, &[base_unit], &[], base).await?;
+        UnitsAdapter::seed_in(&mut conn, &[base_unit], &[]).await?;
+        let row = LedgerRow {
+            name,
+            owner,
+            financial_year_start,
+        };
+        crate::adapter::ledger::create_in(&mut conn, &row, base).await?;
         InstitutionsAdapter::seed_in(&mut conn, &[personal]).await?;
         BudgetsAdapter::seed_in(&mut conn, &[budget]).await?;
         DocumentsAdapter::seed_in(&mut conn, &document_types, &[]).await?;
@@ -132,8 +142,8 @@ mod tests {
     use super::*;
     use crate::{
         AccountsStore as _, BillsStore as _, BudgetsStore as _, CategoriesStore as _,
-        DocumentsStore as _, InstitutionsStore as _, InventoryStore as _, PayeesStore as _,
-        TagsStore as _, TransactionsStore as _, UnitsStore as _,
+        DocumentsStore as _, InstitutionsStore as _, InventoryStore as _, LedgerStore as _,
+        PayeesStore as _, TagsStore as _, TransactionsStore as _, UnitsStore as _,
     };
     use crate::{Stores, open_storage};
 
@@ -200,6 +210,9 @@ mod tests {
                 institutions: stores.institutions.institutions().institutions(),
                 budgets: stores.budgets.budgets().budgets(),
                 document_types: stores.documents.documents().document_types(),
+                name: stores.ledger.ledger().name.clone(),
+                owner: stores.ledger.ledger().owner.clone(),
+                financial_year_start: stores.ledger.ledger().financial_year_start,
                 other_rows,
             })
         }
@@ -208,6 +221,13 @@ mod tests {
     #[test]
     fn the_adapter_stores_the_starting_rows() {
         contract::a_create_stores_the_starting_rows_and_nothing_else(&mut AdapterFactory::new());
+    }
+
+    #[test]
+    fn the_adapter_stores_the_name_owner_and_financial_year_start() {
+        contract::a_create_stores_the_name_owner_and_financial_year_start(
+            &mut AdapterFactory::new(),
+        );
     }
 
     #[test]

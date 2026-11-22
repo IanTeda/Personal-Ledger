@@ -50,12 +50,6 @@ pub use balance_checks::BalanceChecks;
 pub mod sync_users;
 pub use sync_users::SyncUser;
 
-/// User-editable Ledger-scoped settings (default Unit, colour theme, date format,
-/// decimal/thousands separator), synced across a user's Clients in future (ADR-0014).
-/// Singleton by convention (mirroring `sync_users`), not a database constraint.
-pub mod preferences;
-pub use preferences::Preferences;
-
 /// The Sync Server's durable Change Set log (ADR-0009).
 pub mod change_sets;
 pub use change_sets::ChangeSet;
@@ -74,6 +68,7 @@ pub use adapter::documents::DocumentsAdapter;
 pub use adapter::fake_fails::{FailArm, FakeFails};
 pub use adapter::institutions::InstitutionsAdapter;
 pub use adapter::inventory::InventoryAdapter;
+pub use adapter::ledger::{LedgerAdapter, LedgerRow};
 // Public, unlike the Ledger-bound adapters: it runs before any Ledger is open, so a Client's
 // composition root builds it rather than taking it from `LedgerPorts` (#1212).
 pub use adapter::ledger_creation::{LedgerCreationAdapter, remove_ledger_files};
@@ -81,11 +76,11 @@ pub use adapter::payees::PayeesAdapter;
 pub(crate) use adapter::settings::{LedgerPreferencesAdapter, StoredSettingsReads};
 pub use adapter::store::{
     AccountsStore, BillsStore, BudgetsStore, CategoriesStore, CountingCommit, DocumentsStore,
-    FakeStores, InstitutionsStore, InventoryStore, PayeesStore, Recorded, SharedAccountsStore,
-    SharedBillsStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
-    SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedStores,
-    SharedTagsStore, SharedTransactionsStore, SharedUnitsStore, TagsStore, TransactionsStore,
-    UnitsStore,
+    FakeStores, InstitutionsStore, InventoryStore, LedgerStore, PayeesStore, Recorded,
+    SharedAccountsStore, SharedBillsStore, SharedBudgetsStore, SharedCategoriesStore,
+    SharedDocumentsStore, SharedInstitutionsStore, SharedInventoryStore, SharedLedgerStore,
+    SharedPayeesStore, SharedStores, SharedTagsStore, SharedTransactionsStore, SharedUnitsStore,
+    TagsStore, TransactionsStore, UnitsStore,
 };
 pub(crate) use adapter::tag_removal::TagRemovalAdapter;
 pub use adapter::tags::TagsAdapter;

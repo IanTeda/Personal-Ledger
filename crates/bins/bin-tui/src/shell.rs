@@ -413,8 +413,9 @@ impl Shell {
         }
     }
 
-    /// `:new <path>`: creates a Ledger file at `path` with what every new Ledger starts with and
-    /// the Locale's Currency as its base Unit (ADR-0054), asking nothing (#758), and opens it. A
+    /// `:new <path>`: creates a Ledger file at `path` with what every new Ledger starts with, the
+    /// Locale's Currency as its base Unit (ADR-0054), the file name as its name, no Owner and the
+    /// Locale's Financial year start (ADR-0061), asking nothing (#758), and opens it. A
     /// path that already exists is refused on the status line, and nothing is written to it; a
     /// create that fails raises its Error Toast.
     fn new_ledger(&mut self, path: Option<PathBuf>) {
@@ -437,6 +438,9 @@ impl Shell {
                 lib_locale::locale().currency(),
             ),
             personal: lib_locale::msg::institution_personal(),
+            name: lib_ledger_creation::interactor::name_for(&path),
+            owner: None,
+            financial_year_start: lib_locale::locale().financial_year_start(),
         }
         .run(
             &mut lib_database::LedgerCreationAdapter::new(),
@@ -3167,6 +3171,27 @@ mod tests {
     /// A `Shell` with a Ledger open on the sample seed's Units in memory, as most tests need.
     fn opened() -> Shell {
         opened_with(KeyBindingConfig::default())
+    }
+
+    /// `:new` asks nothing, so the Ledger is named for its file, has no Owner and starts its
+    /// Financial Year in the Locale's month, January in en-US (ADR-0061).
+    #[test]
+    fn new_names_the_ledger_for_its_file_with_no_owner_and_the_locales_year() {
+        crate::locale::init_for_tests();
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("household.pldb");
+        let mut shell = opened();
+
+        shell.update(Action::NewLedger(Some(path.clone())));
+
+        let storage = lib_database::open_storage(&path).expect("the new Ledger opens");
+        let row = storage.ledger.row();
+        assert_eq!(row.name.as_str(), "household");
+        assert_eq!(row.owner, None);
+        assert_eq!(
+            row.financial_year_start,
+            lib_core::FinancialYearStart::JANUARY
+        );
     }
 
     #[test]

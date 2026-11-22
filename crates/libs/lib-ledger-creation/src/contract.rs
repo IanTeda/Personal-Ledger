@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use lib_budgets::Budget;
-use lib_core::UnitId;
+use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId};
 use lib_documents::types::DocumentTypeRow;
 use lib_institutions::Institution;
 use lib_units::{Precision, PriceLink, UnitKind, UnitRow};
@@ -27,6 +27,9 @@ pub struct Stored {
     pub institutions: Vec<Institution>,
     pub budgets: Vec<Budget>,
     pub document_types: Vec<DocumentTypeRow>,
+    pub name: LedgerName,
+    pub owner: Option<Owner>,
+    pub financial_year_start: FinancialYearStart,
     /// Every Account, Category, Tag, Payee, Transaction, Bill Plan, Inventory Location and
     /// Document, none of which a new Ledger has.
     pub other_rows: usize,
@@ -40,6 +43,9 @@ impl Stored {
             institutions: vec![ledger.personal.clone()],
             budgets: vec![ledger.budget.clone()],
             document_types: ledger.document_types.clone(),
+            name: ledger.name.clone(),
+            owner: ledger.owner.clone(),
+            financial_year_start: ledger.financial_year_start,
             other_rows: 0,
         }
     }
@@ -102,7 +108,12 @@ impl CreationFactory for InMemoryFactory {
     }
 }
 
-/// A new Ledger on a US Dollar base Unit, as en-US prefills it.
+/// A new Ledger on a US Dollar base Unit, as en-US prefills it, named `household` with no Owner
+/// and a January year.
+#[expect(
+    clippy::expect_used,
+    reason = "a literal name the contract fixes, inside LedgerName's rules"
+)]
 pub fn usd_ledger() -> NewLedger {
     let id = UnitId::new();
     let unit = UnitRow {
@@ -115,7 +126,22 @@ pub fn usd_ledger() -> NewLedger {
             PriceLink::manual(id),
         )
     };
-    NewLedger::new(unit, "Personal")
+    NewLedger::new(
+        unit,
+        "Personal",
+        LedgerName::new("household").expect("a short, non-blank name"),
+        None,
+        FinancialYearStart::JANUARY,
+    )
+}
+
+/// [`usd_ledger`] with an Owner and a July year, so a store that drops either is caught.
+pub fn owned_ledger() -> NewLedger {
+    NewLedger {
+        owner: Owner::new("Ian Teda"),
+        financial_year_start: FinancialYearStart::JULY,
+        ..usd_ledger()
+    }
 }
 
 /// A create stores the Personal Institution, the base Unit, Personal spending in it and the
@@ -129,6 +155,28 @@ pub fn a_create_stores_the_starting_rows_and_nothing_else<F: CreationFactory>(fa
         .expect("nothing is at the path");
 
     assert_eq!(factory.stored(&port, &path), Some(Stored::of(&ledger)));
+}
+
+/// A create stores the Ledger name, the Owner and the Financial year start it is given.
+pub fn a_create_stores_the_name_owner_and_financial_year_start<F: CreationFactory>(
+    factory: &mut F,
+) {
+    let mut port = factory.port();
+    let path = factory.free_path();
+    let ledger = owned_ledger();
+
+    port.create_ledger(&path, &ledger)
+        .expect("nothing is at the path");
+
+    let stored = factory.stored(&port, &path).expect("the Ledger is there");
+    assert_eq!(
+        (
+            stored.name.as_str(),
+            stored.owner.as_ref().map(Owner::as_str),
+            stored.financial_year_start
+        ),
+        ("household", Some("Ian Teda"), FinancialYearStart::JULY)
+    );
 }
 
 /// A create at a path something is already at is refused and leaves it as it was.
@@ -179,6 +227,11 @@ mod tests {
     #[test]
     fn the_fake_stores_the_starting_rows() {
         a_create_stores_the_starting_rows_and_nothing_else(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn the_fake_stores_the_name_owner_and_financial_year_start() {
+        a_create_stores_the_name_owner_and_financial_year_start(&mut InMemoryFactory::default());
     }
 
     #[test]

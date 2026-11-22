@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               name,\n               owner,\n               financial_year_start AS \"financial_year_start!: u32\"\n           FROM ledger\n           WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "owner",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "financial_year_start!: u32",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "75ab0e317482c32dc0173ecb58881e8f2ab9da456acf16f07e4ab22f93a59658"
+}

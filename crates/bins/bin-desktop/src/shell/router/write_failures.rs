@@ -160,5 +160,9 @@ fn messages(domain: Domain) -> (Message, Message) {
             crate::msg::desktop_toast_write_failed_documents,
             crate::msg::desktop_toast_write_failed_documents_unsaved,
         ),
+        Domain::Ledger => (
+            crate::msg::desktop_toast_write_failed_ledger,
+            crate::msg::desktop_toast_write_failed_ledger_unsaved,
+        ),
     }
 }

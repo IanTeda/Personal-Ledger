@@ -1,6 +1,6 @@
 //! A Client's Ledger file, opened at start-up: the shared writer on the `[General] file`,
 //! the Client migrations, then the Units, Institutions, Accounts, Categories, Tags, Payees,
-//! Transactions, Bills, Budgets, Inventory and Documents adapters on the pending batch every
+//! Transactions, Bills, Budgets, Inventory, Documents and Ledger adapters on the pending batch every
 //! adapter shares. The Desktop and the TUI both open it here,
 //! so they read and write the same rows (ADR-0046), and both build their Shell on the [`Stores`]
 //! made from it.
@@ -11,8 +11,8 @@ use std::sync::mpsc;
 
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, DocumentsAdapter, Error,
-    InstitutionsAdapter, InventoryAdapter, PayeesAdapter, PendingWrites, Result, TagsAdapter,
-    TransactionsAdapter, UnitsAdapter, WriteFailure, Writer, adapter::store,
+    InstitutionsAdapter, InventoryAdapter, LedgerAdapter, PayeesAdapter, PendingWrites, Result,
+    TagsAdapter, TransactionsAdapter, UnitsAdapter, WriteFailure, Writer, adapter::store,
 };
 
 /// The Ledger file as start-up opens it: each adapter, the pending batch the bin commits after
@@ -29,6 +29,7 @@ pub struct Storage {
     pub budgets: BudgetsAdapter,
     pub inventory: InventoryAdapter,
     pub documents: DocumentsAdapter,
+    pub ledger: LedgerAdapter,
     pub pending: PendingWrites,
     /// Flushed when the Client quits, so the last writes land before the thread dies.
     pub writer: Writer,
@@ -56,6 +57,7 @@ pub struct Stores {
     pub budgets: store::Recorded<dyn store::BudgetsStore>,
     pub inventory: store::Recorded<dyn store::InventoryStore>,
     pub documents: store::Recorded<dyn store::DocumentsStore>,
+    pub ledger: store::Recorded<dyn store::LedgerStore>,
     pub commit: Rc<dyn crate::Commit>,
     pub failures: mpsc::Receiver<WriteFailure>,
 }
@@ -95,6 +97,7 @@ impl Stores {
                 budgets,
                 inventory: Rc::new(std::cell::RefCell::new(self.inventory)),
                 documents,
+                ledger: Rc::new(std::cell::RefCell::new(self.ledger)),
             },
             commit: self.commit,
             failures: self.failures,
@@ -115,6 +118,7 @@ pub struct StoreParts {
     pub budgets: Box<dyn store::BudgetsStore>,
     pub inventory: Box<dyn store::InventoryStore>,
     pub documents: Box<dyn store::DocumentsStore>,
+    pub ledger: Box<dyn store::LedgerStore>,
 }
 
 impl Stores {
@@ -147,6 +151,7 @@ impl Stores {
             budgets: store::Recorded::new(Domain::Budgets, written.clone(), parts.budgets),
             inventory: store::Recorded::new(Domain::Inventory, written.clone(), parts.inventory),
             documents: store::Recorded::new(Domain::Documents, written.clone(), parts.documents),
+            ledger: store::Recorded::new(Domain::Ledger, written.clone(), parts.ledger),
             commit,
             failures,
         }
@@ -169,6 +174,7 @@ impl From<Storage> for Stores {
                 budgets: Box::new(storage.budgets),
                 inventory: Box::new(storage.inventory),
                 documents: Box::new(storage.documents),
+                ledger: Box::new(storage.ledger),
             },
             &written,
             Rc::new(storage.pending),
@@ -181,7 +187,8 @@ impl From<Storage> for Stores {
 ///
 /// Opening only opens and writes nothing (ADR-0054): a Ledger is created, with what every new one
 /// starts with, by `lib-ledger-creation`'s [`LedgerCreationAdapter`](crate::LedgerCreationAdapter),
-/// never here. A migrated file with no base Unit, no Budget or no Document Type is missing what
+/// never here. A migrated file with no `ledger` row (its base Unit and Preferences), no Budget or
+/// no Document Type is missing what
 /// every new Ledger starts with, so it was cut short, made by hand or made before Budgets or
 /// Documents persisted, and it is refused rather than completed. The Personal Institution isn't
 /// checked, because a person may delete it. A path with no file is refused before anything is
@@ -189,7 +196,7 @@ impl From<Storage> for Stores {
 ///
 /// # Errors
 /// Returns an [`Error::Io`] of kind `NotFound` for a path with no file,
-/// [`Error::IncompleteLedger`] for a file with no base Unit, Budget or Document Type, or the error
+/// [`Error::IncompleteLedger`] for a file with no `ledger` row, Budget or Document Type, or the error
 /// opening, migrating or reading the file.
 #[tracing::instrument(name = "Open the Ledger's storage", level = "debug", err)]
 pub fn open_storage(path: &Path) -> Result<Storage> {
@@ -203,6 +210,10 @@ pub fn open_storage(path: &Path) -> Result<Storage> {
     let (writer, failures) = Writer::open_ledger(path)?;
     let pending = PendingWrites::new(writer.clone());
     let units = match UnitsAdapter::load(pending.clone()) {
+        Err(Error::NotFound(_)) => return Err(Error::IncompleteLedger),
+        loaded => loaded?,
+    };
+    let ledger = match LedgerAdapter::load(pending.clone()) {
         Err(Error::NotFound(_)) => return Err(Error::IncompleteLedger),
         loaded => loaded?,
     };
@@ -231,6 +242,7 @@ pub fn open_storage(path: &Path) -> Result<Storage> {
         budgets,
         inventory,
         documents,
+        ledger,
         pending,
         writer,
         failures,

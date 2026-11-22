@@ -1,6 +1,7 @@
 //! The Create ledger end-to-end smoke test: the Desktop's real start-up and a real SQLite file.
 //! `:new` creates a Ledger with a base Unit the person chose, `:close` flushes it, and a restart
-//! opens the file with that base Unit and what every new Ledger starts with (#1068, ADR-0054). Run
+//! opens the file with that base Unit and what every new Ledger starts with (#1068, ADR-0054),
+//! its Ledger name, Owner and Financial year start among them (ADR-0061). Run
 //! with the other smoke tests (`mise run end-to-end-ui smoke`).
 
 use super::common;
@@ -56,6 +57,16 @@ fn a_created_ledger_is_there_with_its_base_unit_and_starting_rows_after_a_restar
     let storage = bin_desktop::start_on(&config, common::today())
         .storage()
         .expect("the created Ledger opens");
+    let ledger = storage.ledger.row();
+    assert_eq!(
+        (
+            ledger.name.as_str(),
+            ledger.owner.is_none(),
+            ledger.financial_year_start.month()
+        ),
+        ("teda", true, 1),
+        "named for its file, with no Owner and en-US's January year, unasked (ADR-0061)"
+    );
     let mut ui = Harness::with_storage(app, storage);
     assert_eq!(
         ui.unit_rows(),

@@ -161,6 +161,7 @@ fn domain_name(domain: Domain) -> String {
         Domain::Inventory => crate::msg::desktop_history_domain_inventory(),
         Domain::Documents => crate::msg::desktop_history_domain_documents(),
         Domain::DocumentTypes => crate::msg::desktop_history_domain_document_types(),
+        Domain::Ledger => crate::msg::desktop_history_domain_ledger(),
     }
 }
 

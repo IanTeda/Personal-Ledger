@@ -99,6 +99,8 @@ desktop-toast-write-failed-inventory = Couldn't save the change to the inventory
 desktop-toast-write-failed-inventory-unsaved = Couldn't save the change to the inventory or reload it, so what you see isn't saved
 desktop-toast-write-failed-documents = Couldn't save the change to documents, so they are back as last saved
 desktop-toast-write-failed-documents-unsaved = Couldn't save the change to documents or reload them, so what you see isn't saved
+desktop-toast-write-failed-ledger = Couldn't save the change to the ledger's details, so they are back as last saved
+desktop-toast-write-failed-ledger-unsaved = Couldn't save the change to the ledger's details or reload them, so what you see isn't saved
 
 ## History: what an entry is called when no Presenter named the Ledger change it made, by the
 ## domains it wrote (#1247). `$domains` is a list of the domain names below.
@@ -116,3 +118,4 @@ desktop-history-domain-budgets = budgets
 desktop-history-domain-inventory = inventory
 desktop-history-domain-documents = documents
 desktop-history-domain-document-types = document types
+desktop-history-domain-ledger = ledger details

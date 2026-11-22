@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ledger (id, base_unit_id, name, owner, financial_year_start)\n         VALUES (1, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "5c6b23c5a9e9c98a2fbf8e8062e7905fd7cb94edaae9c22426b0ce9123c33c15"
+}

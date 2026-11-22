@@ -15,8 +15,9 @@
 //! are their own crates' samples, each fed the rows it names as it reads them. No seed writes
 //! another domain.
 //!
-//! Every write is an upsert, so seeding twice leaves the same rows. The base Unit is the exception:
-//! it is written only when the Ledger has none, so a base the person changed survives a re-seed.
+//! Every write is an upsert, so seeding twice leaves the same rows. The `ledger` row is the
+//! exception: it is written only when the Ledger has none, so a base Unit, name, Owner or
+//! Financial year start the person changed survives a re-seed.
 
 #[cfg(test)]
 mod bills_seed_tests;
@@ -52,6 +53,7 @@ use crate::adapter::categories::CategoriesAdapter;
 use crate::adapter::documents::DocumentsAdapter;
 use crate::adapter::institutions::InstitutionsAdapter;
 use crate::adapter::inventory::InventoryAdapter;
+use crate::adapter::ledger::LedgerRow;
 use crate::adapter::payees::PayeesAdapter;
 use crate::adapter::tags::TagsAdapter;
 use crate::adapter::transactions::TransactionsAdapter;
@@ -110,8 +112,23 @@ pub fn sample_units(today: NaiveDate) -> InMemoryPorts {
     InMemoryPorts::sample(sample_priced_at(today))
 }
 
-/// What `:new` writes for the Sample Ledger: the sample's aud as the base Unit, and the Personal
-/// Institution, Personal spending Budget and default Document Types every new Ledger starts with.
+/// The Sample Ledger's name, Owner and Financial year start (#1347): fixed rather than taken from
+/// a file name or a Locale, so every copy of the sample reads the same.
+#[expect(
+    clippy::expect_used,
+    reason = "a literal name inside LedgerName's rules, which the seed tests cover"
+)]
+pub fn sample_ledger_row() -> LedgerRow {
+    LedgerRow {
+        name: lib_core::LedgerName::new("Sample Ledger").expect("a short, non-blank name"),
+        owner: lib_core::Owner::new("Sam Sample"),
+        financial_year_start: lib_core::FinancialYearStart::JULY,
+    }
+}
+
+/// What `:new` writes for the Sample Ledger: the sample's aud as the base Unit, the Personal
+/// Institution, Personal spending Budget and default Document Types every new Ledger starts with,
+/// and [`sample_ledger_row`]'s name, Owner and Financial year start.
 #[expect(
     clippy::expect_used,
     reason = "lib-units' sample holds its own base Unit, which the seed tests cover"
@@ -125,12 +142,25 @@ pub fn sample_new_ledger(today: NaiveDate) -> NewLedger {
         .into_iter()
         .find(|unit| unit.id == base)
         .expect("lib-units' sample holds its base Unit");
-    NewLedger::new(base_unit, SAMPLE_PERSONAL)
+    let LedgerRow {
+        name,
+        owner,
+        financial_year_start,
+    } = sample_ledger_row();
+    NewLedger::new(
+        base_unit,
+        SAMPLE_PERSONAL,
+        name,
+        owner,
+        financial_year_start,
+    )
 }
 
 /// The Sample Ledger as of `today`, every domain's rows in the one shape [`sample`],
 /// [`sample_ledger`] and `FakeStores::sample` all read: `NewLedger`'s rows with the sample on top.
 pub struct SampleLedger {
+    /// The `ledger` row's name, Owner and Financial year start; the base Unit is in `units`.
+    pub ledger: LedgerRow,
     pub units: InMemoryPorts,
     pub institutions: Vec<lib_institutions::Institution>,
     pub accounts: Vec<lib_accounts::Account>,
@@ -157,6 +187,11 @@ impl SampleLedger {
         });
         let documents = sample_documents(today, &institutions);
         Self {
+            ledger: LedgerRow {
+                name: new.name,
+                owner: new.owner,
+                financial_year_start: new.financial_year_start,
+            },
             units,
             institutions,
             accounts: sample_accounts(),
@@ -197,6 +232,7 @@ pub(crate) fn write_sample(writer: &Writer, today: NaiveDate) -> Result<()> {
 /// writes its own over the rest of the sample.
 pub(crate) fn write_sample_rows(writer: &Writer, today: NaiveDate, documents: bool) -> Result<()> {
     let SampleLedger {
+        ledger,
         units,
         institutions,
         accounts,
@@ -221,13 +257,8 @@ pub(crate) fn write_sample_rows(writer: &Writer, today: NaiveDate, documents: bo
         sqlx::query("PRAGMA defer_foreign_keys = ON")
             .execute(&mut *conn)
             .await?;
-        UnitsAdapter::seed_in(
-            &mut conn,
-            &units.units.units,
-            &units.price_sources.records,
-            units.base_unit.0,
-        )
-        .await?;
+        UnitsAdapter::seed_in(&mut conn, &units.units.units, &units.price_sources.records).await?;
+        crate::adapter::ledger::seed_in(&mut conn, &ledger, units.base_unit.0).await?;
         InstitutionsAdapter::seed_in(&mut conn, &institutions).await?;
         AccountsAdapter::seed_in(&mut conn, &accounts).await?;
         CategoriesAdapter::seed_in(&mut conn, &categories).await?;
@@ -927,6 +958,12 @@ mod tests {
 
         assert_eq!(sample.documents.types.len(), 9);
         assert_eq!(sample.documents.types, new.document_types);
+
+        assert_eq!(
+            (&sample.ledger.name, &sample.ledger.owner),
+            (&new.name, &new.owner)
+        );
+        assert_eq!(sample.ledger.financial_year_start, new.financial_year_start);
     }
 
     /// The Sample Ledger for a day is the same whenever it is built, Unit prices included, so no
@@ -1094,6 +1131,41 @@ mod tests {
         assert!(!units.is_empty());
         assert_eq!(second.units().units(), units);
         assert_eq!(second.base_unit().base_unit(), base);
+    }
+
+    /// The Sample Ledger is named `Sample Ledger`, owned by `Sam Sample` and on a July year in the
+    /// dev DB's seed, in a created sample file and in memory alike, and a re-seed keeps the row.
+    #[test]
+    fn the_sample_ledgers_name_owner_and_financial_year_start_are_the_same_everywhere() {
+        let (dir, writer) = temp_writer();
+        sample(&writer, Utc::now()).expect("the first seed lands");
+        sample(&writer, Utc::now()).expect("the second seed lands");
+        let seeded = crate::LedgerAdapter::load(PendingWrites::new(writer.clone()))
+            .expect("the row loads")
+            .row()
+            .clone();
+        let path = dir.path().join("sample.pldb");
+        sample_ledger(&path, today()).expect("the Sample Ledger is created");
+        let created = crate::open_storage(&path)
+            .expect("the Sample Ledger opens")
+            .ledger
+            .row()
+            .clone();
+
+        assert_eq!(
+            (
+                seeded.name.as_str(),
+                seeded.owner.as_ref().map(lib_core::Owner::as_str),
+                seeded.financial_year_start
+            ),
+            (
+                "Sample Ledger",
+                Some("Sam Sample"),
+                lib_core::FinancialYearStart::JULY
+            )
+        );
+        assert_eq!(created, seeded);
+        assert_eq!(crate::FakeStores::sample(today()).ledger, seeded);
     }
 
     #[sqlx::test(migrations = "migrations/client")]

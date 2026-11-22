@@ -102,8 +102,8 @@ use crate::reversal::{Image, Journal, RowImage};
 use crate::writer::Deleted;
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
-    Domain, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter,
-    TransactionsAdapter, UnitsAdapter, Written,
+    Domain, InstitutionsAdapter, InventoryAdapter, LedgerAdapter, LedgerRow, PayeesAdapter, Result,
+    Stores, TagsAdapter, TransactionsAdapter, UnitsAdapter, Written,
 };
 use lib_documents::DocumentLink;
 
@@ -805,6 +805,54 @@ pub type SharedUnitsStore = Rc<RefCell<dyn UnitsStore>>;
 /// An Institutions store shared by the Institutions module and the Unit Deletion adapter (#902).
 pub type SharedInstitutionsStore = Rc<RefCell<dyn InstitutionsStore>>;
 
+/// The Ledger store, shared so a reload by [`Domain::Ledger`] reaches it.
+pub type SharedLedgerStore = Rc<RefCell<dyn LedgerStore>>;
+
+/// The Ledger's own Preferences on the one-row `ledger` table (ADR-0061): its name, Owner and
+/// Financial year start, the adapter or the in-memory row. The base Unit on the same row is the
+/// Units store's. Read-only until the Preferences are edited: creating a Ledger writes the row.
+pub trait LedgerStore {
+    fn ledger(&self) -> &LedgerRow;
+
+    /// Reads the row back as stored.
+    ///
+    /// # Errors
+    /// Returns the error reading the row back; memory is left as it was.
+    fn reload(&mut self) -> Result<()>;
+}
+
+impl LedgerStore for LedgerAdapter {
+    fn ledger(&self) -> &LedgerRow {
+        self.row()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        LedgerAdapter::reload(self)
+    }
+}
+
+/// The in-memory row is its own store.
+impl LedgerStore for LedgerRow {
+    fn ledger(&self) -> &LedgerRow {
+        self
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// The store; it writes nothing yet, so there is nothing to note.
+impl<S: LedgerStore + ?Sized> LedgerStore for Recorded<S> {
+    fn ledger(&self) -> &LedgerRow {
+        self.store.ledger()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        self.store.reload()
+    }
+}
+
 /// Every domain's store as the Client shares it out, so a domain is reloaded by its [`Domain`] in
 /// one call ([`SharedStores::reload`]): after a failed write, or a commit's cascade. `LedgerPorts`
 /// shares each store out once and builds every port over these.
@@ -821,6 +869,7 @@ pub struct SharedStores {
     pub budgets: SharedBudgetsStore,
     pub inventory: SharedInventoryStore,
     pub documents: SharedDocumentsStore,
+    pub ledger: SharedLedgerStore,
 }
 
 impl SharedStores {
@@ -842,6 +891,7 @@ impl SharedStores {
             StoreKey::Budgets => self.budgets.borrow_mut().reload(),
             StoreKey::Inventory => self.inventory.borrow_mut().reload(),
             StoreKey::Documents => self.documents.borrow_mut().reload(),
+            StoreKey::Ledger => self.ledger.borrow_mut().reload(),
             #[cfg(test)]
             StoreKey::Test => Ok(()),
         }
@@ -898,6 +948,7 @@ enum StoreKey {
     Budgets,
     Inventory,
     Documents,
+    Ledger,
     #[cfg(test)]
     Test,
 }
@@ -917,6 +968,7 @@ impl StoreKey {
             Domain::Budgets => Self::Budgets,
             Domain::Inventory => Self::Inventory,
             Domain::Documents | Domain::DocumentTypes => Self::Documents,
+            Domain::Ledger => Self::Ledger,
             #[cfg(test)]
             Domain::Test => Self::Test,
         }
@@ -937,6 +989,7 @@ impl StoreKey {
             Self::Budgets => &[Domain::Budgets],
             Self::Inventory => &[Domain::Inventory],
             Self::Documents => &[Domain::Documents, Domain::DocumentTypes],
+            Self::Ledger => &[Domain::Ledger],
             #[cfg(test)]
             Self::Test => &[Domain::Test],
         }
@@ -2634,6 +2687,8 @@ pub struct FakeStores {
     pub budgets: InMemoryBudgets,
     pub inventory: InMemoryInventory,
     pub documents: InMemoryDocuments,
+    /// The Ledger's name, Owner and Financial year start.
+    pub ledger: LedgerRow,
     /// The writes and reloads a test arranges to fail; nothing by default (#1118).
     pub fails: super::fake_fails::FakeFails,
 }
@@ -2644,6 +2699,7 @@ impl FakeStores {
     /// Budgets. The one way a test or a Client that runs without a Ledger file reaches it (#1056).
     pub fn sample(today: NaiveDate) -> Self {
         let crate::seed::SampleLedger {
+            ledger,
             units,
             institutions,
             accounts,
@@ -2701,6 +2757,7 @@ impl FakeStores {
                 locations: inventory.locations,
                 items: inventory.items,
             },
+            ledger,
             fails: super::fake_fails::FakeFails::default(),
         }
     }
@@ -2722,6 +2779,8 @@ impl From<FakeStores> for crate::StoreParts {
             budgets: Box::new(fails.switch(Domain::Budgets, fakes.budgets)),
             inventory: Box::new(fails.switch(Domain::Inventory, fakes.inventory)),
             documents: Box::new(fails.switch(Domain::Documents, fakes.documents)),
+            // Nothing writes it yet, so no write of it can fail.
+            ledger: Box::new(fakes.ledger),
         }
     }
 }
@@ -2783,6 +2842,7 @@ mod tests {
             StoreKey::Budgets,
             StoreKey::Inventory,
             StoreKey::Documents,
+            StoreKey::Ledger,
             StoreKey::Test,
         ];
         for key in keys {
@@ -2798,6 +2858,7 @@ mod tests {
                 | StoreKey::Budgets
                 | StoreKey::Inventory
                 | StoreKey::Documents
+                | StoreKey::Ledger
                 | StoreKey::Test => {}
             }
             assert!(!key.domains().is_empty(), "{key:?}");
@@ -2826,6 +2887,7 @@ mod tests {
             budgets: InMemoryBudgets::default(),
             inventory: InMemoryInventory::default(),
             documents: InMemoryDocuments::default(),
+            ledger: crate::seed::sample_ledger_row(),
             fails: crate::FakeFails::default(),
         });
 
