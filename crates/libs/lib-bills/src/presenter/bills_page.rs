@@ -691,6 +691,32 @@ mod tests {
     }
 
     #[test]
+    fn the_average_reads_the_year_by_the_ledgers_financial_year_start() {
+        let mut page = Page::new();
+        let telstra = page.view().schedule.rows[2].id.plan_id;
+        page.schedule(ScheduleEvent::Filter(
+            FilterField::Plan,
+            FilterChoice::Plan(telstra),
+        ));
+        let average = |page: &Page| {
+            page.view()
+                .schedule
+                .stats
+                .expect("a Plan scope shows its stats")
+                .stats[1]
+                .label
+                .clone()
+        };
+        assert_eq!(average(&page), "Average FY25–26");
+
+        // On 19 September 2026 a December year is the one starting December 2025, so the last
+        // complete one started December 2024.
+        page.ports.borrow_mut().financial_year.0 =
+            lib_core::FinancialYearStart::new(12).expect("December is a month");
+        assert_eq!(average(&page), "Average FY24–25");
+    }
+
+    #[test]
     fn a_narrowed_schedule_with_no_rows_says_the_filters_hide_them() {
         let mut page = Page::new();
         for status in crate::history::STATUS_CHIPS {

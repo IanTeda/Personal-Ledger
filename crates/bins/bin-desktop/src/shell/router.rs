@@ -152,15 +152,6 @@ pub fn build(
     let today = clock.today();
     let noun = crate::start_view::landing(start_view, persisted.noun, ledger.is_some());
     let nav = NavState::starting_at(noun);
-    let documents_state = (
-        DocumentsMode::from_id(persisted.documents_mode.as_deref()),
-        LibraryScope::from_id(
-            persisted.documents_scope.as_deref().unwrap_or("all"),
-            &crate::documents::types::default_types(),
-            today,
-        ),
-        LibrarySort::from_id(persisted.documents_sort.as_deref()),
-    );
     let settings_page = persisted
         .settings_page
         .as_deref()
@@ -185,7 +176,23 @@ pub fn build(
     shell.state.start_sidebar_minimised = shell.display_output(cx).start_sidebar_minimised;
     shell.restore_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
-    shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
+    // A Financial Year scope is checked against the Open Ledger's start month, else the Locale's,
+    // which a Ledger created later starts with; the page checks it again on the Ledger it opens.
+    let fy_start = shell.open.as_ref().map_or_else(
+        || lib_locale::locale().financial_year_start(),
+        |open| open.ports.document_reads().financial_year_start(),
+    );
+    shell.set_documents_state(
+        DocumentsMode::from_id(persisted.documents_mode.as_deref()),
+        LibraryScope::from_id(
+            persisted.documents_scope.as_deref().unwrap_or("all"),
+            &crate::documents::types::default_types(),
+            today,
+            fy_start,
+        ),
+        LibrarySort::from_id(persisted.documents_sort.as_deref()),
+        cx,
+    );
     shell.start_toast_clock(cx);
     shell.start_date_clock(cx);
     shell.set_log_capture(

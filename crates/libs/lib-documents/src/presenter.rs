@@ -188,6 +188,7 @@ pub(crate) mod test_support {
                 item(3, "Toyota Corolla"),
                 item(4, "Engagement ring"),
             ],
+            financial_year_start: lib_core::FinancialYearStart::JULY,
         }
     }
 
@@ -205,7 +206,7 @@ pub(crate) mod test_support {
         let records = records(today);
         World {
             types: default_types(),
-            documents: sample_documents(&records, today).documents,
+            documents: sample_documents(&records, today, records.financial_year_start).documents,
             records,
             today,
         }

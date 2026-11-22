@@ -17,7 +17,8 @@ use std::rc::Rc;
 
 use chrono::NaiveDate;
 use lib_core::{
-    AccountId, BillPlanId, DocumentId, DocumentTypeId, ItemId, Money, PayeeId, TransactionId,
+    AccountId, BillPlanId, DocumentId, DocumentTypeId, FinancialYearStart, ItemId, Money, PayeeId,
+    TransactionId,
 };
 use lib_toast::Notify;
 
@@ -258,9 +259,20 @@ pub trait DocumentItems {
     fn document_items(&self) -> Vec<DocumentItem>;
 }
 
+/// The Ledger's Financial year start, which a Document's Financial Year and the Library's year
+/// facets are read by (#1342).
+pub trait DocumentFinancialYear {
+    fn financial_year_start(&self) -> FinancialYearStart;
+}
+
 /// Every Documents read port, as the one value a Client reads the records through.
 pub trait DocumentReads:
-    DocumentTransactions + DocumentPayees + DocumentAccounts + DocumentBillPlans + DocumentItems
+    DocumentTransactions
+    + DocumentPayees
+    + DocumentAccounts
+    + DocumentBillPlans
+    + DocumentItems
+    + DocumentFinancialYear
 {
 }
 
@@ -270,21 +282,36 @@ impl<T> DocumentReads for T where
         + DocumentAccounts
         + DocumentBillPlans
         + DocumentItems
+        + DocumentFinancialYear
         + ?Sized
 {
 }
 
-/// Every record a Document can link to, each port read once.
-#[derive(Debug, Clone, PartialEq, Default)]
+/// Every record a Document can link to, and the Financial year start they are read by, each port
+/// read once.
+#[derive(Debug, Clone, PartialEq)]
 pub struct LinkRecords {
     pub transactions: Vec<DocumentTransaction>,
     pub payees: Vec<PayeeRef>,
     pub accounts: Vec<DocumentAccount>,
     pub plans: Vec<DocumentBillPlan>,
     pub items: Vec<DocumentItem>,
+    pub financial_year_start: FinancialYearStart,
 }
 
 impl LinkRecords {
+    /// No records, on a Ledger whose Financial Year starts in `financial_year_start`.
+    pub fn empty(financial_year_start: FinancialYearStart) -> Self {
+        Self {
+            transactions: Vec::new(),
+            payees: Vec::new(),
+            accounts: Vec::new(),
+            plans: Vec::new(),
+            items: Vec::new(),
+            financial_year_start,
+        }
+    }
+
     pub fn read(reads: &dyn DocumentReads) -> Self {
         Self {
             transactions: reads.document_transactions(),
@@ -292,6 +319,7 @@ impl LinkRecords {
             accounts: reads.document_accounts(),
             plans: reads.document_bill_plans(),
             items: reads.document_items(),
+            financial_year_start: reads.financial_year_start(),
         }
     }
 

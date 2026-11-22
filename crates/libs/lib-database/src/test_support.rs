@@ -109,6 +109,10 @@ pub(crate) fn stored_link_records(pending: &PendingWrites) -> lib_documents::Lin
         inventory: Rc::new(RefCell::new(
             crate::InventoryAdapter::load(pending.clone()).expect("the Inventory loads"),
         )),
+        ledger: Rc::new(RefCell::new(
+            crate::adapter::ledger::LedgerAdapter::load(pending.clone())
+                .expect("the Ledger row loads"),
+        )),
     };
     lib_documents::LinkRecords::read(&reads)
 }

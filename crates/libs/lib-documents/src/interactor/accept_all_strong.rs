@@ -82,7 +82,10 @@ mod tests {
         let batch = AcceptAllStrong {
             skipped: HashSet::new(),
         }
-        .run(&LinkRecords::default(), &mut ports);
+        .run(
+            &LinkRecords::empty(lib_core::FinancialYearStart::JULY),
+            &mut ports,
+        );
 
         assert!(batch.is_empty());
         assert_eq!(ports.repo, before);

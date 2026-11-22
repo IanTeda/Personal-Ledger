@@ -36,10 +36,10 @@ pub mod types;
 
 pub use crate::protocols::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
-    DocumentItem, DocumentItems, DocumentPayees, DocumentReads, DocumentRepository,
-    DocumentTransaction, DocumentTransactions, DocumentTypesDialog, DocumentTypesOutcome,
-    DocumentTypesRouter, DocumentsDialog, DocumentsOutcome, DocumentsRouter, LinkRecords,
-    SharedFiles, SharedReads, SharedRepository, TypeChange,
+    DocumentFinancialYear, DocumentItem, DocumentItems, DocumentPayees, DocumentReads,
+    DocumentRepository, DocumentTransaction, DocumentTransactions, DocumentTypesDialog,
+    DocumentTypesOutcome, DocumentTypesRouter, DocumentsDialog, DocumentsOutcome, DocumentsRouter,
+    LinkRecords, SharedFiles, SharedReads, SharedRepository, TypeChange,
 };
 pub use entity::*;
 pub use error::{Error, Result};

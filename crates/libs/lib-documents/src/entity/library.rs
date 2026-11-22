@@ -1,7 +1,7 @@
 //! The Library's index rail, scopes, sort and rows.
 
 use chrono::NaiveDate;
-use lib_core::{DocumentId, financial_year_start};
+use lib_core::{DocumentId, FinancialYearStart};
 
 use super::document::{
     Document, DocumentLink, DocumentType, KeyDateBand, band, get_mut, tracks_financial_year,
@@ -19,20 +19,27 @@ pub enum YearFacet {
 
 impl YearFacet {
     /// Only a Document whose type has the Financial year flag on matches (#476).
-    pub fn contains(self, document: &Document, types: &[DocumentTypeRow]) -> bool {
+    /// A facet is keyed by its start year alone, so when the Ledger's start month changes the
+    /// same facet re-derives its Documents by the new month (#1342).
+    pub fn contains(
+        self,
+        document: &Document,
+        types: &[DocumentTypeRow],
+        fy_start: FinancialYearStart,
+    ) -> bool {
         if !tracks_financial_year(types, document.doc_type) {
             return false;
         }
         match self {
-            YearFacet::Year(start) => document.financial_year() == start,
-            YearFacet::Before(start) => document.financial_year() < start,
+            YearFacet::Year(start) => document.financial_year(fy_start) == start,
+            YearFacet::Before(start) => document.financial_year(fy_start) < start,
         }
     }
 }
 
 /// The rail's Financial Year facets, in order: this one, the last one, then everything earlier.
-pub fn year_facets(today: NaiveDate) -> [YearFacet; 3] {
-    let current = financial_year_start(today);
+pub fn year_facets(today: NaiveDate, fy_start: FinancialYearStart) -> [YearFacet; 3] {
+    let current = fy_start.year_of(today);
     [
         YearFacet::Year(current),
         YearFacet::Year(current - 1),
@@ -63,7 +70,12 @@ impl LibraryScope {
 
     /// Parses a persisted id, falling back to All for one that is malformed, whose type was removed,
     /// or whose Financial Year is no longer on the rail (the year rolled over since it was saved).
-    pub fn from_id(id: &str, types: &[DocumentTypeRow], today: NaiveDate) -> Self {
+    pub fn from_id(
+        id: &str,
+        types: &[DocumentTypeRow],
+        today: NaiveDate,
+        fy_start: FinancialYearStart,
+    ) -> Self {
         let parsed = if id == "all" {
             Some(LibraryScope::All)
         } else if let Some(kind) = id.strip_prefix("type:") {
@@ -82,7 +94,7 @@ impl LibraryScope {
             None
         };
         match parsed {
-            Some(LibraryScope::Year(facet)) if !year_facets(today).contains(&facet) => {
+            Some(LibraryScope::Year(facet)) if !year_facets(today, fy_start).contains(&facet) => {
                 LibraryScope::All
             }
             Some(scope) => scope,
@@ -90,11 +102,16 @@ impl LibraryScope {
         }
     }
 
-    pub fn contains(self, document: &Document, types: &[DocumentTypeRow]) -> bool {
+    pub fn contains(
+        self,
+        document: &Document,
+        types: &[DocumentTypeRow],
+        fy_start: FinancialYearStart,
+    ) -> bool {
         match self {
             LibraryScope::All => true,
             LibraryScope::Type(kind) => document.doc_type == kind,
-            LibraryScope::Year(facet) => facet.contains(document, types),
+            LibraryScope::Year(facet) => facet.contains(document, types, fy_start),
         }
     }
 }
@@ -135,7 +152,11 @@ pub enum RailEntry {
 
 /// The selectable rows in rail order: the Inbox, All documents, every Document Type in Settings
 /// order, then the Financial Years. The section labels between them are not rows.
-pub fn rail_entries(types: &[DocumentTypeRow], today: NaiveDate) -> Vec<RailEntry> {
+pub fn rail_entries(
+    types: &[DocumentTypeRow],
+    today: NaiveDate,
+    fy_start: FinancialYearStart,
+) -> Vec<RailEntry> {
     let mut entries = vec![RailEntry::Inbox, RailEntry::Scope(LibraryScope::All)];
     entries.extend(
         types
@@ -143,7 +164,7 @@ pub fn rail_entries(types: &[DocumentTypeRow], today: NaiveDate) -> Vec<RailEntr
             .map(|row| RailEntry::Scope(LibraryScope::Type(DocumentType(row.id)))),
     );
     entries.extend(
-        year_facets(today)
+        year_facets(today, fy_start)
             .into_iter()
             .map(|facet| RailEntry::Scope(LibraryScope::Year(facet))),
     );
@@ -187,10 +208,11 @@ pub fn scope_count(
     types: &[DocumentTypeRow],
     documents: &[Document],
     scope: LibraryScope,
+    fy_start: FinancialYearStart,
 ) -> usize {
     documents
         .iter()
-        .filter(|document| document.is_filed() && scope.contains(document, types))
+        .filter(|document| document.is_filed() && scope.contains(document, types, fy_start))
         .count()
 }
 
@@ -202,11 +224,14 @@ pub fn library_rows<'a>(
     query: &str,
     sort: LibrarySort,
     today: NaiveDate,
+    fy_start: FinancialYearStart,
 ) -> Vec<&'a Document> {
     let mut rows: Vec<&Document> = documents
         .iter()
         .filter(|document| {
-            document.is_filed() && scope.contains(document, types) && document.matches(query)
+            document.is_filed()
+                && scope.contains(document, types, fy_start)
+                && document.matches(query)
         })
         .collect();
     // Newest document date, then Title A→Z, then id so equal rows never swap between renders.

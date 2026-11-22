@@ -70,8 +70,9 @@ use lib_dashboard::{
 };
 use lib_documents::fake::InMemoryDocuments;
 use lib_documents::{
-    DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentItem,
-    DocumentItems, DocumentPayees, DocumentRepository, DocumentTransaction, DocumentTransactions,
+    DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFinancialYear,
+    DocumentItem, DocumentItems, DocumentPayees, DocumentRepository, DocumentTransaction,
+    DocumentTransactions,
 };
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{InstitutionRepository, InstitutionUnits, InstitutionUsage, InstitutionUse};
@@ -2606,9 +2607,10 @@ impl DocumentsStore for InMemoryDocuments {
     }
 }
 
-/// `lib-documents`' five read ports answered by the shared stores of the domains a Link names,
-/// each borrowed for the one read (#963), as [`StoredBudgetReads`] answers Budgets'. The Desktop's
-/// Documents View reads through it, once per query into `LinkRecords`.
+/// `lib-documents`' six read ports answered by the shared stores of the domains a Link names, and
+/// the Financial year start by the Ledger store (#1355), each borrowed for the one read (#963), as
+/// [`StoredBudgetReads`] answers Budgets'. The Desktop's Documents View reads through it, once per
+/// query into `LinkRecords`.
 #[derive(Clone)]
 pub(crate) struct StoredDocumentReads {
     pub transactions: SharedTransactionsStore,
@@ -2617,6 +2619,7 @@ pub(crate) struct StoredDocumentReads {
     pub institutions: SharedInstitutionsStore,
     pub bills: SharedBillsStore,
     pub inventory: SharedInventoryStore,
+    pub ledger: SharedLedgerStore,
 }
 
 impl DocumentTransactions for StoredDocumentReads {
@@ -2649,6 +2652,12 @@ impl DocumentBillPlans for StoredDocumentReads {
 impl DocumentItems for StoredDocumentReads {
     fn document_items(&self) -> Vec<DocumentItem> {
         inventory::document_items(&self.inventory.borrow().inventory().items())
+    }
+}
+
+impl DocumentFinancialYear for StoredDocumentReads {
+    fn financial_year_start(&self) -> lib_core::FinancialYearStart {
+        self.ledger.borrow().ledger().financial_year_start
     }
 }
 

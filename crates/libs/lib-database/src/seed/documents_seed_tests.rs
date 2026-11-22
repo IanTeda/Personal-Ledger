@@ -8,7 +8,10 @@ use std::path::PathBuf;
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{DocumentId, Money, TransactionId};
+use lib_core::{DocumentId, FinancialYearStart, Money, TransactionId};
+
+/// The Sample Ledger's Financial year start.
+const JULY: FinancialYearStart = FinancialYearStart::JULY;
 use lib_documents::{types::DocumentTypeRow, *};
 use lib_inventory::Inventory;
 
@@ -156,6 +159,7 @@ fn the_library_seed_has_the_sample_rows_with_three_needing_review() {
         "",
         LibrarySort::Newest,
         today(),
+        JULY,
     );
     assert!(rows.len() > 100, "filler gives the facets weight");
     assert_eq!(need_review_count(&types(), &rows, today()), 3);
@@ -224,13 +228,13 @@ fn every_facet_has_documents() {
         .map(|row| DocumentType(row.id))
     {
         assert!(
-            scope_count(&types(), &world.documents, LibraryScope::Type(kind)) > 0,
+            scope_count(&types(), &world.documents, LibraryScope::Type(kind), JULY) > 0,
             "{kind:?}"
         );
     }
-    for facet in year_facets(today()) {
+    for facet in year_facets(today(), JULY) {
         assert!(
-            scope_count(&types(), &world.documents, LibraryScope::Year(facet)) > 0,
+            scope_count(&types(), &world.documents, LibraryScope::Year(facet), JULY) > 0,
             "{facet:?}"
         );
     }
@@ -274,7 +278,7 @@ fn editing_metadata_moves_the_financial_year_with_the_date() {
     let edited = get(&world.documents, id).unwrap();
     assert_eq!(edited.title, "Renamed");
     assert_eq!(edited.doc_type, DocumentType::TAX);
-    assert_eq!(edited.financial_year(), 2019);
+    assert_eq!(edited.financial_year(JULY), 2019);
     assert_eq!(edited.key_date, Some(key));
     assert_eq!(
         edit_metadata(

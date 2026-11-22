@@ -48,12 +48,15 @@ impl PageView for DocumentsPagePresenter {
     type Widgets = DocumentsWidgets;
     type Before = DocumentsBefore;
 
+    /// The Documents and every record a Link names, and the Ledger, whose Financial year start
+    /// the year facets and the Financial Year facts read.
     const REPAINTS: &'static [Domain] = &[
         Domain::Accounts,
         Domain::Bills,
         Domain::DocumentTypes,
         Domain::Documents,
         Domain::Inventory,
+        Domain::Ledger,
         Domain::Payees,
         Domain::Transactions,
     ];

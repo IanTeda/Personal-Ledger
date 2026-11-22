@@ -11,7 +11,7 @@ use lib_core::AccountRef;
 use lib_core::CategoryRef;
 use lib_core::PayeeRef;
 use lib_core::{AccountId, BillPlanId, CategoryId, PayeeId, Period};
-use lib_core::{Money, Total, TransactionId, UnitId};
+use lib_core::{FinancialYearStart, Money, Total, TransactionId, UnitId};
 
 use crate::adapter::accounts::account_refs;
 use crate::adapter::categories::category_refs;
@@ -505,7 +505,14 @@ fn category_and_account_scope_by_plan() {
 fn telstra_stats_read_last_paid_average_and_last_year() {
     let world = world();
     let plan = plan_named(&world, "Telstra Internet");
-    let stats = plan_stats(plan, &world.plans, &world.entries, &world.splits, today());
+    let stats = plan_stats(
+        plan,
+        &world.plans,
+        &world.entries,
+        &world.splits,
+        today(),
+        FinancialYearStart::JULY,
+    );
     let (amount, _) = stats.last_paid.clone().unwrap();
     assert_eq!(amount, cents(8_900));
     assert_eq!(stats.average_year, 2025);
@@ -518,7 +525,14 @@ fn telstra_stats_read_last_paid_average_and_last_year() {
 fn skipped_rows_are_left_out_of_the_average() {
     let mut world = world();
     let plan = plan_named(&world, "Gym \u{2014} Fitness First").clone();
-    let before = plan_stats(&plan, &world.plans, &world.entries, &world.splits, today());
+    let before = plan_stats(
+        &plan,
+        &world.plans,
+        &world.entries,
+        &world.splits,
+        today(),
+        FinancialYearStart::JULY,
+    );
     // Every Gym payment was 64.00, so a zero from a Skip would drag the mean down.
     assert_eq!(before.average, Some(cents(6_400)));
     for entry in world.entries.iter_mut().filter(|e| e.plan_id == plan.id) {
@@ -528,7 +542,14 @@ fn skipped_rows_are_left_out_of_the_average() {
             };
         }
     }
-    let after = plan_stats(&plan, &world.plans, &world.entries, &world.splits, today());
+    let after = plan_stats(
+        &plan,
+        &world.plans,
+        &world.entries,
+        &world.splits,
+        today(),
+        FinancialYearStart::JULY,
+    );
     assert_eq!(after.average, Some(cents(6_400)));
 }
 
@@ -536,7 +557,14 @@ fn skipped_rows_are_left_out_of_the_average() {
 fn a_plan_never_paid_shows_dashes() {
     let world = world();
     let plan = plan_named(&world, "Rent");
-    let stats = plan_stats(plan, &world.plans, &world.entries, &world.splits, today());
+    let stats = plan_stats(
+        plan,
+        &world.plans,
+        &world.entries,
+        &world.splits,
+        today(),
+        FinancialYearStart::JULY,
+    );
     assert!(stats.never_paid);
     assert_eq!(stats.last_paid, None);
     assert_eq!(stats.average, None);
@@ -641,7 +669,7 @@ fn the_bills_fake_sample_is_the_ledgers() {
     }
 
     // The fake numbers the Bills' Transactions from 1 rather than after the generated history.
-    let fake = fake::InMemoryPorts::sample(today());
+    let fake = fake::InMemoryPorts::sample(today(), FinancialYearStart::JULY);
     let first = TransactionId::seed(1);
     let bills = lib_bills::sample_bills(
         &account_refs(&sample.accounts.accounts.accounts),

@@ -7,8 +7,8 @@
 //!
 //! - Status chips are multi-select (all five on by default); Bill Plan, Category and Account are
 //!   single-select scopes over the rows [`crate::schedule_rows`] gives for the viewed month or All.
-//! - The financial year starts in [`lib_core::FINANCIAL_YEAR_START_MONTH`] until Settings' "Financial year
-//!   starts" is wired to a real Preference.
+//! - The financial year starts in the Ledger's Financial year start, which the caller reads through
+//!   [`crate::BillFinancialYear`] (#1342).
 //! - The stat callout reads only its one Bill Plan, never the other filters: Last paid is the Paid
 //!   entry with the latest Matched-Transaction date (a later due date breaks a tie); Average is the
 //!   mean of the previous complete financial year's Paid entries (by due date), Skipped ones left
@@ -17,9 +17,7 @@
 
 use bigdecimal::{BigDecimal, RoundingMode};
 use chrono::{Datelike, Months, NaiveDate};
-use lib_core::{
-    AccountId, BillPlanId, CategoryId, Money, Period, financial_year, financial_year_start,
-};
+use lib_core::{AccountId, BillPlanId, CategoryId, FinancialYearStart, Money, Period};
 
 use crate::{
     BillPlan, BillScheduleEntry, BillSplit, BillStatus, Recurrence, Resolution, ScheduleRow, bills,
@@ -131,6 +129,7 @@ pub fn plan_stats(
     entries: &[BillScheduleEntry],
     splits: &[BillSplit],
     today: NaiveDate,
+    financial_year_start: FinancialYearStart,
 ) -> PlanStats {
     let payments: Vec<Payment> = entries
         .iter()
@@ -147,8 +146,8 @@ pub fn plan_stats(
 
     let last = payments.iter().max_by_key(|p| (p.paid_on, p.due));
 
-    let average_year = financial_year_start(today) - 1;
-    let (from, to) = financial_year(average_year);
+    let average_year = financial_year_start.year_of(today) - 1;
+    let (from, to) = financial_year_start.bounds(average_year);
     let in_year: Vec<&Payment> = payments
         .iter()
         .filter(|p| (from..=to).contains(&p.due))

@@ -1,13 +1,28 @@
 //! `lib-bills`' ports answered over the stores: the Bill Plans and Bill Schedule from the Bills
 //! store, the Payees, Accounts, Categories and Splits a Bill reads through [`StoredBillReads`]
-//! (#831, #853, #858, #926), and its Unit codes through [`StoredBillUnits`] (#993, #1084).
+//! (#831, #853, #858, #926), its Unit codes through [`StoredBillUnits`] (#993, #1084), and the
+//! Financial year start from the Ledger store (#1355).
 
 use lib_bills::{
-    BillAccounts, BillCategories, BillPayees, BillPlan, BillPlanRepository, BillScheduleEntry,
-    BillScheduleRepository, BillTransactions, BillUnits, BillsPorts, BillsRepository, PortsMut,
+    BillAccounts, BillCategories, BillFinancialYear, BillPayees, BillPlan, BillPlanRepository,
+    BillScheduleEntry, BillScheduleRepository, BillTransactions, BillUnits, BillsPorts,
+    BillsRepository, PortsMut,
+};
+use lib_core::FinancialYearStart;
+
+use crate::adapter::store::{
+    SharedBillsStore, SharedLedgerStore, StoredBillReads, StoredBillUnits,
 };
 
-use crate::adapter::store::{SharedBillsStore, StoredBillReads, StoredBillUnits};
+/// The Ledger store's Financial year start, borrowed for each read so an edit in Settings and its
+/// Undo reach the next Bills view model.
+struct Ledger(SharedLedgerStore);
+
+impl BillFinancialYear for Ledger {
+    fn financial_year_start(&self) -> FinancialYearStart {
+        self.0.borrow().ledger().financial_year_start
+    }
+}
 
 /// The shared Bills store's two repositories as the one a Bills Interactor writes through,
 /// borrowed for each call: the store's guard can't be lent out of its `RefCell`.
@@ -34,20 +49,28 @@ impl BillScheduleRepository for Bills {
 }
 
 /// [`lib_bills::BillsPorts`] over the shared Bills store, and the reads over the Payees, Accounts,
-/// Categories, Transactions and Units stores. A write reaches the store's recorder, so the commit
+/// Categories, Transactions and Units stores, and the Financial year start over the Ledger store.
+/// A write reaches the store's recorder, so the commit
 /// names the Bills in what the input wrote.
 pub(crate) struct StoredBillsPorts {
     bills: Bills,
     reads: StoredBillReads,
     units: StoredBillUnits,
+    ledger: Ledger,
 }
 
 impl StoredBillsPorts {
-    pub fn new(bills: SharedBillsStore, reads: StoredBillReads, units: StoredBillUnits) -> Self {
+    pub fn new(
+        bills: SharedBillsStore,
+        reads: StoredBillReads,
+        units: StoredBillUnits,
+        ledger: SharedLedgerStore,
+    ) -> Self {
         Self {
             bills: Bills(bills),
             reads,
             units,
+            ledger: Ledger(ledger),
         }
     }
 }
@@ -75,6 +98,10 @@ impl BillsPorts for StoredBillsPorts {
 
     fn units(&self) -> &dyn BillUnits {
         &self.units
+    }
+
+    fn financial_year(&self) -> &dyn BillFinancialYear {
+        &self.ledger
     }
 
     fn split_mut(&mut self) -> PortsMut<'_> {
@@ -123,6 +150,38 @@ mod tests {
                 .run(bills.borrow_mut().split_mut().bills)
                 .expect("an open entry");
             assert_eq!(commit.commit().wrote, [Domain::Bills], "a skip");
+        }
+    }
+
+    #[test]
+    fn the_financial_year_start_is_the_ledgers_on_either() {
+        use lib_documents::DocumentFinancialYear as _;
+        use lib_settings::LedgerPreferences as _;
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for ledger in [fakes(), file(dir.path())] {
+            let start = || {
+                ledger
+                    .bills
+                    .borrow()
+                    .financial_year()
+                    .financial_year_start()
+            };
+            assert_eq!(
+                start(),
+                lib_core::FinancialYearStart::JULY,
+                "the Sample Ledger's"
+            );
+
+            ledger
+                .ledger_preferences
+                .set_financial_year_start(lib_core::FinancialYearStart::APRIL);
+            assert_eq!(start(), lib_core::FinancialYearStart::APRIL, "an edit");
+            assert_eq!(
+                ledger.document_reads.financial_year_start(),
+                lib_core::FinancialYearStart::APRIL,
+                "the Documents read the same row"
+            );
         }
     }
 }

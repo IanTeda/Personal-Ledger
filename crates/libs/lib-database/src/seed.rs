@@ -462,7 +462,7 @@ pub fn sample_bills(today: NaiveDate) -> BillsSeed {
 }
 
 /// The sample rows the Documents' Links name, as the stores answer Documents' read ports, the
-/// Accounts' Institutions from `institutions`.
+/// Accounts' Institutions from `institutions`, and [`sample_ledger_row`]'s Financial year start.
 pub fn sample_link_records(
     today: NaiveDate,
     institutions: &[lib_institutions::Institution],
@@ -475,16 +475,23 @@ pub fn sample_link_records(
         accounts: crate::adapter::accounts::document_accounts(&sample_accounts(), institutions),
         plans: crate::adapter::bills::document_bill_plans(&sample_bills(today).plans),
         items: crate::adapter::inventory::document_items(&sample_inventory(today).items),
+        financial_year_start: sample_ledger_row().financial_year_start,
     }
 }
 
 /// `lib-documents`' sample Documents as of `today`, fed the sample rows their Links name
-/// ([`sample_link_records`]).
+/// ([`sample_link_records`]) and dated by [`sample_ledger_row`]'s Financial year start, so the
+/// rows and the Sample Ledger's Preference can't drift.
 pub fn sample_documents(
     today: NaiveDate,
     institutions: &[lib_institutions::Institution],
 ) -> Vec<lib_documents::Document> {
-    lib_documents::sample_documents(&sample_link_records(today, institutions), today).documents
+    lib_documents::sample_documents(
+        &sample_link_records(today, institutions),
+        today,
+        sample_ledger_row().financial_year_start,
+    )
+    .documents
 }
 
 /// Fixed so the generated rows are the same on every run, which keeps `fake` seeding idempotent.

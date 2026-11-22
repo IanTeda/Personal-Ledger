@@ -51,7 +51,7 @@ impl PageView for BillsPagePresenter {
 
     /// A Bills write, another module's included (Account delete's Unmatch), and the Accounts,
     /// Categories, Payees, Transactions and Units the rows name, which the ports read from their
-    /// stores on each ask.
+    /// stores on each ask, and the Ledger, whose Financial year start the Average reads.
     const REPAINTS: &'static [Domain] = &[
         Domain::Bills,
         Domain::Accounts,
@@ -59,6 +59,7 @@ impl PageView for BillsPagePresenter {
         Domain::Payees,
         Domain::Transactions,
         Domain::Units,
+        Domain::Ledger,
     ];
 
     /// The Router opens the Plan form and Pay in the date style the Presenter holds, lent before

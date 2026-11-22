@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use lib_config::KeyBindingConfig;
-use lib_core::{Clock, DateStyle, DocumentId, TransactionId};
+use lib_core::{Clock, DateStyle, DocumentId, FinancialYearStart, TransactionId};
 use lib_list_cursor::Step;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::display::PageDisplay;
@@ -442,6 +442,10 @@ impl DocumentsPagePresenter {
         LinkRecords::read(&*self.reads)
     }
 
+    fn fy_start(&self) -> FinancialYearStart {
+        self.reads.financial_year_start()
+    }
+
     fn lookups<'a>(&self, types: &'a [DocumentTypeRow], records: &'a LinkRecords) -> Lookups<'a> {
         Lookups {
             types,
@@ -463,6 +467,7 @@ impl DocumentsPagePresenter {
             &self.query,
             self.sort,
             self.clock.today(),
+            self.fy_start(),
         )
     }
 
@@ -474,11 +479,13 @@ impl DocumentsPagePresenter {
     }
 
     /// A scope on a Document Type that has gone, or on a Financial Year the rail no longer
-    /// shows since the year turned, falls back to All documents.
+    /// shows since the year turned, falls back to All documents. A Financial Year is keyed by its
+    /// start year, so a change of the Ledger's start month that leaves it on the rail keeps it.
     fn catch_up(&mut self) {
+        let fy_start = self.fy_start();
         let stale_year = matches!(
             self.scope,
-            LibraryScope::Year(facet) if !year_facets(self.clock.today()).contains(&facet)
+            LibraryScope::Year(facet) if !year_facets(self.clock.today(), fy_start).contains(&facet)
         );
         if stale_year || self.scope() != self.scope {
             self.scope = LibraryScope::All;
@@ -504,7 +511,7 @@ impl DocumentsPagePresenter {
     }
 
     fn move_rail(&mut self, step: Step) {
-        let entries = rail_entries(&self.document_types(), self.clock.today());
+        let entries = rail_entries(&self.document_types(), self.clock.today(), self.fy_start());
         let current = match self.mode {
             DocumentsMode::Inbox => RailEntry::Inbox,
             DocumentsMode::Library => RailEntry::Scope(self.scope()),
@@ -549,7 +556,7 @@ impl DocumentsPagePresenter {
         let documents = self.all_documents();
         let types = self.document_types();
         let in_scope = crate::get(&documents, id)
-            .is_some_and(|document| self.scope().contains(document, &types));
+            .is_some_and(|document| self.scope().contains(document, &types, self.fy_start()));
         if !in_scope {
             self.scope = LibraryScope::All;
         }
@@ -1098,7 +1105,8 @@ impl Presenter for DocumentsPagePresenter {
         let records = self.records();
         let lookups = self.lookups(&types, &records);
         let today = self.clock.today();
-        let filed = scope_count(&types, &documents, LibraryScope::All);
+        let fy_start = records.financial_year_start;
+        let filed = scope_count(&types, &documents, LibraryScope::All, fy_start);
         let library = (self.mode == DocumentsMode::Library).then(|| {
             let rows = self.library_rows(&types, &documents);
             let selected = self.selected.min(rows.len().saturating_sub(1));
@@ -1162,7 +1170,7 @@ impl Presenter for DocumentsPagePresenter {
                     msg::documents_inbox_subline(count(inbox_count(&documents)))
                 }
             },
-            rail: library::rail_rows(&types, &documents, today),
+            rail: library::rail_rows(&types, &documents, today, fy_start),
             rail_selected: match self.mode {
                 DocumentsMode::Inbox => RailEntry::Inbox,
                 DocumentsMode::Library => RailEntry::Scope(self.scope()),
@@ -1326,7 +1334,7 @@ mod tests {
         locale();
         let records = records(today());
         let store = Rc::new(RefCell::new(InMemoryDocuments {
-            documents: sample_documents(&records, today()).documents,
+            documents: sample_documents(&records, today(), FinancialYearStart::JULY).documents,
             types: default_types(),
         }));
         let (clock, day) = Clock::settable(today());
@@ -1751,7 +1759,9 @@ mod tests {
         assert!(page.presenter.takes(&DocumentsPageEvent::Delete));
         assert_eq!(
             page.store.borrow().documents.len(),
-            sample_documents(&records(today()), today()).documents.len(),
+            sample_documents(&records(today()), today(), FinancialYearStart::JULY)
+                .documents
+                .len(),
             "opening the confirm deletes nothing"
         );
     }
@@ -2090,6 +2100,116 @@ mod tests {
             page.presenter.view_model().rail_selected,
             RailEntry::Scope(LibraryScope::All)
         );
+    }
+
+    /// [`records`] with a Financial year start a test can move, as a Settings edit moves the
+    /// Ledger's.
+    struct MovingStart {
+        records: LinkRecords,
+        start: Cell<FinancialYearStart>,
+    }
+
+    impl crate::DocumentTransactions for MovingStart {
+        fn document_transactions(&self) -> Vec<crate::DocumentTransaction> {
+            self.records.transactions.clone()
+        }
+    }
+
+    impl crate::DocumentPayees for MovingStart {
+        fn document_payees(&self) -> Vec<lib_core::PayeeRef> {
+            self.records.payees.clone()
+        }
+    }
+
+    impl crate::DocumentAccounts for MovingStart {
+        fn document_accounts(&self) -> Vec<crate::DocumentAccount> {
+            self.records.accounts.clone()
+        }
+    }
+
+    impl crate::DocumentBillPlans for MovingStart {
+        fn document_bill_plans(&self) -> Vec<crate::DocumentBillPlan> {
+            self.records.plans.clone()
+        }
+    }
+
+    impl crate::DocumentItems for MovingStart {
+        fn document_items(&self) -> Vec<crate::DocumentItem> {
+            self.records.items.clone()
+        }
+    }
+
+    impl crate::DocumentFinancialYear for MovingStart {
+        fn financial_year_start(&self) -> FinancialYearStart {
+            self.start.get()
+        }
+    }
+
+    #[test]
+    fn a_year_scope_keeps_its_start_year_when_the_start_month_changes() {
+        locale();
+        let records = records(today());
+        let mut documents = sample_documents(&records, today(), FinancialYearStart::JULY).documents;
+        let march = documents
+            .iter_mut()
+            .find(|document| document.doc_type == DocumentType::TAX)
+            .expect("the sample files a Tax Document");
+        march.date = NaiveDate::from_ymd_opt(2026, 3, 15).expect("a real date");
+        let march = march.id;
+        let store = Rc::new(RefCell::new(InMemoryDocuments {
+            documents,
+            types: default_types(),
+        }));
+        let reads = Rc::new(MovingStart {
+            records,
+            start: Cell::new(FinancialYearStart::JULY),
+        });
+        let (clock, _day) = Clock::settable(today());
+        let mut presenter = DocumentsPagePresenter::new(
+            store,
+            reads.clone(),
+            Rc::new(InMemoryFiles::default()),
+            clock,
+            &KeyBindingConfig::default(),
+            "household.pldb".to_string(),
+        );
+        let mut router = RecordingDocumentsRouter::default();
+        let year = LibraryScope::Year(YearFacet::Year(2025));
+        presenter.handle(
+            DocumentsPageEvent::ClickRail(RailEntry::Scope(year)),
+            &mut router,
+        );
+        let listed = |presenter: &DocumentsPagePresenter| -> Vec<DocumentId> {
+            presenter
+                .view_model()
+                .library
+                .expect("the Library shows")
+                .rows
+                .iter()
+                .map(|row| row.id)
+                .collect()
+        };
+        let label = |presenter: &DocumentsPagePresenter| {
+            presenter
+                .view_model()
+                .rail
+                .into_iter()
+                .find(|row| row.entry == RailEntry::Scope(year))
+                .map(|row| row.label)
+        };
+        assert!(listed(&presenter).contains(&march), "July 2025 – June 2026");
+        assert_eq!(label(&presenter).as_deref(), Some("FY 2026"));
+
+        // 2 October 2026 is in the year starting 2026 either way, so the rail keeps its facets.
+        reads.start.set(FinancialYearStart::JANUARY);
+        presenter.handle(DocumentsPageEvent::MonthTurned, &mut router);
+
+        assert_eq!(presenter.scope(), year);
+        assert!(
+            !listed(&presenter).contains(&march),
+            "January – December 2025"
+        );
+        assert_eq!(label(&presenter).as_deref(), Some("FY 2025"));
     }
 
     #[test]

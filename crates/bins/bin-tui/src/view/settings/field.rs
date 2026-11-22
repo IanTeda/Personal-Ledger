@@ -9,7 +9,7 @@
 //!
 //! [`Action::SetSetting`]: crate::view::Action::SetSetting
 
-use chrono::{Datelike, Months, NaiveDate};
+use chrono::NaiveDate;
 use lib_colour_theme::ColourAppearance;
 use lib_config::{ConfigKey, ConfigValue, ConfigWriter, Overrides, StatusGlyphs};
 use lib_core::{DateStyle, OnStart, StartView};
@@ -453,17 +453,10 @@ impl SettingsValues {
 /// The first and last day of the financial year holding `today`, when years start on the first
 /// of `start` (1–12).
 pub fn financial_year(today: NaiveDate, start: u32) -> (NaiveDate, NaiveDate) {
-    let year = if today.month() >= start {
-        today.year()
-    } else {
-        today.year() - 1
-    };
-    let first = NaiveDate::from_ymd_opt(year, start, 1).unwrap_or(today);
-    let last = first
-        .checked_add_months(Months::new(12))
-        .and_then(|next| next.pred_opt())
-        .unwrap_or(today);
-    (first, last)
+    match lib_core::FinancialYearStart::new(start) {
+        Ok(start) => start.bounds(start.year_of(today)),
+        Err(_) => (today, today),
+    }
 }
 
 #[cfg(test)]

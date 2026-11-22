@@ -149,13 +149,13 @@ documents-hint-skip = skip
 
 documents-status-stored = { $size } · stored beside { $file }
 
-## The index rail. The two Financial Year labels take their years as text so no digit grouping is applied.
+## The index rail. The Financial Year label takes the year it ends in as text, so no digit grouping is applied.
 
 documents-rail-inbox = Inbox
 documents-rail-all = All documents
 documents-rail-type = Type
 documents-rail-year = Financial year
-documents-rail-fy = FY { $start }–{ $end }
+documents-rail-fy = FY { $year }
 documents-rail-earlier = Earlier
 
 ## The Library's header, toolbar and count line. `$count` is how many Documents are filed.

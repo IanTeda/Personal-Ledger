@@ -168,7 +168,7 @@ impl DocumentFormPresenter {
             LibraryScope::Type(kind) => kind,
             _ => DocumentType(fallback_id(&types)),
         };
-        let date = date_for_scope(scope, today);
+        let date = date_for_scope(scope, today, ports.reads.financial_year_start());
         let date = if date == today {
             lib_locale::msg::date_word_today()
         } else {

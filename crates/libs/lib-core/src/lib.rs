@@ -130,9 +130,6 @@ pub use hybrid_logical_clock::{HlcClock, HybridLogicalClock, HybridLogicalClockE
 mod calendar_period;
 pub use calendar_period::Period;
 
-mod financial_year;
-pub use financial_year::{FINANCIAL_YEAR_START_MONTH, financial_year, financial_year_start};
-
 /// The Ledger's own Preferences (ADR-0061): its name, its Owner and its Financial year start.
 mod ledger_preferences;
 pub use ledger_preferences::{

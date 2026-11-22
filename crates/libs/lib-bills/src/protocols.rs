@@ -12,7 +12,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use chrono::NaiveDate;
-use lib_core::{AccountId, BillPlanId, CategoryId, Money, PayeeId, TransactionId, UnitId};
+use lib_core::{
+    AccountId, BillPlanId, CategoryId, FinancialYearStart, Money, PayeeId, TransactionId, UnitId,
+};
 use lib_toast::Notify;
 
 use crate::{BillPlan, BillScheduleEntry, EntryId, SplitRef};
@@ -108,6 +110,12 @@ pub trait BillUnits {
     fn base_unit(&self) -> Option<UnitId>;
 }
 
+/// The Ledger's Financial year start, which the stat callout's Average reads its year by: a read
+/// port, so the month comes from the Ledger rather than a constant (#1342).
+pub trait BillFinancialYear {
+    fn financial_year_start(&self) -> FinancialYearStart;
+}
+
 /// Every Bills port, as one value the Presenters share. An Interactor writes the Bills while
 /// reading the other domains, so [`Self::split_mut`] lends them out together.
 pub trait BillsPorts {
@@ -122,6 +130,8 @@ pub trait BillsPorts {
     fn payees(&self) -> &dyn BillPayees;
 
     fn units(&self) -> &dyn BillUnits;
+
+    fn financial_year(&self) -> &dyn BillFinancialYear;
 
     fn split_mut(&mut self) -> PortsMut<'_>;
 }

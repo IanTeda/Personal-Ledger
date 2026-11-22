@@ -23,7 +23,7 @@ Documents is your library of proof: receipts, statements, insurance policies, wa
 - **Document type:** What kind of document it is. You manage the list in Settings › Documents; a new ledger starts with Receipts, Statements, Tax, Insurance, Warranties & manuals, Contracts, Identity, Bills and Other. Other is the fallback type and can't be removed. A type decides which key date its documents carry, how long before it you're reminded, and whether it is tied to a financial year.
 - **Filed / Unfiled:** A filed document is in the Library. An unfiled one is waiting in the Inbox. Only you file a document; adding a link doesn't.
 - **Link:** A document's reference to one record it proves: a Transaction, an Inventory item, an Account, a Payee or a Bill plan.
-- **Financial year:** The twelve months a document's date falls in, starting 1 July, such as FY 2025–26. It is worked out from the document date. Documents shows it, and filters by it, only for types tied to a financial year.
+- **Financial year:** The twelve months a document's date falls in, starting on the 1st of the Ledger's Financial year start (Settings › Ledger), named by the year it ends in, such as FY 2026 for July 2025 to June 2026. It is worked out from the document date. Documents shows it, and filters by it, only for types tied to a financial year.
 - **Key date:** The one forward-looking date a document may carry: Renews, Ends, Expires or Revalue by. Which kind it is, and how long before it you're reminded, is set by the document's type, not the document.
 - **Need review:** A filed document whose key date is within 60 days either side of today.
 - **Inbox:** The list of unfiled documents.
@@ -53,7 +53,7 @@ Files that haven't been filed yet. Each row shows where the file came from and a
 
 ## Worked example
 
-You buy a fridge for $1,899.00 and scan the receipt. You press `g` `f`, then `I`, and type the scan's path. The file lands in the Inbox as "fridge-receipt". The Inbox reads $1,899.00 and a merchant name, and suggests your Harvey Norman Transaction from the same week. The meter shows amount, date and payee all match, so it's a strong match. You press `y`: the receipt is filed as a Receipt under FY 2026–27 and a message tells you it was filed, with `u` to undo. Later you press `a` in the Library to add the three-year warranty, give it an Ends key date and tick the reminder. It shows up under Warranties & manuals with an "Ends" flag, and it counts toward "need review" once the date is within 60 days.
+You buy a fridge for $1,899.00 and scan the receipt. You press `g` `f`, then `I`, and type the scan's path. The file lands in the Inbox as "fridge-receipt". The Inbox reads $1,899.00 and a merchant name, and suggests your Harvey Norman Transaction from the same week. The meter shows amount, date and payee all match, so it's a strong match. You press `y`: the receipt is filed as a Receipt under FY 2027 and a message tells you it was filed, with `u` to undo. Later you press `a` in the Library to add the three-year warranty, give it an Ends key date and tick the reminder. It shows up under Warranties & manuals with an "Ends" flag, and it counts toward "need review" once the date is within 60 days.
 
 ## Screens
 

@@ -4,12 +4,22 @@ use std::path::PathBuf;
 
 use chrono::{Duration, NaiveDate};
 use lib_core::{
-    AccountId, BillPlanId, DocumentId, DocumentTypeId, ItemId, Money, PayeeId, TransactionId,
-    financial_year_start,
+    AccountId, BillPlanId, DocumentId, DocumentTypeId, FinancialYearStart, ItemId, Money, PayeeId,
+    TransactionId,
 };
 
 use crate::types;
 use crate::types::{DocumentTypeRow, TracksDate};
+
+/// The calendar year the Financial Year starting in `start_year` ends in, which is how a year is
+/// labelled (#1342's amendment): the next year, or the same one for a January start.
+pub(crate) fn ends_in(start_year: i32, fy_start: FinancialYearStart) -> i32 {
+    if fy_start == FinancialYearStart::JANUARY {
+        start_year
+    } else {
+        start_year + 1
+    }
+}
 
 /// Days either side of today, inclusive, in which a Key Date makes a Filed Document Need Review.
 /// A fixed constant until the Notifications effort decides on a user-set lead.
@@ -191,9 +201,10 @@ pub struct Document {
 }
 
 impl Document {
-    /// The calendar year its Financial Year starts in, derived from the document date.
-    pub fn financial_year(&self) -> i32 {
-        financial_year_start(self.date)
+    /// The calendar year its Financial Year starts in, derived from the document date on a
+    /// Ledger whose Financial Year starts in `start`.
+    pub fn financial_year(&self, start: FinancialYearStart) -> i32 {
+        start.year_of(self.date)
     }
 
     pub fn is_filed(&self) -> bool {

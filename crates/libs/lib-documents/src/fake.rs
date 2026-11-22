@@ -8,15 +8,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use lib_core::{DocumentId, DocumentTypeId};
+use lib_core::{DocumentId, DocumentTypeId, FinancialYearStart};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
-    DocumentItem, DocumentItems, DocumentPayees, DocumentRepository, DocumentTransaction,
-    DocumentTransactions, DocumentTypesDialog, DocumentTypesOutcome, DocumentTypesRouter,
-    DocumentsDialog, DocumentsOutcome, DocumentsRouter, LinkRecords, move_type_to, resolve_typed,
+    DocumentFinancialYear, DocumentItem, DocumentItems, DocumentPayees, DocumentRepository,
+    DocumentTransaction, DocumentTransactions, DocumentTypesDialog, DocumentTypesOutcome,
+    DocumentTypesRouter, DocumentsDialog, DocumentsOutcome, DocumentsRouter, LinkRecords,
+    move_type_to, resolve_typed,
 };
 use crate::types::DocumentTypeRow;
 use crate::{Document, DocumentLink};
@@ -144,6 +145,12 @@ impl DocumentBillPlans for LinkRecords {
 impl DocumentItems for LinkRecords {
     fn document_items(&self) -> Vec<DocumentItem> {
         self.items.clone()
+    }
+}
+
+impl DocumentFinancialYear for LinkRecords {
+    fn financial_year_start(&self) -> FinancialYearStart {
+        self.financial_year_start
     }
 }
 

@@ -4,13 +4,13 @@
 //! window. The link picker, still the Desktop's (#968), words its rows with the same functions.
 
 use chrono::{Datelike, NaiveDate};
-use lib_core::{DateStyle, DocumentId, Money};
+use lib_core::{DateStyle, DocumentId, FinancialYearStart, Money};
 use lib_locale::format::{AmountStyle, format_amount, format_date, format_year_month, upper};
 
 use crate::types::{self, DocumentTypeRow};
 use crate::{
     Document, DocumentLink, DocumentType, FileKind, KeyDate, KeyDateBand, KeyDateKind,
-    LibraryScope, LinkRecords, RailEntry, YearFacet, band, inbox_count, msg, rail_entries,
+    LibraryScope, LinkRecords, RailEntry, YearFacet, band, ends_in, inbox_count, msg, rail_entries,
     scope_count, tracks_financial_year,
 };
 
@@ -118,19 +118,21 @@ pub fn type_label(types: &[DocumentTypeRow], kind: DocumentType) -> String {
         .unwrap_or_default()
 }
 
-/// `FY 2026–27` for the Financial Year starting in `start`.
-pub fn year_label(start: i32) -> String {
-    msg::documents_rail_fy(
-        &start.to_string(),
-        &format!("{:02}", (start + 1).rem_euclid(100)),
-    )
+/// The Financial Year starting in `start`, labelled by the calendar year it ends in (#1342's
+/// amendment): `FY 2027` for the year starting July 2026, `FY 2026` for one starting January 2026.
+pub fn year_label(start: i32, fy_start: FinancialYearStart) -> String {
+    msg::documents_rail_fy(&ends_in(start, fy_start).to_string())
 }
 
-fn scope_label(types: &[DocumentTypeRow], scope: LibraryScope) -> String {
+fn scope_label(
+    types: &[DocumentTypeRow],
+    scope: LibraryScope,
+    fy_start: FinancialYearStart,
+) -> String {
     match scope {
         LibraryScope::All => msg::documents_rail_all(),
         LibraryScope::Type(kind) => type_label(types, kind),
-        LibraryScope::Year(YearFacet::Year(start)) => year_label(start),
+        LibraryScope::Year(YearFacet::Year(start)) => year_label(start, fy_start),
         LibraryScope::Year(YearFacet::Before(_)) => msg::documents_rail_earlier(),
     }
 }
@@ -141,9 +143,10 @@ pub fn rail_rows(
     types: &[DocumentTypeRow],
     documents: &[Document],
     today: NaiveDate,
+    fy_start: FinancialYearStart,
 ) -> Vec<RailRow> {
     let mut previous: Option<RailEntry> = None;
-    rail_entries(types, today)
+    rail_entries(types, today, fy_start)
         .into_iter()
         .map(|entry| {
             let section = match (entry, previous) {
@@ -169,8 +172,8 @@ pub fn rail_rows(
                 },
                 RailEntry::Scope(scope) => RailRow {
                     entry,
-                    label: scope_label(types, scope),
-                    count: scope_count(types, documents, scope),
+                    label: scope_label(types, scope, fy_start),
+                    count: scope_count(types, documents, scope, fy_start),
                     section,
                 },
             }
@@ -351,7 +354,10 @@ pub fn detail(document: &Document, lookups: &Lookups<'_>) -> DetailView {
     if tracks_financial_year(lookups.types, document.doc_type) {
         facts.push(Fact {
             label: msg::documents_detail_year(),
-            value: year_label(document.financial_year()),
+            value: year_label(
+                document.financial_year(lookups.records.financial_year_start),
+                lookups.records.financial_year_start,
+            ),
             red: false,
         });
     }
@@ -474,7 +480,12 @@ mod tests {
     #[test]
     fn the_rail_counts_filed_documents_and_the_inbox_and_labels_each_section_once() {
         let world = world();
-        let rows = rail_rows(&world.types, &world.documents, world.today);
+        let rows = rail_rows(
+            &world.types,
+            &world.documents,
+            world.today,
+            FinancialYearStart::JULY,
+        );
         assert_eq!(rows[0].entry, RailEntry::Inbox);
         assert_eq!(rows[0].count, inbox_count(&world.documents));
         assert_eq!(
@@ -513,9 +524,10 @@ mod tests {
     }
 
     #[test]
-    fn financial_years_label_as_a_span() {
+    fn financial_years_label_by_the_year_they_end_in() {
         let _world: World = world();
-        assert_eq!(year_label(2026), "FY 2026–27");
-        assert_eq!(year_label(1999), "FY 1999–00");
+        assert_eq!(year_label(2026, FinancialYearStart::JULY), "FY 2027");
+        assert_eq!(year_label(1999, FinancialYearStart::APRIL), "FY 2000");
+        assert_eq!(year_label(2026, FinancialYearStart::JANUARY), "FY 2026");
     }
 }

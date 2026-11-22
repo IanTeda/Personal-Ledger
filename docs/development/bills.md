@@ -81,6 +81,6 @@ Desktop locations for the ticked requirements.
 - **The Pay Dialog's Match list doesn't scroll the chosen row into view** ([#791](https://github.com/IanTeda/Personal-Ledger/issues/791)): its body scrolls, but `j`/`k` past the fold choose a row the person can't see.
 - **No "carries a Bill" marker on the Transactions list.** `bills::carries_bill` exists; nothing draws it.
 - **BIL-002 and BIL-010 are partial.** The Planner has no active/recurrence filter, and the Schedule has no Payee filter.
-- **The financial year is a constant** (`bills::history::FINANCIAL_YEAR_START_MONTH`, July) until Settings' "Financial year starts" is a real Preference.
+- **The financial year is the Ledger's** Financial year start Preference (ADR-0061), read through `lib-bills`' `BillFinancialYear` port on `BillsPorts` (#1342), which `lib-database`'s `StoredBillsPorts` answers from the Ledger store and the fake from the month it is given. `plan_stats` takes it beside `today` and reads the year through `FinancialYearStart::year_of` and `bounds`. The Bills page repaints on `Domain::Ledger`, so an edit in Settings › Ledger and its Undo move the Average's year.
 - **The Schedule's period nav is unbounded**; months past the generation horizon show computed previews.
 - **Anticipated Bills (BIL-008)** is a later map. Known Costs (BIL-009) is built on the Budgets surface.

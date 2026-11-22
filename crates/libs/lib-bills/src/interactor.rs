@@ -85,7 +85,7 @@ pub(crate) mod test_support {
 
     /// The sample seed as of [`today`].
     pub fn sample() -> InMemoryPorts {
-        InMemoryPorts::sample(today())
+        InMemoryPorts::sample(today(), lib_core::FinancialYearStart::JULY)
     }
 
     /// Water, a Monthly Plan in aud paid from ANZ Everyday.

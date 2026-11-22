@@ -223,6 +223,7 @@ impl LedgerPorts {
                 institutions: stores.institutions.clone(),
                 bills: stores.bills.clone(),
                 inventory: stores.inventory.clone(),
+                ledger: stores.ledger.clone(),
             }),
             settings_reads: Rc::new(StoredSettingsReads::over(&stores)),
             ledger_preferences: Rc::new(LedgerPreferencesAdapter::new(
@@ -282,6 +283,7 @@ impl LedgerPorts {
                 StoredBillUnits {
                     units: stores.units.clone(),
                 },
+                stores.ledger.clone(),
             ))),
             categories: Rc::new(RefCell::new(category_save.clone())),
             category_save,

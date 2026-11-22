@@ -131,7 +131,10 @@ pub(crate) mod test_support {
 
     /// The Bills sample seed as of [`today`], shared.
     pub fn sample() -> Rc<RefCell<InMemoryPorts>> {
-        Rc::new(RefCell::new(InMemoryPorts::sample(today())))
+        Rc::new(RefCell::new(InMemoryPorts::sample(
+            today(),
+            lib_core::FinancialYearStart::JULY,
+        )))
     }
 
     /// The sample Plan named `name`'s entry due on `due`.

@@ -890,7 +890,14 @@ impl Presenter for SchedulePresenter {
             .plan_id
             .and_then(|id| get(&plans, id))
             .map(|plan| {
-                let stats = plan_stats(plan, &plans, &entries, &splits, today);
+                let stats = plan_stats(
+                    plan,
+                    &plans,
+                    &entries,
+                    &splits,
+                    today,
+                    ports.financial_year().financial_year_start(),
+                );
                 stats_view(ports, plan, &stats)
             });
         ScheduleViewModel {

@@ -8,7 +8,10 @@ use crate::types::{self, DocumentTypeRow, TracksDate};
 use crate::{DocumentTransaction, Error};
 use crate::{fake::InMemoryFiles, protocols::resolve_typed};
 use chrono::{Duration, NaiveDate};
-use lib_core::{AccountId, DocumentId, DocumentTypeId, PayeeId, TransactionId};
+use lib_core::{AccountId, DocumentId, DocumentTypeId, FinancialYearStart, PayeeId, TransactionId};
+
+/// The Australian year the tests' dates were written against.
+const JULY: FinancialYearStart = FinancialYearStart::JULY;
 
 fn types() -> Vec<DocumentTypeRow> {
     types::default_types()
@@ -84,11 +87,11 @@ fn facts(merchant: Option<&str>, on: Option<NaiveDate>, cents: Option<i64>) -> E
 #[test]
 fn financial_year_derives_from_the_document_date() {
     assert_eq!(
-        filed(1, DocumentType::TAX, date(2026, 6, 30)).financial_year(),
+        filed(1, DocumentType::TAX, date(2026, 6, 30)).financial_year(JULY),
         2025
     );
     assert_eq!(
-        filed(1, DocumentType::TAX, date(2026, 7, 1)).financial_year(),
+        filed(1, DocumentType::TAX, date(2026, 7, 1)).financial_year(JULY),
         2026
     );
 }
@@ -96,19 +99,23 @@ fn financial_year_derives_from_the_document_date() {
 #[test]
 fn year_facets_are_this_year_last_year_then_earlier() {
     assert_eq!(
-        year_facets(today()),
+        year_facets(today(), JULY),
         [
             YearFacet::Year(2026),
             YearFacet::Year(2025),
             YearFacet::Before(2025)
         ]
     );
-    assert!(
-        YearFacet::Before(2025).contains(&filed(1, DocumentType::TAX, date(2025, 6, 30)), &types())
-    );
-    assert!(
-        !YearFacet::Before(2025).contains(&filed(1, DocumentType::TAX, date(2025, 7, 1)), &types())
-    );
+    assert!(YearFacet::Before(2025).contains(
+        &filed(1, DocumentType::TAX, date(2025, 6, 30)),
+        &types(),
+        JULY
+    ));
+    assert!(!YearFacet::Before(2025).contains(
+        &filed(1, DocumentType::TAX, date(2025, 7, 1)),
+        &types(),
+        JULY
+    ));
 }
 
 #[test]
@@ -119,18 +126,21 @@ fn scope_ids_round_trip_and_stale_years_fall_back_to_all() {
         LibraryScope::Year(YearFacet::Year(2025)),
         LibraryScope::Year(YearFacet::Before(2025)),
     ] {
-        assert_eq!(LibraryScope::from_id(&scope.id(), &types(), today()), scope);
+        assert_eq!(
+            LibraryScope::from_id(&scope.id(), &types(), today(), JULY),
+            scope
+        );
     }
     assert_eq!(
-        LibraryScope::from_id("fy:2023", &types(), today()),
+        LibraryScope::from_id("fy:2023", &types(), today(), JULY),
         LibraryScope::All
     );
     assert_eq!(
-        LibraryScope::from_id("type:nope", &types(), today()),
+        LibraryScope::from_id("type:nope", &types(), today(), JULY),
         LibraryScope::All
     );
     assert_eq!(
-        LibraryScope::from_id("garbage", &types(), today()),
+        LibraryScope::from_id("garbage", &types(), today(), JULY),
         LibraryScope::All
     );
 }
@@ -142,12 +152,16 @@ fn counts_cover_filed_documents_only() {
         filed(2, DocumentType::TAX, today()),
         unfiled(3, facts(None, None, Some(100))),
     ];
-    assert_eq!(scope_count(&types(), &documents, LibraryScope::All), 2);
+    assert_eq!(
+        scope_count(&types(), &documents, LibraryScope::All, JULY),
+        2
+    );
     assert_eq!(
         scope_count(
             &types(),
             &documents,
-            LibraryScope::Type(DocumentType::RECEIPTS)
+            LibraryScope::Type(DocumentType::RECEIPTS),
+            JULY,
         ),
         1
     );
@@ -210,6 +224,7 @@ fn expiring_sorts_need_review_then_upcoming_then_stale_descending_then_none() {
         "",
         LibrarySort::Expiring,
         today(),
+        JULY,
     )
     .iter()
     .map(|d| d.id)
@@ -242,6 +257,7 @@ fn expiring_ties_go_to_the_newest_document_then_title() {
         "",
         LibrarySort::Expiring,
         today(),
+        JULY,
     );
     assert_eq!(
         rows.iter().map(|d| d.id).collect::<Vec<_>>(),
@@ -260,6 +276,7 @@ fn need_review_counts_the_listed_filed_rows() {
         "doc",
         LibrarySort::Newest,
         today(),
+        JULY,
     );
     assert_eq!(rows.len(), 2);
     assert_eq!(need_review_count(&types(), &rows, today()), 1);
@@ -293,6 +310,7 @@ fn newest_sorts_by_document_date_then_title() {
         "",
         LibrarySort::Newest,
         today(),
+        JULY,
     )
     .iter()
     .map(|d| d.id)
@@ -686,15 +704,15 @@ fn a_year_scope_prefills_today_inside_the_year_and_its_last_day_outside() {
     let current = LibraryScope::Year(YearFacet::Year(2026));
     let last = LibraryScope::Year(YearFacet::Year(2025));
     let earlier = LibraryScope::Year(YearFacet::Before(2025));
-    assert_eq!(date_for_scope(LibraryScope::All, today()), today());
-    assert_eq!(date_for_scope(current, today()), today());
-    assert_eq!(date_for_scope(last, today()), date(2026, 6, 30));
-    assert_eq!(date_for_scope(earlier, today()), date(2025, 6, 30));
+    assert_eq!(date_for_scope(LibraryScope::All, today(), JULY), today());
+    assert_eq!(date_for_scope(current, today(), JULY), today());
+    assert_eq!(date_for_scope(last, today(), JULY), date(2026, 6, 30));
+    assert_eq!(date_for_scope(earlier, today(), JULY), date(2025, 6, 30));
 }
 
 #[test]
 fn the_rail_runs_inbox_all_types_then_years() {
-    let entries = rail_entries(&types(), today());
+    let entries = rail_entries(&types(), today(), JULY);
     assert_eq!(entries.len(), 2 + types().len() + 3);
     assert_eq!(entries[0], RailEntry::Inbox);
     assert_eq!(entries[1], RailEntry::Scope(LibraryScope::All));
@@ -783,7 +801,7 @@ fn set_type(
 fn the_rail_lists_types_in_settings_order() {
     let mut types = types();
     types::move_by(&mut types, DocumentType::BILLS.0, -7);
-    let listed: Vec<_> = rail_entries(&types, today())
+    let listed: Vec<_> = rail_entries(&types, today(), JULY)
         .into_iter()
         .filter_map(|entry| match entry {
             RailEntry::Scope(LibraryScope::Type(kind)) => Some(kind),
@@ -798,10 +816,13 @@ fn the_rail_lists_types_in_settings_order() {
 fn a_saved_scope_on_a_removed_type_falls_back_to_all() {
     let mut types = types();
     let scope = LibraryScope::Type(DocumentType::BILLS);
-    assert_eq!(LibraryScope::from_id(&scope.id(), &types, today()), scope);
+    assert_eq!(
+        LibraryScope::from_id(&scope.id(), &types, today(), JULY),
+        scope
+    );
     types.retain(|row| row.id != DocumentType::BILLS.0);
     assert_eq!(
-        LibraryScope::from_id(&scope.id(), &types, today()),
+        LibraryScope::from_id(&scope.id(), &types, today(), JULY),
         LibraryScope::All
     );
 }
@@ -810,14 +831,14 @@ fn a_saved_scope_on_a_removed_type_falls_back_to_all() {
 fn the_financial_year_flag_gates_the_year_match() {
     let mut types = types();
     let document = filed(1, DocumentType::TAX, date(2026, 6, 30));
-    let facet = YearFacet::Year(document.financial_year());
-    assert!(facet.contains(&document, &types));
+    let facet = YearFacet::Year(document.financial_year(JULY));
+    assert!(facet.contains(&document, &types, JULY));
     set_type(&mut types, DocumentType::TAX, |row| {
         row.financial_year = false;
     });
-    assert!(!facet.contains(&document, &types));
+    assert!(!facet.contains(&document, &types, JULY));
     // The derived year itself is unchanged: only the match is gated.
-    assert_eq!(document.financial_year(), facet_start(facet));
+    assert_eq!(document.financial_year(JULY), facet_start(facet));
 }
 
 fn facet_start(facet: YearFacet) -> i32 {
@@ -954,5 +975,38 @@ fn a_dropped_batch_lands_in_the_inbox_as_dropped() {
     assert_eq!(
         documents[0].intake.as_ref().map(|intake| intake.source),
         Some(Source::Dropped)
+    );
+}
+
+#[test]
+fn a_year_scope_prefills_by_the_ledgers_start_month() {
+    // 2 Oct 2026 is in the April year that started on 1 Apr 2026.
+    let april = FinancialYearStart::APRIL;
+    let current = LibraryScope::Year(YearFacet::Year(2026));
+    let last = LibraryScope::Year(YearFacet::Year(2025));
+    let earlier = LibraryScope::Year(YearFacet::Before(2025));
+    assert_eq!(date_for_scope(current, today(), april), today());
+    assert_eq!(date_for_scope(last, today(), april), date(2026, 3, 31));
+    assert_eq!(date_for_scope(earlier, today(), april), date(2025, 3, 31));
+}
+
+#[test]
+fn the_sample_tax_statement_is_titled_by_the_year_just_ended() {
+    let title = |today: NaiveDate, start: FinancialYearStart| {
+        sample_documents(&crate::LinkRecords::empty(start), today, start)
+            .documents
+            .into_iter()
+            .find(|document| document.file_name() == "vanguard-tax-statement.pdf")
+            .map(|document| document.title)
+    };
+    // July 2025 – June 2026 ends in 2026.
+    assert_eq!(
+        title(today(), JULY).as_deref(),
+        Some("Vanguard VAS — tax statement FY26")
+    );
+    // January – December 2025 ends in 2025.
+    assert_eq!(
+        title(today(), FinancialYearStart::JANUARY).as_deref(),
+        Some("Vanguard VAS — tax statement FY25")
     );
 }

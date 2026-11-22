@@ -12,13 +12,15 @@ use std::rc::Rc;
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
-use lib_core::{AccountId, BillPlanId, CategoryId, Money, PayeeId, TransactionId, UnitId};
+use lib_core::{
+    AccountId, BillPlanId, CategoryId, FinancialYearStart, Money, PayeeId, TransactionId, UnitId,
+};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
-    BillUnits, BillsOutcome, BillsPorts, BillsRepository, BillsRouter, PayRequest, PortsMut,
-    SharedPorts,
+    BillFinancialYear, BillUnits, BillsOutcome, BillsPorts, BillsRepository, BillsRouter,
+    PayRequest, PortsMut, SharedPorts,
 };
 use crate::{
     BillAccounts, BillCategories, BillPayees, BillPlan, BillPlanRepository, BillScheduleEntry,
@@ -143,19 +145,31 @@ impl BillUnits for InMemoryBillUnits {
     }
 }
 
+/// The Ledger's Financial year start, held in memory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InMemoryBillFinancialYear(pub FinancialYearStart);
+
+impl BillFinancialYear for InMemoryBillFinancialYear {
+    fn financial_year_start(&self) -> FinancialYearStart {
+        self.0
+    }
+}
+
 /// Every Bills port in memory, as the Presenters share them.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InMemoryPorts {
     pub bills: InMemoryBills,
     pub reads: InMemoryBillReads,
     pub units: InMemoryBillUnits,
+    pub financial_year: InMemoryBillFinancialYear,
 }
 
 impl InMemoryPorts {
     /// The sample Bill Plans and their Schedule as of `today`, with the fixed Accounts, Categories
     /// and Payees they name and the Splits their Paid entries were paid by: the Sample Ledger's
-    /// Bills, with the Transactions numbered from 1 rather than after the other samples'.
-    pub fn sample(today: NaiveDate) -> Self {
+    /// Bills, with the Transactions numbered from 1 rather than after the other samples', on a
+    /// Ledger whose Financial Year starts in `financial_year_start`.
+    pub fn sample(today: NaiveDate, financial_year_start: FinancialYearStart) -> Self {
         let accounts = sample_accounts();
         let categories = sample_categories();
         let payees = sample_payees();
@@ -181,6 +195,7 @@ impl InMemoryPorts {
                 splits,
             },
             units: InMemoryBillUnits::sample(),
+            financial_year: InMemoryBillFinancialYear(financial_year_start),
         }
     }
 
@@ -215,6 +230,10 @@ impl BillsPorts for InMemoryPorts {
 
     fn units(&self) -> &dyn BillUnits {
         &self.units
+    }
+
+    fn financial_year(&self) -> &dyn BillFinancialYear {
+        &self.financial_year
     }
 
     fn split_mut(&mut self) -> PortsMut<'_> {

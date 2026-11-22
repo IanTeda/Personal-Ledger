@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
 use lib_core::{
-    AccountId, BillPlanId, DocumentId, ItemId, Money, PayeeId, TransactionId, financial_year_start,
+    AccountId, BillPlanId, DocumentId, FinancialYearStart, ItemId, Money, PayeeId, TransactionId,
 };
 
 use super::document::{
@@ -170,8 +170,13 @@ impl Draft {
 /// purchases (Camera House, Woolworths, Bunnings, Sonos) are `lib-transactions`' sample's, read from
 /// `records` with the rest of its rows: the Camera House receipt links its purchase, and the
 /// filler receipts link older ones. Key Dates sit so three Library rows Need Review on any
-/// `today`.
-pub fn sample_documents(records: &LinkRecords, today: NaiveDate) -> DocumentsSeed {
+/// `today`. The tax statement's title names the Financial Year before today's, by the Ledger's
+/// `fy_start`.
+pub fn sample_documents(
+    records: &LinkRecords,
+    today: NaiveDate,
+    fy_start: FinancialYearStart,
+) -> DocumentsSeed {
     let lookup = Lookup { records };
     let transactions = &records.transactions;
     let day = |offset: i64| today + Duration::days(offset);
@@ -187,7 +192,8 @@ pub fn sample_documents(records: &LinkRecords, today: NaiveDate) -> DocumentsSee
     let item = |name: &str| lookup.item(name).map(DocumentLink::InventoryItem);
     let first_of_month = day(0).with_day(1).unwrap_or(today);
     let statement_month = (first_of_month - Duration::days(1)).format("%b %Y");
-    let fy = financial_year_start(today) % 100;
+    // The tax statement is for the Financial Year before today's, titled by the year it ends in.
+    let fy = super::document::ends_in(fy_start.year_of(today) - 1, fy_start).rem_euclid(100);
     let money = |cents: i64| Some(cents_money(cents));
     use KeyDateKind::*;
 

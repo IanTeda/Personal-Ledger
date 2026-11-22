@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::{Duration, NaiveDate};
-use lib_core::{DocumentId, FINANCIAL_YEAR_START_MONTH, financial_year_start};
+use lib_core::{DocumentId, FinancialYearStart};
 
 use super::document::{
     Document, DocumentType, ExtractedFacts, FileKind, Filing, Intake, KeyDate, Source, get_mut,
@@ -315,7 +315,11 @@ pub fn edit_metadata(
 
 /// The Financial Year scope's pre-fill for a new Document: today when it falls inside the Year,
 /// otherwise the Year's last day.
-pub fn date_for_scope(scope: LibraryScope, today: NaiveDate) -> NaiveDate {
+pub fn date_for_scope(
+    scope: LibraryScope,
+    today: NaiveDate,
+    fy_start: FinancialYearStart,
+) -> NaiveDate {
     let LibraryScope::Year(facet) = scope else {
         return today;
     };
@@ -323,13 +327,8 @@ pub fn date_for_scope(scope: LibraryScope, today: NaiveDate) -> NaiveDate {
         YearFacet::Year(start) => start,
         YearFacet::Before(start) => start - 1,
     };
-    let last_day = |start: i32| {
-        // The Year ends the day before the next one starts.
-        NaiveDate::from_ymd_opt(start + 1, FINANCIAL_YEAR_START_MONTH, 1)
-            .and_then(|next_start| next_start.pred_opt())
-    };
     match facet {
-        YearFacet::Year(_) if financial_year_start(today) == start => today,
-        _ => last_day(start).unwrap_or(today),
+        YearFacet::Year(_) if fy_start.year_of(today) == start => today,
+        _ => fy_start.bounds(start).1,
     }
 }

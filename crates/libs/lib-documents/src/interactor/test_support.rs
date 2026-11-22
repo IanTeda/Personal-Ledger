@@ -210,7 +210,7 @@ pub(super) fn records() -> LinkRecords {
             shop(COLES_SHOP, 2, 1_000, 1),
         ],
         payees: vec![payee(1, "Woolworths"), payee(2, "Coles")],
-        ..LinkRecords::default()
+        ..LinkRecords::empty(lib_core::FinancialYearStart::JULY)
     }
 }
 

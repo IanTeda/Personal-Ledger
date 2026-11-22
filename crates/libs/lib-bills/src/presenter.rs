@@ -151,6 +151,6 @@ pub(crate) mod test_support {
     /// The sample seed, shared, with the handle the test reads it back through.
     pub fn sample() -> (Rc<RefCell<InMemoryPorts>>, SharedPorts) {
         locale();
-        InMemoryPorts::sample(today()).shared()
+        InMemoryPorts::sample(today(), lib_core::FinancialYearStart::JULY).shared()
     }
 }

@@ -116,6 +116,7 @@ impl PortsFactory for InMemoryFactory {
                 id: ItemId::seed(1),
                 name: "Laptop".into(),
             }],
+            financial_year_start: lib_core::FinancialYearStart::JULY,
         }
     }
 
