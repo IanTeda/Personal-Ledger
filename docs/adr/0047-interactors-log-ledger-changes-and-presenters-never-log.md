@@ -6,7 +6,7 @@ Issue [#466](https://github.com/IanTeda/Personal-Ledger/issues/466) asked whethe
 
 - **Interactors log each intent that changes the Ledger, at `info`**: create, update, delete, pay, generate, with the outcome, done or refused ("Delete Payee 7: refused, has Transactions"). A refusal is a normal outcome, so it is `info`, not `warn`.
 - **Reads are not logged** at any level, Interactor or Presenter, since a filter or search can run on every keystroke and leaves the Ledger as it was.
-- **Presenters, Views and Routers never log.** Their state (selection, focus, which Dialog is open) is UI churn that rebuilds no failure.
+- **Presenters, Views and Routers never log.** Their state (selection, focus, which Dialog is open) is UI churn that rebuilds no failure. The one exception is a dead arm, the named arm over the variants a workflow can't receive ([ADR-0060](0060-every-fallible-function-returns-its-crates-result.md), [#1334](https://github.com/IanTeda/Personal-Ledger/issues/1334)): it logs at `error`, whatever its layer, since it fires only on a bug, which is work not done, and adds no UI churn.
 - **Adapters and the writer log how a change reached storage, at `debug`,** and a lost or failed write at `error`. Their `Result`-returning functions keep `#[tracing::instrument(level = "debug", err)]` for the failure event; feature crates use explicit `info!`/`debug!` events, not `#[instrument]`. Span events (`FmtSpan`) stay off.
 - **`warn`** is for system trouble that recovered (a Colour Theme pair below contrast, a Configuration fallback), **`error`** for work lost or not done.
 - **A log line carries ids, domain and kind names, counts and dates only:** never a Money amount, a name (Payee, Account, Bill, …), notes or other user-entered text, or a Configuration secret, at any level. The Ledger file path is allowed. This is what makes a log safe to attach to a bug report.
@@ -18,6 +18,7 @@ Issue [#466](https://github.com/IanTeda/Personal-Ledger/issues/466) asked whethe
 - **Only the edges log** (adapters, writer, bin startup). Rejected: the writer knows only that a Bills job ran, not that the person paid Bill 12, so a bug report can't be rebuilt from it.
 - **Every layer logs, Presenter events included.** Rejected: one line per key press and selection change buries the few lines that matter, and the Tracing page's 1000-entry ring would hold seconds of history.
 - **Turn on span-close events for timings.** Rejected: it doubles the lines for timings nobody has asked for.
+- **A dead arm in a Presenter only asserts** (its `debug_assert!`), without logging. Rejected: a release build would then log nothing when a read's dead arm fires (the Document form's `path_error` reads, and reads never log), and elsewhere only the Interactor's `info` refusal line.
 
 ## Consequences
 
