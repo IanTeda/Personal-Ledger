@@ -13,7 +13,7 @@
 //! Every crate in `FEATURE_CRATES` and `SHARED_CRATES` is checked, so a new feature crate is added
 //! to `FEATURE_CRATES` and keeps the rule from its first commit.
 
-use std::process::Command;
+mod common;
 
 use serde_json::Value;
 
@@ -142,25 +142,7 @@ fn violations(metadata: &Value) -> Vec<String> {
 
 #[test]
 fn feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
-    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-    let output = Command::new(cargo)
-        .args([
-            "metadata",
-            "--format-version",
-            "1",
-            "--no-deps",
-            "--offline",
-        ])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .output()
-        .expect("cargo metadata should run, since cargo is running this test");
-    assert!(
-        output.status.success(),
-        "cargo metadata failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let metadata: Value =
-        serde_json::from_slice(&output.stdout).expect("cargo metadata should print JSON");
+    let metadata = common::cargo_metadata(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
 
     let names: Vec<&str> = metadata["packages"]
         .as_array()

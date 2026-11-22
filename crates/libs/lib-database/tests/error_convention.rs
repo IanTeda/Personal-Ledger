@@ -10,10 +10,16 @@
 //!   the crate, declared from `lib.rs` as a private `mod error` and re-exported as
 //!   `pub use error::{Error, Result}`.
 //! - **Usage** (ADR-0060), on every crate: a `Result` in a return type with two
-//!   arguments fails unless its error is on [`VALUE_ERRORS`], a path-qualified `Result` fails
-//!   unless it is `crate::Result`, `std::result::Result` appears nowhere but the alias, and no
-//!   `use` brings in another crate's `Result`, under any name or through a glob. A package's own
-//!   lib target counts as the crate itself, so a bin's `main.rs` may `use bin_x::Result`.
+//!   arguments fails unless its error is the [`VALUE_ERRORS`] entry for the crate it is spelt
+//!   from (this crate's own, or another's named by its path or by an import from it), a
+//!   path-qualified `Result` fails unless it is `crate::Result`, `std::result::Result` appears
+//!   nowhere but the alias, and no `use` brings in another crate's `Result`, under any name or
+//!   through a glob of its root, `error` or `result` module. A package's own lib target counts as
+//!   the crate itself, so a bin's `main.rs` may `use bin_x::Result`.
+//!
+//! `syn` can't tell a crate from a local module at the start of a path, so each crate's lib
+//! target name and its non-dev dependencies, under the names source uses for them (renames
+//! resolved), come from `cargo metadata`, as in `viper_dependencies.rs`.
 //!
 //! The source is parsed with `syn`, so the test sees how a signature is spelt, not what it
 //! resolves to. Signatures fixed from outside are recognised by that spelling: a method inside
@@ -30,126 +36,175 @@
     reason = "integration test crate: a failed setup should fail the test"
 )]
 
-use std::collections::BTreeSet;
+mod common;
+
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use quote::ToTokens;
+use serde_json::Value;
 use syn::visit::{self, Visit};
 
-/// The value errors (ADR-0060): each an enum beside one value type, naming only the ways a text
-/// or number fails to become that value, so any crate may return it. Adding one is a reviewed
-/// edit, judged against that definition.
-const VALUE_ERRORS: &[&str] = &[
-    "AccountTypeError",
-    "BudgetPeriodError",
-    "CategoryTypesError",
-    "CoverError",
-    "DateInputError",
-    "DateStyleError",
-    "HexColorError",
-    "HybridLogicalClockError",
-    "MoneyError",
-    "NameError",
-    "ParseError",
-    "ParseLevelError",
-    "RowIDError",
-    "TransactionStatusError",
-    "UnitKindError",
-    "UrlSlugError",
+/// The value errors (ADR-0060), each as the crate that declares it and its name: an enum beside
+/// one value type, naming only the ways a text or number fails to become that value, so any crate
+/// may return it. Keyed by crate because a name alone says nothing: another crate's `ParseError`
+/// is not this one. Adding one is a reviewed edit, judged against that definition.
+const VALUE_ERRORS: &[(&str, &str)] = &[
+    ("lib_core", "AccountTypeError"),
+    ("lib_core", "BudgetPeriodError"),
+    ("lib_core", "CategoryTypesError"),
+    ("lib_inventory", "CoverError"),
+    ("lib_locale", "DateInputError"),
+    ("lib_core", "DateStyleError"),
+    ("lib_core", "HexColorError"),
+    ("lib_core", "HybridLogicalClockError"),
+    ("lib_core", "MoneyError"),
+    ("lib_documents", "NameError"),
+    ("lib_colour_theme", "ParseError"),
+    ("lib_core", "ParseLevelError"),
+    ("lib_core", "RowIDError"),
+    ("lib_core", "TransactionStatusError"),
+    ("lib_core", "UnitKindError"),
+    ("lib_core", "UrlSlugError"),
 ];
 
 /// The one shape every crate's alias takes, as `syn` prints it.
 const ALIAS: &str = "pub type Result < T , E = Error > = std :: result :: Result < T , E > ;";
 
-/// A crate under check: its directory, the name it is reported by, the names its own source may
-/// use for itself and the other crates a `use` may start from.
+/// A crate under check: its directory, the name it is reported by, the name source uses for it
+/// (its lib target's), the names its own source may use for itself, and the other crates a path
+/// may start from, each by the name source uses mapped to that crate's own.
 struct Crate {
     dir: PathBuf,
     name: String,
+    key: String,
     own_names: BTreeSet<String>,
-    other_crates: BTreeSet<String>,
+    other_crates: BTreeMap<String, String>,
+}
+
+/// A target or package name as rustc reads it in source.
+fn source_name(name: &str) -> String {
+    name.replace('-', "_")
+}
+
+/// The name source uses for `package`: its lib target's, or for a bin-only package its own.
+fn lib_name(package: &Value) -> String {
+    let lib = package["targets"].as_array().and_then(|targets| {
+        targets.iter().find_map(|target| {
+            let kinds = target["kind"].as_array()?;
+            kinds
+                .iter()
+                .any(|kind| {
+                    kind.as_str()
+                        .is_some_and(|kind| kind.ends_with("lib") || kind == "proc-macro")
+                })
+                .then(|| target["name"].as_str())
+                .flatten()
+        })
+    });
+    source_name(lib.or(package["name"].as_str()).unwrap_or_default())
 }
 
 impl Crate {
-    fn at(dir: &Path) -> Self {
+    /// The crate `package` describes, its dependencies resolved against `packages` (the other
+    /// packages in the same `cargo metadata`), so a dependency on a member reads its lib name.
+    fn from_package(package: &Value, packages: &[Value]) -> Self {
+        let dir = package["manifest_path"]
+            .as_str()
+            .map(Path::new)
+            .and_then(Path::parent)
+            .unwrap_or(Path::new(""))
+            .to_path_buf();
         let name = dir
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_default()
             .to_string();
-        let manifest = fs::read_to_string(dir.join("Cargo.toml")).unwrap_or_default();
+        let key = lib_name(package);
         let mut own_names: BTreeSet<String> = ["crate", "self", "super", "Self"]
             .into_iter()
             .map(String::from)
             .collect();
-        own_names.insert(name.replace('-', "_"));
-        own_names.extend(manifest_names(&manifest));
-        let mut other_crates: BTreeSet<String> = ["std", "core", "alloc"]
+        own_names.insert(key.clone());
+        own_names.insert(source_name(package["name"].as_str().unwrap_or_default()));
+        let mut other_crates: BTreeMap<String, String> = ["std", "core", "alloc"]
             .into_iter()
-            .map(String::from)
+            .map(|name| (name.to_string(), name.to_string()))
             .collect();
-        other_crates.extend(manifest_dependencies(&manifest));
+        let dependencies = package["dependencies"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        // Dev dependencies reach only tests/ and #[cfg(test)], which the walk never reads.
+        for dependency in dependencies
+            .iter()
+            .filter(|d| d["kind"].as_str() != Some("dev"))
+        {
+            let Some(package_name) = dependency["name"].as_str() else {
+                continue;
+            };
+            let crate_name = packages
+                .iter()
+                .find(|member| member["name"].as_str() == Some(package_name))
+                .map_or_else(|| source_name(package_name), lib_name);
+            let used_as = dependency["rename"]
+                .as_str()
+                .map_or_else(|| crate_name.clone(), source_name);
+            other_crates.insert(used_as, crate_name);
+        }
         Self {
-            dir: dir.to_path_buf(),
+            dir,
             name,
+            key,
             own_names,
             other_crates,
         }
     }
-}
 
-/// The `name`s under `[package]` and `[lib]`, with `-` read as `_` as rustc reads them.
-fn manifest_names(manifest: &str) -> Vec<String> {
-    let mut section = "";
-    let mut names = Vec::new();
-    for line in manifest.lines().map(str::trim) {
-        if line.starts_with('[') {
-            section = line;
-        } else if (section == "[package]" || section == "[lib]")
-            && let Some(value) = line
-                .strip_prefix("name")
-                .map(str::trim_start)
-                .and_then(|rest| rest.strip_prefix('='))
-        {
-            names.push(value.trim().trim_matches('"').replace('-', "_"));
-        }
+    /// The crate whose manifest sits in `dir`, read through its own `cargo metadata`.
+    fn at(dir: &Path) -> Self {
+        let metadata = common::cargo_metadata(dir);
+        let packages = metadata["packages"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let manifest = dir.join("Cargo.toml");
+        let package = packages
+            .iter()
+            .find(|package| package["manifest_path"].as_str().map(Path::new) == Some(&manifest))
+            .unwrap_or_else(|| panic!("cargo metadata should list {}", manifest.display()));
+        Self::from_package(package, packages)
     }
-    names
 }
 
-/// The crates the manifest's dependency tables name, as source spells them. `syn` can't tell a
-/// crate from a local module at the start of a `use` path, so the import rule asks this.
-fn manifest_dependencies(manifest: &str) -> Vec<String> {
-    let mut in_dependencies = false;
-    let mut names = Vec::new();
-    for line in manifest.lines().map(str::trim) {
-        if line.starts_with('[') {
-            in_dependencies = line.ends_with("dependencies]") && !line.contains("dev-");
-        } else if in_dependencies
-            && let Some(key) = line.split(['=', '.']).next().map(str::trim)
-            && !key.is_empty()
-            && !key.starts_with('#')
-        {
-            names.push(key.replace('-', "_"));
-        }
-    }
-    names
+/// The workspace's `cargo metadata`, read once for every test in this file.
+fn workspace_metadata() -> &'static Value {
+    static METADATA: OnceLock<Value> = OnceLock::new();
+    METADATA.get_or_init(|| common::cargo_metadata(Path::new(env!("CARGO_MANIFEST_DIR"))))
 }
 
-/// Every library and bin crate's directory, sorted.
-fn workspace_crates() -> Vec<PathBuf> {
+/// Every library and bin crate (`crates/libs/*`, `crates/bins/*`), sorted by directory.
+fn workspace_crates() -> Vec<Crate> {
     let crates_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(2)
         .expect("lib-database sits at crates/libs/lib-database");
-    let mut crates: Vec<PathBuf> = ["libs", "bins"]
+    let packages = workspace_metadata()["packages"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let mut crates: Vec<Crate> = packages
         .iter()
-        .flat_map(|group| fs::read_dir(crates_dir.join(group)).into_iter().flatten())
-        .filter_map(|entry| Some(entry.ok()?.path()))
-        .filter(|path| path.join("Cargo.toml").is_file())
+        .map(|package| Crate::from_package(package, packages))
+        .filter(|krate| {
+            krate.dir.parent().is_some_and(|group| {
+                group == crates_dir.join("libs") || group == crates_dir.join("bins")
+            })
+        })
         .collect();
-    crates.sort();
+    crates.sort_by(|a, b| a.dir.cmp(&b.dir));
     crates
 }
 
@@ -327,9 +382,9 @@ fn use_leaves(tree: &syn::UseTree, prefix: &mut Vec<String>, out: &mut Vec<Leaf>
     }
 }
 
-/// Everything the structural check flags in the crate at `dir`, as `"<crate>: <what>"`.
-fn structural_violations(dir: &Path) -> Vec<String> {
-    let krate = Crate::at(dir);
+/// Everything the structural check flags in `krate`, as `"<crate>: <what>"`.
+fn structural_violations(krate: &Crate) -> Vec<String> {
+    let dir = krate.dir.as_path();
     let name = &krate.name;
     let mut found = Vec::new();
     let error_rs = dir.join("src/error.rs");
@@ -427,8 +482,10 @@ fn item_is_test(item: &syn::Item) -> bool {
 
 /// Walks one file for the usage rules, collecting what breaks them.
 struct Usage<'a> {
-    own_names: &'a BTreeSet<String>,
-    other_crates: &'a BTreeSet<String>,
+    krate: &'a Crate,
+    /// What the file's `use`s import from other crates: each bound name and the crate it came from,
+    /// and the crates it globs.
+    imports: Imports,
     /// The generic parameters in scope: the enclosing impls' and traits' and the function's own.
     generics: Vec<BTreeSet<String>>,
     /// Whether the walk is inside a return type or a non-crate alias, where [`check_result`]
@@ -438,10 +495,10 @@ struct Usage<'a> {
 }
 
 impl<'a> Usage<'a> {
-    fn new(own_names: &'a BTreeSet<String>, other_crates: &'a BTreeSet<String>) -> Self {
+    fn new(krate: &'a Crate, imports: Imports) -> Self {
         Self {
-            own_names,
-            other_crates,
+            krate,
+            imports,
             generics: Vec::new(),
             in_signature: false,
             found: Vec::new(),
@@ -472,7 +529,7 @@ impl<'a> Usage<'a> {
         let names = segments(&path.path);
         if names.len() > 1 {
             let qualifier = &names[names.len() - 2];
-            let own = names.len() == 2 && self.own_names.contains(&names[0]);
+            let own = names.len() == 2 && self.krate.own_names.contains(&names[0]);
             if qualifier != "fmt" && !own {
                 return Some("a qualified Result other than crate::Result");
             }
@@ -508,11 +565,55 @@ impl<'a> Usage<'a> {
                 if ty.path.segments.first().is_some_and(|first| self.is_generic(&first.ident.to_string())));
         }
         let names = segments(&error.path);
-        let first_is_generic = names.first().is_some_and(|first| self.is_generic(first));
-        let last_is_value_error = names
-            .last()
-            .is_some_and(|last| VALUE_ERRORS.contains(&last.as_str()));
-        first_is_generic || last_is_value_error
+        if names.first().is_some_and(|first| self.is_generic(first)) {
+            return true;
+        }
+        self.declared_as(&names).is_some_and(|(krate, name)| {
+            VALUE_ERRORS
+                .iter()
+                .any(|(listed, listed_name)| *listed == krate && *listed_name == name)
+        }) || self.globbed_value_error(&names)
+    }
+
+    /// The crate the type spelt `names` is declared in and the name it has there, by how it is
+    /// spelt: a bare name is an import's or this crate's own; a path's first segment names a
+    /// crate, or a module imported from one, or else a module of this crate.
+    fn declared_as(&self, names: &[String]) -> Option<(String, String)> {
+        let own = self.krate.key.clone();
+        match names {
+            [] => None,
+            [name] => Some(
+                self.imports
+                    .named
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| (own, name.clone())),
+            ),
+            [first, .., last] => {
+                let krate = if self.krate.own_names.contains(first) {
+                    own
+                } else if let Some(krate) = self.krate.other_crates.get(first) {
+                    krate.clone()
+                } else if let Some((krate, _)) = self.imports.named.get(first) {
+                    krate.clone()
+                } else {
+                    own
+                };
+                Some((krate, last.clone()))
+            }
+        }
+    }
+
+    /// Whether a bare, unimported name is a value error of a crate the file globs, since a glob
+    /// is an import from that crate too.
+    fn globbed_value_error(&self, names: &[String]) -> bool {
+        let [name] = names else {
+            return false;
+        };
+        !self.imports.named.contains_key(name)
+            && VALUE_ERRORS.iter().any(|(listed, listed_name)| {
+                listed_name == name && self.imports.globbed.contains(*listed)
+            })
     }
 
     fn check_fn(&mut self, name: &syn::Ident, sig: &syn::Signature) {
@@ -531,7 +632,7 @@ impl<'a> Usage<'a> {
         for (path, name, bound) in leaves {
             let from_elsewhere = path
                 .first()
-                .is_some_and(|root| self.other_crates.contains(root));
+                .is_some_and(|root| self.krate.other_crates.contains_key(root));
             if !from_elsewhere {
                 continue;
             }
@@ -550,6 +651,55 @@ impl<'a> Usage<'a> {
                 ));
             }
         }
+    }
+}
+
+/// The names a file's `use`s bind from other crates, mapped to the crate each came from and the
+/// name it has there, and the crates it globs, `#[cfg(test)]` items aside. Scope is the file: a `use` inside a function
+/// counts for the whole file, which can only let a value error through, never fail one.
+#[derive(Default)]
+struct Imports {
+    named: BTreeMap<String, (String, String)>,
+    globbed: BTreeSet<String>,
+}
+
+impl Imports {
+    fn of(parsed: &syn::File, krate: &Crate) -> Self {
+        struct Collect<'a> {
+            krate: &'a Crate,
+            imports: Imports,
+        }
+        impl<'ast> Visit<'ast> for Collect<'_> {
+            fn visit_item(&mut self, item: &'ast syn::Item) {
+                if !item_is_test(item) {
+                    visit::visit_item(self, item);
+                }
+            }
+
+            fn visit_item_use(&mut self, import: &'ast syn::ItemUse) {
+                let mut leaves = Vec::new();
+                use_leaves(&import.tree, &mut Vec::new(), &mut leaves);
+                for (path, name, bound) in leaves {
+                    let Some(krate) = path
+                        .first()
+                        .and_then(|root| self.krate.other_crates.get(root))
+                    else {
+                        continue;
+                    };
+                    if name == "*" {
+                        self.imports.globbed.insert(krate.clone());
+                    } else {
+                        self.imports.named.insert(bound, (krate.clone(), name));
+                    }
+                }
+            }
+        }
+        let mut collect = Collect {
+            krate,
+            imports: Imports::default(),
+        };
+        collect.visit_file(parsed);
+        collect.imports
     }
 }
 
@@ -660,9 +810,9 @@ impl<'ast> Visit<'ast> for Usage<'_> {
     }
 }
 
-/// What the usage rules flag in one file's source, for a crate whose own names are `own_names`.
+/// What the usage rules flag in one file's source, in `krate`.
 fn usage_violations_in(parsed: &syn::File, krate: &Crate, is_error_rs: bool) -> Vec<String> {
-    let mut usage = Usage::new(&krate.own_names, &krate.other_crates);
+    let mut usage = Usage::new(krate, Imports::of(parsed, krate));
     for item in &parsed.items {
         // The alias definition is the one place `std::result::Result` belongs; the structural
         // check holds it to its shape.
@@ -674,9 +824,9 @@ fn usage_violations_in(parsed: &syn::File, krate: &Crate, is_error_rs: bool) -> 
     usage.found
 }
 
-/// Everything the usage rules flag in the crate at `dir`, as `"<crate>: <file>: <what>"`.
-fn usage_violations(dir: &Path) -> Vec<String> {
-    let krate = Crate::at(dir);
+/// Everything the usage rules flag in `krate`, as `"<crate>: <file>: <what>"`.
+fn usage_violations(krate: &Crate) -> Vec<String> {
+    let dir = krate.dir.as_path();
     let error_rs = krate.dir.join("src/error.rs");
     let mut found = Vec::new();
     for (file, parsed) in crate_sources(dir) {
@@ -685,7 +835,7 @@ fn usage_violations(dir: &Path) -> Vec<String> {
             .unwrap_or(&file)
             .display()
             .to_string();
-        for what in usage_violations_in(&parsed, &krate, file == error_rs) {
+        for what in usage_violations_in(&parsed, krate, file == error_rs) {
             found.push(format!("{}: {relative}: {what}", krate.name));
         }
     }
@@ -699,10 +849,7 @@ fn every_crate_follows_the_error_rs_convention() {
         crates.len() > 30,
         "crates/libs/* and crates/bins/* should list the crates"
     );
-    let found: Vec<String> = crates
-        .iter()
-        .flat_map(|dir| structural_violations(dir))
-        .collect();
+    let found: Vec<String> = crates.iter().flat_map(structural_violations).collect();
     assert!(
         found.is_empty(),
         "error.rs convention broken: every crate has a private src/error.rs holding `{ALIAS}`, \
@@ -715,7 +862,7 @@ fn every_crate_follows_the_error_rs_convention() {
 fn every_crate_returns_its_own_result() {
     let found: Vec<String> = workspace_crates()
         .iter()
-        .flat_map(|dir| usage_violations(dir))
+        .flat_map(usage_violations)
         .collect();
     assert!(
         found.is_empty(),
@@ -726,14 +873,20 @@ fn every_crate_returns_its_own_result() {
     );
 }
 
-/// A bin crate `bin_x` that depends on `lib_core` and `lib_shell`.
+/// A bin crate `bin_x` that depends on `lib_core`, `lib_colour_theme` and `lib_shell`.
 fn fixture_crate() -> Crate {
-    let names = |list: &[&str]| list.iter().copied().map(String::from).collect();
     Crate {
         dir: PathBuf::new(),
         name: "bin-x".into(),
-        own_names: names(&["crate", "self", "super", "Self", "bin_x"]),
-        other_crates: names(&["std", "core", "lib_core", "lib_shell"]),
+        key: "bin_x".into(),
+        own_names: ["crate", "self", "super", "Self", "bin_x"]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        other_crates: ["std", "core", "lib_core", "lib_colour_theme", "lib_shell"]
+            .into_iter()
+            .map(|name| (name.to_string(), name.to_string()))
+            .collect(),
     }
 }
 
@@ -761,7 +914,9 @@ fn a_two_argument_result_fails_unless_its_error_is_a_value_error() {
     );
     assert_eq!(flags("trait T { fn f(&self) -> Result<u8, X>; }").len(), 1);
     assert!(flags("fn f() -> Result<u8> { todo!() }").is_empty());
-    assert!(flags("fn f() -> Result<u8, MoneyError> { todo!() }").is_empty());
+    assert!(
+        flags("use lib_core::MoneyError;\nfn f() -> Result<u8, MoneyError> { todo!() }").is_empty()
+    );
     assert!(flags("fn f() -> Result<u8, lib_core::HexColorError> { todo!() }").is_empty());
 }
 
@@ -808,18 +963,38 @@ fn a_use_of_another_crates_result_fails_but_its_error_passes() {
     assert!(flags("use std::fmt::Result;").is_empty());
     assert!(flags("use lib_core::prelude::*;").is_empty());
     assert!(flags("mod error;\nuse error::Result;\nuse entity::*;").is_empty());
-    let manifest = "[dependencies]\nlib_core = { path = \"x\" }\nthiserror.workspace = true\n\n[dev-dependencies]\nfake = \"1\"\n\n[target.'cfg(unix)'.dependencies]\nnix-ext = \"1\"\n";
-    assert_eq!(
-        manifest_dependencies(manifest),
-        vec!["lib_core", "thiserror", "nix_ext"]
-    );
 }
 
 #[test]
 fn a_bins_main_may_use_its_own_lib_targets_result() {
     assert!(flags("use bin_x::Result;\nfn main() -> Result<()> { Ok(()) }").is_empty());
-    let manifest = "[package]\nname = \"bin_demo\"\n\n[[bin]]\nname = \"demo\"\n\n[lib]\nname = \"bin_demo_lib\"\n";
-    assert_eq!(manifest_names(manifest), vec!["bin_demo", "bin_demo_lib"]);
+    let krate = TempCrate::new(
+        "own_lib",
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"bin-demo\"\n\n[workspace]\n\n[[bin]]\nname = \"demo\"\npath = \"src/main.rs\"\n\n\
+                 [lib]\nname = \"bin_demo_lib\"\npath = \"src/lib.rs\"\n",
+            ),
+            ("src/lib.rs", ""),
+            (
+                "src/main.rs",
+                "use bin_demo_lib::Result;\nfn main() -> Result<()> { Ok(()) }\n",
+            ),
+        ],
+    );
+    let krate = Crate::at(&krate.0);
+    assert!(
+        krate.own_names.contains("bin_demo"),
+        "{:?}",
+        krate.own_names
+    );
+    assert!(
+        krate.own_names.contains("bin_demo_lib"),
+        "{:?}",
+        krate.own_names
+    );
+    assert!(usage_violations(&krate).is_empty());
 }
 
 #[test]
@@ -872,7 +1047,13 @@ impl TempCrate {
         let dir =
             std::env::temp_dir().join(format!("error_convention_{tag}_{}", std::process::id()));
         fs::create_dir_all(dir.join("src")).expect("temp crate dir");
-        fs::write(dir.join("Cargo.toml"), "[package]\nname = \"demo\"\n").expect("manifest");
+        if !files.iter().any(|(path, _)| *path == "Cargo.toml") {
+            fs::write(
+                dir.join("Cargo.toml"),
+                "[package]\nname = \"demo\"\n\n[workspace]\n",
+            )
+            .expect("manifest");
+        }
         for (path, source) in files {
             let path = dir.join(path);
             fs::create_dir_all(path.parent().expect("a file sits in a dir")).expect("module dir");
@@ -891,7 +1072,7 @@ impl Drop for TempCrate {
 #[test]
 fn the_structural_check_flags_a_missing_error_file_and_re_export() {
     let krate = TempCrate::new("missing", &[("src/lib.rs", "pub fn f() {}\n")]);
-    let found = structural_violations(&krate.0);
+    let found = structural_violations(&Crate::at(&krate.0));
     assert_eq!(found.len(), 2, "{found:?}");
 }
 
@@ -907,7 +1088,7 @@ fn the_structural_check_flags_a_public_error_module() {
             ("src/error.rs", &format!("pub enum Error {{}}\n{ALIAS}\n")),
         ],
     );
-    let found = structural_violations(&krate.0);
+    let found = structural_violations(&Crate::at(&krate.0));
     assert_eq!(
         found,
         vec![
@@ -936,7 +1117,7 @@ fn the_structural_check_holds_every_alias_to_one_shape() {
             ),
         ],
     );
-    let found = structural_violations(&krate.0);
+    let found = structural_violations(&Crate::at(&krate.0));
     assert_eq!(found.len(), 2, "{found:?}");
     assert!(found[0].contains("src/error.rs's alias is"), "{found:?}");
     assert!(
@@ -957,7 +1138,7 @@ fn the_structural_check_passes_the_convention_and_reads_a_bin_without_lib_rs() {
             ("src/error.rs", &format!("pub enum Error {{}}\n{ALIAS}\n")),
         ],
     );
-    assert!(structural_violations(&lib.0).is_empty());
+    assert!(structural_violations(&Crate::at(&lib.0)).is_empty());
     let bin = TempCrate::new(
         "bin_ok",
         &[
@@ -968,8 +1149,8 @@ fn the_structural_check_passes_the_convention_and_reads_a_bin_without_lib_rs() {
             ("src/error.rs", &format!("pub enum Error {{}}\n{ALIAS}\n")),
         ],
     );
-    assert!(structural_violations(&bin.0).is_empty());
-    assert!(usage_violations(&bin.0).is_empty());
+    assert!(structural_violations(&Crate::at(&bin.0)).is_empty());
+    assert!(usage_violations(&Crate::at(&bin.0)).is_empty());
 }
 
 #[test]
@@ -990,7 +1171,77 @@ fn the_module_tree_skips_test_and_generated_modules() {
             ),
         ],
     );
-    let found = usage_violations(&krate.0);
+    let found = usage_violations(&Crate::at(&krate.0));
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(found[0].contains("src/a/b.rs"), "{found:?}");
+}
+
+#[test]
+fn the_import_rule_reads_renamed_dependencies_from_the_manifest() {
+    let krate = TempCrate::new(
+        "renamed",
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"demo\"\n\n[workspace]\n\n[dependencies]\n\
+                 foo = { package = \"lib-bar\", path = \"lib-bar\" }\n\n\
+                 [target.'cfg(unix)'.dependencies.baz]\npackage = \"lib-qux\"\npath = \"lib-qux\"\n",
+            ),
+            (
+                "src/lib.rs",
+                "use foo::Result;\nuse baz::{Error, Result as QuxResult};\n",
+            ),
+            ("lib-bar/Cargo.toml", "[package]\nname = \"lib-bar\"\n"),
+            ("lib-bar/src/lib.rs", ""),
+            ("lib-qux/Cargo.toml", "[package]\nname = \"lib-qux\"\n"),
+            ("lib-qux/src/lib.rs", ""),
+        ],
+    );
+    let found = usage_violations(&Crate::at(&krate.0));
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert!(found[0].contains("`use foo::Result`"), "{found:?}");
+    assert!(
+        found[1].contains("`use baz::Result` as QuxResult"),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_value_error_passes_only_as_the_crate_that_lists_it() {
+    assert_eq!(
+        flags("fn f() -> Result<u8, ParseError> { todo!() }").len(),
+        1,
+        "bin_x declares no ParseError on VALUE_ERRORS"
+    );
+    assert_eq!(
+        flags("use lib_core::ParseError;\nfn f() -> Result<u8, ParseError> { todo!() }").len(),
+        1,
+        "lib_core's ParseError is not lib_colour_theme's"
+    );
+    assert_eq!(
+        flags("fn f() -> Result<u8, lib_core::ParseError> { todo!() }").len(),
+        1
+    );
+    assert!(
+        flags("use lib_colour_theme::ParseError;\nfn f() -> Result<u8, ParseError> { todo!() }")
+            .is_empty()
+    );
+    assert!(
+        flags("use lib_colour_theme::{parse::ParseError as ThemeError};\nfn f() -> Result<u8, ThemeError> { todo!() }")
+            .is_empty()
+    );
+    assert!(flags("fn f() -> Result<u8, lib_colour_theme::ParseError> { todo!() }").is_empty());
+    assert!(
+        flags("use lib_colour_theme::parse;\nfn f() -> Result<u8, parse::ParseError> { todo!() }")
+            .is_empty()
+    );
+    assert!(
+        flags("use lib_colour_theme::parse::*;\nfn f() -> Result<u8, ParseError> { todo!() }")
+            .is_empty()
+    );
+    let mut theme = fixture_crate();
+    theme.key = "lib_colour_theme".into();
+    theme.own_names.insert("lib_colour_theme".into());
+    let parsed = syn::parse_file("fn f() -> Result<u8, ParseError> { todo!() }").expect("parses");
+    assert!(usage_violations_in(&parsed, &theme, false).is_empty());
 }
