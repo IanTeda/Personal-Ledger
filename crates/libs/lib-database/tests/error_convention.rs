@@ -336,19 +336,28 @@ fn segments(path: &syn::Path) -> Vec<String> {
 
 /// The `use` leaves of `import` that start from another crate of `krate`, each paired with the
 /// crate its path's root names, so the import rule and the import map read one expansion.
-fn leaves_from_other_crates(import: &syn::ItemUse, krate: &Crate) -> Vec<(String, Leaf)> {
+fn leaves_from_other_crates(import: &syn::ItemUse, krate: &Crate) -> Vec<OtherLeaf> {
     let mut leaves = Vec::new();
     use_leaves(&import.tree, &mut Vec::new(), &mut leaves);
     leaves
         .into_iter()
         .filter_map(|leaf| {
             let other = leaf
-                .0
+                .path
                 .first()
                 .and_then(|root| krate.other_crates.get(root))?;
-            Some((other.clone(), leaf))
+            Some(OtherLeaf {
+                krate: other.clone(),
+                leaf,
+            })
         })
         .collect()
+}
+
+/// A `use` leaf that starts from another crate, with the crate its path's root names.
+struct OtherLeaf {
+    krate: String,
+    leaf: Leaf,
 }
 
 /// Whether `lib_rs` re-exports both `Error` and `Result` from its `error` module.
@@ -362,10 +371,11 @@ fn reexports_error(lib_rs: &syn::File) -> bool {
         }
         let mut names = Vec::new();
         use_leaves(&import.tree, &mut Vec::new(), &mut names);
-        let from_error = |leaf: &str| {
-            names.iter().any(|(path, name, _)| {
-                name == leaf
-                    && (path.as_slice() == ["error"] || path.as_slice() == ["crate", "error"])
+        let from_error = |wanted: &str| {
+            names.iter().any(|leaf| {
+                leaf.name == wanted
+                    && (leaf.path.as_slice() == ["error"]
+                        || leaf.path.as_slice() == ["crate", "error"])
             })
         };
         from_error("Error") && from_error("Result")
@@ -384,7 +394,11 @@ fn declares_public_error_module(lib_rs: &syn::File) -> bool {
 }
 
 /// A `use` leaf: the path before it, the name it imports (`*` for a glob) and the name it binds.
-type Leaf = (Vec<String>, String, String);
+struct Leaf {
+    path: Vec<String>,
+    name: String,
+    bound: String,
+}
 
 fn use_leaves(tree: &syn::UseTree, prefix: &mut Vec<String>, out: &mut Vec<Leaf>) {
     match tree {
@@ -395,14 +409,22 @@ fn use_leaves(tree: &syn::UseTree, prefix: &mut Vec<String>, out: &mut Vec<Leaf>
         }
         syn::UseTree::Name(name) => {
             let name = name.ident.to_string();
-            out.push((prefix.clone(), name.clone(), name));
+            out.push(Leaf {
+                path: prefix.clone(),
+                name: name.clone(),
+                bound: name,
+            });
         }
-        syn::UseTree::Rename(rename) => out.push((
-            prefix.clone(),
-            rename.ident.to_string(),
-            rename.rename.to_string(),
-        )),
-        syn::UseTree::Glob(_) => out.push((prefix.clone(), "*".into(), "*".into())),
+        syn::UseTree::Rename(rename) => out.push(Leaf {
+            path: prefix.clone(),
+            name: rename.ident.to_string(),
+            bound: rename.rename.to_string(),
+        }),
+        syn::UseTree::Glob(_) => out.push(Leaf {
+            path: prefix.clone(),
+            name: "*".into(),
+            bound: "*".into(),
+        }),
         syn::UseTree::Group(group) => {
             for tree in &group.items {
                 use_leaves(tree, prefix, out);
@@ -655,7 +677,8 @@ impl<'a> Usage<'a> {
     }
 
     fn check_use(&mut self, import: &syn::ItemUse) {
-        for (_, (path, name, bound)) in leaves_from_other_crates(import, self.krate) {
+        for other in leaves_from_other_crates(import, self.krate) {
+            let Leaf { path, name, bound } = other.leaf;
             let imports_result = name == "Result" && path.last().is_none_or(|m| m != "fmt");
             let globs_result = name == "*"
                 && (path.len() == 1 || path.last().is_some_and(|m| m == "error" || m == "result"));
@@ -698,11 +721,12 @@ impl Imports {
             }
 
             fn visit_item_use(&mut self, import: &'ast syn::ItemUse) {
-                for (krate, (_, name, bound)) in leaves_from_other_crates(import, self.krate) {
+                for other in leaves_from_other_crates(import, self.krate) {
+                    let Leaf { name, bound, .. } = other.leaf;
                     if name == "*" {
-                        self.imports.globbed.insert(krate.clone());
+                        self.imports.globbed.insert(other.krate);
                     } else {
-                        self.imports.named.insert(bound, (krate.clone(), name));
+                        self.imports.named.insert(bound, (other.krate, name));
                     }
                 }
             }
@@ -1083,10 +1107,20 @@ impl Drop for TempCrate {
     }
 }
 
+/// The structural check's findings for the crate at `dir`, reading its sources once.
+fn structural_at(dir: &Path) -> Vec<String> {
+    structural_violations(&Crate::at(dir), &crate_sources(dir))
+}
+
+/// The usage check's findings for the crate at `dir`, reading its sources once.
+fn usage_at(dir: &Path) -> Vec<String> {
+    usage_violations(&Crate::at(dir), &crate_sources(dir))
+}
+
 #[test]
 fn the_structural_check_flags_a_missing_error_file_and_re_export() {
     let krate = TempCrate::new("missing", &[("src/lib.rs", "pub fn f() {}\n")]);
-    let found = structural_violations(&Crate::at(&krate.0), &crate_sources(&krate.0));
+    let found = structural_at(&krate.0);
     assert_eq!(found.len(), 2, "{found:?}");
 }
 
@@ -1132,7 +1166,7 @@ fn the_structural_check_holds_every_alias_to_one_shape() {
             ),
         ],
     );
-    let found = structural_violations(&Crate::at(&krate.0), &crate_sources(&krate.0));
+    let found = structural_at(&krate.0);
     assert_eq!(found.len(), 2, "{found:?}");
     assert!(found[0].contains("src/error.rs's alias is"), "{found:?}");
     assert!(
@@ -1153,7 +1187,7 @@ fn the_structural_check_passes_the_convention_and_reads_a_bin_without_lib_rs() {
             ("src/error.rs", &format!("pub enum Error {{}}\n{ALIAS}\n")),
         ],
     );
-    assert!(structural_violations(&Crate::at(&lib.0), &crate_sources(&lib.0)).is_empty());
+    assert!(structural_at(&lib.0).is_empty());
     let bin = TempCrate::new(
         "bin_ok",
         &[
@@ -1164,8 +1198,8 @@ fn the_structural_check_passes_the_convention_and_reads_a_bin_without_lib_rs() {
             ("src/error.rs", &format!("pub enum Error {{}}\n{ALIAS}\n")),
         ],
     );
-    assert!(structural_violations(&Crate::at(&bin.0), &crate_sources(&bin.0)).is_empty());
-    assert!(usage_violations(&Crate::at(&bin.0), &crate_sources(&bin.0)).is_empty());
+    assert!(structural_at(&bin.0).is_empty());
+    assert!(usage_at(&bin.0).is_empty());
 }
 
 #[test]
@@ -1186,7 +1220,7 @@ fn the_module_tree_skips_test_and_generated_modules() {
             ),
         ],
     );
-    let found = usage_violations(&Crate::at(&krate.0), &crate_sources(&krate.0));
+    let found = usage_at(&krate.0);
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(found[0].contains("src/a/b.rs"), "{found:?}");
 }
@@ -1212,7 +1246,7 @@ fn the_import_rule_reads_renamed_dependencies_from_the_manifest() {
             ("lib-qux/src/lib.rs", ""),
         ],
     );
-    let found = usage_violations(&Crate::at(&krate.0), &crate_sources(&krate.0));
+    let found = usage_at(&krate.0);
     assert_eq!(found.len(), 2, "{found:?}");
     assert!(found[0].contains("`use foo::Result`"), "{found:?}");
     assert!(
