@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE · Staged Create ledger</title>
+<style>
+:root{--bg:#f3f2f2;--surface:#eae9e9;--text:#201e1d;--accent:#ec3013;--muted:#605d5d;--dim:#9b9797;--rule:rgba(32,30,29,.30);--rule2:rgba(32,30,29,.38);--err:#ae1800;--ok:#2ecc71}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 Archivo,system-ui,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}
+.tag{display:inline-block;background:var(--accent);color:#fff;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px;margin-right:8px;vertical-align:middle}
+.intro{color:var(--muted);max-width:860px;margin:6px 0 18px}
+.intro b{color:var(--text)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.scrim{background:rgba(32,30,29,.18);padding:28px 16px;display:flex;justify-content:center;min-height:470px;align-items:flex-start}
+.dlg{width:460px;max-width:100%;border:2px solid var(--rule2);background:var(--bg);outline:none}
+.dlg:focus{border-color:var(--text)}
+.dlg .head{padding:16px 20px 0}
+.dlg h4{margin:0;font-size:18px}
+.sub{font-size:11.5px;color:var(--dim)}
+.steps{display:flex;gap:0;margin:12px 0 0;border-bottom:2px solid var(--rule2)}
+.step{flex:1;padding:6px 0 7px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);border-bottom:3px solid transparent;margin-bottom:-2px;user-select:none}
+.step.on{color:var(--text);border-bottom-color:var(--accent)}
+.step.done{color:var(--muted)}
+.step.click{cursor:pointer}
+.body{padding:16px 20px;display:flex;flex-direction:column;gap:13px;min-height:300px}
+.f label{display:block;font-weight:800;font-size:12px;margin-bottom:5px}
+.f .help{font-size:11px;color:var(--dim);margin-top:4px}
+.box{position:relative;display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;min-height:33px;padding:7px 10px;border:1px solid var(--rule);background:#fff;cursor:text;white-space:pre}
+.box.sel{cursor:pointer}
+.box.ro{background:var(--surface);color:var(--muted);cursor:default}
+.box.focus{outline:2px solid var(--accent);outline-offset:-1px}
+.box.bad{outline-color:var(--err)}
+.box .ph{color:var(--dim)}
+.caret{display:inline-block;width:1px;height:15px;background:var(--text);vertical-align:-3px;animation:b 1s steps(1) infinite}
+@keyframes b{50%{opacity:0}}
+.list{position:absolute;left:-1px;right:-1px;top:100%;z-index:5;background:#fff;border:1px solid var(--text);max-height:220px;overflow:auto;box-shadow:0 6px 18px rgba(32,30,29,.18)}
+.list div{padding:5px 10px;cursor:pointer}
+.list .hl{background:var(--surface);font-weight:800}
+.list .chk::after{content:" ✓";color:var(--accent)}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 20px;border-top:2px solid var(--rule2)}
+.foot .r{display:flex;gap:8px}
+.foot button{font-weight:800}
+button{font:inherit;font-size:12px;padding:5px 10px;border:1px solid var(--text);background:#fff;cursor:pointer}
+button:hover{background:var(--surface)}
+button.primary{background:var(--text);color:var(--bg)}
+button:disabled{opacity:.35;cursor:not-allowed}
+kbd{font:10px ui-monospace,monospace;background:var(--surface);border:1px solid var(--rule);padding:0 4px;margin-left:5px;font-weight:400}
+.status{height:30px;display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--surface);border-top:2px solid var(--rule2);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden}
+.status b{color:var(--text)}
+.closed{padding:40px 20px;text-align:center;color:var(--muted)}
+.closed b{color:var(--text)}
+.panel{border:1px solid var(--rule);background:#fff;padding:12px 14px;margin-bottom:14px}
+.panel h3{margin:0 0 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:3px 10px;font-size:12px}
+.kv span:nth-child(odd){color:var(--muted)}
+.chg{background:#ffe0d9}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+.opt{display:flex;gap:8px;align-items:flex-start;font-size:12px;margin:7px 0}
+.opt input{margin-top:3px}
+.log{font:11px/1.5 ui-monospace,monospace;max-height:180px;overflow:auto;margin:0;padding-left:16px;color:var(--muted)}
+.log li:last-child{color:var(--text)}
+.tabs{display:flex;flex-wrap:wrap;border-bottom:2px solid var(--rule2);margin-top:22px}
+.tabs button{border:0;border-bottom:3px solid transparent;background:none;padding:8px 12px;font-weight:800}
+.tabs button.on{border-bottom-color:var(--accent)}
+.walk{padding:12px 0}
+.walk p{max-width:860px;color:var(--muted);margin:0 0 10px}
+.wsteps{display:flex;flex-wrap:wrap;gap:6px}
+.wsteps button.done{opacity:.45}
+.wsteps button.next{outline:2px solid var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1><span class="tag">PROTOTYPE</span>The staged Create ledger Dialog</h1>
+<p class="intro"><b>The question (The staged Create ledger Dialog, #1344):</b> how the Desktop's Create ledger Dialog behaves once it is two stages, <b>Base unit → Ledger</b>, with Create on the last. Which keys and buttons move between stages, what <b>Esc</b> and Cancel do on each, whether the stages show as steps, and whether what was typed survives Back. Click the Dialog and use the real keys (<b>tab</b>/<b>shift+tab</b>, <b>enter</b>, <b>ctrl+enter</b>, <b>esc</b>, <b>↑/↓</b> in an open list, typing), or the buttons. Toggles on the right are the open questions; their defaults are my recommendation. <b>Throwaway:</b> nothing persists, Create only logs what the Interactor would receive.</p>
+
+<div class="grid">
+<div>
+  <div class="scrim"><div id="dlgwrap" style="width:460px;max-width:100%"></div></div>
+  <div class="status" id="status"></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="walk" id="walk"></div>
+</div>
+<div>
+  <div class="panel"><h3>Presenter state</h3><div class="kv" id="state"></div></div>
+  <div class="panel"><h3>Locale (prefills)</h3><div class="btns" id="locales"></div></div>
+  <div class="panel"><h3>Open questions (toggle to compare)</h3>
+    <label class="opt"><input type="checkbox" id="o-escback" checked><span><b>Esc on the Ledger stage goes Back</b> to Base unit, keeping everything typed; Esc on Base unit cancels. Off: Esc always cancels, like every other Dialog. (An open list is closed first either way.) The Cancel button always cancels.</span></label>
+    <label class="opt"><input type="checkbox" id="o-steps" checked><span><b>The stages show as a step strip</b> under the title (<i>1 Base unit · 2 Ledger</i>). Off: only the title changes (<i>Create ledger · Base unit</i>).</span></label>
+    <label class="opt"><input type="checkbox" id="o-stepclick" checked><span><b>A click on a step goes there</b>: Base unit always, Ledger only when Base unit is valid (as Next). Off: the strip is a label only.</span></label>
+    <label class="opt"><input type="checkbox" id="o-enter" checked><span><b>enter on a text field is Next / Create</b>, as enter confirms today's Dialog. Off: only <b>ctrl+enter</b> and the button move on.</span></label>
+    <label class="opt"><input type="checkbox" id="o-tabcross"><span><b>tab off the last field crosses to the next stage.</b> Off (recommended): tab cycles within the stage, as it cycles today's form.</span></label>
+  </div>
+  <div class="panel"><h3>Log</h3><ol class="log" id="log"></ol></div>
+</div>
+</div>
+</div>
+
+<script>
+const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+const KINDS=["Currency","Stock","Fund","Crypto","Commodity","Other"];
+const LOCALES={"en-AU":{code:"AUD",name:"Australian dollar",fy:6},"en-GB":{code:"GBP",name:"British pound",fy:3},"en-US":{code:"USD",name:"US dollar",fy:0}};
+const FILE="teda.pldb";
+const STAGES={base:["code","kind","name","precision"],ledger:["lname","owner","fy"]};
+const LABEL={code:"Code",kind:"Type",name:"Name",precision:"Precision",lname:"Ledger name",owner:"Owner",fy:"Financial year starts"};
+const SELECTS={kind:KINDS,fy:MONTHS};
+const $=id=>document.getElementById(id);
+const opt=id=>$(id).checked;
+
+let locale="en-AU", s, prev=null, logs=[];
+function fresh(){const l=LOCALES[locale];return{open:true,stage:"base",focus:"code",code:l.code,kind:"Currency",name:l.name,precision:"2",lname:FILE.replace(/\.pldb$/,""),owner:"",fy:l.fy,list:null,outcome:null}}
+function log(m){logs.push(m);if(logs.length>40)logs.shift()}
+
+const baseValid=()=>s.code.trim()&&s.name.trim()&&/^\d+$/.test(s.precision)&&+s.precision<=18;
+const ledgerValid=()=>!!s.lname.trim();
+const canConfirm=()=>s.stage==="base"?baseValid():ledgerValid();
+const isText=f=>!(f in SELECTS);
+
+function next(){ if(!baseValid()){log("Next refused: Base unit isn't valid");return} s.list=null;s.stage="ledger";s.focus="lname";log("Next → Ledger") }
+function back(){ s.list=null;s.stage="base";s.focus="code";log("Back → Base unit (everything kept)") }
+function cancel(why){ s.list=null;s.open=false;s.outcome="Cancelled ("+why+"): nothing written";log("Cancel → Dialog closed, nothing written") }
+function create(){ if(!ledgerValid()){log("Create refused: A Ledger needs a name");return}
+  s.open=false;
+  s.outcome=`CreateLedger { path: ${FILE}, base_unit: ${s.code.trim()} · ${s.name.trim()} · ${s.kind} · ${s.precision}, ledger_name: "${s.lname.trim()}", owner: ${s.owner.trim()?'"'+s.owner.trim()+'"':"None"}, fy_start: ${MONTHS[s.fy]} }`;
+  log("Create → Interactor runs once, Dialog closes") }
+function confirm(){ s.stage==="base"?next():create() }
+
+function move(d){ const order=STAGES[s.stage];s.list=null;let i=order.indexOf(s.focus)+d;
+  if(opt("o-tabcross")){ if(i>=order.length&&s.stage==="base"){next();return} if(i<0&&s.stage==="ledger"){back();s.focus="precision";return} }
+  s.focus=order[(i+order.length)%order.length] }
+function selValue(f){return f==="kind"?KINDS.indexOf(s.kind):s.fy}
+function setSel(f,i){ if(f==="kind")s.kind=KINDS[i];else s.fy=i; log(`${LABEL[f]} → ${SELECTS[f][i]}`) }
+function toggleList(f){ s.focus=f; if(s.list&&s.list.f===f){s.list=null}else{s.list={f,hl:selValue(f)}} }
+
+function key(e){
+  if(!s.open)return;
+  const k=e.key;
+  if(k==="Tab"){e.preventDefault();move(e.shiftKey?-1:1);return render()}
+  if(k==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();confirm();return render()}
+  if(k==="Escape"){e.preventDefault();
+    if(s.list){s.list=null;log("esc → list closed")}
+    else if(s.stage==="ledger"&&opt("o-escback"))back();
+    else cancel("esc");
+    return render()}
+  if(s.focus in SELECTS){
+    const n=SELECTS[s.focus].length;
+    if(k==="Enter"){e.preventDefault(); if(s.list){setSel(s.focus,s.list.hl);s.list=null}else s.list={f:s.focus,hl:selValue(s.focus)}; return render()}
+    if(k==="ArrowDown"||k==="ArrowUp"){e.preventDefault();const d=k==="ArrowDown"?1:-1;
+      if(s.list)s.list.hl=Math.max(0,Math.min(n-1,s.list.hl+d));else setSel(s.focus,Math.max(0,Math.min(n-1,selValue(s.focus)+d)));return render()}
+    return }
+  if(k==="Enter"){e.preventDefault(); if(opt("o-enter"))confirm(); else log("enter ignored on a text field"); return render()}
+  if(k==="Backspace"){e.preventDefault();s[s.focus]=s[s.focus].slice(0,-1);return render()}
+  if(k.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();s[s.focus]+=k;return render()}
+}
+
+function field(f){
+  const focus=s.focus===f, sel=f in SELECTS;
+  const bad=(f==="lname"&&!s.lname.trim())||(f==="code"&&!s.code.trim())||(f==="name"&&!s.name.trim())||(f==="precision"&&!(/^\d+$/.test(s.precision)&&+s.precision<=18));
+  let inner;
+  if(sel){ const v=SELECTS[f][selValue(f)]; inner=`<span>${v}</span><span class="ph">▾</span>`;
+    if(s.list&&s.list.f===f) inner+=`<div class="list">${SELECTS[f].map((o,i)=>`<div data-pick="${f}:${i}" class="${i===s.list.hl?"hl":""} ${i===selValue(f)?"chk":""}">${o}</div>`).join("")}</div>` }
+  else { const v=s[f]; const ph={owner:"Optional",lname:"A name for this Ledger"}[f]||"";
+    inner=`<span>${v?esc(v):`<span class="ph">${ph}</span>`}${focus?'<span class="caret"></span>':""}</span>` }
+  const help={precision:"Decimal places, 0–18.",lname:"Prefilled from the file name. Renaming one never renames the other.",owner:"Who the Ledger belongs to. Free text.",fy:"Bills and Documents count their years from the 1st of this month."}[f];
+  return `<div class="f"><label>${LABEL[f]}${f==="lname"?" *":""}</label><div class="box ${sel?"sel":""} ${focus?"focus":""} ${bad?"bad":""}" data-f="${f}">${inner}</div>${help?`<div class="help">${help}</div>`:""}</div>`
+}
+const esc=t=>t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/ /g,"&nbsp;");
+
+function render(){
+  const w=$("dlgwrap");
+  if(!s.open){ w.innerHTML=`<div class="dlg"><div class="closed"><b>Dialog closed</b><br><br><code style="font-size:11px;word-break:break-word">${esc(s.outcome).replace(/&nbsp;/g," ")}</code><br><br><button id="reopen" class="primary">Open :new again</button></div></div>`;
+    $("reopen").onclick=()=>{s=fresh();log("── :new, explorer's New mode → "+FILE);render();focusDlg()} }
+  else {
+    const base=s.stage==="base";
+    const strip=opt("o-steps")?`<div class="steps"><div class="step ${base?"on":"done"} ${opt("o-stepclick")&&!base?"click":""}" data-step="base">1 · Base unit</div><div class="step ${base?"":"on"} ${opt("o-stepclick")&&base&&baseValid()?"click":""}" data-step="ledger">2 · Ledger</div></div>`:`<div style="height:2px;background:var(--rule2);margin-top:12px"></div>`;
+    const title=opt("o-steps")?"Create ledger":`Create ledger · ${base?"Base unit":"Ledger"}`;
+    const intro=base?`<div class="help" style="margin:-2px 0 2px;font-size:11.5px;color:var(--muted)">The base Unit is what every amount is reported in; new Accounts default to it.</div>`:`<div class="help" style="margin:-2px 0 2px;font-size:11.5px;color:var(--muted)">Who and what this Ledger is. All three can be changed later on Settings › Ledger.</div>`;
+    const fileRow=base?`<div class="f"><label>File</label><div class="box ro">${FILE}</div></div>`:"";
+    w.innerHTML=`<div class="dlg" id="dlg" tabindex="0">
+      <div class="head"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><h4>${title}</h4><span class="sub">${FILE}</span></div>${strip}</div>
+      <div class="body">${intro}${fileRow}${STAGES[s.stage].map(field).join("")}</div>
+      <div class="foot"><button id="b-cancel">Cancel<kbd>${base||!opt("o-escback")?"esc":""}</kbd></button>
+        <div class="r">${base?"":`<button id="b-back">Back${opt("o-escback")?"<kbd>esc</kbd>":""}</button>`}
+        <button class="primary" id="b-ok" ${canConfirm()?"":"disabled"}>${base?"Next":"Create"}<kbd style="color:var(--text)">ctrl+enter</kbd></button></div></div></div>`;
+    $("b-cancel").onclick=()=>{cancel("button");render()};
+    if($("b-back"))$("b-back").onclick=()=>{back();render();focusDlg()};
+    $("b-ok").onclick=()=>{confirm();render();focusDlg()};
+    w.querySelectorAll("[data-f]").forEach(el=>el.onclick=e=>{const f=el.dataset.f; if(e.target.dataset.pick)return;
+      if(f in SELECTS)toggleList(f); else {s.list=null;s.focus=f} render();focusDlg()});
+    w.querySelectorAll("[data-pick]").forEach(el=>el.onclick=e=>{e.stopPropagation();const[f,i]=el.dataset.pick.split(":");setSel(f,+i);s.list=null;render();focusDlg()});
+    w.querySelectorAll("[data-step]").forEach(el=>el.onclick=()=>{ if(!opt("o-stepclick"))return; const to=el.dataset.step; if(to===s.stage)return; to==="base"?back():next(); render();focusDlg()});
+    $("dlg").onkeydown=key;
+  }
+  // status line
+  const st=$("status");
+  st.innerHTML=!s.open?`<span>Dialog closed</span>`:
+    `<span><b>${s.stage==="base"?"Base unit":"Ledger"}</b> (${s.stage==="base"?1:2} of 2)</span><span>tab next field</span><span>${s.stage==="base"?"ctrl+enter next":"ctrl+enter create"}</span><span>${s.stage==="ledger"&&opt("o-escback")?"esc back":"esc cancel"}</span>${s.stage==="ledger"&&!s.lname.trim()?'<span style="color:var(--err);font-weight:800">A Ledger needs a name</span>':""}`;
+  // state
+  const rows=[["open",s.open],["stage",s.stage],["focused",s.focus],["list",s.list?`${s.list.f} (hl ${SELECTS[s.list.f][s.list.hl]})`:"closed"],["code",JSON.stringify(s.code)],["kind",s.kind],["name",JSON.stringify(s.name)],["precision",JSON.stringify(s.precision)],["ledger_name",JSON.stringify(s.lname)],["owner",JSON.stringify(s.owner)],["fy_start",MONTHS[s.fy]],["can_confirm",!!canConfirm()],["submit label",s.stage==="base"?"Next":"Create"]];
+  $("state").innerHTML=rows.map(([k,v])=>{const c=prev&&prev[k]!==String(v)?"chg":"";return `<span>${k}</span><span class="${c}">${v}</span>`}).join("");
+  prev=Object.fromEntries(rows.map(([k,v])=>[k,String(v)]));
+  $("log").innerHTML=logs.map(l=>`<li>${esc(l).replace(/&nbsp;/g," ")}</li>`).join("");
+  $("log").scrollTop=1e6;
+  $("locales").innerHTML=Object.keys(LOCALES).map(l=>`<button class="${l===locale?"primary":""}" data-loc="${l}">${l}</button>`).join("");
+  document.querySelectorAll("[data-loc]").forEach(b=>b.onclick=()=>{locale=b.dataset.loc;s=fresh();log(`── Locale ${locale}: reopened with ${LOCALES[locale].code}, FY starts ${MONTHS[LOCALES[locale].fy]}`);render();focusDlg()});
+}
+function focusDlg(){const d=$("dlg");if(d)d.focus()}
+document.querySelectorAll("input[type=checkbox]").forEach(c=>c.onchange=()=>{render();focusDlg()});
+
+// guided walkthroughs: each step is a function on s, then render
+const ev=(k,o={})=>()=>key(Object.assign({key:k,preventDefault(){}},o));
+const type=t=>()=>{for(const ch of t)key({key:ch,preventDefault(){}})};
+const clear=f=>()=>{s[f]=""};
+const WALKS=[
+ {name:"Happy path",text:"Open, accept the prefilled base Unit, Next, accept the prefilled Ledger stage, Create. Two keystrokes from :new to a Ledger.",steps:[["ctrl+enter (Next)",ev("Enter",{ctrlKey:true})],["ctrl+enter (Create)",ev("Enter",{ctrlKey:true})]]},
+ {name:"Typed name survives Back",text:"Rename the Ledger and set an Owner on stage two, go Back, change the Precision, come forward again: the name and Owner are still there, because the Presenter holds one form and the stage is only which fields show.",steps:[["ctrl+enter (Next)",ev("Enter",{ctrlKey:true})],["clear Ledger name",clear("lname")],["type “Teda household”",type("Teda household")],["tab",ev("Tab")],["type “Ian Teda”",type("Ian Teda")],["esc (Back)",ev("Escape")],["tab ×3 to Precision",()=>{key({key:"Tab",preventDefault(){}});key({key:"Tab",preventDefault(){}});key({key:"Tab",preventDefault(){}})}],["backspace, type 4",()=>{key({key:"Backspace",preventDefault(){}});key({key:"4",preventDefault(){}})}],["ctrl+enter (Next)",ev("Enter",{ctrlKey:true})],["ctrl+enter (Create)",ev("Enter",{ctrlKey:true})]]},
+ {name:"Blank name refused",text:"Clear the Ledger name: Create disables, the status line says why, and ctrl+enter does nothing. The Interactor never runs.",steps:[["ctrl+enter (Next)",ev("Enter",{ctrlKey:true})],["clear Ledger name",clear("lname")],["ctrl+enter (refused)",ev("Enter",{ctrlKey:true})],["type “Home”",type("Home")],["ctrl+enter (Create)",ev("Enter",{ctrlKey:true})]]},
+ {name:"Invalid base Unit blocks Next",text:"Clear the Code on stage one: Next disables, and a click on the Ledger step does nothing, so the Ledger stage is never reached with a base Unit that would be refused.",steps:[["clear Code",clear("code")],["ctrl+enter (refused)",ev("Enter",{ctrlKey:true})],["type “EUR”",type("EUR")],["ctrl+enter (Next)",ev("Enter",{ctrlKey:true})]]},
+ {name:"Esc ladder",text:"On the Ledger stage with the Financial year list open: esc closes the list, esc again goes Back (with the toggle on), esc a third time cancels. Toggle the first open question off to compare: the second esc cancels.",steps:[["ctrl+enter (Next)",ev("Enter",{ctrlKey:true})],["tab ×2 to Financial year",()=>{key({key:"Tab",preventDefault(){}});key({key:"Tab",preventDefault(){}})}],["enter (open list)",ev("Enter")],["↓ ↓ ↓",()=>{for(let i=0;i<3;i++)key({key:"ArrowDown",preventDefault(){}})}],["esc",ev("Escape")],["esc",ev("Escape")],["esc",ev("Escape")]]},
+];
+let walk=0,done=0;
+function renderWalk(){
+  $("tabs").innerHTML=WALKS.map((w,i)=>`<button class="${i===walk?"on":""}" data-w="${i}">${w.name}</button>`).join("");
+  document.querySelectorAll("[data-w]").forEach(b=>b.onclick=()=>{walk=+b.dataset.w;done=0;s=fresh();log("── walkthrough: "+WALKS[walk].name);render();renderWalk()});
+  const w=WALKS[walk];
+  $("walk").innerHTML=`<p>${w.text}</p><div class="wsteps">${w.steps.map(([l],i)=>`<button class="${i<done?"done":i===done?"next":""}" data-s="${i}">${i+1}. ${l}</button>`).join("")}<button data-reset>reset</button></div>`;
+  document.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{const i=+b.dataset.s;if(i!==done)return;w.steps[i][1]();done++;render();renderWalk()});
+  document.querySelector("[data-reset]").onclick=()=>{done=0;s=fresh();log("── reset");render();renderWalk()};
+}
+s=fresh();log("── :new, explorer's New mode → "+FILE);render();renderWalk();
+</script>
+</body>
+</html>
