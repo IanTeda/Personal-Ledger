@@ -63,8 +63,16 @@ _Avoid_: Device, backend — "device" conflates the physical machine with the ap
 instance running on it; "backend" implied a single authoritative server, which no
 longer describes the architecture.
 
+**Ledger name**:
+The name a person gives a Ledger to recognise it, such as "Household"; a Preference, required, starting as the Ledger file's name without its extension. Renaming the Ledger never renames or moves its Ledger file, and renaming the file never renames the Ledger.
+_Avoid_: file name, title.
+
+**Owner**:
+Free text naming the person who keeps the Ledger, a Preference that is optional and only identifies the Ledger. It is not the Personal Institution, which is renamed on its own, and not a SyncUser.
+_Avoid_: user, account holder.
+
 **Preference**:
-A user-editable setting stored in the Ledger and synced with it, so every Client that opens the Ledger shares it, edited from a This Ledger Settings page. The one Preference is the base Unit (which new Accounts default to; there is no separate default Unit). A setting that belongs to the device rather than the Ledger is Configuration, not a Preference. Settings groups its pages by scope: This device (Configuration) and This Ledger (Preferences and other Ledger data).
+A user-editable setting stored in the Ledger and synced with it, so every Client that opens the Ledger shares it, edited from a This Ledger Settings page. The Preferences are the base Unit (which new Accounts default to; there is no separate default Unit), the Ledger name, the Owner and the Financial year start; the person sets each as they create the Ledger and may change it later. A setting that belongs to the device rather than the Ledger is Configuration, not a Preference. Settings groups its pages by scope: This device (Configuration) and This Ledger (Preferences and other Ledger data).
 _Avoid_: Client-scoped Preference (now Configuration), setting.
 
 **Data folder**:
@@ -437,7 +445,7 @@ A user-managed kind of Document, kept as Ledger data in an order the user sets; 
 _Avoid_: Category — Category classifies Splits, not Documents. Unsorted, Uncategorised — clash with Unfiled and Category. Tag — a Document Type is exactly one per Document, not a free label.
 
 **Financial Year**:
-The twelve-month year a date falls in, beginning on the month set as the Financial year start (1 July by default, the Australian financial year), labelled by both calendar years it spans (e.g. FY 2025–26). A Document's Financial Year is always derived from its document date, never stored, so every Document has one, whatever its Document Type. A Document Type's **Financial year** flag decides whether the type is treated as year-bound in the UI: the Financial year filter matches only flag-on types, the detail pane shows the Financial Year fact only for them, and the Inbox names a year only when the extracted type has the flag. Toggling the flag changes what is shown, never the derived value.
+The twelve-month year a date falls in, beginning on the 1st of the month set as the Financial year start, a Preference that may be any month and starts from the Locale as the Ledger is created (July for Australia, April for the United Kingdom, January for the United States), labelled by the calendar year it ends in (e.g. FY 2026 for July 2025 to June 2026, and for January to December 2026). A Document's Financial Year is always derived from its document date, never stored, so every Document has one, whatever its Document Type. A Document Type's **Financial year** flag decides whether the type is treated as year-bound in the UI: the Financial year filter matches only flag-on types, the detail pane shows the Financial Year fact only for them, and the Inbox names a year only when the extracted type has the flag. Toggling the flag changes what is shown, never the derived value; changing the Financial year start moves every date's Financial Year at once.
 _Avoid_: Tax year — the same period under another name; Financial Year is canonical, including for the Document Type flag, the Documents filter and the Settings column.
 
 **Key Date**:

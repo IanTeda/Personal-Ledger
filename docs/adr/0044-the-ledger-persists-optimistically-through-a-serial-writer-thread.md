@@ -1,5 +1,7 @@
 # The Ledger persists optimistically through a serial writer thread
 
+> Partly superseded by [ADR-0061](0061-the-preferences-live-on-the-one-row-ledger-table.md): the base Unit is a Preference, and the `ledger` row holds every Preference.
+
 ADR-0039 gave the Ledger one `LedgerRepository` port fed by recorded `LedgerChange`s, and left whether it is async and where the SQLite adapter lives to #636. Units are the first domain to persist; decided in the #685 grilling on the [Units functionality](https://github.com/IanTeda/Personal-Ledger/issues/667) map.
 
 ## Decision
