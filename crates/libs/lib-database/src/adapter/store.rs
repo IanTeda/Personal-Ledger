@@ -873,29 +873,38 @@ impl LedgerStore for LedgerRow {
     }
 }
 
-/// The store, noting [`Domain::Ledger`] written on every write.
+/// The store, noting [`Domain::Ledger`] written on every write and recording the row before and
+/// after it ([`RowImage::Ledger`]), so Undo puts the Preference back.
 impl<S: LedgerStore + ?Sized> LedgerStore for Recorded<S> {
     fn ledger(&self) -> &LedgerRow {
         self.store.ledger()
     }
 
     fn set_name(&mut self, name: lib_core::LedgerName) {
-        self.store.written.note(self.domain);
-        self.store.store.set_name(name);
+        self.record_ledger(|store| store.set_name(name));
     }
 
     fn set_owner(&mut self, owner: Option<lib_core::Owner>) {
-        self.store.written.note(self.domain);
-        self.store.store.set_owner(owner);
+        self.record_ledger(|store| store.set_owner(owner));
     }
 
     fn set_financial_year_start(&mut self, start: lib_core::FinancialYearStart) {
-        self.store.written.note(self.domain);
-        self.store.store.set_financial_year_start(start);
+        self.record_ledger(|store| store.set_financial_year_start(start));
     }
 
     fn reload(&mut self) -> Result<()> {
         self.store.reload()
+    }
+}
+
+impl<S: LedgerStore + ?Sized> Recorded<S> {
+    /// Runs one write of the `ledger` row, noting the domain and recording the whole row's image.
+    fn record_ledger(&mut self, write: impl FnOnce(&mut S)) {
+        self.store.written.note(self.domain);
+        let before = self.store.store.ledger().clone();
+        write(&mut self.store.store);
+        let after = self.store.store.ledger().clone();
+        self.journal().record(RowImage::Ledger(before, after));
     }
 }
 

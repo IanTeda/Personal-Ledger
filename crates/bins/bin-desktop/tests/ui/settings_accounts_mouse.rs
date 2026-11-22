@@ -144,7 +144,8 @@ fn a_new_account_defaults_to_the_base_unit_set_on_ledger(app: &mut TestAppContex
     let mut ui = Harness::new(app);
     ui.press("g s");
     ui.click("settings-index-Ledger");
-    ui.click("settings-ledger-base-unit-btc");
+    ui.click("settings-ledger-base-unit");
+    ui.click("settings-ledger-base-unit-option-1");
     ui.press("escape");
     assert!(ui.is_drawn("settings-index-page"));
     ui.press("j j j");

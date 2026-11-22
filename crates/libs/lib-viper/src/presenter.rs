@@ -92,6 +92,13 @@ pub trait PagePresenter: Presenter<Event: Clone> {
         None
     }
 
+    /// A printable character typed in Normal mode that no keymap took (the Shell's, the page's):
+    /// the event that starts an edit in place with it as the first new character, as Settings ›
+    /// Ledger's focused text field does, or `None` for a page that starts no edit by typing.
+    fn starts_typing(&self, _ch: char) -> Option<Self::Event> {
+        None
+    }
+
     /// The mode the page is in for something of its own (an edit in place, its Search, an open
     /// select), `None` in Normal mode. While it lasts, the Client offers the page every key first:
     /// to its keymap, then to [`Self::typed`]; a key neither takes goes nowhere else.

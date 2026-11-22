@@ -429,6 +429,25 @@ impl SettingsView {
         true
     }
 
+    /// A printable key no keymap took, offered to the open page with the keyboard.
+    pub fn leftover_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        self.focused_page()
+            .is_some_and(|page| page.leftover_key(keystroke, cx))
+    }
+
+    /// Whether the page with the keyboard has something open, which leaving it saves.
+    pub fn page_has_open(&self, cx: &App) -> bool {
+        self.focused_page().is_some_and(|page| page.has_open(cx))
+    }
+
+    /// Another View became the destination: the open page loses the keyboard inside that input,
+    /// so a field it has open (Settings › Ledger's draft) is saved as it is left.
+    pub fn left(&mut self, cx: &mut Context<'_, Self>) {
+        if let Some(page) = self.focused_page() {
+            page.cue(PageCue::Focused(false), cx);
+        }
+    }
+
     /// Settings has no Search of its own: `/` goes to the open page's Entity, and is inert
     /// where it has none rather than opening a mode with no box.
     pub fn start_search(&mut self, cx: &mut Context<'_, Self>) -> bool {
@@ -693,6 +712,10 @@ impl PageHandle for Entity<SettingsView> {
 
     fn start_search(&self, cx: &mut App) -> bool {
         self.update(cx, |view, cx| view.start_search(cx))
+    }
+
+    fn leftover_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
+        self.update(cx, |view, cx| view.leftover_key(keystroke, cx))
     }
 
     /// Entering lands on the index; a reveal opens the page that owns the record; the focus is

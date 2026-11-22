@@ -569,6 +569,13 @@ pub(super) fn reset_view_scroll(
     cx: &mut App,
 ) {
     view_x_scroll_handle.set_offset(gpui::Point::default());
+    // Leaving Settings for another View saves what its open page has open, as one input (or in
+    // the one that navigated), since a rail click is no input of its own.
+    if !matches!(view, ActiveView::Settings(_)) && settings.read(cx).page_has_open(cx) {
+        crate::input::join_or_send(cx, |cx| {
+            settings.update(cx, |settings, cx| settings.left(cx));
+        });
+    }
     let views = open.map(|open| &open.views);
     if let Some(page) = active::page(view, views, settings) {
         page.cue(PageCue::Entered, cx);

@@ -179,13 +179,15 @@ pub fn display_keymap(config: &KeyBindingConfig) -> Keymap<DisplayEvent> {
     Keymap::new(DISPLAY_BINDINGS, config)
 }
 
-/// Settings › Ledger's commands, with today's keys: `j`/`k` step the Base unit select. None is
-/// listed in the palette.
+/// Settings › Ledger's commands, with today's keys: `j`/`k` walk the fields, or an open list's
+/// highlight, and `enter` edits a text field, opens a select's list or saves its highlight. None
+/// is listed in the palette. While a text field is being edited none applies: every key types.
 pub const LEDGER_BINDINGS: &[Binding<LedgerEvent>] = &[
     Binding::hidden(MOVE_DOWN, "j", LedgerEvent::Step(Step::Next)),
     Binding::hidden(MOVE_UP, "k", LedgerEvent::Step(Step::Prev)),
     Binding::hidden(ARROW_DOWN, "down", LedgerEvent::Step(Step::Next)),
     Binding::hidden(ARROW_UP, "up", LedgerEvent::Step(Step::Prev)),
+    Binding::hidden(SELECT, "enter", LedgerEvent::Open),
 ];
 
 /// Settings › Ledger's keymap under `config`'s overrides.

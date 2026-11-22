@@ -1,13 +1,20 @@
 //! Settings › Ledger drawn from its view model: the field column (Ledger name, Owner, Financial
-//! year starts, Base unit) beside the THIS LEDGER summary. Each Base unit option's click is a
-//! Presenter event through [`PageClicks`].
+//! year starts, Base unit) beside the THIS LEDGER summary. The text fields draw the draft and a
+//! caret while edited; the selects are the shared dropdown, their lists the Presenter's. Each
+//! click is a Presenter event through [`PageClicks`]; a click on the page away from the fields
+//! saves what is open.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
+use lib_core::FinancialYearStart;
 use lib_settings::LedgerEvent;
-use lib_settings::presenter::{BaseUnitView, LedgerViewModel};
+use lib_settings::presenter::{
+    BaseUnitView, FinancialYearView, LedgerField, LedgerTextView, LedgerViewModel,
+};
 
-use super::LedgerPage;
-use crate::form::fields::{field_label, field_value, radio_dot};
+use super::{LedgerPage, LedgerWidgets};
+use crate::form::fields::field_label;
+use crate::form::select::SelectState;
+use crate::form::select_field::{self, SelectFieldProps};
 use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
 
@@ -15,12 +22,16 @@ use crate::theme::color;
 pub(super) fn page(
     model: &LedgerViewModel,
     clicks: &PageClicks<LedgerPage>,
+    widgets: &mut LedgerWidgets,
     cx: &App,
 ) -> AnyElement {
     div()
+        .id("settings-ledger")
+        .debug_selector(|| "settings-ledger".to_string())
         .flex()
         .gap(px(40.0))
-        .child(field_column(model, clicks, cx))
+        .on_click(clicks.send(LedgerEvent::ClickAway))
+        .child(field_column(model, clicks, widgets, cx))
         .child(summary_panel(model, cx))
         .into_any_element()
 }
@@ -30,78 +41,188 @@ pub(super) fn page(
 fn field_column(
     model: &LedgerViewModel,
     clicks: &PageClicks<LedgerPage>,
+    widgets: &mut LedgerWidgets,
     cx: &App,
 ) -> impl IntoElement {
-    let last = model.fields.len().saturating_sub(1);
     div()
         .w(px(320.0))
         .flex_none()
         .flex()
         .flex_col()
         .gap(px(16.0))
-        .children(
-            model
-                .fields
-                .iter()
-                .enumerate()
-                .map(|(index, (label, value))| {
-                    field(
-                        label.clone(),
-                        value.clone(),
-                        model.financial_year_select && index == last,
-                        cx,
-                    )
-                }),
-        )
-        .child(base_unit_select(&model.base_unit, clicks, cx))
+        .child(text_field(
+            "settings-ledger-name",
+            &model.name,
+            LedgerField::Name,
+            clicks,
+            cx,
+        ))
+        .child(text_field(
+            "settings-ledger-owner",
+            &model.owner,
+            LedgerField::Owner,
+            clicks,
+            cx,
+        ))
+        .child(financial_year_select(
+            &model.financial_year,
+            clicks,
+            &mut widgets.financial_year_scroll,
+            cx,
+        ))
+        .child(base_unit_select(
+            &model.base_unit,
+            clicks,
+            &mut widgets.base_unit_scroll,
+            cx,
+        ))
 }
 
-/// The *Base unit* select: every Unit as a radio row, the base one checked. The keyboard moves it
-/// while the page has focus, which draws the border in the accent.
-fn base_unit_select(
-    select: &BaseUnitView,
+/// A text field: what is stored, or the draft and a caret while it is edited. The border is the
+/// accent while it has the keyboard, the negative colour once a save was refused.
+fn text_field(
+    id: &'static str,
+    view: &LedgerTextView,
+    field: LedgerField,
     clicks: &PageClicks<LedgerPage>,
     cx: &App,
 ) -> impl IntoElement {
-    div().child(field_label(select.label.clone())).child(
+    let caret = if view.editing { "\u{2502}" } else { "" };
+    let (text, text_color) = if view.text.is_empty() && !view.editing {
+        (view.placeholder.clone(), color::faint_text(cx))
+    } else {
+        (format!("{}{caret}", view.text), color::foreground(cx))
+    };
+    let border = if view.refused {
+        color::negative(cx)
+    } else if view.focused {
+        color::accent(cx)
+    } else {
+        color::border(cx)
+    };
+    div().child(field_label(view.label.clone())).child(
         div()
-            .debug_selector(|| "settings-ledger-base-unit".to_string())
+            .id(id)
+            .debug_selector(move || id.to_string())
+            .cursor_text()
             .w_full()
-            .flex()
-            .flex_col()
+            .min_h(px(34.0))
+            .py(px(8.0))
+            .px(px(10.0))
             .border_1()
-            .border_color(if select.focused {
-                color::accent(cx)
-            } else {
-                color::border(cx)
-            })
+            .border_color(border)
             .bg(color::background(cx))
-            .children(select.options.iter().map(|option| {
-                let selector = format!("settings-ledger-base-unit-{}", option.code);
-                div()
-                    .debug_selector({
-                        let selector = selector.clone();
-                        move || selector.clone()
-                    })
-                    .id(SharedString::from(selector))
-                    .cursor_pointer()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .py(px(8.0))
-                    .px(px(10.0))
-                    .text_size(px(13.0))
-                    .on_click(clicks.send(LedgerEvent::ChooseBaseUnit(option.id)))
-                    .child(radio_dot(select.chosen == Some(option.id), cx))
-                    .child(option.label.clone())
-            })),
+            .text_size(px(13.0))
+            .text_color(text_color)
+            .on_click({
+                let press = pressed(clicks, LedgerEvent::Press(field));
+                move |_event, window, cx| {
+                    press(window, cx);
+                    cx.stop_propagation();
+                }
+            })
+            .child(text),
     )
 }
 
-fn field(label: String, value: String, select_style: bool, cx: &App) -> impl IntoElement {
+/// The *Financial year starts* select: the twelve months, the chosen one shown.
+fn financial_year_select(
+    view: &FinancialYearView,
+    clicks: &PageClicks<LedgerPage>,
+    scroll: &mut usize,
+    cx: &App,
+) -> AnyElement {
+    let state = drawn(
+        view.options.get(view.chosen).cloned(),
+        view.highlight,
+        view.options.len(),
+        scroll,
+    );
+    select(
+        SelectFieldProps {
+            id: "settings-ledger-financial-year".into(),
+            label: view.label.clone().into(),
+            options: &view.options,
+            state: &state,
+            focused: view.focused,
+            accent: false,
+            read_only: None,
+            on_field_click: pressed(clicks, LedgerEvent::Press(LedgerField::FinancialYear)),
+            on_option_click: clicks.option(|index| {
+                let month = u32::try_from(index + 1).unwrap_or(1);
+                LedgerEvent::ChooseMonth(
+                    FinancialYearStart::new(month).unwrap_or(FinancialYearStart::JANUARY),
+                )
+            }),
+        },
+        cx,
+    )
+}
+
+/// The *Base unit* select: every active Unit, the base one shown.
+fn base_unit_select(
+    view: &BaseUnitView,
+    clicks: &PageClicks<LedgerPage>,
+    scroll: &mut usize,
+    cx: &App,
+) -> AnyElement {
+    let labels: Vec<String> = view.options.iter().map(|o| o.label.clone()).collect();
+    let ids: Vec<_> = view.options.iter().map(|o| o.id).collect();
+    let chosen = view
+        .options
+        .iter()
+        .find(|option| Some(option.id) == view.chosen)
+        .map(|option| option.label.clone());
+    let state = drawn(chosen, view.highlight, labels.len(), scroll);
+    let fallback = view.chosen;
+    select(
+        SelectFieldProps {
+            id: "settings-ledger-base-unit".into(),
+            label: view.label.clone().into(),
+            options: &labels,
+            state: &state,
+            focused: view.focused,
+            accent: false,
+            read_only: None,
+            on_field_click: pressed(clicks, LedgerEvent::Press(LedgerField::BaseUnit)),
+            on_option_click: clicks.option(move |index| {
+                match ids.get(index).copied().or(fallback) {
+                    Some(id) => LedgerEvent::ChooseBaseUnit(id),
+                    None => LedgerEvent::ClickAway,
+                }
+            }),
+        },
+        cx,
+    )
+}
+
+/// A click on a field: `event`, then the page takes the keyboard, as a row's click hands it.
+fn pressed(clicks: &PageClicks<LedgerPage>, event: LedgerEvent) -> crate::dialog::OnClick {
+    let send = clicks.row::<_, ()>(event);
+    std::rc::Rc::new(move |window, cx| send(&(), window, cx))
+}
+
+/// A select of `len` options showing `chosen`, its list open on `highlight`. `scroll` is the
+/// open list's window, kept between draws so it follows the highlight.
+fn drawn(
+    chosen: Option<String>,
+    highlight: Option<usize>,
+    len: usize,
+    scroll: &mut usize,
+) -> SelectState {
+    let state = SelectState::drawn(chosen, highlight, *scroll, len);
+    *scroll = state.scroll();
+    state
+}
+
+/// The shared dropdown, wrapped so a click on it reaches no click-away behind it.
+fn select(props: SelectFieldProps<'_>, cx: &App) -> AnyElement {
+    let id: SharedString = format!("{}-box", props.id).into();
     div()
-        .child(field_label(label))
-        .child(field_value(value, select_style, cx))
+        .id(id)
+        .on_click(|_event, _window, cx| cx.stop_propagation())
+        .child(select_field::render(props, cx))
+        .into_any_element()
 }
 
 /// The right-hand "THIS LEDGER" panel: a bordered figure table, then a note explaining the page's

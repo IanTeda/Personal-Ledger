@@ -31,7 +31,8 @@ pub use general::{
     GeneralSettings, GeneralSetup, GeneralViewModel, LocaleLine, ThisDeviceView,
 };
 pub use ledger::{
-    BaseUnitOption, BaseUnitView, LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel,
+    BaseUnitOption, BaseUnitView, FinancialYearView, LedgerEvent, LedgerField, LedgerPresenter,
+    LedgerSetup, LedgerTextView, LedgerViewModel,
 };
 pub use sync_server::{SyncServerEvent, SyncServerPresenter, SyncServerViewModel};
 pub use tracing::{

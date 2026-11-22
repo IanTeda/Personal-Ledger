@@ -528,7 +528,8 @@ fn the_base_glyph_follows_the_unit_picked_on_ledger(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
     ui.click("settings-index-Ledger");
-    ui.press("l j");
+    ui.click("settings-ledger-base-unit");
+    ui.click("settings-ledger-base-unit-option-1");
     ui.click("settings-index-Units");
     assert_ne!(ui.base_unit_code().as_deref(), Some("aud"));
 }

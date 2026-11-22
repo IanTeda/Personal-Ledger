@@ -317,8 +317,15 @@ impl KeyRoute for Keys<'_, '_> {
                 presenter.command(command, router)
             });
         }
-        // No View takes a key the keymaps left: every View's keys are its module keymap's.
-        false
+        // A key the keymaps left may start an edit in place on the focused page (Settings ›
+        // Ledger's text fields); no View takes it otherwise.
+        if !shell.view_has_keys() {
+            return false;
+        }
+        let keystroke = self.keystroke;
+        shell
+            .active_page(self.cx)
+            .is_some_and(|page| page.leftover_key(keystroke, self.cx))
     }
 }
 

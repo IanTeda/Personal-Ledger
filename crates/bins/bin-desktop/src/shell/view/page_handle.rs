@@ -137,6 +137,16 @@ pub trait PageHandle {
     fn mode_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool;
     /// `Esc`: closes what the page has open. Whether it consumed the key.
     fn escape(&self, cx: &mut App) -> bool;
+    /// A printable key in Normal mode that no keymap took, which may start an edit in place
+    /// (`PagePresenter::starts_typing`). Whether the page took it; none does by default.
+    fn leftover_key(&self, _keystroke: &Keystroke, _cx: &mut App) -> bool {
+        false
+    }
+    /// Whether the page has something open that `Esc` would close (a draft, a list), which
+    /// leaving it saves or closes. None by default.
+    fn has_open(&self, _cx: &App) -> bool {
+        false
+    }
     /// `/`. `false` when the page has no Search, leaving `/` inert.
     fn start_search(&self, cx: &mut App) -> bool;
     /// What the host tells the page: it has become the destination, the space it is drawn in, a
@@ -185,6 +195,15 @@ impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
 
     fn start_search(&self, cx: &mut App) -> bool {
         self.update(cx, |page, cx| page.start_search(cx))
+    }
+
+    fn leftover_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
+        self.update(cx, |page, cx| page.leftover_key(keystroke, cx))
+    }
+
+    /// What `PageView::escape` would close.
+    fn has_open(&self, cx: &App) -> bool {
+        P::escape(&self.read(cx).view_model()).is_some()
     }
 
     /// Handed on as `PageView::cued`'s event.

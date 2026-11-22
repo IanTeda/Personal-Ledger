@@ -15,7 +15,8 @@
 //! conflict check, only [`check_other_side`]'s `debug_assert!` that each row holds the image's
 //! other side.
 //!
-//! Every store records: the Units, the Institutions (whose rows Unit delete reassigns), the
+//! Every store records: the Units, the Ledger's own Preferences (one image of the `ledger` row),
+//! the Institutions (whose rows Unit delete reassigns), the
 //! Transactions, Bills, Budgets and Documents (#1248), with the Document Types beside the
 //! Documents, and the Accounts, Categories, Tags, Payees and Inventory (#1249).
 //!
@@ -58,6 +59,7 @@ use lib_transactions::Transaction;
 use lib_units::{PriceSourceRecord, UnitRow, UnitUse};
 
 use crate::Domain;
+use crate::adapter::ledger::LedgerRow;
 use crate::adapter::store::SharedStores;
 
 /// One row's image before an input and after it; `None` where the row was absent.
@@ -208,6 +210,9 @@ macro_rules! row_images {
             $($(#[$attr])* $variant(Image<$row>),)*
             /// The base Unit is one value rather than a row, so it is never absent.
             BaseUnit(UnitId, UnitId),
+            /// The Ledger's own Preferences (its name, Owner and Financial year start), the
+            /// one `ledger` row before and after, which is never absent.
+            Ledger(LedgerRow, LedgerRow),
             /// A list in a stored order ([`crate::adapter::ordered`]): every row's place before
             /// and after one was moved or removed. A delete records it before the row's own image,
             /// so Undo, which goes newest first, restores the row before its place.
@@ -219,6 +224,7 @@ macro_rules! row_images {
         pub(crate) enum RowKey {
             $($variant($id),)*
             BaseUnit,
+            Ledger,
             Order(Domain),
         }
 
@@ -257,6 +263,7 @@ macro_rules! row_images {
                 match self {
                     $(Self::$variant(image) => image.key(),)*
                     Self::BaseUnit(..) => Some(RowKey::BaseUnit),
+                    Self::Ledger(..) => Some(RowKey::Ledger),
                     Self::Order(domain, ..) => Some(RowKey::Order(*domain)),
                 }
             }
@@ -266,6 +273,7 @@ macro_rules! row_images {
                 match self {
                     $(Self::$variant(image) => image.unchanged(),)*
                     Self::BaseUnit(before, after) => before == after,
+                    Self::Ledger(before, after) => before == after,
                     Self::Order(_, before, after) => before == after,
                 }
             }
@@ -275,17 +283,18 @@ macro_rules! row_images {
                 match (self, later) {
                     $((Self::$variant(image), Self::$variant(later)) => image.merge(later),)*
                     (Self::BaseUnit(_, after), Self::BaseUnit(_, later)) => *after = later,
+                    (Self::Ledger(_, after), Self::Ledger(_, later)) => *after = later,
                     (Self::Order(_, _, after), Self::Order(_, _, later)) => *after = later,
                     (image, later) => debug_assert!(false, "{image:?} merged with {later:?}"),
                 }
             }
 
-            /// Writes a by-id row's image the way `step` goes. The base Unit and an order are
-            /// [`write`]'s own.
+            /// Writes a by-id row's image the way `step` goes. The base Unit, the Ledger row and
+            /// an order are [`write`]'s own.
             fn apply_row(&self, step: Step, stores: &SharedStores) {
                 match self {
                     $(Self::$variant(image) => image.apply(step, stores),)*
-                    Self::BaseUnit(..) | Self::Order(..) => {
+                    Self::BaseUnit(..) | Self::Ledger(..) | Self::Order(..) => {
                         debug_assert!(false, "{self:?} is not a by-id row");
                     }
                 }
@@ -481,6 +490,7 @@ impl RowImage {
     pub fn domain(&self) -> Domain {
         match self {
             Self::Unit(..) | Self::PriceSource(..) | Self::BaseUnit(..) => Domain::Units,
+            Self::Ledger(..) => Domain::Ledger,
             Self::Order(domain, ..) => *domain,
             Self::Institution(..) => Domain::Institutions,
             Self::Transaction(..) => Domain::Transactions,
@@ -574,6 +584,25 @@ fn write(image: &RowImage, step: Step, stores: &SharedStores) {
                 check_other_side("base Unit", || (ports.base_unit.base_unit(), expected));
                 ports.base_unit.set_base_unit(target);
             });
+        }
+        RowImage::Ledger(before, after) => {
+            let (expected, target) = match step {
+                Step::Undo => (after, before),
+                Step::Redo => (before, after),
+            };
+            let mut ledger = stores.ledger.borrow_mut();
+            check_other_side("Ledger row", || (ledger.ledger().clone(), expected.clone()));
+            // Only the columns that differ are written back, as the input wrote only those.
+            let held = ledger.ledger().clone();
+            if held.name != target.name {
+                ledger.set_name(target.name.clone());
+            }
+            if held.owner != target.owner {
+                ledger.set_owner(target.owner.clone());
+            }
+            if held.financial_year_start != target.financial_year_start {
+                ledger.set_financial_year_start(target.financial_year_start);
+            }
         }
         // Not checked: Undo of a delete restores the row before its place, so the list holds
         // the row again, where the store put it, when the order is written back.
@@ -836,6 +865,38 @@ mod tests {
                 RowImage::BaseUnit(UnitId::SEED_AUD, nzd.id),
             ])
         );
+    }
+
+    fn ledger_row(ports: &crate::LedgerPorts) -> LedgerRow {
+        ports.stores().ledger.borrow().ledger().clone()
+    }
+
+    #[test]
+    fn a_ledger_preference_write_is_one_image_of_the_row_and_undo_puts_it_back() {
+        let ports = ports();
+        let before = ledger_row(&ports);
+        {
+            let mut ledger = ports.stores().ledger.borrow_mut();
+            ledger.set_name(lib_core::LedgerName::new("Teda household").expect("a name"));
+            ledger.set_owner(lib_core::Owner::new("Ian"));
+            ledger.set_financial_year_start(lib_core::FinancialYearStart::APRIL);
+        }
+        let after = ledger_row(&ports);
+
+        let reversal = ports.take_reversal().expect("the writes were recorded");
+        assert_eq!(
+            reversal.images,
+            [RowImage::Ledger(before.clone(), after.clone())]
+        );
+        assert_eq!(reversal.domains(), [Domain::Ledger]);
+
+        ports.step(&reversal, Step::Undo);
+        assert_eq!(ledger_row(&ports), before);
+        assert_eq!(ports.take_reversal(), None, "Undo records nothing");
+
+        ports.step(&reversal, Step::Redo);
+        assert_eq!(ledger_row(&ports), after);
+        assert_eq!(ports.take_reversal(), None, "Redo records nothing");
     }
 
     #[test]

@@ -477,6 +477,17 @@ impl<P: PageView> ModulePage<P> {
         true
     }
 
+    /// A printable key in Normal mode that no keymap took: the event
+    /// [`PagePresenter::starts_typing`] starts an edit with, as one input. A modified chord types
+    /// nothing, so is never offered.
+    pub fn leftover_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let event = match text_keys(keystroke).as_slice() {
+            [TextKey::Char(ch)] => self.presenter.starts_typing(*ch),
+            _ => None,
+        };
+        self.take(event, cx)
+    }
+
     /// A key or click on the page: `event` as one input, committed once it is handled. Inside an
     /// input already (a palette Command's), it joins that one.
     ///

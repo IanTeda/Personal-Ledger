@@ -38,7 +38,7 @@ pub use crate::presenter::{
     DataBackupEvent, DataBackupPresenter, DataBackupRow, DataBackupViewModel, DataFolderOutcome,
     DisplayEvent, DisplayField, DisplayOutput, DisplayPresenter, DisplaySettings, DisplaySetup,
     DisplayViewModel, GeneralEvent, GeneralField, GeneralPresenter, GeneralSettings, GeneralSetup,
-    GeneralViewModel, IndexGroup, IndexRow, LedgerEvent, LedgerPresenter, LedgerSetup,
+    GeneralViewModel, IndexGroup, IndexRow, LedgerEvent, LedgerField, LedgerPresenter, LedgerSetup,
     LedgerViewModel, LocaleLine, LogChange, LogListChange, LogScroll, PickerGroup, PickerRow,
     PickerView, SettingsFocus, SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup,
     SettingsFrameViewModel, SyncServerEvent, SyncServerPresenter, SyncServerViewModel,
