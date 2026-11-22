@@ -150,12 +150,29 @@ tui-settings-ledger-ledger-name = ledger name
 tui-settings-ledger-owner = owner
 tui-settings-ledger-financial-year = financial year starts
 tui-settings-ledger-base-unit = base unit
+# What the owner row shows while the Ledger has no Owner.
+tui-settings-ledger-owner-none = none
+
+## The status line once a Ledger name, Owner or Financial year start is saved, worded like the
+## Desktop's Changed Toast. `$field` is the field's label, `$value` what it now holds.
+
+tui-settings-ledger-changed = { $field } changed to { $value }
+tui-settings-ledger-owner-cleared = owner cleared
 
 ## The financial year's start months.
 
-tui-settings-month-july = july
 tui-settings-month-january = january
+tui-settings-month-february = february
+tui-settings-month-march = march
 tui-settings-month-april = april
+tui-settings-month-may = may
+tui-settings-month-june = june
+tui-settings-month-july = july
+tui-settings-month-august = august
+tui-settings-month-september = september
+tui-settings-month-october = october
+tui-settings-month-november = november
+tui-settings-month-december = december
 
 ## Settings › Ledger's THIS LEDGER box and its note.
 
@@ -164,7 +181,7 @@ tui-settings-ledger-accounts = accounts
 tui-settings-ledger-transactions = transactions
 tui-settings-ledger-units = units
 tui-settings-ledger-institutions = institutions
-tui-settings-ledger-note = Ledger name, owner and financial year hold for this session until the Ledger saves Preferences. The base unit is the Units' own and saves at once.
+tui-settings-ledger-note = Ledger settings are Preferences that travel with the ledger, and each saves at once. What belongs to this device is under General and Display.
 
 ## Settings › Display's field labels, values and notes.
 
@@ -216,7 +233,6 @@ tui-settings-edit-year-range = { $first } – { $last }
 # `$value` is the old value, `$range` its year's dates.
 tui-settings-edit-was-year = { $value } · { $range }
 tui-settings-edit-financial-year-changes = year-to-date · budget years · reports
-tui-settings-edit-holds-for-session = holds for this session
 tui-settings-edit-base-on-enter = asks you to type the code, then saves
 
 ## The hint bar while a field is open. `$value` is the old value.

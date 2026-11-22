@@ -1,6 +1,7 @@
-//! The fields the form pages edit ([`SettingField`]), by the name `:set` takes, the values that
-//! hold for the session ([`SettingsValues`]), and the Configuration General and Display write back
-//! to `personal-ledger.conf` ([`Configuration`], #904, ADR-0053).
+//! The fields the form pages edit ([`SettingField`]), by the name `:set` takes, the values the
+//! form pages show ([`SettingsValues`]), the Configuration General and Display write back to
+//! `personal-ledger.conf` ([`Configuration`], #904, ADR-0053), and the Ledger's Preferences
+//! Settings › Ledger saves through `lib-settings`' ports ([`save_ledger_preference`], #1359).
 //!
 //! Opening and saving a field is one [`Action::SetSetting`] with the field and an optional value:
 //! `enter` on a row sends it without one, which opens the field in place, and the open field's
@@ -13,7 +14,9 @@ use chrono::NaiveDate;
 use lib_colour_theme::ColourAppearance;
 use lib_config::{ConfigKey, ConfigValue, ConfigWriter, Overrides, StatusGlyphs};
 use lib_core::{DateStyle, OnStart, StartView};
+use lib_core::{FinancialYearStart, LedgerName, LedgerNameError, Owner};
 use lib_locale::Locale;
+use lib_settings::SettingsLedger;
 
 use super::SettingsPage;
 use crate::msg;
@@ -140,17 +143,126 @@ impl SettingField {
     }
 }
 
-/// The financial year's start months the field offers, by the value `:set fy-start` takes:
-/// Australia's, the calendar year's and the United Kingdom's.
-pub const FINANCIAL_YEAR_STARTS: [(&str, u32); 3] = [("july", 7), ("january", 1), ("april", 4)];
+/// The months `:set fy-start` takes, January first: command syntax the user types, so stable
+/// English rather than Messages, as command names are.
+pub const MONTHS: [&str; 12] = [
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+];
+
+/// The Financial year start `value` names, one of [`MONTHS`], ignoring case.
+pub fn month_from_key(value: &str) -> Option<FinancialYearStart> {
+    let index = MONTHS
+        .iter()
+        .position(|month| month.eq_ignore_ascii_case(value.trim()))?;
+    FinancialYearStart::new(u32::try_from(index + 1).ok()?).ok()
+}
+
+/// The name `:set fy-start` takes for `start`.
+pub fn month_key(start: FinancialYearStart) -> &'static str {
+    let index = usize::try_from(start.month().saturating_sub(1)).unwrap_or_default();
+    MONTHS.get(index).copied().unwrap_or_default()
+}
 
 /// A financial year start month's label.
-pub fn month_label(month: u32) -> String {
-    match month {
+pub fn month_label(start: FinancialYearStart) -> String {
+    match start.month() {
         1 => msg::tui_settings_month_january(),
+        2 => msg::tui_settings_month_february(),
+        3 => msg::tui_settings_month_march(),
         4 => msg::tui_settings_month_april(),
-        _ => msg::tui_settings_month_july(),
+        5 => msg::tui_settings_month_may(),
+        6 => msg::tui_settings_month_june(),
+        7 => msg::tui_settings_month_july(),
+        8 => msg::tui_settings_month_august(),
+        9 => msg::tui_settings_month_september(),
+        10 => msg::tui_settings_month_october(),
+        11 => msg::tui_settings_month_november(),
+        _ => msg::tui_settings_month_december(),
     }
+}
+
+/// What saving a value to one of the Ledger's Preferences did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LedgerSave {
+    /// Written, with what the status line says: the Desktop's Changed Toast's wording.
+    Saved(String),
+    /// Equal to what is stored once trimmed, so nothing was written and there is nothing to say.
+    Unchanged,
+    /// Refused with this Message, writing nothing.
+    Refused(String),
+}
+
+/// Saves `value`, as `:set` takes it, to `field`, one of the Ledger name, Owner and Financial year
+/// start, through `ledger`'s ports: one write, or none. The blank and over-long refusals are
+/// `lib-core`'s `LedgerName`'s, with the Desktop's Messages; an empty Owner clears it. `None` for
+/// any other field.
+pub fn save_ledger_preference(
+    ledger: &SettingsLedger,
+    field: SettingField,
+    value: &str,
+) -> Option<LedgerSave> {
+    let reads = &ledger.units;
+    let preferences = &ledger.preferences;
+    Some(match field {
+        SettingField::LedgerName => match LedgerName::new(value) {
+            Ok(name) if name == reads.name() => LedgerSave::Unchanged,
+            Ok(name) => {
+                let said = msg::tui_settings_ledger_changed(&field.label(), name.as_str());
+                preferences.set_name(name);
+                LedgerSave::Saved(said)
+            }
+            Err(LedgerNameError::Blank) => {
+                LedgerSave::Refused(lib_locale::msg::ledger_name_error_blank())
+            }
+            Err(LedgerNameError::TooLong) => {
+                LedgerSave::Refused(lib_locale::msg::ledger_name_error_too_long(
+                    i64::try_from(LedgerName::NAME_MAX).unwrap_or(i64::MAX),
+                ))
+            }
+        },
+        SettingField::Owner => {
+            let owner = Owner::new(value);
+            if owner == reads.owner() {
+                LedgerSave::Unchanged
+            } else {
+                let said = match &owner {
+                    Some(owner) => msg::tui_settings_ledger_changed(&field.label(), owner.as_str()),
+                    None => msg::tui_settings_ledger_owner_cleared(),
+                };
+                preferences.set_owner(owner);
+                LedgerSave::Saved(said)
+            }
+        }
+        SettingField::FinancialYearStart => {
+            let Some(start) = month_from_key(value) else {
+                return Some(LedgerSave::Refused(msg::tui_settings_set_bad_value(
+                    value,
+                    field.command_name(),
+                )));
+            };
+            if start == reads.financial_year_start() {
+                LedgerSave::Unchanged
+            } else {
+                preferences.set_financial_year_start(start);
+                LedgerSave::Saved(msg::tui_settings_ledger_changed(
+                    &field.label(),
+                    &month_label(start),
+                ))
+            }
+        }
+        _ => return None,
+    })
 }
 
 /// An On start choice's label.
@@ -323,17 +435,11 @@ impl Configuration {
 /// The Locale choice that takes the key out of the file.
 pub const LOCALE_SYSTEM: &str = "system";
 
-/// The values the form pages show, shared by every Settings View `Shell` opens.
-///
-/// Ledger name, owner and the financial year's start have no Preference columns yet, so they
-/// start on TUI-019's worked values and hold for the session. The date style and On start are
-/// Configuration (ADR-0053), in [`Configuration`].
+/// The values the form pages show, shared by every Settings View `Shell` opens. The Ledger's
+/// Preferences aren't here: Settings › Ledger reads them from the Open Ledger on each draw. The
+/// date style and On start are Configuration (ADR-0053), in [`Configuration`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsValues {
-    pub ledger_name: String,
-    pub owner: String,
-    /// The month the financial year starts on, 1–12.
-    pub financial_year_start: u32,
     /// `data`, the folder `:open` and `:new` start in, as read at start-up.
     pub ledger_folder: std::path::PathBuf,
     /// The Ledger file On start's Reopen last Ledger would reopen were the TUI to quit now: the
@@ -346,10 +452,6 @@ pub struct SettingsValues {
 impl Default for SettingsValues {
     fn default() -> Self {
         Self {
-            // wireframe: TUI-019's worked values, until the Ledger has Preference columns for them.
-            ledger_name: "Teda household".into(),
-            owner: "Ian Teda".into(),
-            financial_year_start: 7,
             ledger_folder: lib_config::GeneralConfig::default().data().to_path_buf(),
             last_ledger: None,
             configuration: Configuration::default(),
@@ -362,27 +464,6 @@ impl SettingsValues {
     /// `false` otherwise, so the caller can refuse it.
     pub fn set(&mut self, field: SettingField, value: &str) -> bool {
         match field {
-            SettingField::LedgerName | SettingField::Owner => {
-                let value = value.trim();
-                if value.is_empty() {
-                    return false;
-                }
-                let slot = if field == SettingField::LedgerName {
-                    &mut self.ledger_name
-                } else {
-                    &mut self.owner
-                };
-                *slot = value.to_string();
-            }
-            SettingField::FinancialYearStart => {
-                let Some((_, month)) = FINANCIAL_YEAR_STARTS
-                    .iter()
-                    .find(|(name, _)| name.eq_ignore_ascii_case(value))
-                else {
-                    return false;
-                };
-                self.financial_year_start = *month;
-            }
             SettingField::OnStart => {
                 let Some(on_start) = lib_config::on_start_from_key(value) else {
                     return false;
@@ -431,12 +512,6 @@ impl SettingsValues {
     /// The value `field` holds, as `:set` would take it.
     pub fn get(&self, field: SettingField) -> Option<String> {
         Some(match field {
-            SettingField::LedgerName => self.ledger_name.clone(),
-            SettingField::Owner => self.owner.clone(),
-            SettingField::FinancialYearStart => FINANCIAL_YEAR_STARTS
-                .iter()
-                .find(|(_, month)| *month == self.financial_year_start)
-                .map(|(name, _)| (*name).to_string())?,
             SettingField::OnStart => lib_config::on_start_key(self.configuration.on_start).into(),
             SettingField::StartView => self.configuration.start_view.key().to_string(),
             SettingField::DateStyle => {
@@ -452,11 +527,8 @@ impl SettingsValues {
 
 /// The first and last day of the financial year holding `today`, when years start on the first
 /// of `start` (1–12).
-pub fn financial_year(today: NaiveDate, start: u32) -> (NaiveDate, NaiveDate) {
-    match lib_core::FinancialYearStart::new(start) {
-        Ok(start) => start.bounds(start.year_of(today)),
-        Err(_) => (today, today),
-    }
+pub fn financial_year(today: NaiveDate, start: FinancialYearStart) -> (NaiveDate, NaiveDate) {
+    start.bounds(start.year_of(today))
 }
 
 #[cfg(test)]
@@ -485,19 +557,19 @@ mod tests {
     #[test]
     fn the_financial_year_holding_a_day_runs_from_its_start_month() {
         assert_eq!(
-            financial_year(date(2026, 10, 28), 7),
+            financial_year(date(2026, 10, 28), FinancialYearStart::JULY),
             (date(2026, 7, 1), date(2027, 6, 30))
         );
         assert_eq!(
-            financial_year(date(2026, 3, 1), 7),
+            financial_year(date(2026, 3, 1), FinancialYearStart::JULY),
             (date(2025, 7, 1), date(2026, 6, 30))
         );
         assert_eq!(
-            financial_year(date(2026, 10, 28), 1),
+            financial_year(date(2026, 10, 28), FinancialYearStart::JANUARY),
             (date(2026, 1, 1), date(2026, 12, 31))
         );
         assert_eq!(
-            financial_year(date(2026, 4, 1), 4),
+            financial_year(date(2026, 4, 1), FinancialYearStart::APRIL),
             (date(2026, 4, 1), date(2027, 3, 31))
         );
     }
@@ -505,9 +577,6 @@ mod tests {
     #[test]
     fn the_session_values_take_only_the_values_their_fields_offer() {
         let mut values = SettingsValues::default();
-        assert!(values.set(SettingField::FinancialYearStart, "january"));
-        assert_eq!(values.financial_year_start, 1);
-        assert!(!values.set(SettingField::FinancialYearStart, "march"));
         assert!(values.set(SettingField::DateStyle, "iso"));
         assert_eq!(values.configuration.date_style, Some(DateStyle::Iso));
         assert!(values.set(SettingField::DateStyle, "default"));
@@ -531,9 +600,10 @@ mod tests {
             "a noun the TUI doesn't have"
         );
         assert_eq!(values.configuration.date_style, None);
-        assert!(!values.set(SettingField::Owner, "  "));
-        assert!(values.set(SettingField::Owner, "Alex"));
-        assert_eq!(values.get(SettingField::Owner).as_deref(), Some("Alex"));
+        assert!(
+            !values.set(SettingField::Owner, "Alex"),
+            "the Ledger's, not held here"
+        );
         assert!(!values.set(SettingField::BaseUnit, "btc"), "not held here");
         assert!(values.set(SettingField::StatusGlyphs, "ascii"));
         assert!(values.set(SettingField::HintBar, "off"));

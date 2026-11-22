@@ -1118,7 +1118,7 @@ fn render_form(
         .iter()
         .map(|row| match &open {
             Some(open) if is_open(row) => {
-                Constraint::Length(FieldEditor::height(open.sub_rows.len()))
+                Constraint::Length(open.editor.height(open.sub_rows.len()))
             }
             _ => Constraint::Length(1),
         })

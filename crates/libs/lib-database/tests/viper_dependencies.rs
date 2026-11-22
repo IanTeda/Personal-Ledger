@@ -85,6 +85,14 @@ const SHELL: &str = "lib_shell";
 /// `lib_shell` wrappers list.
 const SHELL_DEPENDANTS: &[&str] = &["bin_desktop", "bin_tui", "lib_database"];
 
+/// The Settings module, which only the two Clients and `lib_database`, whose `StoredSettingsReads`
+/// and `LedgerPreferencesAdapter` answer its Ledger ports, may depend on (as in `deny.toml`). The
+/// TUI reads Settings › Ledger through those ports while it keeps its own pages (#1359).
+const SETTINGS: &str = "lib_settings";
+
+/// The only crates that may depend on [`SETTINGS`], as `deny.toml`'s `lib_settings` wrappers list.
+const SETTINGS_DEPENDANTS: &[&str] = &["bin_desktop", "bin_tui", "lib_database"];
+
 /// Crates no feature crate may depend on besides the other feature crates.
 const FORBIDDEN: &[&str] = &[
     "gpui",
@@ -103,6 +111,9 @@ fn forbidden(name: &str, dependency: &str) -> bool {
     }
     if dependency == SHELL {
         return !SHELL_DEPENDANTS.contains(&name);
+    }
+    if dependency == SETTINGS && !SETTINGS_DEPENDANTS.contains(&name) {
+        return true;
     }
     if CROSS_DOMAIN.iter().any(|(module, _)| *module == dependency) {
         return FEATURE_CRATES.contains(&name) || CROSS_DOMAIN.iter().any(|(m, _)| *m == name);
@@ -155,6 +166,7 @@ fn feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
         .chain(SHARED_CRATES)
         .chain(CROSS_DOMAIN.iter().map(|(module, _)| module))
         .chain(SHELL_DEPENDANTS)
+        .chain(SETTINGS_DEPENDANTS)
     {
         assert!(
             names.contains(crate_name),
@@ -168,7 +180,7 @@ fn feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
         "VIPER Dependencies rule broken: a feature crate never depends on another feature crate, \
          a UI toolkit (gpui, gpui-component, ratatui, crossterm), lib_database or a cross-domain \
          module, a cross-domain module depends only on the feature crates it writes, and only the \
-         bins and lib_database depend on lib_shell. See \
+         bins and lib_database depend on lib_shell or lib_settings. See \
          docs/development/viper-architecture.md, Rules > Dependencies. Move shared value types to \
          lib_core, declare a read port in protocols.rs, or put a multi-domain write in a \
          cross-domain module.\nOffending dependencies:\n  {}",
@@ -326,6 +338,29 @@ fn violations_flags_every_crate_but_the_bins_and_lib_database_depending_on_lib_s
             "lib_config -> lib_shell",
             "lib_rpc -> lib_shell",
             "bin_sync_server -> lib_shell"
+        ]
+    );
+}
+
+#[test]
+fn violations_flags_every_crate_but_the_bins_and_lib_database_depending_on_lib_settings() {
+    let metadata = serde_json::json!({
+        "packages": [
+            { "name": "lib_config", "dependencies": [{ "name": "lib_settings" }] },
+            { "name": "bin_sync_server", "dependencies": [{ "name": "lib_settings" }] },
+            { "name": "lib_ledger_creation", "dependencies": [{ "name": "lib_settings" }] },
+            { "name": "lib_database", "dependencies": [{ "name": "lib_settings" }] },
+            { "name": "bin_desktop", "dependencies": [{ "name": "lib_settings" }] },
+            { "name": "bin_tui", "dependencies": [{ "name": "lib_settings" }] }
+        ]
+    });
+
+    assert_eq!(
+        violations(&metadata),
+        vec![
+            "lib_config -> lib_settings",
+            "bin_sync_server -> lib_settings",
+            "lib_ledger_creation -> lib_settings"
         ]
     );
 }

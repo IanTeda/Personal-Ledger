@@ -28,6 +28,8 @@ lib_ledger_creation = { path = "../../libs/lib-ledger-creation" }
 lib_locale = { path = "../../libs/lib-locale" }
 # The Window Size and its Breakpoints, shared with the Desktop (ADR-0050).
 lib_shell = { path = "../../libs/lib-shell" }
+# Settings › Ledger reads and writes the Ledger's Preferences through its ports (#1359).
+lib_settings = { path = "../../libs/lib-settings" }
 lib_toast = { path = "../../libs/lib-toast" }
 lib_tracing = { path = "../../libs/lib-tracing" }
 lib_units = { path = "../../libs/lib-units" }

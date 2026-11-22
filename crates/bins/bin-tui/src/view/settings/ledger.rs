@@ -1,15 +1,15 @@
 //! Settings › Ledger (TUI-019, editing in place TUI-020), the first this ledger page and General
 //! before #910: ledger name, owner, financial year starts and base unit, then the THIS LEDGER box.
 //!
-//! Ledger name, owner and the financial year's start have no Preference columns yet, so they
-//! start on TUI-019's worked values and edit for the session only ([`SettingsValues`](super::field::SettingsValues)). The base
+//! Ledger name, owner and the financial year's start are the Ledger's Preferences, read from
+//! `lib-settings`' `LedgerReads` (`LedgerPorts::settings_ledger()`) on each draw and saved by
+//! `Shell` through its `LedgerPreferences` (`field::save_ledger_preference`, #1359). The page keeps
+//! its own `FieldEditor` rather than `LedgerPresenter` until the TUI's redesign (#805). The base
 //! unit is the Units' base, read from `lib-units`' base Unit port on the Open Ledger's shared ports
 //! on each draw. Committing a new one opens the base unit guard (TUI-021,
 //! `popup::settings::guard`), which sets it through `lib-units`' Set base unit Presenter.
 //!
-//! THIS LEDGER's counts are derived on each draw from the Open Ledger's stores: the Units from the
-//! Units store, and accounts, transactions and institutions from the stores the Units ports read
-//! usage from (#922).
+//! THIS LEDGER's counts are `lib-settings`' `LedgerSummaries::counts()`, read on each draw.
 
 use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -23,7 +23,9 @@ use ratatui::{
     widgets::{Block, Paragraph, Wrap},
 };
 
-use super::field::{FINANCIAL_YEAR_STARTS, SettingField, financial_year, month_label};
+use lib_settings::SettingsLedger;
+
+use super::field::{MONTHS, SettingField, financial_year, month_from_key, month_label};
 use super::keys::{self, Binding, Press};
 use super::{Context, FieldRow, Open, list, render_form};
 use crate::colours::Colours;
@@ -138,11 +140,13 @@ impl LedgerPage {
 
 /// One field's row at rest.
 fn row(field: SettingField, context: &Context<'_>) -> FieldRow {
-    let values = context.values;
+    let settings = context.units.map(|units| &units.settings);
     let value = match field {
-        SettingField::LedgerName => values.ledger_name.clone(),
-        SettingField::Owner => values.owner.clone(),
-        SettingField::FinancialYearStart => month_label(values.financial_year_start),
+        SettingField::LedgerName | SettingField::Owner | SettingField::FinancialYearStart => {
+            settings
+                .map(|settings| stored(field, settings))
+                .unwrap_or_default()
+        }
         _ => context
             .units
             .map(|units| base_unit_label(&units.ports))
@@ -152,6 +156,20 @@ fn row(field: SettingField, context: &Context<'_>) -> FieldRow {
         field,
         value,
         note: String::new(),
+    }
+}
+
+/// The stored value of one of the Ledger's Preferences, as its row shows it.
+fn stored(field: SettingField, settings: &SettingsLedger) -> String {
+    let reads = &settings.units;
+    match field {
+        SettingField::LedgerName => reads.name().as_str().to_string(),
+        SettingField::Owner => reads
+            .owner()
+            .map_or_else(msg::tui_settings_ledger_owner_none, |owner| {
+                owner.as_str().to_string()
+            }),
+        _ => month_label(reads.financial_year_start()),
     }
 }
 
@@ -167,32 +185,37 @@ fn base_unit_label(units: &TuiPorts) -> String {
 }
 
 /// What opening `field` in place starts from: its draft and the old value's label. `None` for a
-/// field Ledger doesn't hold, or the base unit without a Ledger's Units.
+/// field Ledger doesn't hold, or with no Open Ledger.
 pub(super) fn draft(field: SettingField, context: &Context<'_>) -> Option<(Draft, String)> {
-    let values = context.values;
+    let units = context.units?;
+    let reads = &units.settings.units;
     Some(match field {
-        SettingField::LedgerName | SettingField::Owner => {
-            let text = values.get(field)?;
-            (Draft::Text(text.clone()), text)
+        SettingField::LedgerName => {
+            let name = reads.name().as_str().to_string();
+            (Draft::Text(name.clone()), name)
         }
-        SettingField::FinancialYearStart => {
-            let segments = FINANCIAL_YEAR_STARTS
-                .iter()
-                .map(|(value, month)| Segment {
-                    value: (*value).to_string(),
-                    label: month_label(*month),
-                })
-                .collect();
-            let chosen = FINANCIAL_YEAR_STARTS
-                .iter()
-                .position(|(_, month)| *month == values.financial_year_start)
-                .unwrap_or_default();
+        SettingField::Owner => {
+            let owner = reads.owner().map(|owner| owner.as_str().to_string());
             (
-                Draft::Choice { segments, chosen },
-                month_label(values.financial_year_start),
+                Draft::Text(owner.clone().unwrap_or_default()),
+                owner.unwrap_or_else(msg::tui_settings_ledger_owner_none),
             )
         }
-        SettingField::BaseUnit => base_unit_draft(&context.units?.ports)?,
+        SettingField::FinancialYearStart => {
+            let start = reads.financial_year_start();
+            let items = MONTHS
+                .iter()
+                .filter_map(|key| {
+                    month_from_key(key).map(|month| Segment {
+                        value: (*key).to_string(),
+                        label: month_label(month),
+                    })
+                })
+                .collect();
+            let chosen = usize::try_from(start.month().saturating_sub(1)).unwrap_or_default();
+            (Draft::List { items, chosen }, month_label(start))
+        }
+        SettingField::BaseUnit => base_unit_draft(&units.ports)?,
         _ => return None,
     })
 }
@@ -227,17 +250,16 @@ fn base_unit_draft(units: &TuiPorts) -> Option<(Draft, String)> {
 
 /// The open field's sub-rows: what the draft does, and what it was.
 fn sub_rows(editor: &FieldEditor, context: &Context<'_>) -> Vec<(String, String)> {
-    let session = (
-        msg::tui_settings_edit_on_enter(),
-        msg::tui_settings_edit_holds_for_session(),
-    );
     match editor.field() {
         SettingField::FinancialYearStart => {
+            let Some(stored) = context
+                .units
+                .map(|units| units.settings.units.financial_year_start())
+            else {
+                return Vec::new();
+            };
             let today = Local::now().date_naive();
-            let month = FINANCIAL_YEAR_STARTS
-                .iter()
-                .find(|(value, _)| *value == editor.value())
-                .map_or(context.values.financial_year_start, |(_, month)| *month);
+            let month = month_from_key(&editor.value()).unwrap_or(stored);
             let range = |month| {
                 let (first, last) = financial_year(today, month);
                 msg::tui_settings_edit_year_range(
@@ -249,16 +271,12 @@ fn sub_rows(editor: &FieldEditor, context: &Context<'_>) -> Vec<(String, String)
                 (msg::tui_settings_edit_this_year(), range(month)),
                 (
                     msg::tui_settings_edit_was(),
-                    msg::tui_settings_edit_was_year(
-                        editor.was(),
-                        &range(context.values.financial_year_start),
-                    ),
+                    msg::tui_settings_edit_was_year(editor.was(), &range(stored)),
                 ),
                 (
                     msg::tui_settings_edit_changes(),
                     msg::tui_settings_edit_financial_year_changes(),
                 ),
-                session,
             ]
         }
         SettingField::BaseUnit => {
@@ -283,39 +301,18 @@ fn sub_rows(editor: &FieldEditor, context: &Context<'_>) -> Vec<(String, String)
                 ),
             ]
         }
-        _ => vec![
-            (msg::tui_settings_edit_was(), editor.was().to_string()),
-            session,
-        ],
+        _ => vec![(msg::tui_settings_edit_was(), editor.was().to_string())],
     }
 }
 
-/// THIS LEDGER: a 4-cell box of counts, each derived on this draw.
+/// THIS LEDGER: a 4-cell box of counts, each read on this draw.
 fn render_this_ledger(frame: &mut Frame<'_>, area: Rect, units: &UnitsSetup, c: &Colours) {
-    let ports = units.ports.borrow();
-    let stores = &units.stores;
+    let counts = units.settings.summaries.counts();
     let cells = [
-        (
-            msg::tui_settings_ledger_accounts(),
-            stores.accounts.borrow().accounts().accounts().len(),
-        ),
-        (
-            msg::tui_settings_ledger_transactions(),
-            stores.transactions.borrow().all_transactions().len(),
-        ),
-        (
-            msg::tui_settings_ledger_units(),
-            ports.units().units().len(),
-        ),
-        (
-            msg::tui_settings_ledger_institutions(),
-            stores
-                .institutions
-                .borrow()
-                .institutions()
-                .institutions()
-                .len(),
-        ),
+        (msg::tui_settings_ledger_accounts(), counts.accounts),
+        (msg::tui_settings_ledger_transactions(), counts.transactions),
+        (msg::tui_settings_ledger_units(), counts.units),
+        (msg::tui_settings_ledger_institutions(), counts.institutions),
     ];
     let block = Block::bordered()
         .border_style(c.muted())
@@ -371,8 +368,9 @@ mod tests {
         let text = render_at(&view, 96, 30);
         for needle in [
             "ledger name",
-            "Teda household",
+            "Sample Ledger",
             "owner",
+            "Sam Sample",
             "financial year starts",
             "july",
             "base unit",

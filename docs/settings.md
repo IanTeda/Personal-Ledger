@@ -447,7 +447,7 @@ Resizing keeps the page you are on, its selected row and where you were.
 
 ### Editing a field
 
-General, Ledger and Display are lists of fields. Move to a field and press `Enter` to open it where it sits. `←` and `→` choose between its options, typing changes a text field, `Enter` saves, `Tab` saves and moves to the next field, and `Esc` keeps the old value. While a field is open the status line shows `INSERT`, and the line above the hints shows the command that makes the same edit, for example `:set fy-start january`.
+General, Ledger and Display are lists of fields. Move to a field and press `Enter` to open it where it sits. `←` and `→` choose between its options, `j` and `k` move through a list such as the financial year's months, typing changes a text field, `Enter` saves, `Tab` saves and moves to the next field, and `Esc` keeps the old value. While a field is open the status line shows `INSERT`, and the line above the hints shows the command that makes the same edit, for example `:set fy-start january`.
 
 The **data folder** row (`data`) opens a folder picker with `enter` or its **[ change… ]** chip, and `:data` opens the same picker from any View, with or without a Ledger open. The picker opens in the current Data folder: `j` and `k` move, `l` or `enter` goes into a folder, `h` or `backspace` goes up, files are dim and inert, `u` uses the folder shown (written to `[General] data` at once, with a Toast saying "Data folder is now …"), and `esc` closes it with nothing changed. Picking the folder already set writes nothing, and `--data` or `PERSONAL_LEDGER_GENERAL__DATA` still lets the file be written, with a note naming the override. `:open` and `:new` keep their typed paths. The **locale** row chooses `system` (which reads the operating system's Locale, shown as `now en-AU`) or one of the supported Locales, and `Enter` writes `[General] locale` at once, `system` removing the key. A Locale applies when Personal Ledger next starts, so a note says which one is in effect until then. `--locale` or `PERSONAL_LEDGER_GENERAL__LOCALE` outranks the file but the row still writes it, and its note names the override.
 
@@ -490,7 +490,7 @@ Every Settings key can also be run by name from the command popup:
 
 The fields `set` takes are `on-start`, `start-view`, `ledger-name`, `owner`, `fy-start`, `base`, `appearance`, `colour-theme`, `date-style`, `locale`, `terminal-colours`, `glyphs`, `toasts` and `hint-bar`, and `Tab` completes them. For example:
 
-- `set fy-start january`: the financial year starts in January (or `july` or `april`).
+- `set fy-start january`: the financial year starts in January (any month, written in full).
 - `set date-style iso`: dates are drawn as `2026-07-01` (or `default`, `short`, `medium` or `long`).
 - `set appearance dark` and `set colour-theme nord`: the same as choosing them from their lists.
 - `set ledger-name The Teda house`: the rest of the line is the value, spaces and all.

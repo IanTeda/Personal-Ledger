@@ -33,6 +33,8 @@ pub struct UnitsSetup {
     pub ports: TuiPorts,
     /// The stores beside the Units, whose rows Settings › Ledger and the base Unit guard count.
     pub stores: SharedStores,
+    /// Settings › Ledger's reads and the Ledger's Preferences writes (`LedgerPorts::settings_ledger()`).
+    pub settings: lib_settings::SettingsLedger,
     /// The commit that ends each input, held here while Units is the only module that writes.
     pub commit: Rc<dyn Commit>,
     /// The `[keybindings]` the page Presenter builds its keys from.
@@ -55,6 +57,7 @@ impl UnitsSetup {
         let setup = Self {
             ports: ledger.units(),
             stores,
+            settings: ledger.settings_ledger(),
             commit: ledger.commit(),
             config: config.clone(),
             dialog_keymap: lib_shell::dialog_keymap(config),

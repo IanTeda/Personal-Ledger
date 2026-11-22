@@ -69,7 +69,10 @@ use crate::{
         reports::ReportsView,
         settings::{
             BackupCommand, PageCommand, SettingsPage, SettingsView, SyncCommand,
-            field::{Configuration, SettingField, SettingsValues, on_off},
+            field::{
+                Configuration, LedgerSave, SettingField, SettingsValues, month_from_key, on_off,
+                save_ledger_preference,
+            },
         },
         tags::TagsView,
         transactions::TransactionsView,
@@ -2243,13 +2246,22 @@ impl Shell {
     /// read-only field is refused with its reason on the status line, as is a Configuration row it
     /// can't save. What `Shell` owns it keeps: Toasts, the colour rows' list popups and saving
     /// every Configuration row to the user's file, and the base unit guard, which
-    /// a new base opens rather than saving. Everything else, opening a field and saving the
-    /// session's values, is the Settings View's, opened on the field's page first.
+    /// a new base opens rather than saving, and the Ledger's Preferences, each saved as one write
+    /// and one status line ([`Self::save_ledger_preference`]). Everything else, opening a field
+    /// and saving the session's values, is the Settings View's, opened on the field's page first.
     fn set_setting(&mut self, field: SettingField, value: Option<String>) {
         self.command_popup = None;
         let refusal = self.settings_values.borrow().configuration.refusal(field);
         if let Some(reason) = refusal {
             self.status_message = Some(reason);
+            return;
+        }
+        let preference = matches!(
+            field,
+            SettingField::LedgerName | SettingField::Owner | SettingField::FinancialYearStart
+        );
+        if preference && self.ledger.is_none() {
+            self.apply(Action::NoLedgerOpen);
             return;
         }
         if let Some(value) = value.as_deref()
@@ -2266,10 +2278,30 @@ impl Shell {
             self.open_folder_picker();
             return;
         }
+        // A refused Preference writes nothing and leaves the View as it was, an open field with
+        // its typed text.
+        let saved = match value.as_deref() {
+            Some(value) if preference => match self.save_ledger_preference(field, value) {
+                Some(LedgerSave::Refused(reason)) => {
+                    self.status_message = Some(reason);
+                    return;
+                }
+                saved => saved,
+            },
+            _ => None,
+        };
         if self.view.id() != ViewId::Settings {
             self.apply(Action::OpenSettingsPage(field.page()));
         }
         let action = Action::SetSetting(field, value.clone());
+        if let Some(saved) = saved {
+            // Closes the open field; the page reads the stored value on its next draw.
+            self.view.update(&action);
+            if let LedgerSave::Saved(said) = saved {
+                self.status_message = Some(said);
+            }
+            return;
+        }
         match (field, value.as_deref()) {
             (SettingField::ColourTheme, None) => self.apply(Action::OpenColourThemePopup),
             (SettingField::Appearance, None) => self.apply(Action::OpenColourAppearancePopup),
@@ -2305,6 +2337,17 @@ impl Shell {
             }
             _ => self.view.update(&action),
         }
+    }
+
+    /// Writes `value` to one of the Open Ledger's Preferences and ends the input's one commit.
+    /// `None` with no Ledger open, or for any other field.
+    fn save_ledger_preference(&mut self, field: SettingField, value: &str) -> Option<LedgerSave> {
+        let units = &self.ledger.as_ref()?.units;
+        let saved = save_ledger_preference(&units.settings, field, value)?;
+        if matches!(saved, LedgerSave::Saved(_)) {
+            units.commit();
+        }
+        Some(saved)
     }
 
     /// Saves a Configuration row's `value` to the user's file, then shows it: terminal colours
@@ -2510,7 +2553,9 @@ impl Shell {
             SettingField::ColourTheme => colour_theme_id(value).is_some(),
             SettingField::Appearance => ColourAppearance::from_key(value).is_some(),
             SettingField::Toasts => matches!(value, "on" | "off"),
-            SettingField::BaseUnit => true,
+            // Saving refuses what the Ledger's Preferences don't take, with their own Messages.
+            SettingField::BaseUnit | SettingField::LedgerName | SettingField::Owner => true,
+            SettingField::FinancialYearStart => month_from_key(value).is_some(),
             SettingField::LedgerFolder => false,
             _ => self.settings_values.borrow().clone().set(field, value),
         }
@@ -5062,7 +5107,7 @@ mod tests {
         assert!(lines(&text)[0].contains("INSERT"), "{text}");
         let footer = lines(&text).last().copied().unwrap_or_default();
         assert!(
-            footer.contains("INSERT") && footer.contains("esc keep Ian Teda"),
+            footer.contains("INSERT") && footer.contains("esc keep Sam Sample"),
             "{text}"
         );
 
@@ -5092,10 +5137,10 @@ mod tests {
         );
         assert!(!lines(&text)[0].contains("INSERT"), "{text}");
         assert!(
-            row_of(&text, "ledger name").contains("Teda household"),
+            row_of(&text, "ledger name").contains("Sample Ledger"),
             "{text}"
         );
-        assert!(!text.contains("Teda householdx"), "{text}");
+        assert!(!text.contains("Sample Ledgerx"), "{text}");
 
         press(&mut shell, &[KeyCode::Esc]);
         assert!(
@@ -5113,7 +5158,9 @@ mod tests {
             &mut shell,
             &[KeyCode::Char('j'), KeyCode::Char('j'), KeyCode::Enter],
         );
-        press(&mut shell, &[KeyCode::Right, KeyCode::Tab]);
+        // Up the list from July to January.
+        press(&mut shell, &[KeyCode::Char('k'); 6]);
+        press(&mut shell, &[KeyCode::Tab]);
         let text = drawn(&mut shell);
         assert!(
             row_of(&text, "financial year starts").contains("january"),
@@ -5133,20 +5180,21 @@ mod tests {
         crate::locale::init_for_tests();
         let mut shell = opened();
         shell.update(Action::SetSetting(SettingField::FinancialYearStart, None));
-        press(&mut shell, &[KeyCode::Right]);
+        press(&mut shell, &[KeyCode::Char('j')]);
         let text = drawn(&mut shell);
         for needle in [
             "this year runs",
             "was",
             "july ·",
             "budget years",
-            "holds for this session",
+            "january",
+            "december",
         ] {
             assert!(text.contains(needle), "{needle} missing:\n{text}");
         }
         let footer = lines(&text).last().copied().unwrap_or_default();
         assert!(
-            footer.contains("←→ choose") && footer.contains("esc keep july"),
+            footer.contains("j/k choose") && footer.contains("esc keep july"),
             "{text}"
         );
     }
@@ -5652,12 +5700,12 @@ mod tests {
             shell.status_message
         );
 
-        run_command(&mut shell, "set fy-start march");
+        run_command(&mut shell, "set fy-start smarch");
         assert_eq!(
             shell.status_message.as_deref(),
-            Some("march isn't a value fy-start takes")
+            Some("smarch isn't a value fy-start takes")
         );
-        assert_eq!(shell.settings_values.borrow().financial_year_start, 7);
+        assert_eq!(stored(&shell).2, lib_core::FinancialYearStart::JULY);
 
         run_command(&mut shell, "set glyphs ascii");
         assert!(
@@ -5676,7 +5724,7 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let (mut shell, _) = writing_to(&dir, &[]);
         run_command(&mut shell, "set ledger-name The Teda house");
-        assert_eq!(shell.settings_values.borrow().ledger_name, "The Teda house");
+        assert_eq!(stored(&shell).0, "The Teda house");
 
         run_command(&mut shell, "set appearance light");
         assert_eq!(
@@ -5685,6 +5733,181 @@ mod tests {
         );
         run_command(&mut shell, "set colour-theme NORD");
         assert_eq!(shell.colours.colour_theme(), Some("nord"));
+    }
+
+    /// The Open Ledger's stored Ledger name, Owner and Financial year start.
+    fn stored(shell: &Shell) -> (String, Option<String>, lib_core::FinancialYearStart) {
+        let reads = &shell
+            .ledger
+            .as_ref()
+            .expect("a test Ledger is open")
+            .units
+            .settings
+            .units;
+        (
+            reads.name().as_str().to_string(),
+            reads.owner().map(|owner| owner.as_str().to_string()),
+            reads.financial_year_start(),
+        )
+    }
+
+    #[test]
+    fn set_saves_a_ledger_preference_once_and_says_so_like_the_desktop() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        run_command(&mut shell, "set ledger-name   Teda house  ");
+        assert_eq!(stored(&shell).0, "Teda house", "saved trimmed");
+        assert_eq!(
+            shell.status_message.as_deref(),
+            Some("ledger name changed to Teda house")
+        );
+        assert_eq!(shell.settings_page.get(), SettingsPage::Ledger);
+
+        run_command(&mut shell, "set owner Alex Teda");
+        assert_eq!(stored(&shell).1.as_deref(), Some("Alex Teda"));
+        assert_eq!(
+            shell.status_message.as_deref(),
+            Some("owner changed to Alex Teda")
+        );
+
+        run_command(&mut shell, "set fy-start OCTOBER");
+        assert_eq!(stored(&shell).2.month(), 10);
+        assert_eq!(
+            shell.status_message.as_deref(),
+            Some("financial year starts changed to october")
+        );
+        let text = drawn(&mut shell);
+        assert!(
+            row_of(&text, "ledger name").contains("Teda house"),
+            "{text}"
+        );
+        assert!(
+            row_of(&text, "financial year starts").contains("october"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn set_fy_start_takes_every_month_by_its_full_english_name() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        for (month, name) in crate::view::settings::field::MONTHS.iter().enumerate() {
+            run_command(&mut shell, &format!("set fy-start {}", name.to_uppercase()));
+            assert_eq!(
+                stored(&shell).2.month(),
+                u32::try_from(month + 1).unwrap(),
+                "{name}"
+            );
+        }
+        run_command(&mut shell, "set fy-start oct");
+        assert_eq!(
+            shell.status_message.as_deref(),
+            Some("oct isn't a value fy-start takes")
+        );
+        assert_eq!(
+            stored(&shell).2.month(),
+            12,
+            "an abbreviation writes nothing"
+        );
+    }
+
+    #[test]
+    fn a_blank_or_over_long_ledger_name_is_refused_and_writes_nothing() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        let long = "x".repeat(lib_core::LedgerName::NAME_MAX + 1);
+        run_command(&mut shell, &format!("set ledger-name {long}"));
+        assert_eq!(
+            shell.status_message.as_deref(),
+            Some("A ledger name is at most 60 characters")
+        );
+        assert_eq!(stored(&shell).0, "Sample Ledger");
+
+        // In place: emptied and saved, the field stays open on the refusal.
+        shell.update(Action::SetSetting(SettingField::LedgerName, None));
+        press(&mut shell, &[KeyCode::Backspace; 13]);
+        press(&mut shell, &[KeyCode::Char(' '), KeyCode::Enter]);
+        assert_eq!(
+            shell.status_message.as_deref(),
+            Some("A ledger needs a name")
+        );
+        assert!(shell.view.editing(), "the typed text is kept open");
+        assert_eq!(stored(&shell).0, "Sample Ledger");
+    }
+
+    #[test]
+    fn a_value_equal_to_whats_stored_once_trimmed_writes_and_says_nothing() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.status_message = None;
+        run_command(&mut shell, "set ledger-name  Sample Ledger ");
+        run_command(&mut shell, "set owner Sam Sample");
+        run_command(&mut shell, "set fy-start july");
+        assert_eq!(shell.status_message, None);
+
+        // In place, the field closes with nothing said.
+        shell.update(Action::SetSetting(SettingField::Owner, None));
+        press(&mut shell, &[KeyCode::Char(' '), KeyCode::Enter]);
+        assert!(!shell.view.editing());
+        assert_eq!(shell.status_message, None);
+    }
+
+    #[test]
+    fn set_owner_with_no_value_opens_the_field_and_emptying_it_clears_the_owner() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        run_command(&mut shell, "set owner");
+        assert!(shell.view.editing(), "the owner is open in place");
+        press(&mut shell, &[KeyCode::Backspace; 10]);
+        press(&mut shell, &[KeyCode::Enter]);
+        assert_eq!(stored(&shell).1, None);
+        assert_eq!(shell.status_message.as_deref(), Some("owner cleared"));
+        assert!(row_of(&drawn(&mut shell), "owner").contains("none"));
+
+        run_command(&mut shell, "set ledger-name");
+        assert!(shell.view.editing(), "the ledger name is open in place");
+    }
+
+    #[test]
+    fn the_financial_year_list_saves_on_enter_and_esc_discards() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::SetSetting(SettingField::FinancialYearStart, None));
+        press(&mut shell, &[KeyCode::Char('j'), KeyCode::Esc]);
+        assert_eq!(stored(&shell).2, lib_core::FinancialYearStart::JULY);
+        shell.update(Action::SetSetting(SettingField::FinancialYearStart, None));
+        press(
+            &mut shell,
+            &[KeyCode::Char('k'), KeyCode::Char('k'), KeyCode::Enter],
+        );
+        assert_eq!(stored(&shell).2.month(), 5);
+        assert_eq!(
+            shell.status_message.as_deref(),
+            Some("financial year starts changed to may")
+        );
+    }
+
+    #[test]
+    fn set_on_a_ledger_preference_with_no_ledger_open_is_refused() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::CloseLedger);
+        for field in [
+            SettingField::LedgerName,
+            SettingField::Owner,
+            SettingField::FinancialYearStart,
+        ] {
+            shell.status_message = None;
+            shell.update(Action::SetSetting(field, Some("january".into())));
+            assert!(
+                shell
+                    .status_message
+                    .as_deref()
+                    .is_some_and(|message| message.contains(OPEN_COMMAND)),
+                "{field:?}: {:?}",
+                shell.status_message
+            );
+        }
     }
 
     #[test]

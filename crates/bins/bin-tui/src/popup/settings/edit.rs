@@ -1,7 +1,7 @@
 //! The in-place editor (TUI-020): `enter` on a form page's field opens it where it sits, as a
 //! bordered, accent-framed box holding the field's own sub-rows, while the rest of the page dims
-//! and the status line shows `INSERT`. Inside it `←→` chooses a segment, `space` toggles a
-//! checkbox, typing edits text, `enter` saves, `tab` saves and moves to the next field, and `esc`
+//! and the status line shows `INSERT`. Inside it `←→` chooses a segment, `j`/`k` move along a
+//! list, `space` toggles a checkbox, typing edits text, `enter` saves, `tab` saves and moves to the next field, and `esc`
 //! keeps the old value.
 //!
 //! The editor holds only the draft: what each field offers and what its sub-rows say are the
@@ -41,6 +41,9 @@ pub enum Draft {
         segments: Vec<Segment>,
         chosen: usize,
     },
+    /// Options listed one per row under the field's own, `j`/`k` (or `↓↑`) moving between them
+    /// and stopping at both ends: for a field with too many options to show side by side.
+    List { items: Vec<Segment>, chosen: usize },
     /// Free text.
     Text(String),
     /// A checkbox, `space` toggling it.
@@ -85,7 +88,11 @@ impl FieldEditor {
     /// The draft as `:set` would take it.
     pub fn value(&self) -> String {
         match &self.draft {
-            Draft::Choice { segments, chosen } => segments
+            Draft::Choice {
+                segments: items,
+                chosen,
+            }
+            | Draft::List { items, chosen } => items
                 .get(*chosen)
                 .map(|segment| segment.value.clone())
                 .unwrap_or_default(),
@@ -97,7 +104,11 @@ impl FieldEditor {
     /// The chosen segment's label, or the text, for the page's sub-rows.
     pub fn label(&self) -> String {
         match &self.draft {
-            Draft::Choice { segments, chosen } => segments
+            Draft::Choice {
+                segments: items,
+                chosen,
+            }
+            | Draft::List { items, chosen } => items
                 .get(*chosen)
                 .map(|segment| segment.label.clone())
                 .unwrap_or_default(),
@@ -119,6 +130,12 @@ impl FieldEditor {
                     (*chosen + count - 1) % count
                 };
             }
+            (Draft::List { items, chosen }, KeyCode::Char('j') | KeyCode::Down) => {
+                *chosen = (*chosen + 1).min(items.len().saturating_sub(1));
+            }
+            (Draft::List { chosen, .. }, KeyCode::Char('k') | KeyCode::Up) => {
+                *chosen = chosen.saturating_sub(1);
+            }
             (Draft::Check(on), KeyCode::Char(' ')) => *on = !*on,
             (Draft::Text(text), KeyCode::Backspace) => {
                 text.pop();
@@ -129,12 +146,23 @@ impl FieldEditor {
         Outcome::Stay
     }
 
-    /// The box's height around `sub_rows` rows below the field's own.
-    pub fn height(sub_rows: usize) -> u16 {
-        u16::try_from(sub_rows).unwrap_or(0).saturating_add(3)
+    /// The box's height around a list's rows and `sub_rows` rows below the field's own.
+    pub fn height(&self, sub_rows: usize) -> u16 {
+        u16::try_from(self.list_rows().len() + sub_rows)
+            .unwrap_or(0)
+            .saturating_add(3)
     }
 
-    /// The box over `area`: the field's label and draft, then each `(label, value)` sub-row.
+    /// A list's options, drawn one per row under the field's own; none for any other draft.
+    fn list_rows(&self) -> &[Segment] {
+        match &self.draft {
+            Draft::List { items, .. } => items,
+            _ => &[],
+        }
+    }
+
+    /// The box over `area`: the field's label and draft, a list's options, then each
+    /// `(label, value)` sub-row.
     pub fn render(
         &self,
         frame: &mut Frame<'_>,
@@ -147,7 +175,9 @@ impl FieldEditor {
         let inner = block.inner(area).inner(Margin::new(1, 0));
         frame.render_widget(block, area);
 
-        let rows = Layout::vertical(vec![Constraint::Length(1); sub_rows.len() + 1]).split(inner);
+        let list = self.list_rows();
+        let rows = Layout::vertical(vec![Constraint::Length(1); list.len() + sub_rows.len() + 1])
+            .split(inner);
         let bold = Style::default().add_modifier(Modifier::BOLD);
         if let Some(head) = rows.first() {
             let [label, draft] =
@@ -161,7 +191,25 @@ impl FieldEditor {
             let scroll = self.choice_scroll(draft.width);
             frame.render_widget(Paragraph::new(line).scroll((0, scroll)), draft);
         }
-        for ((label, value), row) in sub_rows.iter().zip(rows.iter().skip(1)) {
+        let chosen = match &self.draft {
+            Draft::List { chosen, .. } => Some(*chosen),
+            _ => None,
+        };
+        for (index, (item, row)) in list.iter().zip(rows.iter().skip(1)).enumerate() {
+            let [_, value_area] =
+                Layout::horizontal([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
+                    .areas(*row);
+            let style = if Some(index) == chosen {
+                c.selection()
+            } else {
+                c.muted()
+            };
+            frame.render_widget(
+                Paragraph::new(Span::styled(format!(" {} ", item.label), style)),
+                value_area,
+            );
+        }
+        for ((label, value), row) in sub_rows.iter().zip(rows.iter().skip(1 + list.len())) {
             let [label_area, value_area] =
                 Layout::horizontal([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
                     .areas(*row);
@@ -210,6 +258,10 @@ impl FieldEditor {
                 }
                 "←→"
             }
+            Draft::List { .. } => {
+                spans.push(Span::raw(self.label()));
+                "j/k"
+            }
             Draft::Text(text) => {
                 spans.push(Span::raw(text.clone()));
                 spans.push(Span::styled("▌", c.cursor()));
@@ -228,6 +280,7 @@ impl FieldEditor {
     pub fn hints(&self, back: &str) -> Vec<(String, String)> {
         let mut hints = match self.draft {
             Draft::Choice { .. } => vec![("←→".to_string(), msg::tui_settings_hint_choose())],
+            Draft::List { .. } => vec![("j/k".to_string(), msg::tui_settings_hint_choose())],
             Draft::Check(_) => vec![("space".to_string(), msg::tui_settings_hint_toggle())],
             Draft::Text(_) => Vec::new(),
         };
@@ -300,6 +353,35 @@ mod tests {
                 .choice_scroll(1),
             0
         );
+    }
+
+    #[test]
+    fn j_and_k_move_along_a_list_stopping_at_its_ends_and_enter_saves_the_chosen_one() {
+        let items = ["a", "b", "c"]
+            .iter()
+            .map(|label| Segment {
+                value: label.to_string(),
+                label: label.to_uppercase(),
+            })
+            .collect();
+        let mut editor = FieldEditor::new(
+            SettingField::FinancialYearStart,
+            Draft::List { items, chosen: 1 },
+            "B".into(),
+        );
+        assert_eq!(editor.height(2), 3 + 3 + 2, "a row per option");
+        editor.handle_key(key(KeyCode::Char('k')));
+        editor.handle_key(key(KeyCode::Char('k')));
+        assert_eq!(editor.value(), "a", "k stops at the first");
+        for _ in 0..3 {
+            editor.handle_key(key(KeyCode::Char('j')));
+        }
+        assert_eq!((editor.value(), editor.label()), ("c".into(), "C".into()));
+        assert_eq!(
+            editor.handle_key(key(KeyCode::Enter)),
+            Outcome::Save("c".into())
+        );
+        assert_eq!(editor.handle_key(key(KeyCode::Esc)), Outcome::Keep);
     }
 
     #[test]
