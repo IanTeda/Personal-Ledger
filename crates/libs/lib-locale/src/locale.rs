@@ -3,6 +3,7 @@
 use std::fmt;
 use std::str::FromStr;
 
+use lib_core::FinancialYearStart;
 use unic_langid::LanguageIdentifier;
 
 use crate::error::{Error, Result};
@@ -74,6 +75,16 @@ impl Locale {
             Locale::EnGb => &[Locale::EnGb, Locale::EnUs],
             Locale::EnAu => &[Locale::EnAu, Locale::EnGb, Locale::EnUs],
             Locale::EnXa => &[Locale::EnXa, Locale::EnUs],
+        }
+    }
+
+    /// The month a new Ledger's Financial Year starts in for this Locale (ADR-0061): the
+    /// Australian July, the British April, and January (the calendar year) everywhere else.
+    pub fn financial_year_start(self) -> FinancialYearStart {
+        match self {
+            Locale::EnAu => FinancialYearStart::JULY,
+            Locale::EnGb => FinancialYearStart::APRIL,
+            Locale::EnUs | Locale::EnXa => FinancialYearStart::JANUARY,
         }
     }
 
@@ -154,6 +165,14 @@ mod tests {
         assert_eq!(Locale::EnGb.fallback_chain(), &[Locale::EnGb, Locale::EnUs]);
         assert_eq!(Locale::EnXa.fallback_chain(), &[Locale::EnXa, Locale::EnUs]);
         assert_eq!(Locale::EnUs.fallback_chain(), &[Locale::EnUs]);
+    }
+
+    #[test]
+    fn each_locale_has_its_financial_year_start() {
+        assert_eq!(Locale::EnAu.financial_year_start().month(), 7);
+        assert_eq!(Locale::EnGb.financial_year_start().month(), 4);
+        assert_eq!(Locale::EnUs.financial_year_start().month(), 1);
+        assert_eq!(Locale::EnXa.financial_year_start().month(), 1);
     }
 
     #[test]

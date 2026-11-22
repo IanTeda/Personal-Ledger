@@ -27,7 +27,7 @@ pub use input::{
     DateField, DateInputError, DateInputOptions, date_error_message, format_date_input,
     optional_date_message, parse_date, parse_date_with, parse_optional_date,
 };
-pub use number::format_number;
+pub use number::{format_count, format_number};
 pub use time::{format_time, format_time_minutes};
 
 use std::cell::RefCell;

@@ -13,9 +13,9 @@ use bigdecimal::BigDecimal;
 use chrono::{NaiveDate, NaiveTime};
 use lib_core::{DateStyle, Money, UnitKind};
 use lib_locale::format::{
-    Amount, AmountStyle, Unit, format_amount, format_date, format_money, format_month,
-    format_month_day, format_number, format_time, format_time_minutes, format_year_month,
-    parse_positive_amount, upper,
+    Amount, AmountStyle, Unit, format_amount, format_count, format_date, format_money,
+    format_month, format_month_day, format_number, format_time, format_time_minutes,
+    format_year_month, parse_positive_amount, upper,
 };
 use lib_locale::{Locale, with_locale};
 
@@ -34,6 +34,18 @@ fn fiat(amount: &str, code: &str, decimal_places: u32, locale: Locale) -> String
             &Unit::new(code, &UnitKind::Currency, decimal_places),
         )
     })
+}
+
+#[test]
+fn counts_group_without_fraction_digits_in_every_locale() {
+    for locale in [Locale::EnUs, Locale::EnGb, Locale::EnAu, Locale::EnXa] {
+        with_locale(locale, || {
+            assert_eq!(format_count(0), "0");
+            assert_eq!(format_count(999), "999");
+            assert_eq!(format_count(1_680), "1,680");
+            assert_eq!(format_count(1_234_567), "1,234,567");
+        });
+    }
 }
 
 #[test]

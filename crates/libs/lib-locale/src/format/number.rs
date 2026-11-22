@@ -60,3 +60,14 @@ pub fn format_number(amount: &Money, fraction_digits: u32) -> String {
         amount.0.to_plain_string()
     })
 }
+
+/// Formats a count with the Locale's grouping and no fraction digits (`1,680` in `en-AU`), so
+/// every count a Client shows groups the same way.
+pub fn format_count(count: usize) -> String {
+    let formatted = decimal_formatter(crate::locale())
+        .map(|formatter| formatter.format(&Decimal::from(count)).to_string());
+    formatted.unwrap_or_else(|error| {
+        tracing::warn!(%error, "count formatting failed; using plain text");
+        count.to_string()
+    })
+}

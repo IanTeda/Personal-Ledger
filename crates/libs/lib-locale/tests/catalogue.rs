@@ -129,3 +129,19 @@ fn generated_rich_accessor_survives_en_xa() {
     assert!(segments.first().is_some_and(|s| s.text.starts_with('[')));
     assert!(segments.last().is_some_and(|s| s.text.ends_with(']')));
 }
+
+#[test]
+fn the_ledger_name_messages_read_through_their_accessors() {
+    with_locale(Locale::EnUs, || {
+        assert_eq!(msg::ledger_name_error_blank(), "A ledger needs a name");
+        assert_eq!(
+            msg::ledger_name_error_too_long(60),
+            "A ledger name is at most 60 characters"
+        );
+        assert_eq!(
+            msg::ledger_name_error_too_long(1),
+            "A ledger name is at most 1 character"
+        );
+        assert_eq!(msg::ledger_name_fallback(), "My ledger");
+    });
+}
