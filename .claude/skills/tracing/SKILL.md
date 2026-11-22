@@ -10,14 +10,14 @@ Who logs what is decided in ADR-0047 (`docs/adr/0047-interactors-log-ledger-chan
 ## By VIPER layer
 
 - **Interactor:** one `info!` per intent that changes the Ledger, with its outcome: done, or refused with the refusal. A refusal is `info`, not `warn`. Reads (filters, searches, actuals) never log.
-- **Presenter, View, Router:** never log.
+- **Presenter, View, Router:** never log, except a dead arm, which logs at `error` in any layer since it fires only on a bug (ADR-0047). Its wording is in `/rust-style`'s **Matching on an `Error`**.
 - **Adapter and writer (`lib-database`):** `#[tracing::instrument(level = "debug", skip_all, err)]` on functions returning `Result` (load, reload, seed, open), `debug!` for how a change reached storage, `error!` for a failed or lost write.
 - **Bin:** startup and wiring (Ledger opened, window opened), `error!` for what fails there.
 - The Sync Server and `lib-database`'s per-entity modules (`categories/`, `payees/`, …) are outside this; don't copy their style into a feature crate.
 
 ## Levels
 
-- **ERROR** — work lost or not done: a failed write, a Ledger that won't open, a window that won't open.
+- **ERROR** — work lost or not done: a failed write, a Ledger that won't open, a window that won't open, a dead arm (a bug).
 - **WARN** — system trouble that recovered: a Colour Theme pair below contrast, a Configuration fallback, a retry. Never a refusal.
 - **INFO** — a change to the Ledger and its outcome, startup and shutdown.
 - **DEBUG** — how storage was reached: loads, reloads, row counts, writer jobs.
