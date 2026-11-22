@@ -292,8 +292,13 @@ fn load(file: &Path, is_root: bool, out: &mut Vec<(PathBuf, syn::File)>) {
             .map(|(dir, stem)| dir.join(stem)),
     }
     .unwrap_or_default();
-    out.push((file.to_path_buf(), parsed.clone()));
-    collect_modules(&parsed.items, &module_dir, out);
+    // Pushed before its modules load, so the seen check above stops a module loading twice; its
+    // items are lent out while they do, rather than the whole file cloned.
+    let index = out.len();
+    out.push((file.to_path_buf(), parsed));
+    let items = std::mem::take(&mut out[index].1.items);
+    collect_modules(&items, &module_dir, out);
+    out[index].1.items = items;
 }
 
 /// Every source file the crate's lib and bin targets compile, parsed.
@@ -391,21 +396,20 @@ fn structural_violations(krate: &Crate) -> Vec<String> {
     if !error_rs.is_file() {
         found.push(format!("{name}: has no src/error.rs"));
     }
+    let sources = crate_sources(dir);
     let lib_rs = dir.join("src/lib.rs");
-    if lib_rs.is_file() {
-        let parsed = syn::parse_file(&fs::read_to_string(&lib_rs).unwrap_or_default())
-            .expect("lib.rs should parse");
-        if !reexports_error(&parsed) {
+    if let Some((_, parsed)) = sources.iter().find(|(file, _)| *file == lib_rs) {
+        if !reexports_error(parsed) {
             found.push(format!(
                 "{name}: lib.rs lacks `pub use error::{{Error, Result}}`"
             ));
         }
-        if declares_public_error_module(&parsed) {
+        if declares_public_error_module(parsed) {
             found.push(format!("{name}: lib.rs declares error as a public module"));
         }
     }
     let mut aliases_in_error_rs = 0;
-    for (file, parsed) in crate_sources(dir) {
+    for (file, parsed) in sources {
         let mut aliases = ResultAliases::default();
         aliases.visit_file(&parsed);
         let top_level = parsed.items.iter().filter_map(|item| match item {
@@ -1088,12 +1092,13 @@ fn the_structural_check_flags_a_public_error_module() {
             ("src/error.rs", &format!("pub enum Error {{}}\n{ALIAS}\n")),
         ],
     );
-    let found = structural_violations(&Crate::at(&krate.0));
+    let public = Crate::at(&krate.0);
+    let found = structural_violations(&public);
     assert_eq!(
         found,
         vec![
             "error_convention_public: lib.rs declares error as a public module"
-                .replace("error_convention_public", &Crate::at(&krate.0).name)
+                .replace("error_convention_public", &public.name)
         ]
     );
 }
