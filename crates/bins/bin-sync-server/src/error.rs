@@ -3,15 +3,27 @@
 //! One `Error` for the whole bin (#1312, point 7): the start-up failures `main.rs` carries up
 //! with `?`, the fields a Client's `Push` or `Pull` sends that don't parse, and the `/token`
 //! refusals. Each variant's `#[error]` text is the body a Client reads, so it is the response
-//! wording, not log prose. The two boundaries, [`From<Error> for tonic::Status`] and
-//! [`IntoResponse for Error`], pick the status per variant, and answer an internal failure with
-//! "internal error" after logging it, so a library's text never reaches a Client over HTTP.
+//! wording, not log prose. [`Error::kind`] sorts each variant once, and the two boundaries,
+//! [`From<Error> for tonic::Status`] and [`IntoResponse for Error`], pick their status from that
+//! sort, answering an internal failure with "internal error" after logging it, so a library's
+//! text never reaches a Client.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
-/// The body an HTTP Client reads for a failure that is the Sync Server's, not the request's.
+/// What a Client reads for a failure that is the Sync Server's, not the request's.
 const INTERNAL_ERROR: &str = "internal error";
+
+/// How a boundary answers an [`Error`]: the one sort both protocols share, so a new variant is
+/// decided once, in [`Error::kind`], rather than in each boundary's match.
+enum Kind {
+    /// The request was malformed or refused: `InvalidArgument` over gRPC, 400 over HTTP.
+    Invalid,
+    /// The caller isn't, or is no longer, a sync user: `Unauthenticated` over gRPC, 401 over HTTP.
+    Unauthenticated,
+    /// The Sync Server's own failure, logged and answered with [`INTERNAL_ERROR`].
+    Internal,
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -88,30 +100,34 @@ pub enum Error {
 /// This crate's fallible results.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-impl From<Error> for tonic::Status {
-    fn from(err: Error) -> Self {
-        match err {
+impl Error {
+    /// The one match that lists every variant, so the compiler asks for a sort for each new one.
+    fn kind(&self) -> Kind {
+        match self {
             Error::InvalidRowId { .. }
             | Error::InvalidHlc { .. }
             | Error::MissingField(_)
             | Error::InvalidCode
             | Error::RedirectMismatch
-            | Error::PkceMismatch => tonic::Status::invalid_argument(err.to_string()),
-            Error::NoSyncUser | Error::RefreshTokenRejected => {
-                tonic::Status::unauthenticated(err.to_string())
-            }
-            // A Database failure has always been answered with its text over gRPC; keeping it
-            // keeps the response a Client sees.
-            Error::Database(_) => {
-                tracing::error!("Sync request failed: {err}");
-                tonic::Status::internal(err.to_string())
-            }
+            | Error::PkceMismatch => Kind::Invalid,
+            Error::NoSyncUser | Error::RefreshTokenRejected => Kind::Unauthenticated,
             Error::Config(_)
             | Error::Telemetry(_)
+            | Error::Database(_)
             | Error::AddrParse(_)
             | Error::Io(_)
             | Error::PasswordHash(_)
-            | Error::Jwt(_) => {
+            | Error::Jwt(_) => Kind::Internal,
+        }
+    }
+}
+
+impl From<Error> for tonic::Status {
+    fn from(err: Error) -> Self {
+        match err.kind() {
+            Kind::Invalid => tonic::Status::invalid_argument(err.to_string()),
+            Kind::Unauthenticated => tonic::Status::unauthenticated(err.to_string()),
+            Kind::Internal => {
                 tracing::error!("Sync request failed: {err}");
                 tonic::Status::internal(INTERNAL_ERROR)
             }
@@ -121,26 +137,14 @@ impl From<Error> for tonic::Status {
 
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
-        let status = match self {
-            Error::InvalidRowId { .. }
-            | Error::InvalidHlc { .. }
-            | Error::MissingField(_)
-            | Error::InvalidCode
-            | Error::RedirectMismatch
-            | Error::PkceMismatch => StatusCode::BAD_REQUEST,
-            Error::NoSyncUser | Error::RefreshTokenRejected => StatusCode::UNAUTHORIZED,
-            Error::Config(_)
-            | Error::Telemetry(_)
-            | Error::Database(_)
-            | Error::AddrParse(_)
-            | Error::Io(_)
-            | Error::PasswordHash(_)
-            | Error::Jwt(_) => {
+        match self.kind() {
+            Kind::Invalid => (StatusCode::BAD_REQUEST, self.to_string()).into_response(),
+            Kind::Unauthenticated => (StatusCode::UNAUTHORIZED, self.to_string()).into_response(),
+            Kind::Internal => {
                 tracing::error!("Auth request failed: {self}");
-                return (StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERROR).into_response();
+                (StatusCode::INTERNAL_SERVER_ERROR, INTERNAL_ERROR).into_response()
             }
-        };
-        (status, self.to_string()).into_response()
+        }
     }
 }
 
@@ -199,10 +203,7 @@ mod tests {
     fn database_maps_to_internal() {
         let status: tonic::Status = database_error().into();
         assert_eq!(status.code(), tonic::Code::Internal);
-        assert_eq!(
-            status.message(),
-            "Database error: Error building category: DB down"
-        );
+        assert_eq!(status.message(), "internal error");
     }
 
     #[tokio::test]
