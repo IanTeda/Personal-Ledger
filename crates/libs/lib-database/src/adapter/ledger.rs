@@ -2,15 +2,15 @@
 //! the one-row `ledger` table (ADR-0061). The row's `base_unit_id` is the Units adapter's, so each
 //! adapter reads and writes only its own columns of the one row.
 //!
-//! It loads the row into memory, blocking, as every adapter does (ADR-0046). Nothing edits the
-//! three yet, so it holds no writes: creating a Ledger inserts the whole row
-//! ([`create_in`]), and the Sample Ledger's seed does the same where there is none ([`seed_in`]).
+//! It loads the row into memory, blocking, as every adapter does (ADR-0046). Each edit updates
+//! only its own column; creating a Ledger inserts the whole row ([`create_in`]), and the Sample
+//! Ledger's seed does the same where there is none ([`seed_in`]).
 
 use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId};
 use sqlx::SqliteConnection;
 
 use crate::commit::PendingWrites;
-use crate::writer::Domain;
+use crate::writer::{BoxFuture, Change, Domain};
 use crate::{Error, Result};
 
 /// The Ledger name, Owner and Financial year start, as the `ledger` row holds them.
@@ -63,6 +63,63 @@ impl LedgerAdapter {
 
     pub fn row(&self) -> &LedgerRow {
         &self.row
+    }
+
+    pub fn set_name(&mut self, name: LedgerName) {
+        self.row.name = name.clone();
+        self.pending.push(LedgerChange::Name(name));
+    }
+
+    pub fn set_owner(&mut self, owner: Option<Owner>) {
+        self.row.owner = owner.clone();
+        self.pending.push(LedgerChange::Owner(owner));
+    }
+
+    pub fn set_financial_year_start(&mut self, start: FinancialYearStart) {
+        self.row.financial_year_start = start;
+        self.pending.push(LedgerChange::FinancialYearStart(start));
+    }
+}
+
+/// A queued edit of one column of the `ledger` row.
+enum LedgerChange {
+    Name(LedgerName),
+    Owner(Option<Owner>),
+    FinancialYearStart(FinancialYearStart),
+}
+
+impl Change for LedgerChange {
+    fn domain(&self) -> Domain {
+        Domain::Ledger
+    }
+
+    fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>> {
+        Box::pin(async move {
+            match *self {
+                Self::Name(name) => {
+                    let name = name.as_str();
+                    sqlx::query!("UPDATE ledger SET name = ? WHERE id = 1", name)
+                        .execute(conn)
+                        .await?;
+                }
+                Self::Owner(owner) => {
+                    let owner = owner.as_ref().map(Owner::as_str);
+                    sqlx::query!("UPDATE ledger SET owner = ? WHERE id = 1", owner)
+                        .execute(conn)
+                        .await?;
+                }
+                Self::FinancialYearStart(start) => {
+                    let month = start.month();
+                    sqlx::query!(
+                        "UPDATE ledger SET financial_year_start = ? WHERE id = 1",
+                        month
+                    )
+                    .execute(conn)
+                    .await?;
+                }
+            }
+            Ok(())
+        })
     }
 }
 

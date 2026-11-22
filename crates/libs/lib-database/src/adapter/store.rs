@@ -810,9 +810,15 @@ pub type SharedLedgerStore = Rc<RefCell<dyn LedgerStore>>;
 
 /// The Ledger's own Preferences on the one-row `ledger` table (ADR-0061): its name, Owner and
 /// Financial year start, the adapter or the in-memory row. The base Unit on the same row is the
-/// Units store's. Read-only until the Preferences are edited: creating a Ledger writes the row.
+/// Units store's. Each write changes only its own column, joining the pending batch.
 pub trait LedgerStore {
     fn ledger(&self) -> &LedgerRow;
+
+    fn set_name(&mut self, name: lib_core::LedgerName);
+
+    fn set_owner(&mut self, owner: Option<lib_core::Owner>);
+
+    fn set_financial_year_start(&mut self, start: lib_core::FinancialYearStart);
 
     /// Reads the row back as stored.
     ///
@@ -826,6 +832,18 @@ impl LedgerStore for LedgerAdapter {
         self.row()
     }
 
+    fn set_name(&mut self, name: lib_core::LedgerName) {
+        LedgerAdapter::set_name(self, name);
+    }
+
+    fn set_owner(&mut self, owner: Option<lib_core::Owner>) {
+        LedgerAdapter::set_owner(self, owner);
+    }
+
+    fn set_financial_year_start(&mut self, start: lib_core::FinancialYearStart) {
+        LedgerAdapter::set_financial_year_start(self, start);
+    }
+
     fn reload(&mut self) -> Result<()> {
         LedgerAdapter::reload(self)
     }
@@ -837,15 +855,42 @@ impl LedgerStore for LedgerRow {
         self
     }
 
+    fn set_name(&mut self, name: lib_core::LedgerName) {
+        self.name = name;
+    }
+
+    fn set_owner(&mut self, owner: Option<lib_core::Owner>) {
+        self.owner = owner;
+    }
+
+    fn set_financial_year_start(&mut self, start: lib_core::FinancialYearStart) {
+        self.financial_year_start = start;
+    }
+
     fn reload(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
-/// The store; it writes nothing yet, so there is nothing to note.
+/// The store, noting [`Domain::Ledger`] written on every write.
 impl<S: LedgerStore + ?Sized> LedgerStore for Recorded<S> {
     fn ledger(&self) -> &LedgerRow {
         self.store.ledger()
+    }
+
+    fn set_name(&mut self, name: lib_core::LedgerName) {
+        self.store.written.note(self.domain);
+        self.store.store.set_name(name);
+    }
+
+    fn set_owner(&mut self, owner: Option<lib_core::Owner>) {
+        self.store.written.note(self.domain);
+        self.store.store.set_owner(owner);
+    }
+
+    fn set_financial_year_start(&mut self, start: lib_core::FinancialYearStart) {
+        self.store.written.note(self.domain);
+        self.store.store.set_financial_year_start(start);
     }
 
     fn reload(&mut self) -> Result<()> {

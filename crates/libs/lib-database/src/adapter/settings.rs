@@ -4,16 +4,16 @@
 //! still the Units page's Set base unit Dialog's rule, so the write reuses its Interactor rather
 //! than moving it here: a Unit that is gone or inactive is refused as it is there.
 
-use lib_core::{UnitId, UnitRef};
+use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId, UnitRef};
 use lib_settings::{
-    BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerSummaries, LedgerUnits,
+    BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerReads, LedgerSummaries,
 };
 use lib_units::interactor::SetBaseUnit;
 use lib_units::{UnitUse, units_by_code};
 
 use super::store::{
     SharedAccountsStore, SharedCategoriesStore, SharedDocumentsStore, SharedInstitutionsStore,
-    SharedInventoryStore, SharedPayeesStore, SharedStores, SharedTagsStore,
+    SharedInventoryStore, SharedLedgerStore, SharedPayeesStore, SharedStores, SharedTagsStore,
     SharedTransactionsStore, SharedUnitsStore, StoredTagReads,
 };
 use super::units;
@@ -24,6 +24,7 @@ use super::units;
 #[derive(Clone)]
 pub(crate) struct StoredSettingsReads {
     pub units: SharedUnitsStore,
+    pub ledger: SharedLedgerStore,
     pub institutions: SharedInstitutionsStore,
     pub accounts: SharedAccountsStore,
     pub categories: SharedCategoriesStore,
@@ -39,6 +40,7 @@ impl StoredSettingsReads {
     pub fn over(stores: &SharedStores) -> Self {
         Self {
             units: stores.units.clone(),
+            ledger: stores.ledger.clone(),
             institutions: stores.institutions.clone(),
             accounts: stores.accounts.clone(),
             categories: stores.categories.clone(),
@@ -106,7 +108,7 @@ impl LedgerSummaries for StoredSettingsReads {
     }
 }
 
-impl LedgerUnits for StoredSettingsReads {
+impl LedgerReads for StoredSettingsReads {
     /// The active Units, by code.
     fn choices(&self) -> Vec<UnitRef> {
         let units = self.units.borrow().units().units();
@@ -120,17 +122,31 @@ impl LedgerUnits for StoredSettingsReads {
     fn base_unit(&self) -> Option<UnitId> {
         Some(self.units.borrow().base_unit().base_unit())
     }
+
+    fn name(&self) -> LedgerName {
+        self.ledger.borrow().ledger().name.clone()
+    }
+
+    fn owner(&self) -> Option<Owner> {
+        self.ledger.borrow().ledger().owner.clone()
+    }
+
+    fn financial_year_start(&self) -> FinancialYearStart {
+        self.ledger.borrow().ledger().financial_year_start
+    }
 }
 
-/// `lib-settings`' write port over the Units store the Units module also holds. The write joins
-/// the pending batch every adapter shares, so the bin's one commit after the input sends it.
+/// `lib-settings`' write port over the Units store the Units module also holds, for the base
+/// Unit, and the Ledger store for the name, Owner and Financial year start. A write joins the
+/// pending batch every adapter shares, so the bin's one commit after the input sends it.
 pub(crate) struct LedgerPreferencesAdapter {
     units: SharedUnitsStore,
+    ledger: SharedLedgerStore,
 }
 
 impl LedgerPreferencesAdapter {
-    pub fn new(units: SharedUnitsStore) -> Self {
-        Self { units }
+    pub fn new(units: SharedUnitsStore, ledger: SharedLedgerStore) -> Self {
+        Self { units, ledger }
     }
 }
 
@@ -146,6 +162,18 @@ impl LedgerPreferences for LedgerPreferencesAdapter {
                 Err(_) => BaseUnitAnswer::Refused,
             }
         })
+    }
+
+    fn set_name(&self, name: LedgerName) {
+        self.ledger.borrow_mut().set_name(name);
+    }
+
+    fn set_owner(&self, owner: Option<Owner>) {
+        self.ledger.borrow_mut().set_owner(owner);
+    }
+
+    fn set_financial_year_start(&self, start: FinancialYearStart) {
+        self.ledger.borrow_mut().set_financial_year_start(start);
     }
 }
 
@@ -185,11 +213,20 @@ mod tests {
         ports
     }
 
-    fn pair(units: SharedUnitsStore) -> (StoredSettingsReads, LedgerPreferencesAdapter) {
+    fn pair(
+        units: SharedUnitsStore,
+        ledger: SharedLedgerStore,
+    ) -> (StoredSettingsReads, LedgerPreferencesAdapter) {
+        let mut stores = sample_stores(units.clone());
+        stores.ledger = ledger.clone();
         (
-            StoredSettingsReads::over(&sample_stores(units.clone())),
-            LedgerPreferencesAdapter::new(units),
+            StoredSettingsReads::over(&stores),
+            LedgerPreferencesAdapter::new(units, ledger),
         )
+    }
+
+    fn sample_ledger() -> SharedLedgerStore {
+        Rc::new(RefCell::new(crate::seed::sample_ledger_row()))
     }
 
     /// The in-memory Units `Stores::fake` holds.
@@ -200,7 +237,10 @@ mod tests {
         type Writes = LedgerPreferencesAdapter;
 
         fn create(&mut self, deactivated: &[UnitId]) -> (Self::Reads, Self::Writes) {
-            pair(Rc::new(RefCell::new(sample_units(deactivated))))
+            pair(
+                Rc::new(RefCell::new(sample_units(deactivated))),
+                sample_ledger(),
+            )
         }
     }
 
@@ -260,9 +300,79 @@ mod tests {
         fn create(&mut self, deactivated: &[UnitId]) -> (Self::Reads, Self::Writes) {
             UnitsAdapter::seed_from(&self.writer, sample_units(deactivated))
                 .expect("the Units are written");
+            // Seeding the Units wrote the ledger row with its base Unit, so the Preferences are
+            // set on it as the Sample Ledger holds them.
+            let row = crate::seed::sample_ledger_row();
+            self.writer
+                .run(move |pool| async move {
+                    sqlx::query("UPDATE ledger SET name = ?, owner = ?, financial_year_start = ?")
+                        .bind(row.name.as_str())
+                        .bind(row.owner.as_ref().map(Owner::as_str))
+                        .bind(row.financial_year_start.month())
+                        .execute(&pool)
+                        .await?;
+                    Ok(())
+                })
+                .expect("the Ledger row is set");
             let units = UnitsAdapter::load(self.pending.clone()).expect("the Units load");
-            pair(Rc::new(RefCell::new(units)))
+            let ledger = crate::LedgerAdapter::load(self.pending.clone()).expect("the row loads");
+            pair(Rc::new(RefCell::new(units)), Rc::new(RefCell::new(ledger)))
         }
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn the_preferences_read_as_the_sample_holds_them(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::the_preferences_read_as_the_sample_holds_them(&mut AdapterFactory::new(options));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn a_saved_preference_reads_back(_: SqlitePoolOptions, options: SqliteConnectOptions) {
+        contract::a_saved_preference_reads_back(&mut AdapterFactory::new(options));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn no_owner_clears_the_owner(_: SqlitePoolOptions, options: SqliteConnectOptions) {
+        contract::no_owner_clears_the_owner(&mut AdapterFactory::new(options));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn the_three_preferences_land_in_the_file(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let (_, writes) = factory.create(&[]);
+        writes.set_name(LedgerName::new("Household").expect("a name"));
+        writes.set_owner(None);
+        writes.set_financial_year_start(FinancialYearStart::APRIL);
+        // A commit sends them, so a fresh load sees the row as written.
+        crate::Commit::commit(&factory.pending);
+        factory
+            .writer
+            .run(|_| async { Ok(()) })
+            .expect("the writer is idle");
+
+        let fresh = crate::LedgerAdapter::load(factory.pending.clone()).expect("the row loads");
+        assert_eq!(fresh.row().name.as_str(), "Household");
+        assert_eq!(fresh.row().owner, None);
+        assert_eq!(fresh.row().financial_year_start, FinancialYearStart::APRIL);
+    }
+
+    #[test]
+    fn a_write_notes_the_ledger_domain() {
+        let (stores, _) = crate::Stores::fake(crate::FakeStores::sample(today()));
+        let shared = stores.share();
+        let writes = LedgerPreferencesAdapter::new(
+            shared.stores.units.clone(),
+            shared.stores.ledger.clone(),
+        );
+
+        writes.set_owner(None);
+
+        assert_eq!(shared.commit.commit().wrote, [crate::Domain::Ledger]);
     }
 
     #[sqlx::test(migrations = "migrations/client")]

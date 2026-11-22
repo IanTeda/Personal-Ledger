@@ -1,5 +1,5 @@
 //! Settings › Ledger's Presenter: the Base unit select, the Ledger's one Preference here, read
-//! through [`LedgerUnits`] and written through [`LedgerPreferences`], so it holds no Units of its
+//! through [`LedgerReads`] and written through [`LedgerPreferences`], so it holds no Units of its
 //! own and a change made anywhere shows at once. The name, owner and financial-year fields and the
 //! THIS LEDGER summary are the mockup's placeholder values until those Preferences persist.
 
@@ -14,7 +14,7 @@ use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
 use crate::msg;
-use crate::protocols::{BaseUnitAnswer, LedgerPreferences, LedgerRouter, LedgerUnits};
+use crate::protocols::{BaseUnitAnswer, LedgerPreferences, LedgerReads, LedgerRouter};
 
 /// What Settings › Ledger is told and the person asks of it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,7 +30,7 @@ pub enum LedgerEvent {
 
 /// What the Client hands Settings › Ledger as it builds it.
 pub struct LedgerSetup {
-    pub units: Rc<dyn LedgerUnits>,
+    pub units: Rc<dyn LedgerReads>,
     pub preferences: Rc<dyn LedgerPreferences>,
 }
 
@@ -70,7 +70,7 @@ pub struct LedgerViewModel {
 
 /// Settings › Ledger's Presenter.
 pub struct LedgerPresenter {
-    units: Rc<dyn LedgerUnits>,
+    units: Rc<dyn LedgerReads>,
     preferences: Rc<dyn LedgerPreferences>,
     keymap: Keymap<LedgerEvent>,
     back_chord: String,

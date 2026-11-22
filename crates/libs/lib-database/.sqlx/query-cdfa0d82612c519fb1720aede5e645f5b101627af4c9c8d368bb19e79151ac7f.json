@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE ledger SET financial_year_start = ? WHERE id = 1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "cdfa0d82612c519fb1720aede5e645f5b101627af4c9c8d368bb19e79151ac7f"
+}

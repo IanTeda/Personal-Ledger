@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use lib_colour_theme::ColourAppearance;
 use lib_core::configuration::{ConfigKey, ConfigValue};
-use lib_core::{Money, UnitId, UnitRef};
+use lib_core::{FinancialYearStart, LedgerName, Money, Owner, UnitId, UnitRef};
 use lib_toast::Notify;
 
 use crate::error::Error;
@@ -215,19 +215,28 @@ pub trait TracingLog {
 /// summaries read and the base Unit write, all trait objects the persistence layer fills.
 #[derive(Clone)]
 pub struct SettingsLedger {
-    pub units: Rc<dyn LedgerUnits>,
+    pub units: Rc<dyn LedgerReads>,
     pub summaries: Rc<dyn LedgerSummaries>,
     pub preferences: Rc<dyn LedgerPreferences>,
 }
 
 /// What Settings › Ledger reads of the Units: the Client answers it over the Units store
 /// (through `LedgerPorts::settings_ledger()`), so the page never holds a copy.
-pub trait LedgerUnits {
+pub trait LedgerReads {
     /// The Units the Base unit select offers: the active ones, by code.
     fn choices(&self) -> Vec<UnitRef>;
 
     /// The Ledger's base Unit.
     fn base_unit(&self) -> Option<UnitId>;
+
+    /// The Ledger's name, from the Ledger store.
+    fn name(&self) -> LedgerName;
+
+    /// Who the Ledger belongs to, if anyone.
+    fn owner(&self) -> Option<Owner>;
+
+    /// The month the Ledger's Financial year starts in.
+    fn financial_year_start(&self) -> FinancialYearStart;
 }
 
 /// How a write of the base Unit went.
@@ -238,9 +247,17 @@ pub enum BaseUnitAnswer {
     Refused,
 }
 
-/// Writes the Ledger's one Preference, its base Unit.
+/// Writes the Ledger's Preferences: its base Unit, name, Owner and Financial year start. The last
+/// three are not refusable, since their value types have already checked the value.
 pub trait LedgerPreferences {
     fn set_base_unit(&self, id: UnitId) -> BaseUnitAnswer;
+
+    fn set_name(&self, name: LedgerName);
+
+    /// `None` clears the Owner.
+    fn set_owner(&self, owner: Option<Owner>);
+
+    fn set_financial_year_start(&self, start: FinancialYearStart);
 }
 
 /// What only the Shell does once Settings › Ledger has set the base Unit: every view of the Units

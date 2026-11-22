@@ -11,7 +11,8 @@ use std::path::PathBuf;
 
 use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_core::{
-    ColourAppearance, DateStyle, Levels, OnStart, RowDensity, StartView, StatusGlyphs, UnitId,
+    ColourAppearance, DateStyle, FinancialYearStart, LedgerName, Levels, OnStart, Owner,
+    RowDensity, StartView, StatusGlyphs, UnitId,
 };
 
 use std::rc::Rc;
@@ -21,7 +22,7 @@ use crate::error::Error;
 use crate::fake::StoredDevice;
 use crate::interactor::{RemoveSetting, WriteSetting};
 use crate::log::LogLevel;
-use crate::protocols::{BaseUnitAnswer, DeviceAnswer, LedgerPreferences, LedgerUnits, TracingLog};
+use crate::protocols::{BaseUnitAnswer, DeviceAnswer, LedgerPreferences, LedgerReads, TracingLog};
 
 /// Builds the raw file a [`DeviceFile`] contract check runs on, each on a file of its own.
 pub trait DeviceFileFactory {
@@ -483,7 +484,7 @@ pub fn run_all_tracing_log(factory: &mut impl TracingLogFactory) {
 
 /// Builds the read and write ports Settings › Ledger runs on, over the same Units.
 pub trait LedgerFactory {
-    type Reads: LedgerUnits;
+    type Reads: LedgerReads;
     type Writes: LedgerPreferences;
 
     /// The sample Units (aud, btc, vas, aud the base) with those of `deactivated` made inactive,
@@ -525,8 +526,47 @@ pub fn a_unit_that_is_gone_or_inactive_is_refused(factory: &mut impl LedgerFacto
     assert_eq!(reads.base_unit(), Some(UnitId::SEED_AUD));
 }
 
+/// The sample's name, Owner and Financial year start are read before any write.
+pub fn the_preferences_read_as_the_sample_holds_them(factory: &mut impl LedgerFactory) {
+    let (reads, _) = factory.create(&[]);
+
+    assert_eq!(reads.name().as_str(), "Sample Ledger");
+    assert_eq!(reads.owner(), Owner::new("Sam Sample"));
+    assert_eq!(reads.financial_year_start(), FinancialYearStart::JULY);
+}
+
+/// A name, Owner and Financial year start that are written read back, and the base Unit stays.
+#[expect(
+    clippy::expect_used,
+    reason = "the name is a short literal that is never blank"
+)]
+pub fn a_saved_preference_reads_back(factory: &mut impl LedgerFactory) {
+    let (reads, writes) = factory.create(&[]);
+
+    writes.set_name(LedgerName::new("Household").expect("a name"));
+    writes.set_owner(Owner::new("Ian"));
+    writes.set_financial_year_start(FinancialYearStart::APRIL);
+
+    assert_eq!(reads.name().as_str(), "Household");
+    assert_eq!(reads.owner(), Owner::new("Ian"));
+    assert_eq!(reads.financial_year_start(), FinancialYearStart::APRIL);
+    assert_eq!(reads.base_unit(), Some(UnitId::SEED_AUD));
+}
+
+/// No Owner clears the one there was.
+pub fn no_owner_clears_the_owner(factory: &mut impl LedgerFactory) {
+    let (reads, writes) = factory.create(&[]);
+
+    writes.set_owner(None);
+
+    assert_eq!(reads.owner(), None);
+}
+
 /// Runs every Settings › Ledger check on `factory`.
 pub fn run_all_ledger(factory: &mut impl LedgerFactory) {
+    the_preferences_read_as_the_sample_holds_them(factory);
+    a_saved_preference_reads_back(factory);
+    no_owner_clears_the_owner(factory);
     the_choices_are_the_active_units_by_code(factory);
     a_saved_base_unit_reads_back(factory);
     a_unit_that_is_gone_or_inactive_is_refused(factory);

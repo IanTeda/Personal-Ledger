@@ -2,7 +2,7 @@
 //! LEDGER group: `lib-settings`' Ledger Presenter is the [`PageView`] the generic `ModulePage`
 //! hosts (ADR-0056), which the Settings View hosts as any other page. The identity fields and the
 //! summary are the mockup's placeholder values; the *Base unit* select is real, read from the
-//! Units store through `lib-settings`' `LedgerUnits` and set through its
+//! Units store through `lib-settings`' `LedgerReads` and set through its
 //! `LedgerPreferences`, so the page holds no Units. Clicks are Presenter events through
 //! `PageClicks`, and the view model is drawn in `render.rs`. Each key and click is one input
 //! (`crate::input::send`).

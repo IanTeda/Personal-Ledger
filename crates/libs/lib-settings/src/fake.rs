@@ -9,7 +9,7 @@ use std::time::SystemTime;
 
 use lib_colour_theme::ColourAppearance;
 use lib_core::configuration::{ConfigKey, ConfigValue};
-use lib_core::{UnitId, UnitRef};
+use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId, UnitRef};
 use lib_toast::{Notice, Notify};
 
 use crate::device::{ChangeLog, DeviceFile, snapshot};
@@ -18,8 +18,8 @@ use crate::log::{LogLevel, LogLine};
 use crate::page::SettingsPage;
 use crate::presenter::{ClearLogsPresenter, DisplayOutput, LogListChange, LogScroll};
 use crate::protocols::{
-    BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerRouter, LedgerSummaries,
-    LedgerUnits,
+    BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerReads, LedgerRouter,
+    LedgerSummaries,
 };
 use crate::protocols::{DeviceRouter, DeviceSnapshot, SettingsRouter, TracingLog, TracingRouter};
 
@@ -205,10 +205,17 @@ struct LedgerRows {
     /// In code order.
     units: Vec<UnitRef>,
     base: UnitId,
+    name: LedgerName,
+    owner: Option<Owner>,
+    financial_year_start: FinancialYearStart,
 }
 
 impl InMemoryLedgerUnits {
     /// aud, btc and vas, all active, with aud the base.
+    #[expect(
+        clippy::expect_used,
+        reason = "the sample's name is a short literal that is never blank"
+    )]
     pub fn sample() -> Self {
         let unit = |id, code: &str, name: &str, precision| UnitRef {
             id,
@@ -225,6 +232,9 @@ impl InMemoryLedgerUnits {
                     unit(UnitId::SEED_VAS, "vas", "Vanguard Australian Shares", 2),
                 ],
                 base: UnitId::SEED_AUD,
+                name: LedgerName::new("Sample Ledger").expect("a short, non-blank name"),
+                owner: Owner::new("Sam Sample"),
+                financial_year_start: FinancialYearStart::JULY,
             })),
         }
     }
@@ -239,7 +249,7 @@ impl InMemoryLedgerUnits {
     }
 }
 
-impl LedgerUnits for InMemoryLedgerUnits {
+impl LedgerReads for InMemoryLedgerUnits {
     fn choices(&self) -> Vec<UnitRef> {
         self.rows
             .borrow()
@@ -252,6 +262,18 @@ impl LedgerUnits for InMemoryLedgerUnits {
 
     fn base_unit(&self) -> Option<UnitId> {
         Some(self.rows.borrow().base)
+    }
+
+    fn name(&self) -> LedgerName {
+        self.rows.borrow().name.clone()
+    }
+
+    fn owner(&self) -> Option<Owner> {
+        self.rows.borrow().owner.clone()
+    }
+
+    fn financial_year_start(&self) -> FinancialYearStart {
+        self.rows.borrow().financial_year_start
     }
 }
 
@@ -268,6 +290,18 @@ impl LedgerPreferences for InMemoryLedgerUnits {
         } else {
             BaseUnitAnswer::Refused
         }
+    }
+
+    fn set_name(&self, name: LedgerName) {
+        self.rows.borrow_mut().name = name;
+    }
+
+    fn set_owner(&self, owner: Option<Owner>) {
+        self.rows.borrow_mut().owner = owner;
+    }
+
+    fn set_financial_year_start(&self, start: FinancialYearStart) {
+        self.rows.borrow_mut().financial_year_start = start;
     }
 }
 

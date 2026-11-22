@@ -225,7 +225,10 @@ impl LedgerPorts {
                 inventory: stores.inventory.clone(),
             }),
             settings_reads: Rc::new(StoredSettingsReads::over(&stores)),
-            ledger_preferences: Rc::new(LedgerPreferencesAdapter::new(stores.units.clone())),
+            ledger_preferences: Rc::new(LedgerPreferencesAdapter::new(
+                stores.units.clone(),
+                stores.ledger.clone(),
+            )),
             dashboard_reads,
             shell_reads,
             units: Rc::new(RefCell::new(StoredUnitsPorts::new(
