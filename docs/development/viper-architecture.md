@@ -195,7 +195,7 @@ These are the rules Claude follows and a review checks against.
 
 ### Tracing
 
-- An Interactor logs each intent that changes the Ledger at `info`, done or refused; reads never log. Presenters, Views and Routers never log, except a dead arm, which logs at `error` in any layer since it fires only on a bug (ADR-0060). Adapters and the writer log at `debug`, a failed write at `error` (ADR-0047, `/tracing`).
+- An Interactor logs each intent that changes the Ledger at `info`, done or refused; reads never log. Presenters, Views and Routers never log, except a dead arm, which logs at `error` in any layer since it fires only on a bug (ADR-0047; the named arm is ADR-0060's). Adapters and the writer log at `debug`, a failed write at `error` (ADR-0047, `/tracing`).
 - A log field holds ids, kinds, counts and dates only, never an amount, a name or user-entered text.
 
 ### Localisation
