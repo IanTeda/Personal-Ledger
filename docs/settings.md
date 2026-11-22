@@ -359,9 +359,9 @@ General holds what belongs to this device:
 
 Press `l` to move onto On start, `j` and `k` to move between On start, Start view, Toasts, Language and region and Data folder, and `h` and `l` to change the one you are on. Start view and Language and region are dropdowns: on either, `enter` (or a click on the field) opens its list on the current choice, `j` and `k` move through it, `enter` (or a click on an option) picks one and closes the list, and `esc` closes it without changing anything, leaving you on the page. `h` and `l` still step the choice with the list closed. In Language and region each option shows its code after its name, such as `English (Australia) · en-AU`. Beside the fields, the THIS DEVICE box shows the Ledger On start would reopen and the config file Settings writes to.
 
-The Ledger page holds what used to be on General: the Ledger's name, owner, financial year and Base unit.
+The Ledger page holds the Ledger's four Preferences: the Ledger name, the Owner, the month the Financial year starts and the Base unit. They are stored in the Ledger, so every device that opens it shares them. Beside the fields, the THIS LEDGER box shows the Ledger's real counts of accounts, transactions, units and institutions.
 
-Press `l` to move onto Ledger name, and `j` and `k` to move between Ledger name, Owner, Financial year starts and Base unit. Ledger name and Owner are edited where they are: press `enter`, click the field or just start typing, and the status line says INSERT. `enter` saves, `tab` saves and moves to the next field, and `esc` throws your typing away; moving off the field any other way (a click elsewhere, another page, another View) saves it too. Spaces round the text are dropped, and saving what is already there changes nothing. A Ledger needs a name of at most 60 characters: a blank or longer name isn't saved and the field stays open for you to fix it, and leaving a blank name keeps the one it had. An empty Owner clears it. Financial year starts and Base unit are dropdowns: `enter` (or a click) opens the list, `j` and `k` move through it, and `enter`, a click on an option or a click away saves the one highlighted; `esc` closes it without changing anything. Each save is one entry in History, so `u` undoes it.
+Press `l` to move onto Ledger name, and `j` and `k` to move between Ledger name, Owner, Financial year starts and Base unit. Ledger name and Owner are edited where they are: press `enter`, click the field or just start typing, and the status line says INSERT. `enter` saves, `tab` saves and moves to the next field, and `esc` throws your typing away; moving off the field any other way (a click elsewhere, another page, another View) saves it too. Spaces round the text are dropped, and saving what is already there changes nothing. A Ledger needs a name of at most 60 characters: a blank or longer name isn't saved and the field stays open for you to fix it, and leaving a blank name keeps the one it had. An empty Owner clears it. Financial year starts and Base unit are dropdowns: `enter` (or a click) opens the list, `j` and `k` move through it, and `enter`, a click on an option or a click away saves the one highlighted; `esc` closes it without changing anything. Each save is one entry in History, so `u` undoes it. Changing the Financial year start moves every Financial Year derived from it (Bills' and Documents' years) at once, and is still that one History entry.
 
 ### History
 
@@ -493,7 +493,9 @@ The fields `set` takes are `on-start`, `start-view`, `ledger-name`, `owner`, `fy
 - `set fy-start january`: the financial year starts in January (any month, written in full).
 - `set date-style iso`: dates are drawn as `2026-07-01` (or `default`, `short`, `medium` or `long`).
 - `set appearance dark` and `set colour-theme nord`: the same as choosing them from their lists.
-- `set ledger-name The Teda house`: the rest of the line is the value, spaces and all.
+- `set ledger-name The Teda house`: the rest of the line is the value, spaces and all. Spaces round it are dropped, and a blank name or one over 60 characters is refused.
+- `set owner Alex`: sets the Owner; `set owner` with nothing after it clears it.
+- `set fy-start january`, `set ledger-name` and `set owner` save to the Ledger itself, and every change to `fy-start` moves every derived Financial Year at once.
 - `set base btc`: opens the confirmation that changing the base unit always asks for.
 - `set terminal-colours on`, `set glyphs ascii` and `set hint-bar off`: saved to your `personal-ledger.conf` (`off`, `unicode` and `on` undo them).
 - `set on-start none`, `set start-view last` and `set toasts off`: saved to your `personal-ledger.conf` too, as every General and Display field is.
@@ -502,7 +504,6 @@ A field name or value that `set` doesn't know is refused on the status line, whi
 
 ### Heads up
 
-- Ledger name, owner and financial year hold only until you close the app, until the Ledger saves its Preferences.
 - Status glyphs is saved and shown on its row, but the TUI still draws Unicode glyphs either way: it doesn't read the setting yet.
 - Turning Terminal colours off again while the app runs draws the Colour Theme, but System appearance can't follow your terminal's background until a restart: the TUI checks the background only at start-up, and skips the check while Terminal colours is on.
 - The TUI has no History yet: `u` and `ctrl`+`r` on its History page say they are not built yet. Undo and Redo work in the Desktop app (see History below).

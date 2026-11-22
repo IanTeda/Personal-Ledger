@@ -31,13 +31,14 @@ If you've used KMyMoney, GnuCash or Microsoft Money, most of this will feel fami
 
 ## Step 1: Name your ledger
 
-Your ledger is everything you track in one place: your accounts, institutions, categories and transactions. You create it with `:new`, which asks for a folder, a file name and its **base unit** (see [Getting around](getting-around.md#starting-a-new-ledger)). The base unit is the unit most of your money is held in, such as AUD, and the dialog prefills it from your Locale. The new ledger holds nothing else of yours. Then open **Settings** (press `g` then `s`) and choose **General**. Fill in:
+Your ledger is everything you track in one place: your accounts, institutions, categories and transactions. You create it with `:new`, which asks for a folder and a file name (see [Getting around](getting-around.md#starting-a-new-ledger)) and then opens the **Create ledger** dialog, in two stages:
 
-- **Ledger name:** anything that helps you recognise it, such as "Household".
-- **Owner:** your name.
-- **Financial year starts:** the month your financial year begins. In Australia this is normally July. Reports use it to group your figures.
+1. **Base unit:** the unit most of your money is held in, such as AUD. The dialog prefills it from your Locale. Press **Next** to go on.
+2. **Ledger:** the **Ledger name** (prefilled from the file name), the **Owner** (optional) and the month your **Financial year starts** (prefilled from your Locale, normally July in Australia). Reports and Documents count their years from it. Press **Create** to write the ledger.
 
-These can be changed later, and so can the base unit, in **Settings**, then **Ledger**, though not once an account uses the unit you want to move away from.
+**Back** (or `Esc` on the Ledger stage) returns to the Base unit stage, and `Esc` or **Cancel** on the first stage writes nothing. The new ledger holds nothing else of yours.
+
+All of these can be changed later in **Settings**, then **Ledger**: the name, the owner and the financial year start at any time, and the base unit too, though not once an account uses the unit you want to move away from. In the terminal app `:new` asks nothing: it names the ledger for its file, leaves the owner empty and uses your Locale's currency and financial year month.
 
 ## Step 2: Choose your units
 
