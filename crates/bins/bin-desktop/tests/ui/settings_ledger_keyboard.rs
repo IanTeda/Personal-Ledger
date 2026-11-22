@@ -387,3 +387,32 @@ fn esc_collapses_the_list_without_saving_and_l_changes_nothing(app: &mut TestApp
     ui.press("l");
     assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("Jul"));
 }
+
+#[gpui::test]
+fn this_ledger_counts_follow_an_added_account(app: &mut TestAppContext) {
+    let mut ui = on_ledger(app);
+    let figure = |ui: &mut Harness<'_>, label: &str| {
+        ledger(ui)
+            .summary
+            .into_iter()
+            .find(|(name, _)| name == label)
+            .map(|(_, value)| value)
+            .expect("the summary row")
+    };
+    let before: usize = figure(&mut ui, "accounts")
+        .replace(',', "")
+        .parse()
+        .unwrap();
+    assert!(before > 0, "the Sample Ledger has Accounts");
+
+    ui.write_outside(|stores| {
+        let mut store = stores.accounts.borrow_mut();
+        let mut account = lib_database::AccountsStore::accounts(&*store)
+            .accounts()
+            .remove(0);
+        account.id = lib_core::AccountId::new();
+        lib_database::AccountsStore::accounts_mut(&mut *store).upsert_account(account);
+    });
+
+    assert_eq!(figure(&mut ui, "accounts"), (before + 1).to_string());
+}

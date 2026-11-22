@@ -10,7 +10,7 @@
 //! never builds a domain's Presenter. The summary is a plain function of them, handed in as
 //! [`SummarySources`], so the pane follows the cursor without holding state.
 
-use lib_locale::format::{AmountStyle, format_amount};
+use lib_locale::format::{AmountStyle, format_amount, format_count};
 
 use crate::msg;
 use crate::page::{ScopeFacts, ScopeGroup, SettingsPage};
@@ -123,7 +123,7 @@ pub fn summarise(page: SettingsPage, sources: SummarySources<'_>) -> PageSummary
 
 /// A This Ledger page's values, from the Ledger's counts.
 fn ledger_rows(page: SettingsPage, counts: &LedgerCounts) -> Vec<SummaryRow> {
-    let number = |label: String, n: usize| SummaryRow::new(label, n.to_string());
+    let number = |label: String, n: usize| SummaryRow::new(label, format_count(n));
     match page {
         SettingsPage::Ledger => counts
             .base_unit
@@ -160,7 +160,7 @@ fn ledger_rows(page: SettingsPage, counts: &LedgerCounts) -> Vec<SummaryRow> {
             number(msg::settings_summary_categories(), counts.categories),
             SummaryRow::new(
                 msg::settings_summary_levels_deep(),
-                counts.category_levels.to_string(),
+                format_count(counts.category_levels as usize),
             ),
         ],
         SettingsPage::Tags => vec![
@@ -185,8 +185,8 @@ fn ledger_rows(page: SettingsPage, counts: &LedgerCounts) -> Vec<SummaryRow> {
             SummaryRow::new(
                 msg::settings_summary_files_typed(),
                 msg::settings_summary_typed_of(
-                    &counts.files_typed.to_string(),
-                    &counts.files.to_string(),
+                    &format_count(counts.files_typed),
+                    &format_count(counts.files),
                 ),
             ),
         ],

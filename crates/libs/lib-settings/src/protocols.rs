@@ -285,6 +285,8 @@ pub struct LedgerCounts {
     pub base_unit: Option<String>,
     pub institutions: usize,
     pub accounts: usize,
+    /// Every Transaction.
+    pub transactions: usize,
     /// The Accounts counted in the base Unit, summed; `None` when the base Unit is unknown.
     pub net_worth: Option<HeadlineAmount>,
     pub categories: usize,

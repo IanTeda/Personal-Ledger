@@ -1,8 +1,8 @@
 //! Settings › Ledger's Presenter: the Ledger name and Owner edited in place, and the Financial year
 //! starts and Base unit selects, the Ledger's own Preferences (ADR-0061), read through
 //! [`LedgerReads`] and written through [`LedgerPreferences`], so it holds no copy of them and a
-//! change made anywhere (an Undo among them) shows at once. The THIS LEDGER summary is the
-//! mockup's placeholder figures.
+//! change made anywhere (an Undo among them) shows at once. The THIS LEDGER summary counts through
+//! [`LedgerSummaries`] on every view model, caching nothing.
 //!
 //! Its keys are the decision on #1343: `j`/`k` walk the four fields, stopping at the ends. A text
 //! field edits on `enter`, a click or a typed character, in Insert mode, where every key types but
@@ -22,8 +22,12 @@ use lib_viper::keymap::{KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter, TextKey};
 use lib_viper::view::Hint;
 
+use lib_locale::format::format_count;
+
 use crate::msg;
-use crate::protocols::{BaseUnitAnswer, LedgerPreferences, LedgerReads, LedgerRouter};
+use crate::protocols::{
+    BaseUnitAnswer, LedgerPreferences, LedgerReads, LedgerRouter, LedgerSummaries,
+};
 
 /// One of the page's fields, top to bottom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +83,7 @@ pub enum LedgerEvent {
 /// What the Client hands Settings › Ledger as it builds it.
 pub struct LedgerSetup {
     pub units: Rc<dyn LedgerReads>,
+    pub summaries: Rc<dyn LedgerSummaries>,
     pub preferences: Rc<dyn LedgerPreferences>,
 }
 
@@ -192,6 +197,7 @@ impl Keys {
 /// Settings › Ledger's Presenter.
 pub struct LedgerPresenter {
     units: Rc<dyn LedgerReads>,
+    summaries: Rc<dyn LedgerSummaries>,
     preferences: Rc<dyn LedgerPreferences>,
     keys: Keys,
     page_focused: bool,
@@ -204,6 +210,7 @@ impl LedgerPresenter {
     pub fn new(setup: LedgerSetup, config: &KeyBindingConfig) -> Self {
         Self {
             units: setup.units,
+            summaries: setup.summaries,
             preferences: setup.preferences,
             keys: Keys::new(config),
             page_focused: false,
@@ -601,15 +608,27 @@ impl Presenter for LedgerPresenter {
                 highlight: self.highlight(LedgerField::BaseUnit),
             },
             summary_title: msg::settings_ledger_summary_title(),
-            summary: vec![
-                (msg::settings_ledger_summary_accounts(), "7".to_string()),
-                (
-                    msg::settings_ledger_summary_transactions(),
-                    "680".to_string(),
-                ),
-                (msg::settings_ledger_summary_units(), "3".to_string()),
-                (msg::settings_ledger_summary_institutions(), "7".to_string()),
-            ],
+            summary: {
+                let counts = self.summaries.counts();
+                vec![
+                    (
+                        msg::settings_ledger_summary_accounts(),
+                        format_count(counts.accounts),
+                    ),
+                    (
+                        msg::settings_ledger_summary_transactions(),
+                        format_count(counts.transactions),
+                    ),
+                    (
+                        msg::settings_ledger_summary_units(),
+                        format_count(counts.units),
+                    ),
+                    (
+                        msg::settings_ledger_summary_institutions(),
+                        format_count(counts.institutions),
+                    ),
+                ]
+            },
             note: msg::settings_ledger_note(),
             hints: self.hints(),
         }
@@ -703,19 +722,58 @@ mod tests {
     use lib_viper::keymap::KeyBindingConfig;
 
     use super::*;
-    use crate::fake::{InMemoryLedgerUnits, RecordingRouter, Routed};
+    use crate::fake::{FixedLedgerSummaries, InMemoryLedgerUnits, RecordingRouter, Routed};
+    use crate::protocols::LedgerCounts;
 
     fn presenter(units: &InMemoryLedgerUnits) -> LedgerPresenter {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         let mut presenter = LedgerPresenter::new(
             LedgerSetup {
                 units: Rc::new(units.clone()),
+                summaries: Rc::new(FixedLedgerSummaries::sample()),
                 preferences: Rc::new(units.clone()),
             },
             &KeyBindingConfig::default(),
         );
         presenter.handle(LedgerEvent::Focused(true), &mut RecordingRouter::default());
         presenter
+    }
+
+    #[test]
+    fn the_summary_counts_afresh_and_groups_by_locale() {
+        lib_locale::init_with_layers("en-US", &[msg::LAYER]);
+        let units = InMemoryLedgerUnits::sample();
+        let summaries = Rc::new(std::cell::RefCell::new(LedgerCounts::default()));
+        struct Live(Rc<std::cell::RefCell<LedgerCounts>>);
+        impl LedgerSummaries for Live {
+            fn counts(&self) -> LedgerCounts {
+                self.0.borrow().clone()
+            }
+        }
+        let presenter = LedgerPresenter::new(
+            LedgerSetup {
+                units: Rc::new(units.clone()),
+                summaries: Rc::new(Live(summaries.clone())),
+                preferences: Rc::new(units),
+            },
+            &KeyBindingConfig::default(),
+        );
+        let values = |p: &LedgerPresenter| {
+            p.view_model()
+                .summary
+                .into_iter()
+                .map(|(_, v)| v)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(values(&presenter), ["0", "0", "0", "0"]);
+        *summaries.borrow_mut() = LedgerCounts {
+            accounts: 8,
+            transactions: 1680,
+            units: 3,
+            institutions: 7,
+            ..LedgerCounts::default()
+        };
+        assert_eq!(values(&presenter), ["8", "1,680", "3", "7"]);
     }
 
     fn send(presenter: &mut LedgerPresenter, events: &[LedgerEvent]) -> Vec<Routed> {

@@ -603,6 +603,7 @@ impl FixedLedgerSummaries {
             base_unit: Some("aud".to_string()),
             institutions: 7,
             accounts: 7,
+            transactions: 680,
             net_worth: Some(HeadlineAmount {
                 amount: lib_core::Money("83995.87".parse().expect("a decimal literal")),
                 places: 2,

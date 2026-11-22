@@ -91,6 +91,12 @@ impl LedgerSummaries for StoredSettingsReads {
                 .institutions()
                 .len(),
             accounts: accounts.len(),
+            transactions: self
+                .transactions
+                .borrow()
+                .transactions()
+                .transactions()
+                .len(),
             net_worth,
             categories: categories.len(),
             category_levels: lib_categories::levels_deep(&categories),
@@ -253,6 +259,9 @@ mod tests {
         let tags = shared.tags.borrow().tags().tags();
         let categories = shared.categories.borrow().categories().categories();
         assert_eq!(counts.accounts, accounts.len());
+        let transactions = shared.transactions.borrow().transactions().transactions();
+        assert!(!transactions.is_empty());
+        assert_eq!(counts.transactions, transactions.len());
         assert_eq!(counts.tags, lib_tags::active_count(&tags));
         assert_eq!(counts.categories, categories.len());
         assert_eq!(

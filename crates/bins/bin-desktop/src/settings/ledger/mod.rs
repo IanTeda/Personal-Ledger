@@ -37,6 +37,7 @@ pub fn ledger_page(
     let presenter = LedgerPresenter::new(
         LedgerSetup {
             units: ledger.units,
+            summaries: ledger.summaries,
             preferences: ledger.preferences,
         },
         config,
@@ -58,7 +59,13 @@ impl PageView for LedgerPresenter {
 
     /// The Presenter reads the Units and the Ledger's Preferences on each draw, so a write
     /// anywhere, an Undo among them, repaints the page.
-    const REPAINTS: &'static [Domain] = &[Domain::Units, Domain::Ledger];
+    const REPAINTS: &'static [Domain] = &[
+        Domain::Units,
+        Domain::Institutions,
+        Domain::Accounts,
+        Domain::Transactions,
+        Domain::Ledger,
+    ];
 
     /// With the keyboard off the select, the frame scrolls the page.
     fn layout() -> PageLayout {
@@ -122,6 +129,7 @@ impl PageSnapshot for SettingsLedgerSnapshot {
         .find(|(_, focused)| *focused)
         .map(|(field, _)| field);
         let select = view.base_unit;
+        let summary = view.summary;
         SettingsLedgerSnapshot {
             name: view.name.text,
             owner: view.owner.text,
@@ -141,6 +149,7 @@ impl PageSnapshot for SettingsLedgerSnapshot {
                     .find(|option| option.id == chosen)
                     .map(|option| option.code.clone())
             }),
+            summary,
             options: select
                 .options
                 .into_iter()
@@ -171,4 +180,6 @@ pub struct SettingsLedgerSnapshot {
     pub list_open: bool,
     pub base_unit: Option<String>,
     pub options: Vec<String>,
+    /// THIS LEDGER's label and figure pairs, as drawn.
+    pub summary: Vec<(String, String)>,
 }
