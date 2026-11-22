@@ -658,7 +658,7 @@ fn shell_error(error: crate::Error) -> lib_shell::Error {
                 false,
                 "an Undo or Redo step failed outside lib-shell: {other:?}"
             );
-            tracing::error!(error = ?other, "An Undo or Redo step failed");
+            tracing::error!(error = ?other, "an Undo or Redo step failed with an error it never returns");
             lib_shell::Error::LedgerNotSaved { reloaded: false }
         }
     }
