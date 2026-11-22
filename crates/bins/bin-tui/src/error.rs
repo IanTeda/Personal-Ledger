@@ -12,6 +12,10 @@ pub enum Error {
     #[error("Terminal I/O error: {0}")]
     Io(#[from] std::io::Error),
 
+    /// Serialising a file of the client's own, such as the state file, failed.
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
     /// Configuration loading/validation failures.
     #[error("Configuration error: {0}")]
     Config(#[from] lib_config::Error),
@@ -84,3 +88,19 @@ pub enum Error {
 
 /// This crate's fallible results.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn serialise_failure() -> Result<()> {
+        let invalid: serde_json::Result<serde_json::Value> = serde_json::from_str("{");
+        invalid?;
+        Ok(())
+    }
+
+    #[test]
+    fn a_serde_json_failure_converts_into_the_json_variant() {
+        assert!(matches!(serialise_failure(), Err(Error::Json(_))));
+    }
+}

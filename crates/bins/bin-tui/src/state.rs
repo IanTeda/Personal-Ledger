@@ -6,10 +6,7 @@
 //! person edits by hand, and this is state the TUI writes for itself at every quit. A file from a
 //! release that kept Preferences here still loads; they are not migrated.
 
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -62,8 +59,7 @@ pub fn save_to(path: &Path, state: &TuiState) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let contents = serde_json::to_string_pretty(state)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let contents = serde_json::to_string_pretty(state)?;
     std::fs::write(path, contents)?;
     Ok(())
 }
