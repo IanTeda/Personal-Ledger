@@ -656,9 +656,9 @@ fn shell_error(error: crate::Error) -> lib_shell::Error {
         | crate::Error::Json(_)) => {
             debug_assert!(
                 false,
-                "an Undo or Redo step failed outside lib-shell: {other}"
+                "an Undo or Redo step failed outside lib-shell: {other:?}"
             );
-            tracing::error!(error = %other, "An Undo or Redo step failed");
+            tracing::error!(error = ?other, "An Undo or Redo step failed");
             lib_shell::Error::LedgerNotSaved { reloaded: false }
         }
     }

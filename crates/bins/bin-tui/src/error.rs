@@ -93,7 +93,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 mod tests {
     use super::*;
 
-    fn serialise_failure() -> Result<()> {
+    fn deserialise_failure() -> Result<()> {
         let invalid: serde_json::Result<serde_json::Value> = serde_json::from_str("{");
         invalid?;
         Ok(())
@@ -101,6 +101,6 @@ mod tests {
 
     #[test]
     fn a_serde_json_failure_converts_into_the_json_variant() {
-        assert!(matches!(serialise_failure(), Err(Error::Json(_))));
+        assert!(matches!(deserialise_failure(), Err(Error::Json(_))));
     }
 }
