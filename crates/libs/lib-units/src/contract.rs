@@ -228,7 +228,8 @@ pub fn snapshot(ports: &mut impl StoredPorts) -> Snapshot {
     }
 }
 
-/// A Custom source whose key travels in a header, so its auth round-trips too.
+/// A Custom source whose key travels in a header and that sends a fixed header, so its auth and
+/// headers round-trip too.
 fn custom_source(name: &str) -> AddPriceSource {
     AddPriceSource {
         name: name.into(),
@@ -239,7 +240,13 @@ fn custom_source(name: &str) -> AddPriceSource {
             auth: PriceSourceAuth::ApiKey {
                 placement: KeyPlacement::Header,
                 name: "X-Api-Key".into(),
+                optional: false,
             },
+            headers: vec![crate::RequestHeader {
+                name: "Accept".into(),
+                value: "application/json".into(),
+            }]
+            .into(),
         },
         updates: Updates::Hourly,
     }

@@ -80,6 +80,7 @@ fn focused(view: &PriceSourceFormViewModel) -> Option<PriceSourceField> {
             text_focus(&endpoint.price_path),
             PriceSourceField::PricePath,
         ),
+        (text_focus(&endpoint.headers), PriceSourceField::Headers),
         (endpoint.auth.focused, PriceSourceField::Auth),
         (
             endpoint.key_param.as_ref().is_some_and(text_focus),
@@ -235,6 +236,15 @@ fn render_custom(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) ->
                 true,
             ))
             .child(help(endpoint.price_path_help.clone(), cx))
+            .into_any_element(),
+        div()
+            .child(text(
+                "price-source-headers",
+                &endpoint.headers,
+                PriceSourceField::Headers,
+                true,
+            ))
+            .child(help(endpoint.headers_help.clone(), cx))
             .into_any_element(),
         div()
             .flex()
@@ -438,6 +448,7 @@ fn readback(view: &PriceSourceFormViewModel) -> Vec<(&'static str, String)> {
         ("address", text(endpoint.map(|e| &e.address))),
         ("request", text(endpoint.map(|e| &e.request))),
         ("price_path", text(endpoint.map(|e| &e.price_path))),
+        ("headers", text(endpoint.map(|e| &e.headers))),
         (
             "auth",
             endpoint

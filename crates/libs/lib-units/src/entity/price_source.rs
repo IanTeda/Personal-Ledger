@@ -51,20 +51,32 @@ pub enum KeyPlacement {
     Header,
 }
 
-/// How a source authenticates. Only the name the key travels under is stored: the key itself is
-/// each Client's own and never syncs (ADR-0043).
+/// How a source authenticates. Only the name the key travels under is stored here: the key itself
+/// is kept apart from the source (ADR-0043).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PriceSourceAuth {
     None,
     ApiKey {
         placement: KeyPlacement,
         name: Cow<'static, str>,
+        /// Whether the source answers without a key too, as CoinGecko does keyless: it is then
+        /// asked keyless while no key is stored, rather than failing Key missing (ADR-0043).
+        optional: bool,
     },
 }
 
-/// How to ask a source for one price. `request` and `price_path` take `{symbol}` and `{quote}`
-/// placeholders, filled from the Unit's link. `Cow` lets the built-in table borrow its strings in
-/// a `const` while a Custom source owns what a person typed.
+/// A fixed request header: a name and a value sent with every request to a source. Never secret,
+/// since it is stored and shown in the clear: a key travels only through [`PriceSourceAuth`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestHeader {
+    pub name: Cow<'static, str>,
+    pub value: Cow<'static, str>,
+}
+
+/// How to ask a source for one price. `request` and `price_path` take the `{symbol}` and `{quote}`
+/// placeholders, filled from the Unit's link, and their lower-case `{symbol_lower}` and
+/// `{quote_lower}`, for a provider that keys its response in lower case. `Cow` lets the built-in
+/// table borrow its strings in a `const` while a Custom source owns what a person typed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Endpoint {
     /// The base address, e.g. `https://api.coingecko.com/api/v3`.
@@ -74,7 +86,13 @@ pub struct Endpoint {
     /// A JSON pointer to the price in the response.
     pub price_path: Cow<'static, str>,
     pub auth: PriceSourceAuth,
+    /// Sent with every request, in this order.
+    pub headers: Cow<'static, [RequestHeader]>,
 }
+
+/// Yahoo Finance's `User-Agent`: its chart answers 429 to a request with none, so we name ourselves
+/// rather than pose as a browser (ADR-0043).
+const YAHOO_USER_AGENT: &str = concat!("Personal-Ledger/", env!("CARGO_PKG_VERSION"));
 
 /// A source shipped in code.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,9 +114,16 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
         name: "CoinGecko",
         endpoint: Endpoint {
             address: Cow::Borrowed("https://api.coingecko.com/api/v3"),
-            request: Cow::Borrowed("/simple/price?ids={symbol}&vs_currencies={quote}"),
-            price_path: Cow::Borrowed("/{symbol}/{quote}"),
-            auth: PriceSourceAuth::None,
+            // CoinGecko keys its reply by the lower-case coin id and currency, `{"bitcoin":{"aud":…}}`.
+            request: Cow::Borrowed("/simple/price?ids={symbol_lower}&vs_currencies={quote_lower}"),
+            price_path: Cow::Borrowed("/{symbol_lower}/{quote_lower}"),
+            // Keyless by default; a Demo key raises its call limit.
+            auth: PriceSourceAuth::ApiKey {
+                placement: KeyPlacement::Header,
+                name: Cow::Borrowed("x-cg-demo-api-key"),
+                optional: true,
+            },
+            headers: Cow::Borrowed(&[]),
         },
         updates: Updates::Every15Minutes,
         kinds: &[UnitKind::Crypto],
@@ -108,9 +133,14 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
         name: "Yahoo Finance",
         endpoint: Endpoint {
             address: Cow::Borrowed("https://query1.finance.yahoo.com"),
-            request: Cow::Borrowed("/v8/finance/chart/{symbol}"),
+            // One daily bar, not the default day of minutes, which the price never reads.
+            request: Cow::Borrowed("/v8/finance/chart/{symbol}?interval=1d&range=1d"),
             price_path: Cow::Borrowed("/chart/result/0/meta/regularMarketPrice"),
             auth: PriceSourceAuth::None,
+            headers: Cow::Borrowed(&[RequestHeader {
+                name: Cow::Borrowed("User-Agent"),
+                value: Cow::Borrowed(YAHOO_USER_AGENT),
+            }]),
         },
         updates: Updates::Hourly,
         kinds: &[UnitKind::Equity, UnitKind::FixedIncome, UnitKind::Commodity],
@@ -123,6 +153,7 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
             request: Cow::Borrowed("/v2/rate/{symbol}/{quote}"),
             price_path: Cow::Borrowed("/rate"),
             auth: PriceSourceAuth::None,
+            headers: Cow::Borrowed(&[]),
         },
         // v2 blends its rates from several central banks, same day (ADR-0043).
         updates: Updates::Daily,
@@ -383,7 +414,9 @@ mod tests {
             auth: PriceSourceAuth::ApiKey {
                 placement: KeyPlacement::Header,
                 name: "x-api-key".to_string().into(),
+                optional: false,
             },
+            headers: Vec::new().into(),
         }
     }
 
@@ -427,7 +460,8 @@ mod tests {
     fn every_built_in_request_names_its_symbol() {
         for source in BUILT_IN_SOURCES {
             assert!(
-                source.endpoint.request.contains("{symbol}"),
+                source.endpoint.request.contains("{symbol}")
+                    || source.endpoint.request.contains("{symbol_lower}"),
                 "{}",
                 source.name
             );

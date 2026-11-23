@@ -26,7 +26,7 @@ pub mod protocols;
 pub use entity::{
     BUILT_IN_SOURCES, BuiltInOverride, BuiltInSource, COINGECKO, CustomSource, Endpoint,
     FRANKFURTER, KeyPlacement, MANUAL_ENTRY, Precision, PriceLink, PriceSource, PriceSourceAuth,
-    PriceSourceRecord, SourceOrigin, UnitRow, Updates, WeeklyPrice, YAHOO_FINANCE,
+    PriceSourceRecord, RequestHeader, SourceOrigin, UnitRow, Updates, WeeklyPrice, YAHOO_FINANCE,
     add_custom_source, add_unit, built_in, edit_custom_source, edit_unit, last_fetched,
     move_units_to_manual, override_built_in, price_source, price_source_exists, price_sources,
     remove_custom_source, remove_unit, sample_units, seed_weekly_prices, seed_written_at,

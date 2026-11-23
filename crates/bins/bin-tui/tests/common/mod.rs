@@ -181,13 +181,24 @@ pub fn screen_sized(shell: &mut Shell, width: u16, height: u16) -> String {
 /// `transport`, whose answers arrive on `responses` as the price feed's do. The one Ledger the
 /// Shell opens takes the channel. Every fetching Unit is priced just now, so the check on open
 /// asks for nothing and the requests a test sees are its own.
-#[expect(clippy::expect_used, reason = "a literal decimal always parses")]
 pub fn fetching_shell(
     transport: lib_units::fake::FakeTransport,
     responses: mpsc::Receiver<lib_units::PriceResponse>,
 ) -> Shell {
+    fetching_shell_with(transport, responses, |_| {})
+}
+
+/// As [`fetching_shell`], with `arrange` adding to the sample first; any fetching Unit it adds is
+/// priced just now too.
+#[expect(clippy::expect_used, reason = "a literal decimal always parses")]
+pub fn fetching_shell_with(
+    transport: lib_units::fake::FakeTransport,
+    responses: mpsc::Receiver<lib_units::PriceResponse>,
+    arrange: impl FnOnce(&mut FakeStores),
+) -> Shell {
     let today = chrono::Local::now().date_naive();
     let mut fakes = FakeStores::sample(today);
+    arrange(&mut fakes);
     fakes.units.units.units.push(lib_units::UnitRow::new(
         "EUR".into(),
         "Euro".into(),

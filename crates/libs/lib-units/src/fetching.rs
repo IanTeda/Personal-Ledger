@@ -170,9 +170,16 @@ pub(crate) fn read(outcome: &TransportOutcome, price_path: &str) -> Reading {
 }
 
 /// Whether `source` needs an API key this Client doesn't have. No key is stored on any device yet
-/// (#1391), so every source that needs one is missing it.
+/// (#1391), so every source that needs one is missing it; one whose key is optional, as
+/// CoinGecko's is, is asked keyless instead.
 pub(crate) fn key_missing(endpoint: &Endpoint) -> bool {
-    matches!(endpoint.auth, PriceSourceAuth::ApiKey { .. })
+    matches!(
+        endpoint.auth,
+        PriceSourceAuth::ApiKey {
+            optional: false,
+            ..
+        }
+    )
 }
 
 /// Names one request sent, so its response can be matched to what asked for it.
@@ -568,13 +575,18 @@ pub(crate) fn is_due(
         .is_none_or(|current| now - current.written_at >= interval)
 }
 
-/// `text` with `{symbol}` and `{quote}` filled from a link.
+/// `text` with `{symbol}` and `{quote}` filled from a link, and `{symbol_lower}` and
+/// `{quote_lower}` with the same in lower case.
 fn fill(text: &str, symbol: &str, quote: &str) -> String {
-    text.replace("{symbol}", symbol).replace("{quote}", quote)
+    text.replace("{symbol}", symbol)
+        .replace("{quote}", quote)
+        .replace("{symbol_lower}", &symbol.to_lowercase())
+        .replace("{quote_lower}", &quote.to_lowercase())
 }
 
-/// The request asking `endpoint` for `symbol`'s price in `quote` (the quote Unit's code), and the
-/// price path filled the same way.
+/// The request asking `endpoint` for `symbol`'s price in `quote` (the quote Unit's code), carrying
+/// the endpoint's fixed headers, and the price path filled the same way. No key goes with it yet:
+/// none is stored (#1391), so a source whose key is optional is asked keyless.
 pub(crate) fn price_request(
     endpoint: &Endpoint,
     symbol: &str,
@@ -587,7 +599,11 @@ pub(crate) fn price_request(
             endpoint.address.trim_end_matches('/'),
             fill(&endpoint.request, symbol, quote)
         ),
-        headers: Vec::new(),
+        headers: endpoint
+            .headers
+            .iter()
+            .map(|header| (header.name.to_string(), header.value.to_string()))
+            .collect(),
     };
     (request, fill(&endpoint.price_path, symbol, quote))
 }
@@ -607,7 +623,7 @@ pub(crate) fn parse_price(body: &str, path: &str) -> Option<Money> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{FRANKFURTER, built_in};
+    use crate::{COINGECKO, FRANKFURTER, RequestHeader, YAHOO_FINANCE, built_in};
 
     #[test]
     fn frankfurters_request_is_v2_rate_for_the_symbol_in_the_quote() {
@@ -624,6 +640,162 @@ mod tests {
             }
         );
         assert_eq!(path, "/rate");
+    }
+
+    #[test]
+    fn coingeckos_request_and_price_path_read_its_lower_case_keys_through_quote_lower() {
+        let endpoint = &built_in(COINGECKO).expect("a built-in").endpoint;
+
+        let (request, path) = price_request(endpoint, "Bitcoin", "AUD");
+
+        assert_eq!(
+            request,
+            PriceRequest {
+                method: Method::Get,
+                url: "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=aud"
+                    .into(),
+                headers: Vec::new(),
+            },
+            "keyless while no key is stored, so no key header"
+        );
+        assert_eq!(path, "/bitcoin/aud");
+    }
+
+    #[test]
+    fn yahoos_request_carries_its_user_agent() {
+        let endpoint = &built_in(YAHOO_FINANCE).expect("a built-in").endpoint;
+
+        let (request, path) = price_request(endpoint, "BHP.AX", "AUD");
+
+        assert_eq!(
+            request.url,
+            "https://query1.finance.yahoo.com/v8/finance/chart/BHP.AX?interval=1d&range=1d"
+        );
+        assert_eq!(
+            request.headers,
+            [(
+                "User-Agent".to_string(),
+                format!("Personal-Ledger/{}", env!("CARGO_PKG_VERSION"))
+            )]
+        );
+        assert_eq!(path, "/chart/result/0/meta/regularMarketPrice");
+    }
+
+    #[test]
+    fn a_custom_sources_headers_are_sent_as_entered_in_order() {
+        let endpoint = Endpoint {
+            address: "https://prices.example/".to_string().into(),
+            request: "/q/{symbol}/{quote_lower}".to_string().into(),
+            price_path: "/{symbol_lower}".to_string().into(),
+            auth: PriceSourceAuth::None,
+            headers: vec![
+                RequestHeader {
+                    name: "Accept".to_string().into(),
+                    value: "application/json".to_string().into(),
+                },
+                RequestHeader {
+                    name: "X-Client".to_string().into(),
+                    value: "ledger; v1".to_string().into(),
+                },
+            ]
+            .into(),
+        };
+
+        let (request, path) = price_request(&endpoint, "ABC", "USD");
+
+        assert_eq!(request.url, "https://prices.example/q/ABC/usd");
+        assert_eq!(
+            request.headers,
+            [
+                ("Accept".to_string(), "application/json".to_string()),
+                ("X-Client".to_string(), "ledger; v1".to_string()),
+            ]
+        );
+        assert_eq!(path, "/abc");
+    }
+
+    #[test]
+    fn a_required_key_is_missing_but_an_optional_one_is_not() {
+        let keyed = |optional| Endpoint {
+            address: "https://prices.example".to_string().into(),
+            request: "/{symbol}".to_string().into(),
+            price_path: "/price".to_string().into(),
+            auth: PriceSourceAuth::ApiKey {
+                placement: crate::KeyPlacement::Header,
+                name: "x-api-key".to_string().into(),
+                optional,
+            },
+            headers: Vec::new().into(),
+        };
+        assert!(key_missing(&keyed(false)));
+        assert!(!key_missing(&keyed(true)));
+        assert!(!key_missing(
+            &built_in(COINGECKO).expect("a built-in").endpoint
+        ));
+    }
+
+    /// Replies captured from each built-in, read at the price path its request fills.
+    mod captured {
+        use super::*;
+
+        fn priced(source: PriceSourceId, symbol: &str, quote: &str, body: &str) -> Reading {
+            let endpoint = &built_in(source).expect("a built-in").endpoint;
+            let (_, path) = price_request(endpoint, symbol, quote);
+            read(
+                &TransportOutcome::Answered {
+                    status: 200,
+                    body: body.into(),
+                },
+                &path,
+            )
+        }
+
+        fn money(text: &str) -> Reading {
+            Reading::Priced(text.parse().expect("a decimal"))
+        }
+
+        #[test]
+        fn coingeckos_simple_price_reply_is_priced() {
+            let body = include_str!("../fixtures/prices/coingecko_simple_price.json");
+            assert_eq!(priced(COINGECKO, "bitcoin", "AUD", body), money("92568"));
+        }
+
+        #[test]
+        fn coingeckos_empty_reply_for_an_unknown_coin_is_no_price() {
+            assert_eq!(
+                priced(COINGECKO, "notacoin", "AUD", "{}"),
+                Reading::Failed(FetchFailure::NoPrice)
+            );
+        }
+
+        #[test]
+        fn yahoos_chart_reply_is_priced_at_its_regular_market_price() {
+            let body = include_str!("../fixtures/prices/yahoo_chart.json");
+            assert_eq!(priced(YAHOO_FINANCE, "BHP.AX", "AUD", body), money("52.52"));
+        }
+
+        #[test]
+        fn yahoos_not_found_reply_is_not_found() {
+            let body = include_str!("../fixtures/prices/yahoo_chart_not_found.json");
+            let endpoint = &built_in(YAHOO_FINANCE).expect("a built-in").endpoint;
+            let (_, path) = price_request(endpoint, "NOPE.AX", "AUD");
+            assert_eq!(
+                read(
+                    &TransportOutcome::Answered {
+                        status: 404,
+                        body: body.into()
+                    },
+                    &path
+                ),
+                Reading::Failed(FetchFailure::NotFound)
+            );
+        }
+
+        #[test]
+        fn frankfurters_rate_reply_is_priced() {
+            let body = include_str!("../fixtures/prices/frankfurter_rate.json");
+            assert_eq!(priced(FRANKFURTER, "EUR", "AUD", body), money("1.6513"));
+        }
     }
 
     #[test]

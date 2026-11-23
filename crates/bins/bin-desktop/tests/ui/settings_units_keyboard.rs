@@ -445,6 +445,8 @@ fn a_custom_price_source_is_added_by_typing_tab_and_left_right(app: &mut TestApp
     type_word(&mut ui, "/p");
     ui.press("tab");
     type_word(&mut ui, "/v");
+    ui.press("tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Headers"));
     ui.press("tab right");
     assert_eq!(ui.dialog_value("auth").as_deref(), Some("API key"));
     ui.press("tab");
@@ -1413,6 +1415,152 @@ fn f_on_a_frankfurter_unit_asks_the_feed_and_its_answer_writes_the_price_with_a_
     );
 }
 
+/// A Custom source sending one fixed header, for [`one_unit_on_each_fetching_source`].
+fn broker() -> lib_units::CustomSource {
+    lib_units::CustomSource {
+        id: lib_core::PriceSourceId::new(),
+        name: "Broker".into(),
+        endpoint: lib_units::Endpoint {
+            address: "https://broker.example".to_string().into(),
+            request: "/quote/{symbol}".to_string().into(),
+            price_path: "/last".to_string().into(),
+            auth: lib_units::PriceSourceAuth::None,
+            headers: vec![lib_units::RequestHeader {
+                name: "X-Client".to_string().into(),
+                value: "ledger; v1".to_string().into(),
+            }]
+            .into(),
+        },
+        updates: lib_units::Updates::Hourly,
+    }
+}
+
+/// Adds ETH on CoinGecko, BHP on Yahoo Finance and ABC on a Custom source with a header, each
+/// quoted in aud and, with BTC, priced as the Ledger opens, so the check on open leaves them
+/// alone. For [`Harness::fetching`].
+#[expect(clippy::expect_used, reason = "the prices are literal decimals")]
+fn one_unit_on_each_fetching_source(fakes: &mut FakeStores) {
+    let broker = broker();
+    let opened = lib_core::Clock::fixed(common::today()).now();
+    for (code, kind, source_id, symbol) in [
+        (
+            "ETH",
+            lib_core::UnitKind::Crypto,
+            lib_units::COINGECKO,
+            "ethereum",
+        ),
+        (
+            "BHP",
+            lib_core::UnitKind::Equity,
+            lib_units::YAHOO_FINANCE,
+            "BHP.AX",
+        ),
+        ("ABC", lib_core::UnitKind::Equity, broker.id, "ABC"),
+    ] {
+        fakes.units.units.units.push(lib_units::UnitRow::new(
+            code.into(),
+            code.into(),
+            kind,
+            lib_units::Precision::of_kind(kind),
+            lib_units::PriceLink {
+                source_id,
+                symbol: symbol.into(),
+                quote: UnitId::SEED_AUD,
+            },
+        ));
+    }
+    fakes
+        .units
+        .price_sources
+        .records
+        .push(lib_units::PriceSourceRecord::Custom(broker));
+    for unit in &mut fakes.units.units.units {
+        unit.record_price("1".parse().expect("a decimal"), common::today(), opened);
+    }
+}
+
+/// Moves the selection down to the Unit `code`.
+#[expect(
+    clippy::panic,
+    reason = "a Unit the test needs that isn't listed should fail it"
+)]
+fn select_unit(ui: &mut Harness<'_>, code: &str) {
+    for _ in 0..10 {
+        if selected(ui) == code {
+            return;
+        }
+        ui.press("j");
+    }
+    panic!("{code} is not listed");
+}
+
+#[gpui::test]
+fn f_on_a_coingecko_a_yahoo_and_a_custom_sources_unit_sends_their_requests_and_writes_prices(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(
+        app,
+        (transport.clone(), responses),
+        one_unit_on_each_fetching_source,
+    );
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    assert!(transport.requests().is_empty(), "nothing is due on open");
+    let user_agent = (
+        "User-Agent".to_string(),
+        format!("Personal-Ledger/{}", env!("CARGO_PKG_VERSION")),
+    );
+    let cases = [
+        (
+            "ABC",
+            "https://broker.example/quote/ABC",
+            vec![("X-Client".to_string(), "ledger; v1".to_string())],
+            r#"{"last":12.5}"#,
+            "12.50 AUD",
+        ),
+        (
+            "BHP",
+            "https://query1.finance.yahoo.com/v8/finance/chart/BHP.AX?interval=1d&range=1d",
+            vec![user_agent],
+            r#"{"chart":{"result":[{"meta":{"regularMarketPrice":52.52}}],"error":null}}"#,
+            "52.52 AUD",
+        ),
+        (
+            "ETH",
+            "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=aud",
+            vec![],
+            r#"{"ethereum":{"aud":4321.5}}"#,
+            "4,321.50 AUD",
+        ),
+    ];
+    for (code, url, headers, body, price) in cases {
+        select_unit(&mut ui, code);
+        ui.press("f");
+        let requests = transport.requests();
+        let (_, request) = requests.last().expect("f sent a request");
+        assert_eq!((request.url.as_str(), &request.headers), (url, &headers));
+
+        transport.answer_last(200, body);
+        ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+        assert_eq!(unit_line(&mut ui, code).1.last_price, price);
+    }
+}
+
+#[gpui::test]
+fn coingeckos_credit_and_yahoos_unofficial_note_show_in_the_pane(app: &mut TestAppContext) {
+    let mut ui = on_units_at(app, WindowSize::XLarge);
+    select_unit(&mut ui, "BTC");
+    assert!(ui.is_drawn("units-pane-attribution"), "BTC is on CoinGecko");
+
+    select_unit(&mut ui, "VAS");
+    assert!(
+        !ui.is_drawn("units-pane-attribution"),
+        "VAS is on Manual entry"
+    );
+}
+
 #[gpui::test]
 fn f_on_a_manual_entry_unit_sends_nothing(app: &mut TestAppContext) {
     let (transport, responses) = lib_units::fake::FakeTransport::channel();
@@ -1474,7 +1622,7 @@ fn opening_the_ledger_fetches_a_due_unit_silently_and_the_minute_check_fetches_w
     assert_eq!(
         transport.urls()[1..],
         [
-            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=AUD",
+            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=aud",
             "https://api.frankfurter.dev/v2/rate/EUR/AUD",
         ],
         "the minute check reached the Presenter, one round per source"

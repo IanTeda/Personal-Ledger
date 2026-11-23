@@ -384,6 +384,106 @@ fn f_on_a_frankfurter_unit_writes_this_weeks_price_and_shows_a_success_toast() {
 }
 
 #[test]
+fn f_on_a_coingecko_unit_asks_in_lower_case_and_writes_the_price() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u j");
+    let docked = common::screen_sized(&mut shell, 220, 60);
+    assert!(docked.contains("Powered by CoinGecko"), "{docked}");
+
+    press(&mut shell, "f");
+    assert_eq!(
+        transport.urls(),
+        ["https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=aud"]
+    );
+    transport.answer_last(200, r#"{"bitcoin":{"aud":92568}}"#);
+    shell.handle_event(Event::Tick);
+
+    let frame = screen(&mut shell);
+    assert!(frame.contains("Fetched BTC at 92,568.00 AUD"), "{frame}");
+}
+
+/// Adds ABC on a Custom source sending one header and BHP on Yahoo Finance, both quoted in AUD.
+fn abc_on_a_broker_and_bhp_on_yahoo(fakes: &mut lib_database::FakeStores) {
+    let broker = lib_units::CustomSource {
+        id: lib_core::PriceSourceId::new(),
+        name: "Broker".into(),
+        endpoint: lib_units::Endpoint {
+            address: "https://broker.example".to_string().into(),
+            request: "/quote/{symbol}".to_string().into(),
+            price_path: "/last".to_string().into(),
+            auth: lib_units::PriceSourceAuth::None,
+            headers: vec![lib_units::RequestHeader {
+                name: "X-Client".to_string().into(),
+                value: "ledger; v1".to_string().into(),
+            }]
+            .into(),
+        },
+        updates: lib_units::Updates::Hourly,
+    };
+    for (code, source_id, symbol) in [
+        ("ABC", broker.id, "ABC"),
+        ("BHP", lib_units::YAHOO_FINANCE, "BHP.AX"),
+    ] {
+        fakes.units.units.units.push(lib_units::UnitRow::new(
+            code.into(),
+            code.into(),
+            lib_core::UnitKind::Equity,
+            lib_units::Precision::of_kind(lib_core::UnitKind::Equity),
+            lib_units::PriceLink {
+                source_id,
+                symbol: symbol.into(),
+                quote: lib_core::UnitId::SEED_AUD,
+            },
+        ));
+    }
+    fakes
+        .units
+        .price_sources
+        .records
+        .push(lib_units::PriceSourceRecord::Custom(broker));
+}
+
+#[test]
+fn f_on_a_custom_sources_and_a_yahoo_unit_sends_their_headers_and_writes_their_prices() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell_with(
+        transport.clone(),
+        responses,
+        abc_on_a_broker_and_bhp_on_yahoo,
+    );
+    // ABC, AUD, BHP, …
+    press(&mut shell, "g u f");
+    let (_, abc) = transport.requests().pop().expect("f on ABC sent a request");
+    assert_eq!(abc.url, "https://broker.example/quote/ABC");
+    assert_eq!(abc.headers, [("X-Client".into(), "ledger; v1".into())]);
+    transport.answer_last(200, r#"{"last":12.5}"#);
+    shell.handle_event(Event::Tick);
+    assert!(
+        screen(&mut shell).contains("Fetched ABC at 12.50 AUD"),
+        "{}",
+        screen(&mut shell)
+    );
+
+    press(&mut shell, "j j f");
+    let (_, bhp) = transport.requests().pop().expect("f on BHP sent a request");
+    assert_eq!(
+        bhp.headers,
+        [(
+            "User-Agent".into(),
+            format!("Personal-Ledger/{}", env!("CARGO_PKG_VERSION"))
+        )]
+    );
+    transport.answer_last(
+        200,
+        r#"{"chart":{"result":[{"meta":{"regularMarketPrice":52.52}}],"error":null}}"#,
+    );
+    shell.handle_event(Event::Tick);
+    let frame = screen(&mut shell);
+    assert!(frame.contains("Fetched BHP at 52.52 AUD"), "{frame}");
+}
+
+#[test]
 fn closing_the_ledger_drops_in_flight_fetches_without_writing() {
     let (transport, responses) = lib_units::fake::FakeTransport::channel();
     let mut shell = common::fetching_shell(transport.clone(), responses);

@@ -86,6 +86,7 @@ mod tests {
             request: "/price?id={symbol}".to_string().into(),
             price_path: "/price".to_string().into(),
             auth: PriceSourceAuth::None,
+            headers: Vec::new().into(),
         }
     }
 

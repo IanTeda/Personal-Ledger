@@ -620,6 +620,18 @@ fn clicking_add_price_source_opens_its_dialog(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn clicking_a_custom_sources_headers_field_focuses_it_for_typing(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.click("settings-add-price-source");
+
+    ui.click("price-source-headers");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Headers"));
+    ui.press("a : space b");
+
+    assert_eq!(ui.dialog_value("headers").as_deref(), Some("a: b"));
+}
+
+#[gpui::test]
 fn the_headers_undo_takes_back_a_deactivation_and_its_list_redoes_it(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.right_click("unit-row-1");

@@ -51,7 +51,7 @@ Every unit is one of six Unit Kinds:
 - **Commodity:** precious metals and other raw goods, such as XAU for gold.
 - **Custom:** anything else you track, such as loyalty points, store credit or collectibles.
 
-The Unit Kind decides which built-in Price Sources are offered for a unit: CoinGecko for Crypto, Yahoo Finance for Equity, Fixed Income and Commodity, and Frankfurter for Currency. Manual entry and any custom source you add are offered for every kind.
+The Unit Kind decides which built-in Price Sources are offered for a unit: CoinGecko for Crypto, Yahoo Finance for Equity, Fixed Income and Commodity, and Frankfurter for Currency. Manual entry and any custom source you add are offered for every kind. CoinGecko needs no API key, and its detail pane, and the pane of every unit it prices, says *Powered by CoinGecko*. Yahoo Finance's API is unofficial and may stop working, as its detail pane says. A custom source's *Headers* field takes fixed request headers as `Name: value`, with `|` between them, sent with every request; they are shown in the clear, so never put a key there. Its *Request* and *Price path* take `{symbol}` and `{quote}`, and `{symbol_lower}` and `{quote_lower}` for the same in lower case.
 
 ## Screens
 

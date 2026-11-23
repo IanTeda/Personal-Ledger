@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n               id AS \"id!: PriceSourceId\",\n               origin,\n               name,\n               updates,\n               address,\n               request,\n               price_path,\n               key_placement,\n               key_name\n           FROM price_sources",
+  "query": "SELECT\n               id AS \"id!: PriceSourceId\",\n               origin,\n               name,\n               updates,\n               address,\n               request,\n               price_path,\n               key_placement,\n               key_name,\n               headers\n           FROM price_sources",
   "describe": {
     "columns": [
       {
@@ -47,6 +47,11 @@
         "name": "key_name",
         "ordinal": 8,
         "type_info": "Text"
+      },
+      {
+        "name": "headers",
+        "ordinal": 9,
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -61,8 +66,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "5ecc6aa163d7c3ef37ea85a0c73438a95f16c0ec3aebad0529e83ae6a658aac6"
+  "hash": "8a5259971f4fc86f79155629b35669f053dd1f1ec88b7d28db47eb4e9c106d1c"
 }

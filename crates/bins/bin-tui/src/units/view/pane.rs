@@ -127,6 +127,9 @@ fn source_rows(rows: &mut Vec<Row>, group: &SourceGroup, keys: &PaneKeys<'_>, c:
     if let Some(note) = &group.note {
         rows.push(Row::Note(note.clone()));
     }
+    if let Some(attribution) = &group.attribution {
+        rows.push(Row::Note(attribution.clone()));
+    }
     // A group with no title is a selected Unit's link, whose source `tab` reaches.
     let to_sources = group.title.is_none().then(|| {
         let chord = keys.keymap.hint_chord(NEXT_TABLE);

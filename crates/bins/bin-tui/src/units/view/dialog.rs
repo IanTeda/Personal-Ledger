@@ -296,6 +296,8 @@ impl Dialog {
                     items.push(Item::Note(endpoint.request_help));
                     items.push(Item::Text(endpoint.price_path));
                     items.push(Item::Note(endpoint.price_path_help));
+                    items.push(Item::Text(endpoint.headers));
+                    items.push(Item::Note(endpoint.headers_help));
                     items.push(select(&endpoint.auth));
                     items.extend(endpoint.key_param.map(Item::Text));
                     items.extend(endpoint.api_key.map(Item::Text));
@@ -395,6 +397,7 @@ fn price_source_event(
         (Some(endpoint.address), PriceSourceField::Address),
         (Some(endpoint.request), PriceSourceField::Request),
         (Some(endpoint.price_path), PriceSourceField::PricePath),
+        (Some(endpoint.headers), PriceSourceField::Headers),
         (endpoint.key_param, PriceSourceField::KeyParam),
     ];
     let (text, field) = fields

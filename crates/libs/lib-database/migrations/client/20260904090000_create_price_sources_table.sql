@@ -1,6 +1,6 @@
 -- Migration: create price_sources table -- the stored Price Source rows (ADR-0043): a Custom
--- source a person added, with its address, request, price path and the name its API key
--- travels under, or a person's own name and update interval for a built-in. A built-in's
+-- source a person added, with its address, request, price path, fixed request headers and the
+-- name its API key travels under, or a person's own name and update interval for a built-in. A built-in's
 -- definition and Manual entry are code in lib-units, so a built-in has a row only once it is
 -- renamed or retimed, and Manual entry never has one. That is why units.price_source_id has no
 -- foreign key here.
@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS price_sources (
     price_path TEXT,
     key_placement TEXT CHECK (key_placement IN ('param', 'header')),
     key_name TEXT,
+    -- A Custom source's fixed request headers, never secret: one `Name: value` per line, in the
+    -- order sent, or NULL for none. A header can't hold a line break, so a line is a header.
+    headers TEXT,
     created_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     -- A Custom source has its whole endpoint; a built-in's endpoint is code.
@@ -28,7 +31,9 @@ CREATE TABLE IF NOT EXISTS price_sources (
         (address IS NOT NULL AND request IS NOT NULL AND price_path IS NOT NULL)),
     -- A key's placement and name come together, and only on a Custom source.
     CHECK ((key_placement IS NULL) = (key_name IS NULL)),
-    CHECK (origin = 'custom' OR key_placement IS NULL)
+    CHECK (origin = 'custom' OR key_placement IS NULL),
+    -- A built-in's headers are code.
+    CHECK (origin = 'custom' OR headers IS NULL)
 );
 
 

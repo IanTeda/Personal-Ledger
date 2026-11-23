@@ -15,8 +15,8 @@ use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::{Money, PriceSourceId, UnitId, UnitKind, UnitRef};
 use lib_units::{
     BaseUnitRepository, BuiltInOverride, CustomSource, Endpoint, KeyPlacement, PortsMut, Precision,
-    PriceLink, PriceSourceAuth, PriceSourceRecord, PriceSourceRepository, UnitRepository, UnitRow,
-    UnitUsage, Updates, WeeklyPrice,
+    PriceLink, PriceSourceAuth, PriceSourceRecord, PriceSourceRepository, RequestHeader,
+    UnitRepository, UnitRow, UnitUsage, Updates, WeeklyPrice,
 };
 use sqlx::SqliteConnection;
 
@@ -362,18 +362,21 @@ async fn upsert_price_source(
         },
     };
     let (key_placement, key_name) = match row.endpoint.map(|endpoint| &endpoint.auth) {
-        Some(PriceSourceAuth::ApiKey { placement, name }) => {
-            (Some(placement_str(*placement)), Some(name.as_ref()))
-        }
+        Some(PriceSourceAuth::ApiKey {
+            placement, name, ..
+        }) => (Some(placement_str(*placement)), Some(name.as_ref())),
         Some(PriceSourceAuth::None) | None => (None, None),
     };
     let address = row.endpoint.map(|endpoint| endpoint.address.as_ref());
     let request = row.endpoint.map(|endpoint| endpoint.request.as_ref());
     let price_path = row.endpoint.map(|endpoint| endpoint.price_path.as_ref());
+    let headers = row
+        .endpoint
+        .and_then(|endpoint| headers_column(&endpoint.headers));
     sqlx::query!(
         "INSERT INTO price_sources (id, origin, name, updates, address, request, price_path,
-                                    key_placement, key_name)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    key_placement, key_name, headers)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
              origin = excluded.origin,
              name = excluded.name,
@@ -382,7 +385,8 @@ async fn upsert_price_source(
              request = excluded.request,
              price_path = excluded.price_path,
              key_placement = excluded.key_placement,
-             key_name = excluded.key_name",
+             key_name = excluded.key_name,
+             headers = excluded.headers",
         row.id,
         row.origin,
         row.name,
@@ -392,10 +396,41 @@ async fn upsert_price_source(
         price_path,
         key_placement,
         key_name,
+        headers,
     )
     .execute(conn)
     .await?;
     Ok(())
+}
+
+/// `headers` as the `headers` column holds them, one `Name: value` per line, or `None` for none.
+fn headers_column(headers: &[RequestHeader]) -> Option<String> {
+    (!headers.is_empty()).then(|| {
+        headers
+            .iter()
+            .map(|header| format!("{}: {}", header.name, header.value))
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
+}
+
+/// The `headers` column of source `id` read back; a line with no `:` refuses only a file edited by
+/// hand.
+fn parse_headers(id: PriceSourceId, column: Option<&str>) -> Result<Vec<RequestHeader>> {
+    column
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let (name, value) = line.split_once(':').ok_or_else(|| {
+                Error::UnitsBuilder(format!("price source {id} has a header with no name"))
+            })?;
+            Ok(RequestHeader {
+                name: name.trim().to_string().into(),
+                value: value.trim().to_string().into(),
+            })
+        })
+        .collect()
 }
 
 /// Every row the adapter holds, as read.
@@ -480,7 +515,8 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
                request,
                price_path,
                key_placement,
-               key_name
+               key_name,
+               headers
            FROM price_sources"#
     )
     .fetch_all(&mut *conn)
@@ -499,6 +535,8 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
             (Some(placement), Some(name)) => PriceSourceAuth::ApiKey {
                 placement: parse_placement(&placement)?,
                 name: name.into(),
+                // A Custom source's key is always needed: only a built-in's may be optional.
+                optional: false,
             },
             _ => PriceSourceAuth::None,
         };
@@ -512,6 +550,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
                 request: row.request.ok_or_else(missing)?.into(),
                 price_path: row.price_path.ok_or_else(missing)?.into(),
                 auth,
+                headers: parse_headers(row.id, row.headers.as_deref())?.into(),
             },
             updates,
         }))
@@ -875,6 +914,7 @@ mod tests {
                 "price_path",
                 "key_placement",
                 "key_name",
+                "headers",
                 "created_on",
                 "updated_on"
             ],

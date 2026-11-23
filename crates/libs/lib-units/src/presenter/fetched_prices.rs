@@ -522,7 +522,9 @@ mod tests {
                         auth: PriceSourceAuth::ApiKey {
                             placement: KeyPlacement::Header,
                             name: "x-key".into(),
+                            optional: false,
                         },
+                        headers: Vec::new().into(),
                     },
                     updates: Updates::Hourly,
                 }));

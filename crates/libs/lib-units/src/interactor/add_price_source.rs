@@ -44,7 +44,9 @@ mod tests {
             auth: PriceSourceAuth::ApiKey {
                 placement: KeyPlacement::Param,
                 name: "key".to_string().into(),
+                optional: false,
             },
+            headers: Vec::new().into(),
         };
 
         let added = AddPriceSource {

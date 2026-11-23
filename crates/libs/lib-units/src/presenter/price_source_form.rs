@@ -14,7 +14,9 @@ use secrecy::{ExposeSecret as _, SecretString};
 use super::{UnitsOutcome, cycle, step, updates_choices};
 use crate::interactor::{AddPriceSource, EditPriceSource};
 use crate::protocols::SharedPorts;
-use crate::{Endpoint, Error, KeyPlacement, PriceSourceAuth, SourceOrigin, Updates, msg};
+use crate::{
+    Endpoint, Error, KeyPlacement, PriceSourceAuth, RequestHeader, SourceOrigin, Updates, msg,
+};
 
 /// The Authentication control's value: whether the source needs a key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -33,18 +35,21 @@ pub enum PriceSourceField {
     Address,
     Request,
     PricePath,
+    /// A Custom source's fixed request headers, `Name: value` pairs with `|` between them.
+    Headers,
     Auth,
     KeyParam,
     ApiKey,
 }
 
 impl PriceSourceField {
-    const CUSTOM_ORDER: [Self; 8] = [
+    const CUSTOM_ORDER: [Self; 9] = [
         Self::Name,
         Self::Updates,
         Self::Address,
         Self::Request,
         Self::PricePath,
+        Self::Headers,
         Self::Auth,
         Self::KeyParam,
         Self::ApiKey,
@@ -108,6 +113,9 @@ pub struct EndpointFields {
     pub request_help: String,
     pub price_path: TextFieldView,
     pub price_path_help: String,
+    /// The fixed headers as one line, `Accept: application/json | X-Client: ledger`.
+    pub headers: TextFieldView,
+    pub headers_help: String,
     pub auth: SelectView<AuthChoice>,
     /// The key fields, shown only with API key authentication.
     pub key_param: Option<TextFieldView>,
@@ -132,6 +140,7 @@ pub struct PriceSourceFormPresenter {
     address: String,
     request: String,
     price_path: String,
+    headers: String,
     auth: AuthChoice,
     key_param: String,
     /// Typed so the form can ask for it, never stored: nothing reads it past validity and the
@@ -158,6 +167,7 @@ impl PriceSourceFormPresenter {
             address: String::new(),
             request: String::new(),
             price_path: String::new(),
+            headers: String::new(),
             auth: AuthChoice::None,
             key_param: String::new(),
             api_key: SecretString::default(),
@@ -186,7 +196,11 @@ impl PriceSourceFormPresenter {
                 form.address = endpoint.address.to_string();
                 form.request = endpoint.request.to_string();
                 form.price_path = endpoint.price_path.to_string();
-                if let PriceSourceAuth::ApiKey { placement, name } = &endpoint.auth {
+                form.headers = headers_text(&endpoint.headers);
+                if let PriceSourceAuth::ApiKey {
+                    placement, name, ..
+                } = &endpoint.auth
+                {
                     form.auth = AuthChoice::ApiKey;
                     form.key_param = name.to_string();
                     form.placement = *placement;
@@ -271,6 +285,13 @@ impl Presenter for PriceSourceFormPresenter {
                 PriceSourceField::PricePath,
             ),
             price_path_help: msg::units_price_source_price_path_help(),
+            headers: text(
+                msg::units_price_source_field_headers(),
+                &self.headers,
+                msg::units_price_source_headers_placeholder(),
+                PriceSourceField::Headers,
+            ),
+            headers_help: msg::units_price_source_headers_help(),
             auth: SelectView {
                 label: msg::units_price_source_field_auth(),
                 options: vec![
@@ -462,6 +483,7 @@ impl PriceSourceFormPresenter {
             PriceSourceField::Address => &mut self.address,
             PriceSourceField::Request => &mut self.request,
             PriceSourceField::PricePath => &mut self.price_path,
+            PriceSourceField::Headers => &mut self.headers,
             PriceSourceField::KeyParam => &mut self.key_param,
             PriceSourceField::ApiKey | PriceSourceField::Updates | PriceSourceField::Auth => {
                 return None;
@@ -469,8 +491,9 @@ impl PriceSourceFormPresenter {
         })
     }
 
-    /// Name is required; a Custom source also needs its Address, Request and Price path, and with
-    /// API key authentication the Key parameter and, on a new source, the key itself.
+    /// Name is required; a Custom source also needs its Address, Request and Price path, any
+    /// Headers well formed, and with API key authentication the Key parameter and, on a new source,
+    /// the key itself.
     fn is_valid(&self) -> bool {
         let filled = |text: &String| !text.trim().is_empty();
         if !filled(&self.name) {
@@ -483,6 +506,9 @@ impl PriceSourceFormPresenter {
             .into_iter()
             .all(filled)
         {
+            return false;
+        }
+        if parse_headers(&self.headers).is_none() {
             return false;
         }
         match self.auth {
@@ -507,8 +533,11 @@ impl PriceSourceFormPresenter {
                 AuthChoice::ApiKey => PriceSourceAuth::ApiKey {
                     placement: self.placement,
                     name: trimmed(&self.key_param),
+                    optional: false,
                 },
             },
+            // Saving checks they parse first.
+            headers: parse_headers(&self.headers).unwrap_or_default().into(),
         }
     }
 
@@ -594,6 +623,36 @@ impl PriceSourceFormPresenter {
     }
 }
 
+/// Between two headers in the Headers field: rarely in a header's value, unlike `;` and `,`, which
+/// a `User-Agent` or `Accept` holds.
+const HEADER_SEPARATOR: char = '|';
+
+/// The Headers field's text as headers, or `None` when a pair has no `:` or its name is blank or
+/// holds a space. Blank text is no headers.
+fn parse_headers(text: &str) -> Option<Vec<RequestHeader>> {
+    text.split(HEADER_SEPARATOR)
+        .map(str::trim)
+        .filter(|pair| !pair.is_empty())
+        .map(|pair| {
+            let (name, value) = pair.split_once(':')?;
+            let name = name.trim();
+            (!name.is_empty() && !name.contains(char::is_whitespace)).then(|| RequestHeader {
+                name: name.to_string().into(),
+                value: value.trim().to_string().into(),
+            })
+        })
+        .collect()
+}
+
+/// `headers` as the Headers field shows them.
+fn headers_text(headers: &[RequestHeader]) -> String {
+    headers
+        .iter()
+        .map(|header| format!("{}: {}", header.name, header.value))
+        .collect::<Vec<_>>()
+        .join(&format!(" {HEADER_SEPARATOR} "))
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::test_support::{hints, pairs, sample};
@@ -665,6 +724,53 @@ mod tests {
     }
 
     #[test]
+    fn a_custom_sources_headers_are_saved_as_entered_and_prefill_its_edit_form() {
+        let (ports, shared) = sample();
+        let mut form = PriceSourceFormPresenter::add(shared.clone(), DialogKeys::default());
+        let mut events = filled();
+        events.push(typed(
+            PriceSourceField::Headers,
+            " Accept: application/json | X-Client: ledger; v1 ",
+        ));
+        events.push(PriceSourceFormEvent::Confirm);
+        let calls = send(&mut form, events);
+
+        assert_eq!(calls.len(), 1, "saved");
+        let saved = custom_records(&ports.borrow());
+        let header = |name: &str, value: &str| RequestHeader {
+            name: name.to_string().into(),
+            value: value.to_string().into(),
+        };
+        assert_eq!(
+            saved[0].endpoint.headers.as_ref(),
+            [
+                header("Accept", "application/json"),
+                header("X-Client", "ledger; v1")
+            ]
+        );
+
+        let edit = PriceSourceFormPresenter::edit(shared, saved[0].id, DialogKeys::default())
+            .expect("a Custom source");
+        assert_eq!(
+            edit.view_model().endpoint.expect("custom").headers.text,
+            "Accept: application/json | X-Client: ledger; v1"
+        );
+    }
+
+    #[test]
+    fn a_header_with_no_name_or_no_colon_keeps_the_form_from_saving() {
+        let (_, shared) = sample();
+        let mut form = PriceSourceFormPresenter::add(shared, DialogKeys::default());
+        send(&mut form, filled());
+        assert!(form.view_model().frame.can_confirm, "headers are optional");
+
+        for bad in ["Accept", ": json", "Bad Name: x", "Accept: json | nope"] {
+            send(&mut form, vec![typed(PriceSourceField::Headers, bad)]);
+            assert!(!form.view_model().frame.can_confirm, "{bad}");
+        }
+    }
+
+    #[test]
     fn api_key_authentication_shows_the_key_fields_and_needs_them_on_a_new_source() {
         let (ports, shared) = sample();
         let mut form = PriceSourceFormPresenter::add(shared, DialogKeys::default());
@@ -696,7 +802,8 @@ mod tests {
             custom_records(&ports.borrow())[0].endpoint.auth,
             PriceSourceAuth::ApiKey {
                 placement: KeyPlacement::Param,
-                name: "apikey".into()
+                name: "apikey".into(),
+                optional: false,
             },
             "only the key's parameter name is stored"
         );

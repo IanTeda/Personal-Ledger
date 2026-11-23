@@ -190,7 +190,13 @@ fn source_group(group: &SourceGroup, clicks: &PageClicks<UnitsPage>, cx: &App) -
         .children(group.note.clone().map(|text| note(text, cx)))
         .when(!group.buttons.is_empty(), |this| {
             this.child(buttons(&group.buttons, clicks, cx))
-        });
+        })
+        // Last, as a credit line, so it never moves the buttons.
+        .children(group.attribution.clone().map(|text| {
+            div()
+                .debug_selector(|| "units-pane-attribution".to_string())
+                .child(note(text, cx))
+        }));
     pane_group(&group.heading, body, "source", cx)
 }
 

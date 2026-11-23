@@ -15,7 +15,10 @@ use super::units_page::{ActivityLine, MenuAction, Row, SourceKind, UnitsPageEven
 use super::{ago, joined, updates_label};
 use crate::fetching::PriceFetching;
 use crate::protocols::UnitsPorts;
-use crate::{MANUAL_ENTRY, PriceSource, PriceSourceAuth, SourceOrigin, UnitRow, last_fetched, msg};
+use crate::{
+    COINGECKO, MANUAL_ENTRY, PriceSource, PriceSourceAuth, SourceOrigin, UnitRow, YAHOO_FINANCE,
+    last_fetched, msg,
+};
 
 /// The ✗ before LAST UPDATED for a source that hasn't fetched yet. A glyph, not a Message; both
 /// Clients draw it from here.
@@ -111,6 +114,9 @@ pub struct SourceGroup {
     pub meta: Option<String>,
     pub facts: Vec<Fact>,
     pub note: Option<String>,
+    /// What its provider's terms ask shown: "Powered by CoinGecko" on CoinGecko and every Unit it
+    /// prices, and on Yahoo Finance's own pane that its API is unofficial (ADR-0043).
+    pub attribution: Option<String>,
     pub buttons: Vec<PaneButton>,
 }
 
@@ -333,6 +339,7 @@ fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
                 ),
             ],
             note: None,
+            attribution: None,
             buttons: vec![PaneButton {
                 slug: "add-source",
                 label: msg::units_pane_add_source(),
@@ -379,6 +386,7 @@ fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
         meta: None,
         facts,
         note: None,
+        attribution: attribution(source, false),
         buttons: buttons(
             Row::Source(source.id, SourceKind::of(source)),
             UnitsRow::Source(source.id),
@@ -399,6 +407,7 @@ fn source_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> SourceGroup 
             meta: None,
             facts: Vec::new(),
             note: Some(msg::units_pane_manual_note()),
+            attribution: None,
             buttons: Vec::new(),
         };
     };
@@ -422,7 +431,10 @@ fn source_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> SourceGroup 
     };
     let key = match endpoint.auth {
         PriceSourceAuth::None => msg::units_pane_key_not_needed(),
-        PriceSourceAuth::ApiKey { .. } => msg::units_pane_key_needed(),
+        PriceSourceAuth::ApiKey { optional: true, .. } => msg::units_pane_key_optional(),
+        PriceSourceAuth::ApiKey {
+            optional: false, ..
+        } => msg::units_pane_key_needed(),
     };
     let mut facts = vec![
         Fact::plain(msg::units_column_source(), source_fact),
@@ -477,11 +489,26 @@ fn source_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> SourceGroup 
         meta: Some(msg::units_pane_source_meta(&origin, &kinds, &key)),
         facts,
         note: (!custom).then(msg::units_price_source_built_in_help),
+        attribution: attribution(source, true),
         buttons: buttons(
             Row::Source(source.id, kind),
             UnitsRow::Source(source.id),
             input.fetching.is_some(),
         ),
+    }
+}
+
+/// What `source`'s provider asks shown: CoinGecko's credit on its own pane and every Unit it
+/// prices, Yahoo Finance's unofficial note on its own pane (`own_pane`) only.
+fn attribution(source: &PriceSource<'_>, own_pane: bool) -> Option<String> {
+    match source.origin {
+        SourceOrigin::BuiltIn(built_in) if built_in.id == COINGECKO => {
+            Some(msg::units_pane_powered_by_coingecko())
+        }
+        SourceOrigin::BuiltIn(built_in) if built_in.id == YAHOO_FINANCE && own_pane => {
+            Some(msg::units_pane_yahoo_unofficial())
+        }
+        SourceOrigin::BuiltIn(_) | SourceOrigin::Custom(_) | SourceOrigin::ManualEntry => None,
     }
 }
 

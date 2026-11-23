@@ -2189,8 +2189,9 @@ mod tests {
         let source = source_group(&groups);
         assert_eq!(
             source.meta.as_deref(),
-            Some("built-in · prices Crypto · key not needed")
+            Some("built-in · prices Crypto · key optional")
         );
+        assert_eq!(source.attribution.as_deref(), Some("Powered by CoinGecko"));
         assert_eq!(
             facts(&source),
             [
@@ -2198,9 +2199,9 @@ mod tests {
                 ("Address", "https://api.coingecko.com/api/v3"),
                 (
                     "Request",
-                    "/simple/price?ids={symbol}&vs_currencies={quote}"
+                    "/simple/price?ids={symbol_lower}&vs_currencies={quote_lower}"
                 ),
-                ("Price path", "/{symbol}/{quote}"),
+                ("Price path", "/{symbol_lower}/{quote_lower}"),
                 ("Updates", "Every 15 min"),
                 ("Last updated", "5 minutes ago"),
             ]
@@ -2228,6 +2229,25 @@ mod tests {
             )
         );
         assert_eq!(row.detail, "symbol bitcoin · quoted in AUD");
+    }
+
+    #[test]
+    fn a_unit_coingecko_prices_credits_it_and_yahoos_pane_says_its_api_is_unofficial() {
+        let mut page = docked();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        assert_eq!(
+            source_group(&pane(&page)).attribution.as_deref(),
+            Some("Powered by CoinGecko")
+        );
+
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(YAHOO_FINANCE)));
+        assert_eq!(
+            source_group(&pane(&page)).attribution.as_deref(),
+            Some("Yahoo Finance's API is unofficial and may stop working.")
+        );
+
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
+        assert_eq!(source_group(&pane(&page)).attribution, None);
     }
 
     #[test]
@@ -2273,6 +2293,7 @@ mod tests {
         endpoint.auth = crate::PriceSourceAuth::ApiKey {
             placement: crate::KeyPlacement::Param,
             name: "apikey".into(),
+            optional: false,
         };
         let custom = crate::interactor::AddPriceSource {
             name: "broker".into(),
@@ -2436,6 +2457,133 @@ mod tests {
                 .expect("EUR is listed");
             assert_eq!(line.last_price, "1.65 AUD");
             assert_eq!(on.fetching.borrow().in_flight(), 0);
+        }
+
+        /// Adds an active `code` on `link`, presses `f` on it, answers the one request sent with
+        /// `body` and returns that request and the Unit's last price as listed.
+        fn fetch_answered(
+            on: &mut Fetching,
+            code: &str,
+            kind: UnitKind,
+            link: PriceLink,
+            body: &str,
+        ) -> (crate::PriceRequest, String) {
+            let unit = UnitRow::new(
+                code.into(),
+                code.into(),
+                kind,
+                Precision::of_kind(kind),
+                link,
+            );
+            let id = unit.id;
+            on.page.ports.borrow_mut().units.units.push(unit);
+            on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(id)));
+            assert!(offers_fetch(&on.page), "{code}");
+            on.page.send(UnitsPageEvent::FetchNow);
+            let requests = on.transport.requests();
+            let [(_, request)] = requests.as_slice() else {
+                panic!("one request for {code}, not {requests:?}");
+            };
+            let mut responses =
+                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
+            let mut notices: Vec<Notice> = Vec::new();
+            responses.handle(on.transport.answer_last(200, body), &mut notices);
+            let line = on
+                .page
+                .view()
+                .units
+                .into_iter()
+                .find(|line| line.code == code)
+                .expect("listed");
+            (request.clone(), line.last_price)
+        }
+
+        #[test]
+        fn f_on_a_coingecko_unit_asks_keyless_in_lower_case_and_its_answer_writes_the_price() {
+            let mut on = fetching();
+            let (request, price) = fetch_answered(
+                &mut on,
+                "ETH",
+                UnitKind::Crypto,
+                PriceLink {
+                    source_id: COINGECKO,
+                    symbol: "bitcoin".into(),
+                    quote: UnitId::SEED_AUD,
+                },
+                include_str!("../../fixtures/prices/coingecko_simple_price.json"),
+            );
+
+            assert_eq!(
+                request.url,
+                "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=aud"
+            );
+            assert_eq!(request.headers, [], "keyless, with no key stored");
+            assert_eq!(price, "92,568.00 AUD");
+        }
+
+        #[test]
+        fn f_on_a_yahoo_unit_sends_its_user_agent_and_its_answer_writes_the_price() {
+            let mut on = fetching();
+            let (request, price) = fetch_answered(
+                &mut on,
+                "BHP",
+                UnitKind::Equity,
+                PriceLink {
+                    source_id: YAHOO_FINANCE,
+                    symbol: "BHP.AX".into(),
+                    quote: UnitId::SEED_AUD,
+                },
+                include_str!("../../fixtures/prices/yahoo_chart.json"),
+            );
+
+            assert_eq!(
+                request.headers,
+                [(
+                    "User-Agent".to_string(),
+                    format!("Personal-Ledger/{}", env!("CARGO_PKG_VERSION"))
+                )]
+            );
+            assert_eq!(price, "52.52 AUD");
+        }
+
+        #[test]
+        fn f_on_a_custom_sources_unit_sends_its_headers_as_entered_and_writes_the_price() {
+            let mut on = fetching();
+            let source = crate::interactor::AddPriceSource {
+                name: "Broker".into(),
+                endpoint: crate::Endpoint {
+                    address: "https://broker.example".to_string().into(),
+                    request: "/quote/{symbol_lower}?in={quote}".to_string().into(),
+                    price_path: "/quote/last".to_string().into(),
+                    auth: crate::PriceSourceAuth::None,
+                    headers: vec![crate::RequestHeader {
+                        name: "X-Client".to_string().into(),
+                        value: "ledger; v1".to_string().into(),
+                    }]
+                    .into(),
+                },
+                updates: crate::Updates::Hourly,
+            }
+            .run(&mut on.page.ports.borrow_mut().price_sources);
+
+            let (request, price) = fetch_answered(
+                &mut on,
+                "ABC",
+                UnitKind::Equity,
+                PriceLink {
+                    source_id: source.id,
+                    symbol: "ABC".into(),
+                    quote: UnitId::SEED_AUD,
+                },
+                r#"{"quote":{"last":"12.5"}}"#,
+            );
+
+            assert_eq!(request.url, "https://broker.example/quote/abc?in=AUD");
+            assert_eq!(
+                request.headers,
+                [("X-Client".to_string(), "ledger; v1".to_string())]
+            );
+            assert_eq!(price, "12.50 AUD");
         }
 
         #[test]
@@ -2823,7 +2971,9 @@ mod tests {
                         auth: crate::PriceSourceAuth::ApiKey {
                             placement: crate::KeyPlacement::Header,
                             name: "x-key".into(),
+                            optional: false,
                         },
+                        headers: Vec::new().into(),
                     },
                     updates: crate::Updates::Hourly,
                 }),

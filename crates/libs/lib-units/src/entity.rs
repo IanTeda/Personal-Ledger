@@ -11,9 +11,9 @@ pub use precision::Precision;
 pub use price_source::{
     BUILT_IN_SOURCES, BuiltInOverride, BuiltInSource, COINGECKO, CustomSource, Endpoint,
     FRANKFURTER, KeyPlacement, MANUAL_ENTRY, PriceSource, PriceSourceAuth, PriceSourceRecord,
-    SourceOrigin, Updates, YAHOO_FINANCE, add_custom_source, built_in, edit_custom_source,
-    last_fetched, move_units_to_manual, override_built_in, price_source, price_source_exists,
-    price_sources, remove_custom_source, sources_for_kind,
+    RequestHeader, SourceOrigin, Updates, YAHOO_FINANCE, add_custom_source, built_in,
+    edit_custom_source, last_fetched, move_units_to_manual, override_built_in, price_source,
+    price_source_exists, price_sources, remove_custom_source, sources_for_kind,
 };
 
 /// One Unit. Owned `String` fields, since the Add unit dialog stores what a person typed. `kind` is

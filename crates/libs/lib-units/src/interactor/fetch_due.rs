@@ -196,7 +196,7 @@ mod tests {
         assert_eq!(
             check.transport.urls(),
             [
-                "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=AUD",
+                "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=aud",
                 "https://api.frankfurter.dev/v2/rate/EUR/AUD",
                 "https://api.frankfurter.dev/v2/rate/USD/AUD",
             ],
