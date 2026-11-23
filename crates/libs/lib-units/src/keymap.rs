@@ -18,6 +18,7 @@ pub const NEXT_TABLE: &str = "units.next_table";
 pub const SET_BASE: &str = "units.set_base";
 pub const SET_PRICE: &str = "units.set_price";
 pub const FETCH_NOW: &str = "units.fetch_now";
+pub const FETCH_ALL: &str = "units.fetch_all";
 pub const OPEN: &str = "units.open";
 pub const EARLIER: &str = "units.earlier";
 pub const LATER: &str = "units.later";
@@ -113,6 +114,14 @@ pub const UNITS_PAGE_BINDINGS: &[Binding<UnitsPageEvent>] = &[
         UnitsPageEvent::FetchNow,
         "units fetch",
         msg::units_command_fetch,
+    ),
+    // Palette only: unbound until `[keybindings]` gives it a key.
+    Binding::listed(
+        FETCH_ALL,
+        "",
+        UnitsPageEvent::FetchAll,
+        "units fetch-all",
+        msg::units_command_fetch_all,
     ),
     Binding::hidden(OPEN, "enter", UnitsPageEvent::Open),
 ];

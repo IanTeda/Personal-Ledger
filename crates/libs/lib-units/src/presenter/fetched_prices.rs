@@ -8,7 +8,9 @@ use chrono::Local;
 use lib_toast::{Notice, Notify, ToastKind};
 
 use super::Clock;
-use super::fetch_text::{Asked, round_failed_toast, some_failed_toast, unit_failed_toast};
+use super::fetch_text::{
+    Asked, fetching_status, round_failed_toast, some_failed_toast, unit_failed_toast,
+};
 use super::units_pane::amount;
 use crate::fetching::{PriceResponse, SharedFetching};
 use crate::interactor::{FetchDue, RecordFetchedPrices, RoundOutcome};
@@ -51,6 +53,7 @@ impl FetchedPricesPresenter {
         };
         let now = (self.clock)();
         let asked = landed.asked;
+        let named = landed.named;
         let outcome = {
             let mut ports = self.ports.borrow_mut();
             RecordFetchedPrices { landed }.run(
@@ -63,10 +66,20 @@ impl FetchedPricesPresenter {
         if asked {
             self.tell(&outcome, router);
         }
+        if named {
+            // The status names what is still out and clears, with an empty message, once the last
+            // asked-for round has landed.
+            let status = {
+                let ports = self.ports.borrow();
+                fetching_status(&*ports, &self.fetching.borrow())
+            };
+            router.notify(Notice::Status(status.unwrap_or_default()));
+        }
     }
 
-    /// A Fetch now's outcome: a Success Toast naming each price when everything landed, else one
-    /// Warning Toast naming what failed.
+    /// A Fetch now's outcome, one Toast per round: a Success Toast naming the price, or counting
+    /// the prices from the source, when everything landed, else one Warning Toast naming what
+    /// failed.
     fn tell(&self, outcome: &RoundOutcome, router: &mut dyn Notify) {
         let ports = self.ports.borrow();
         let catalogue = ports.source_catalogue();
@@ -95,6 +108,15 @@ impl FetchedPricesPresenter {
                     quote: &quote,
                 };
                 router.notify(warn(unit_failed_toast(&unit.code, *reason, &source, asked)));
+            }
+            (written, []) if written.len() > 1 => {
+                router.notify(Notice::Toast(
+                    ToastKind::Success,
+                    msg::units_toast_fetch_round_fetched(
+                        lib_viper::view::count(written.len()),
+                        &source,
+                    ),
+                ));
             }
             (written, []) => {
                 for price in written {

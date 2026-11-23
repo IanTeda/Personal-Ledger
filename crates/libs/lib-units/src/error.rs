@@ -61,6 +61,9 @@ pub enum Error {
     /// The Unit's source needs an API key this Client doesn't have, so nothing was sent.
     #[error("the price source needs an api key this client doesn't have")]
     KeyMissing,
+    /// The Price Source has a round in flight, so asking again sends nothing.
+    #[error("the price source already has a round in flight")]
+    AlreadyFetching,
     /// A week that hasn't started has no price yet.
     #[error("a future week can't be priced")]
     FutureWeek,

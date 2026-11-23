@@ -253,8 +253,8 @@ fn not_fetched() -> String {
 }
 
 /// The buttons for `row`'s actions, each sent as an action on that row.
-fn buttons(row: Row<'_>, target: UnitsRow) -> Vec<PaneButton> {
-    MenuAction::for_row(row)
+fn buttons(row: Row<'_>, target: UnitsRow, fetching: bool) -> Vec<PaneButton> {
+    MenuAction::for_row(row, fetching)
         .iter()
         .map(|action| PaneButton {
             slug: action.slug(),
@@ -289,7 +289,11 @@ fn unit_group(input: &PaneInput<'_>, unit: &UnitRow) -> UnitGroup {
             ),
             Fact::plain(msg::units_field_precision(), unit.precision.to_string()),
         ],
-        buttons: buttons(Row::Unit(unit), UnitsRow::Unit(unit.id)),
+        buttons: buttons(
+            Row::Unit(unit),
+            UnitsRow::Unit(unit.id),
+            input.fetching.is_some(),
+        ),
     }
 }
 
@@ -378,6 +382,7 @@ fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
         buttons: buttons(
             Row::Source(source.id, SourceKind::of(source)),
             UnitsRow::Source(source.id),
+            input.fetching.is_some(),
         ),
     }
 }
@@ -472,7 +477,11 @@ fn source_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> SourceGroup 
         meta: Some(msg::units_pane_source_meta(&origin, &kinds, &key)),
         facts,
         note: (!custom).then(msg::units_price_source_built_in_help),
-        buttons: buttons(Row::Source(source.id, kind), UnitsRow::Source(source.id)),
+        buttons: buttons(
+            Row::Source(source.id, kind),
+            UnitsRow::Source(source.id),
+            input.fetching.is_some(),
+        ),
     }
 }
 

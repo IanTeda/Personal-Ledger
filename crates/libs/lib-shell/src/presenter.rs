@@ -718,7 +718,9 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
                 self.restart_idle_count();
                 self.toasts.raise(kind, text, at);
             }
-            Notice::Status(text) => self.status = Some(text),
+            // An empty message clears the status: how a module takes down one it set for work still
+            // out (Units' fetching) once the work lands, since no module sends a clear (ADR-0048).
+            Notice::Status(text) => self.status = (!text.is_empty()).then_some(text),
             // A History entry's label, which the Client pairs with what the input recorded.
             Notice::Changed(_) => {}
         }
@@ -2282,6 +2284,16 @@ mod tests {
             shell.view_model().status.as_deref(),
             Some("g x is not a jump")
         );
+    }
+
+    #[test]
+    fn an_empty_status_notice_takes_the_status_down() {
+        let mut shell = shell();
+        shell.show(status("Fetching prices from CoinGecko\u{2026}"), local(0));
+
+        shell.show(status(""), local(1));
+
+        assert_eq!(shell.view_model().status, None);
     }
 
     #[test]

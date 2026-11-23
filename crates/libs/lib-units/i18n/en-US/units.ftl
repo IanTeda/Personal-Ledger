@@ -25,6 +25,7 @@ units-menu-edit-unit = Edit unit…
 units-menu-delete-unit = Delete unit…
 units-menu-reactivate-unit = Reactivate unit
 units-menu-set-price = Set price…
+units-menu-fetch = Fetch price now
 units-menu-test-source = Test price source
 units-menu-edit-source = Edit price source…
 units-menu-delete-source = Delete price source…
@@ -85,6 +86,7 @@ units-pane-edit-unit = Edit unit
 units-pane-delete-unit = Delete unit
 units-pane-reactivate-unit = Reactivate unit
 units-pane-set-price = Set price
+units-pane-fetch = Fetch now
 units-pane-test = Test
 units-pane-edit-source = Edit source
 units-pane-delete-source = Delete source
@@ -363,7 +365,8 @@ units-command-test-source = test the selected price source
 units-command-next-table = move between the Units and the price sources
 units-command-set-base = choose the base Unit
 units-command-set-price = set a price for the selected Unit
-units-command-fetch = fetch the selected Unit's price now
+units-command-fetch = fetch the selected Unit's or Price Source's prices now
+units-command-fetch-all = fetch every Unit's price now
 
 ## Fetch failures (#1387): held by each Client in memory, never in the Ledger. A reason's name shows
 ## in LAST UPDATED and Last fetch, its detail after it. `$source` is a Price Source's name, `$symbol`
@@ -423,3 +426,17 @@ units-toast-fetch-some-failed = Fetched { $fetched ->
 units-fetch-some-not-found = not found
 units-fetch-some-no-price = with no price
 units-fetch-some-failed = failed
+
+## Fetch now on a Price Source or every Unit: a Toast as each source's round starts, the status line
+## naming the sources still out, rows reading `Fetching…`, and one outcome Toast per round.
+## `$sources` is the sources' names joined with commas.
+
+units-fetching = Fetching…
+units-toast-fetching = Fetching prices from { $source }…
+units-toast-already-fetching = Already fetching prices from { $source }
+units-status-fetching = Fetching prices from { $sources }…
+units-status-fetch-no-units = No active Unit uses { $source }
+units-toast-fetch-round-fetched = Fetched { $fetched ->
+    [one] { $fetched } price
+   *[other] { $fetched } prices
+} from { $source }

@@ -553,3 +553,41 @@ fn a_medium_terminal_shows_week_close_and_change_only() {
         "the heading names the Unit before the flag, which gives way:\n{frame}"
     );
 }
+
+#[test]
+fn f_on_a_price_source_row_fetches_its_units_and_toasts_the_start_then_the_outcome() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u Tab j f");
+
+    assert_eq!(
+        transport.urls(),
+        ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
+    );
+    let started = screen(&mut shell);
+    assert!(
+        started.contains("Fetching prices from Frankfurter"),
+        "{started}"
+    );
+    assert!(
+        started.contains("Fetching\u{2026}"),
+        "the row says so:\n{started}"
+    );
+
+    press(&mut shell, "f");
+    assert_eq!(
+        transport.requests().len(),
+        1,
+        "a second press sends nothing"
+    );
+    assert!(
+        screen(&mut shell).contains("Already fetching prices from Frankfurter"),
+        "a second press says so"
+    );
+
+    transport.answer_last(200, r#"{"base":"EUR","quote":"AUD","rate":1.6512}"#);
+    shell.handle_event(Event::Tick);
+
+    let frame = screen(&mut shell);
+    assert!(frame.contains("Fetched EUR at 1.65 AUD"), "{frame}");
+}

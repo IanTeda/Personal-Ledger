@@ -14,13 +14,13 @@ use lib_viper::keymap::{
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
-use super::fetch_text::{failure_name, round_failed_toast};
+use super::fetch_text::{failure_name, fetching_status, round_failed_toast};
 use super::price_history::{HistoryInput, PriceHistory, price_history};
 use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
 use crate::fetching::{FetchFailure, SharedFetching, is_out_of_date};
-use crate::interactor::{FetchNow, ReactivateUnit};
+use crate::interactor::{FetchAll, FetchNow, FetchSource, ReactivateUnit};
 use crate::keymap::{FETCH_NOW, NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE, unit_prices_keymap};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
 use crate::{
@@ -61,6 +61,8 @@ pub enum MenuAction {
     Prices,
     EditUnit,
     SetPrice,
+    /// Fetch price now: on a Unit its price, on a Price Source every Unit it values.
+    FetchNow,
     ReactivateUnit,
     DeleteUnit,
     TestSource,
@@ -72,36 +74,37 @@ impl MenuAction {
     /// A row's actions in menu order, the destructive one last. Every Unit offers its prices
     /// first. A Unit on Manual entry offers Set price, since nothing else prices it; a deactivated
     /// Unit offers Reactivate, since it is hidden from the pickers until then. The Manual entry
-    /// row offers nothing and a built-in no Delete.
-    pub(super) fn for_row(row: Row<'_>) -> &'static [Self] {
+    /// row offers nothing and a built-in no Delete. With `fetching`, an active Unit and a Price
+    /// Source that fetches offer Fetch price now, ahead of Delete (or Test, on a source).
+    pub(super) fn for_row(row: Row<'_>, fetching: bool) -> Vec<Self> {
         match row {
-            Row::Unit(unit) => match (unit.link.source_id == MANUAL_ENTRY, unit.is_active) {
-                (true, true) => &[
-                    Self::Prices,
-                    Self::EditUnit,
-                    Self::SetPrice,
-                    Self::DeleteUnit,
-                ],
-                (true, false) => &[
-                    Self::Prices,
-                    Self::EditUnit,
-                    Self::SetPrice,
-                    Self::ReactivateUnit,
-                    Self::DeleteUnit,
-                ],
-                (false, true) => &[Self::Prices, Self::EditUnit, Self::DeleteUnit],
-                (false, false) => &[
-                    Self::Prices,
-                    Self::EditUnit,
-                    Self::ReactivateUnit,
-                    Self::DeleteUnit,
-                ],
-            },
-            Row::Source(_, SourceKind::Custom) => {
-                &[Self::TestSource, Self::EditSource, Self::DeleteSource]
+            Row::Unit(unit) => {
+                let manual = unit.link.source_id == MANUAL_ENTRY;
+                let mut actions = vec![Self::Prices, Self::EditUnit];
+                if manual {
+                    actions.push(Self::SetPrice);
+                }
+                if !unit.is_active {
+                    actions.push(Self::ReactivateUnit);
+                } else if fetching && !manual {
+                    actions.push(Self::FetchNow);
+                }
+                actions.push(Self::DeleteUnit);
+                actions
             }
-            Row::Source(_, SourceKind::BuiltIn) => &[Self::TestSource, Self::EditSource],
-            Row::Source(_, SourceKind::ManualEntry) => &[],
+            Row::Source(_, SourceKind::Custom) => {
+                let mut actions = Vec::new();
+                actions.extend(fetching.then_some(Self::FetchNow));
+                actions.extend([Self::TestSource, Self::EditSource, Self::DeleteSource]);
+                actions
+            }
+            Row::Source(_, SourceKind::BuiltIn) => {
+                let mut actions = Vec::new();
+                actions.extend(fetching.then_some(Self::FetchNow));
+                actions.extend([Self::TestSource, Self::EditSource]);
+                actions
+            }
+            Row::Source(_, SourceKind::ManualEntry) => Vec::new(),
         }
     }
 
@@ -110,6 +113,7 @@ impl MenuAction {
             Self::Prices => msg::units_menu_prices(),
             Self::EditUnit => msg::units_menu_edit_unit(),
             Self::SetPrice => msg::units_menu_set_price(),
+            Self::FetchNow => msg::units_menu_fetch(),
             Self::ReactivateUnit => msg::units_menu_reactivate_unit(),
             Self::DeleteUnit => msg::units_menu_delete_unit(),
             Self::TestSource => msg::units_menu_test_source(),
@@ -124,6 +128,7 @@ impl MenuAction {
             Self::Prices => msg::units_pane_prices(),
             Self::EditUnit => msg::units_pane_edit_unit(),
             Self::SetPrice => msg::units_pane_set_price(),
+            Self::FetchNow => msg::units_pane_fetch(),
             Self::ReactivateUnit => msg::units_pane_reactivate_unit(),
             Self::DeleteUnit => msg::units_pane_delete_unit(),
             Self::TestSource => msg::units_pane_test(),
@@ -138,6 +143,7 @@ impl MenuAction {
             Self::Prices => "prices",
             Self::EditUnit => "edit-unit",
             Self::SetPrice => "set-price",
+            Self::FetchNow => "fetch-now",
             Self::ReactivateUnit => "reactivate-unit",
             Self::DeleteUnit => "delete-unit",
             Self::TestSource => "test-source",
@@ -187,8 +193,11 @@ pub enum UnitsPageEvent {
     SetBase,
     /// `p`: Set price on the selected Unit, when it is on Manual entry.
     SetPrice,
-    /// `f`: fetch the selected Unit's price now, when its source fetches and it is active.
+    /// `f`: fetch the selected Unit's price now, when its source fetches and it is active, or on a
+    /// Price Source row every Unit that source values.
     FetchNow,
+    /// The palette's `units fetch-all`: every fetching source's Units, one round per source.
+    FetchAll,
     /// `enter`: the selected Unit's prices view, or the selected Price Source's Edit Dialog.
     Open,
     /// A right-click on a row. A row with no actions opens no menu.
@@ -493,13 +502,17 @@ impl UnitsPagePresenter {
             UnitsPageEvent::Test => self.test(router),
             UnitsPageEvent::SetBase => self.open(UnitsDialog::SetBaseUnit, router),
             UnitsPageEvent::SetPrice => self.run_on_selection(MenuAction::SetPrice, router),
-            UnitsPageEvent::FetchNow => self.fetch_now(router),
+            UnitsPageEvent::FetchNow => self.run_on_selection(MenuAction::FetchNow, router),
+            UnitsPageEvent::FetchAll => self.fetch_all(router),
             UnitsPageEvent::Open => match self.selection() {
                 Some(UnitsRow::Unit(_)) => self.run_on_selection(MenuAction::Prices, router),
                 _ => self.edit(router),
             },
             UnitsPageEvent::OpenMenu(row) => {
-                if self.with_row(row, |row| !MenuAction::for_row(row).is_empty()) == Some(true) {
+                let fetching = self.fetching.is_some();
+                if self.with_row(row, |row| !MenuAction::for_row(row, fetching).is_empty())
+                    == Some(true)
+                {
                     self.select(row);
                     self.menu = Some(row);
                 }
@@ -598,7 +611,11 @@ impl UnitsPagePresenter {
                         .unwrap_or_default(),
                     last_price: last
                         .map_or_else(msg::units_none, |price| amount(&price.close, quote)),
-                    last_age: last.map(|price| ago(price.written_at, now)),
+                    last_age: if fetching.is_some_and(|fetching| fetching.unit_asked_for(unit.id)) {
+                        Some(msg::units_fetching())
+                    } else {
+                        last.map(|price| ago(price.written_at, now))
+                    },
                     out_of_date: out_of_date(unit),
                     is_base: unit.id == base,
                     kind_meta: joined(
@@ -618,6 +635,7 @@ impl UnitsPagePresenter {
             .map(|source| {
                 let fetched = last_fetched(&units, source.id);
                 let fetches = source.endpoint().is_some();
+                let asked = fetching.is_some_and(|fetching| fetching.source_asked_for(source.id));
                 let round_failure = fetching
                     .and_then(|fetching| fetching.source_fetch(source))
                     .and_then(|last| last.failure());
@@ -630,11 +648,12 @@ impl UnitsPagePresenter {
                         .map_or_else(msg::units_none, |endpoint| endpoint.address.to_string()),
                     last_updated: match (fetched, round_failure) {
                         _ if !fetches => msg::units_none(),
+                        _ if asked => msg::units_fetching(),
                         (_, Some(reason)) => failure_name(reason),
                         (Some(at), None) => ago(at, now),
                         (None, None) => msg::units_not_fetched_yet(),
                     },
-                    not_fetched: fetches && fetched.is_none() && round_failure.is_none(),
+                    not_fetched: fetches && !asked && fetched.is_none() && round_failure.is_none(),
                     failed: round_failure.is_some(),
                     selected: selection == Some(UnitsRow::Source(source.id)),
                 }
@@ -647,8 +666,9 @@ impl UnitsPagePresenter {
                 .find(|source| source.id == id)
                 .map(|source| Row::Source(id, SourceKind::of(source))),
         });
+        let fetching_on = fetching.is_some();
         let entries = |row: Row<'_>| {
-            MenuAction::for_row(row)
+            MenuAction::for_row(row, fetching_on)
                 .iter()
                 .map(|action| action.entry())
                 .collect::<Vec<_>>()
@@ -675,7 +695,9 @@ impl UnitsPagePresenter {
             base_legend: msg::units_legend_base(),
             hints: self.hints(
                 selected_row,
-                matches!(selected_row, Some(Row::Unit(unit)) if self.fetches(unit, &sources)),
+                selected_row.is_some_and(|row| {
+                    MenuAction::for_row(row, fetching_on).contains(&MenuAction::FetchNow)
+                }),
             ),
             selected_actions: selected_row.map(entries).unwrap_or_default(),
             menu: self.menu.and_then(|row| {
@@ -862,7 +884,10 @@ impl UnitsPagePresenter {
 
     /// Runs `action` on `row` when the row offers it, as its menu entry, key or button does.
     fn run(&mut self, action: MenuAction, row: UnitsRow, router: &mut dyn UnitsRouter) {
-        let offered = self.with_row(row, |found| MenuAction::for_row(found).contains(&action));
+        let fetching = self.fetching.is_some();
+        let offered = self.with_row(row, |found| {
+            MenuAction::for_row(found, fetching).contains(&action)
+        });
         if offered != Some(true) {
             return;
         }
@@ -871,6 +896,8 @@ impl UnitsPagePresenter {
             (MenuAction::EditUnit, UnitsRow::Unit(id)) => {
                 self.open(UnitsDialog::EditUnit(id), router);
             }
+            (MenuAction::FetchNow, UnitsRow::Unit(id)) => self.fetch_now(id, router),
+            (MenuAction::FetchNow, UnitsRow::Source(id)) => self.fetch_source(id, router),
             (MenuAction::SetPrice, UnitsRow::Unit(id)) => {
                 self.open(UnitsDialog::SetPrice(id), router);
             }
@@ -910,13 +937,10 @@ impl UnitsPagePresenter {
         self.run(MenuAction::TestSource, row, router);
     }
 
-    /// `f`: asks the selected Unit's source for its price; the response writes it. A Unit `f`
-    /// isn't offered on is left alone. Never undoable, so it raises no `Notice::Changed`. A source
+    /// Asks the Unit's source for its price; the response writes it. A Unit fetching isn't
+    /// offered on is left alone. Never undoable, so it raises no `Notice::Changed`. A source
     /// needing a key this Client doesn't have sends nothing and says so in a Warning Toast.
-    fn fetch_now(&mut self, router: &mut dyn UnitsRouter) {
-        let Some(UnitsRow::Unit(id)) = self.selection() else {
-            return;
-        };
+    fn fetch_now(&mut self, id: UnitId, router: &mut dyn UnitsRouter) {
         let Some(fetching) = &self.fetching else {
             return;
         };
@@ -943,6 +967,76 @@ impl UnitsPagePresenter {
                 ToastKind::Warning,
                 round_failed_toast(FetchFailure::KeyMissing, source.name),
             ));
+        }
+    }
+
+    /// Asks one Price Source for every Unit it values, as one round.
+    fn fetch_source(&mut self, id: PriceSourceId, router: &mut dyn UnitsRouter) {
+        let Some(fetching) = &self.fetching else {
+            return;
+        };
+        let ports = self.ports.borrow();
+        let outcome = FetchSource { id }.run(&*ports, &mut fetching.borrow_mut(), (self.clock)());
+        self.tell_started(&[(id, outcome)], true, router);
+    }
+
+    /// The palette's `units fetch-all`: every fetching source, one round each.
+    fn fetch_all(&mut self, router: &mut dyn UnitsRouter) {
+        let Some(fetching) = &self.fetching else {
+            return;
+        };
+        let ports = self.ports.borrow();
+        let outcomes = FetchAll.run(&*ports, &mut fetching.borrow_mut(), (self.clock)());
+        self.tell_started(&outcomes, false, router);
+    }
+
+    /// Tells what asking each source came to: an Info Toast as its round starts, an Info Toast for
+    /// a source already out, a Warning Toast for a missing key, and one status message naming
+    /// every source out. A source no active Unit uses sends nothing; asked alone it says so.
+    fn tell_started(
+        &self,
+        outcomes: &[(PriceSourceId, Result<usize, Error>)],
+        alone: bool,
+        router: &mut dyn UnitsRouter,
+    ) {
+        let (Some(fetching), ports) = (&self.fetching, self.ports.borrow()) else {
+            return;
+        };
+        let catalogue = ports.source_catalogue();
+        let name = |id| {
+            catalogue
+                .source(id)
+                .map(|source| source.name.to_string())
+                .unwrap_or_default()
+        };
+        let mut started = false;
+        for (id, outcome) in outcomes {
+            match outcome {
+                Ok(0) if alone => {
+                    router.notify(Notice::Status(msg::units_status_fetch_no_units(&name(*id))));
+                }
+                Ok(0) => {}
+                Ok(_) => {
+                    started = true;
+                    router.notify(Notice::Toast(
+                        ToastKind::Info,
+                        msg::units_toast_fetching(&name(*id)),
+                    ));
+                }
+                Err(Error::AlreadyFetching) => router.notify(Notice::Toast(
+                    ToastKind::Info,
+                    msg::units_toast_already_fetching(&name(*id)),
+                )),
+                Err(Error::KeyMissing) => router.notify(Notice::Toast(
+                    ToastKind::Warning,
+                    round_failed_toast(FetchFailure::KeyMissing, &name(*id)),
+                )),
+                // Gone or Manual entry: the rules that offer the action leave only a race.
+                Err(_) => {}
+            }
+        }
+        if started && let Some(status) = fetching_status(&*ports, &fetching.borrow()) {
+            router.notify(Notice::Status(status));
         }
     }
 
@@ -988,13 +1082,13 @@ impl UnitsPagePresenter {
     }
 
     /// The legend for `row`'s table, with Set price while `row` offers it and Fetch price while
-    /// `fetch`.
+    /// `fetch` (`f` fetches a Unit's price, or a Price Source's Units').
     fn hints(&self, row: Option<Row<'_>>, fetch: bool) -> Vec<Hint> {
         let chord = |command| self.keymap.hint_chord(command);
         let moves = self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]);
         let on_source = matches!(row, Some(Row::Source(..)));
         let set_price =
-            row.is_some_and(|row| MenuAction::for_row(row).contains(&MenuAction::SetPrice));
+            row.is_some_and(|row| MenuAction::for_row(row, true).contains(&MenuAction::SetPrice));
         let (row, test, other) = if on_source {
             (
                 msg::units_hint_price_source(),
@@ -2366,6 +2460,210 @@ mod tests {
             on.page.send(UnitsPageEvent::FetchNow);
 
             assert!(on.transport.requests().is_empty());
+        }
+
+        fn notices(calls: Vec<RouterCall>) -> Vec<Notice> {
+            calls
+                .into_iter()
+                .filter_map(|call| match call {
+                    RouterCall::Notice(notice) => Some(notice),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn info(text: &str) -> Notice {
+            Notice::Toast(ToastKind::Info, text.into())
+        }
+
+        #[test]
+        fn f_on_a_source_row_fetches_its_units_and_tells_it_started_on_the_toast_and_status_line() {
+            let mut on = fetching();
+            on.page
+                .send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
+            assert!(offers_fetch(&on.page));
+
+            let told = notices(on.page.send(UnitsPageEvent::FetchNow));
+
+            assert_eq!(
+                told,
+                [
+                    info("Fetching prices from Frankfurter\u{2026}"),
+                    Notice::Status("Fetching prices from Frankfurter\u{2026}".into())
+                ]
+            );
+            assert_eq!(
+                on.transport.urls(),
+                ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
+            );
+            assert_eq!(
+                eur_line(&on.page).last_age.as_deref(),
+                Some("Fetching\u{2026}")
+            );
+            assert_eq!(frankfurter_line(&on.page).last_updated, "Fetching\u{2026}");
+        }
+
+        #[test]
+        fn a_second_press_while_the_round_is_out_gives_an_info_toast_and_sends_nothing() {
+            let mut on = fetching();
+            on.page
+                .send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
+            on.page.send(UnitsPageEvent::FetchNow);
+
+            let told = notices(on.page.send(UnitsPageEvent::FetchNow));
+
+            assert_eq!(told, [info("Already fetching prices from Frankfurter")]);
+            assert_eq!(on.transport.requests().len(), 1);
+        }
+
+        #[test]
+        fn the_round_landing_writes_one_toast_clears_the_status_and_the_rows() {
+            let mut on = fetching();
+            let usd = UnitRow::new(
+                "USD".into(),
+                "US dollar".into(),
+                UnitKind::Currency,
+                Precision::of_kind(UnitKind::Currency),
+                PriceLink {
+                    source_id: FRANKFURTER,
+                    symbol: "USD".into(),
+                    quote: UnitId::SEED_AUD,
+                },
+            );
+            on.page.ports.borrow_mut().units.units.push(usd);
+            on.page
+                .send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
+            on.page.send(UnitsPageEvent::FetchNow);
+            let mut responses =
+                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
+            let mut notices: Vec<Notice> = Vec::new();
+
+            responses.handle(on.transport.answer_last(200, BODY), &mut notices);
+            assert_eq!(notices, [], "the round is held until its last response");
+            let first = on.transport.requests()[0].0;
+            responses.handle(
+                on.transport.answer(
+                    first,
+                    crate::TransportOutcome::Answered {
+                        status: 200,
+                        body: BODY.into(),
+                    },
+                ),
+                &mut notices,
+            );
+
+            assert_eq!(
+                notices,
+                [
+                    Notice::Toast(
+                        ToastKind::Success,
+                        "Fetched 2 prices from Frankfurter".into()
+                    ),
+                    Notice::Status(String::new())
+                ]
+            );
+            assert_ne!(
+                eur_line(&on.page).last_age.as_deref(),
+                Some("Fetching\u{2026}")
+            );
+            assert_ne!(frankfurter_line(&on.page).last_updated, "Fetching\u{2026}");
+        }
+
+        #[test]
+        fn fetch_all_starts_a_round_on_every_fetching_source_and_names_them_all() {
+            let mut on = fetching();
+
+            let told = notices(on.page.send(UnitsPageEvent::FetchAll));
+
+            let sources = on.page.view().price_sources;
+            assert!(sources.iter().any(|source| source.id == COINGECKO));
+            assert_eq!(
+                told,
+                [
+                    info("Fetching prices from CoinGecko\u{2026}"),
+                    info("Fetching prices from Frankfurter\u{2026}"),
+                    Notice::Status("Fetching prices from CoinGecko, Frankfurter\u{2026}".into())
+                ]
+            );
+            let mut responses =
+                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
+            let mut after: Vec<Notice> = Vec::new();
+            responses.handle(on.transport.answer_last(200, BODY), &mut after);
+            assert!(
+                after.contains(&Notice::Status(
+                    "Fetching prices from CoinGecko\u{2026}".into()
+                )) || after.contains(&Notice::Status(String::new()))
+            );
+        }
+
+        #[test]
+        fn fetch_all_while_every_round_is_out_only_gives_info_toasts() {
+            let mut on = fetching();
+            on.page.send(UnitsPageEvent::FetchAll);
+            let sent = on.transport.requests().len();
+
+            let told = notices(on.page.send(UnitsPageEvent::FetchAll));
+
+            assert!(
+                told.iter()
+                    .all(|notice| matches!(notice, Notice::Toast(ToastKind::Info, _))),
+                "{told:?}"
+            );
+            assert_eq!(on.transport.requests().len(), sent);
+        }
+
+        #[test]
+        fn fetch_price_now_is_in_both_row_menus_but_not_on_manual_entry_or_a_deactivated_unit() {
+            let mut on = fetching();
+            let eur = on.eur;
+            let entries = |on: &mut Fetching, row| {
+                on.page.send(UnitsPageEvent::OpenMenu(row));
+                on.page
+                    .view()
+                    .menu
+                    .map(|menu| {
+                        menu.entries
+                            .into_iter()
+                            .map(|e| e.label)
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            };
+
+            assert!(entries(&mut on, UnitsRow::Unit(eur)).contains(&"Fetch price now".into()));
+            assert!(
+                entries(&mut on, UnitsRow::Source(FRANKFURTER)).contains(&"Fetch price now".into())
+            );
+            assert!(
+                !entries(&mut on, UnitsRow::Unit(UnitId::SEED_VAS))
+                    .contains(&"Fetch price now".into())
+            );
+            assert!(entries(&mut on, UnitsRow::Source(MANUAL_ENTRY)).is_empty());
+            on.page
+                .ports
+                .borrow_mut()
+                .units
+                .units
+                .iter_mut()
+                .find(|unit| unit.id == on.eur)
+                .expect("eur")
+                .is_active = false;
+            assert!(!entries(&mut on, UnitsRow::Unit(eur)).contains(&"Fetch price now".into()));
+        }
+
+        #[test]
+        fn units_fetch_all_is_in_the_palette() {
+            let page = UnitsPagePresenter::new(sample().1, clock(), &KeyBindingConfig::default());
+
+            assert_eq!(
+                page.keymap().event_for("units.fetch_all"),
+                Some(UnitsPageEvent::FetchAll)
+            );
+            assert!(
+                page.keymap()
+                    .listed()
+                    .any(|listed| listed.name == "units fetch-all")
+            );
         }
 
         fn eur_line(page: &Page) -> UnitLine {

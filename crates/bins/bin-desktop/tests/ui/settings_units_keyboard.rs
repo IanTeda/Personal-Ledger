@@ -1743,3 +1743,71 @@ fn at_x_large_price_history_moves_into_the_pane_with_a_sparkline(app: &mut TestA
         Some("enter opens all 52 weeks")
     );
 }
+
+#[gpui::test]
+fn f_on_a_price_source_row_fetches_its_units_with_a_start_toast_the_status_and_fetching_rows(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_on_frankfurter);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    ui.press("tab j");
+    assert_eq!(selected(&mut ui), "Frankfurter");
+    assert!(
+        ui.status_as_shortcuts()
+            .contains(&("fetch price".into(), "f".into()))
+    );
+
+    ui.press("f");
+
+    assert_eq!(
+        transport.urls(),
+        ["https://api.frankfurter.dev/v2/rate/EUR/AUD"],
+        "a fresh price and Manual only are no reason to skip"
+    );
+    assert!(visible_toasts(&mut ui).contains(&(
+        "Info".to_string(),
+        "Fetching prices from Frankfurter\u{2026}".to_string()
+    )));
+    assert_eq!(
+        ui.read(bin_desktop::shell::router::Root::status_message)
+            .as_deref(),
+        Some("Fetching prices from Frankfurter\u{2026}")
+    );
+    assert_eq!(
+        unit_line(&mut ui, "EUR").1.last_age.as_deref(),
+        Some("Fetching\u{2026}")
+    );
+    assert_eq!(
+        source_line(&mut ui, "Frankfurter").1.last_updated,
+        "Fetching\u{2026}"
+    );
+
+    ui.press("f");
+    assert_eq!(
+        transport.requests().len(),
+        1,
+        "a second press sends nothing"
+    );
+    assert!(visible_toasts(&mut ui).contains(&(
+        "Info".to_string(),
+        "Already fetching prices from Frankfurter".to_string()
+    )));
+
+    transport.answer_last(200, r#"{"base":"EUR","quote":"AUD","rate":1.6512}"#);
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert!(
+        visible_toasts(&mut ui)
+            .contains(&("Success".to_string(), "Fetched EUR at 1.65 AUD".to_string()))
+    );
+    assert_eq!(
+        ui.read(bin_desktop::shell::router::Root::status_message),
+        None
+    );
+    assert_ne!(
+        source_line(&mut ui, "Frankfurter").1.last_updated,
+        "Fetching\u{2026}"
+    );
+}

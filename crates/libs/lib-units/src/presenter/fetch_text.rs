@@ -5,8 +5,9 @@
 use chrono::{DateTime, Utc};
 
 use super::ago;
-use crate::fetching::{FetchFailure, FetchOutcome, LastFetch};
+use crate::fetching::{FetchFailure, FetchOutcome, LastFetch, PriceFetching};
 use crate::msg;
+use crate::protocols::UnitsPorts;
 
 /// The reason's name: `Not found`.
 pub(super) fn failure_name(reason: FetchFailure) -> String {
@@ -59,6 +60,20 @@ fn round_phrase(reason: FetchFailure) -> String {
             msg::units_fetch_round_source_error()
         }
     }
+}
+
+/// The status line while asked-for rounds are out, naming their sources in the order they list
+/// (`Fetching prices from CoinGecko, Yahoo Finance…`); `None` once everything has landed.
+pub(super) fn fetching_status(ports: &dyn UnitsPorts, fetching: &PriceFetching) -> Option<String> {
+    let out = fetching.named_sources();
+    let names: Vec<String> = ports
+        .source_catalogue()
+        .sources()
+        .iter()
+        .filter(|source| out.contains(&source.id))
+        .map(|source| source.name.to_string())
+        .collect();
+    (!names.is_empty()).then(|| msg::units_status_fetching(&names.join(", ")))
 }
 
 /// `Couldn't fetch from CoinGecko: rate limited, try again later`.

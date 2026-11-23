@@ -58,10 +58,13 @@ impl DialogRouter<UnitsOutcome> for Router<'_> {
 
 impl Notify for Router<'_> {
     /// The TUI's status line has no message slot, so a status reads as an Info Toast, whose echo
-    /// lands in the footer.
+    /// lands in the footer. An empty status only takes one down, which a Toast can't, and a status
+    /// a Toast of this call already says (one source's *Fetching prices from…*) adds nothing.
     fn notify(&mut self, notice: Notice) {
         self.toasts.push(match notice {
             Notice::Toast(kind, text) => (kind, text),
+            Notice::Status(text) if text.is_empty() => return,
+            Notice::Status(text) if self.toasts.iter().any(|(_, said)| *said == text) => return,
             Notice::Status(text) => (ToastKind::Info, text),
             // The TUI keeps no History.
             Notice::Changed(_) => return,

@@ -748,3 +748,56 @@ fn clicking_a_source_whose_round_failed_shows_its_reason_and_last_fetch(app: &mu
         )
     );
 }
+
+#[gpui::test]
+fn fetch_price_now_is_in_the_unit_and_source_row_menus_and_the_pane_and_clicking_it_fetches(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let ui = Harness::fetching(app, (transport.clone(), responses), |_| {});
+    let mut ui = to_units_at(ui, WindowSize::XLarge);
+
+    // BTC is on CoinGecko, so its menu offers Fetch price now ahead of Delete.
+    ui.right_click("unit-row-1");
+    assert_eq!(
+        menu(&mut ui),
+        Some(vec!["prices", "edit-unit", "fetch-now", "delete-unit"])
+    );
+    ui.press("escape");
+
+    // Manual entry's Units take a price by hand, so there is nothing to fetch.
+    ui.right_click("unit-row-2");
+    assert!(
+        !menu(&mut ui)
+            .expect("VAS has a menu")
+            .contains(&"fetch-now")
+    );
+    ui.press("escape");
+
+    let coingecko = source_row(&mut ui, "CoinGecko");
+    ui.right_click(&coingecko);
+    assert_eq!(
+        menu(&mut ui),
+        Some(vec!["fetch-now", "test-source", "edit-source"])
+    );
+    ui.click("settings-units-menu-fetch-now");
+
+    assert!(
+        transport
+            .urls()
+            .iter()
+            .all(|url| url.contains("api.coingecko.com")),
+        "{:?}",
+        transport.urls()
+    );
+    assert!(!transport.urls().is_empty());
+    assert!(
+        ui.toast_texts()
+            .contains(&"Fetching prices from CoinGecko\u{2026}".to_string())
+    );
+    ui.click("units-pane-fetch-now");
+    assert!(
+        ui.toast_texts()
+            .contains(&"Already fetching prices from CoinGecko".to_string())
+    );
+}

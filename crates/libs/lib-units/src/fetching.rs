@@ -249,6 +249,11 @@ struct Round {
     /// Whether a person asked for it (fetch now), so its outcome is told; a scheduled round is
     /// silent.
     asked: bool,
+    /// Whether the status line names its source until it lands: a source or every source asked
+    /// for, not a Unit's own price, which says nothing but its outcome.
+    named: bool,
+    /// Every Unit sent into the round, until it lands.
+    units: HashSet<UnitId>,
     pending: HashSet<RequestId>,
     landed: Vec<PriceResponse>,
 }
@@ -259,6 +264,7 @@ pub(crate) struct Landed {
     /// The source and its settings when the round went out; `None` for a response for no round.
     pub source: Option<(PriceSourceId, SourceSettings)>,
     pub asked: bool,
+    pub named: bool,
     pub responses: Vec<PriceResponse>,
 }
 
@@ -315,6 +321,32 @@ impl PriceFetching {
         self.rounds.values().any(|round| round.source == source)
     }
 
+    /// The sources with a named round still out, in no order: what the status line names until
+    /// everything lands. A scheduled round is silent, so it isn't among them.
+    pub(crate) fn named_sources(&self) -> HashSet<PriceSourceId> {
+        self.rounds
+            .values()
+            .filter(|round| round.named)
+            .map(|round| round.source)
+            .collect()
+    }
+
+    /// Whether `unit` is in a round a person asked for that is still out, which its row shows as
+    /// *Fetching…*.
+    pub fn unit_asked_for(&self, unit: UnitId) -> bool {
+        self.rounds
+            .values()
+            .any(|round| round.asked && round.units.contains(&unit))
+    }
+
+    /// Whether `source` has a round a person asked for still out, which its row shows as
+    /// *Fetching…*.
+    pub fn source_asked_for(&self, source: PriceSourceId) -> bool {
+        self.rounds
+            .values()
+            .any(|round| round.asked && round.source == source)
+    }
+
     /// Starts a round on `source`, `asked` when a person asked for it. Every request sent into it
     /// is held until the last lands; a round sent nothing never lands, so open one only to send.
     pub(crate) fn open_round(&mut self, source: &PriceSource<'_>, asked: bool) -> RoundId {
@@ -326,11 +358,20 @@ impl PriceFetching {
                 source: source.id,
                 settings: SourceSettings::of(source),
                 asked,
+                named: false,
+                units: HashSet::new(),
                 pending: HashSet::new(),
                 landed: Vec::new(),
             },
         );
         id
+    }
+
+    /// Has the status line name `round`'s source until it lands.
+    pub(crate) fn name_round(&mut self, round: RoundId) {
+        if let Some(round) = self.rounds.get_mut(&round) {
+            round.named = true;
+        }
     }
 
     /// Sends `request` for `sent` in `round`, remembering it until its response comes back.
@@ -342,8 +383,10 @@ impl PriceFetching {
     ) -> RequestId {
         let id = RequestId(self.next);
         self.next += 1;
+        let unit = sent.unit;
         self.in_flight.insert(id, sent);
         if let Some(round) = self.rounds.get_mut(&round) {
+            round.units.insert(unit);
             round.pending.insert(id);
         }
         self.transport.send(id, request);
@@ -361,6 +404,7 @@ impl PriceFetching {
             return Some(Landed {
                 source: None,
                 asked: false,
+                named: false,
                 responses: vec![response],
             });
         };
@@ -373,6 +417,7 @@ impl PriceFetching {
         Some(Landed {
             source: Some((round.source, round.settings)),
             asked: round.asked,
+            named: round.named,
             responses: round.landed,
         })
     }

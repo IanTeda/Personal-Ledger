@@ -468,7 +468,8 @@ impl Shell {
         for notice in notices {
             match notice {
                 Notice::Toast(kind, text) => self.raise_toast(kind, text),
-                Notice::Status(text) => self.raise_toast(ToastKind::Info, text),
+                // An empty message takes the status down: the last asked-for round landed.
+                Notice::Status(text) => self.status_message = (!text.is_empty()).then_some(text),
                 Notice::Changed(_) => {}
             }
         }

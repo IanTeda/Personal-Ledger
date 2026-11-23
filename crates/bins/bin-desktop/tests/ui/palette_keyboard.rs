@@ -685,3 +685,21 @@ fn close_rebuilds_the_palette_once_and_a_cursor_move_does_not(app: &mut TestAppC
     assert!(!ui.read(|shell| shell.ledger_open()));
     assert_eq!(refreshes(&mut ui), before + 1);
 }
+
+#[gpui::test]
+fn units_fetch_all_is_listed_unbound_and_fetches_every_fetching_source(app: &mut TestAppContext) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), |_| {});
+    assert_eq!(key_of(&mut ui, "units fetch-all"), "\u{2014}");
+
+    run(&mut ui, "units fetch-all");
+
+    assert!(
+        transport
+            .urls()
+            .iter()
+            .any(|url| url.contains("api.coingecko.com")),
+        "the sample's BTC on CoinGecko is fetched whatever its age: {:?}",
+        transport.urls()
+    );
+}
