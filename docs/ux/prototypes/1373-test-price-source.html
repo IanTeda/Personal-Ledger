@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTYPE · Test price source</title>
+<!--
+  PROTOTYPE (throwaway, #1373). Three variants of Test price source / Test with symbol,
+  switchable with ?variant=A|B|C and the bottom bar (← → keys). Every state and entry point
+  is driven from the top controls. Desktop (left) and TUI (right) draw the same view model,
+  which is printed under them. Nothing here is production code.
+-->
+<style>
+:root{--bg:#161413;--surface:#282625;--raised:#33302f;--text:#f3f2f2;--muted:#a9a5a3;--faint:#7b7674;--border:#4a4644;--accent:#ff4a2b;--ok:#5fbf7f;--warn:#e8b34a;--err:#ff6b5b;--info:#6fa8ff;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 system-ui,sans-serif;padding:16px 16px 90px}
+h1{font-size:15px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 14px;max-width:1100px}
+.controls{display:flex;flex-wrap:wrap;gap:14px 24px;margin-bottom:16px;padding:12px;background:var(--surface);border:1px solid var(--border)}
+.controls label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg button{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 9px;font:inherit;font-size:12px;cursor:pointer}
+.seg button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.seg button:disabled{opacity:.35;cursor:not-allowed}
+.stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media(max-width:1100px){.stage{grid-template-columns:1fr}}
+.panel-title{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px}
+/* Desktop dialog */
+.backdrop{background:#0d0c0b;padding:20px;border:1px solid var(--border);overflow-x:auto}
+.dlg{background:var(--surface);border:1px solid var(--border);margin:0 auto;box-shadow:0 8px 30px #0008}
+.dlg.stacked{margin-top:-60px;position:relative;box-shadow:0 10px 40px #000c;border-color:#6a6462}
+.dlg-h{padding:12px 16px;border-bottom:1px solid var(--border);font-weight:700;display:flex;justify-content:space-between}
+.dlg-h .x{color:var(--faint);font-weight:400}
+.dlg-b{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.dlg-f{padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;align-items:center}
+.dlg-f .note{margin-right:auto;color:var(--faint);font-size:11.5px}
+.row{display:flex;gap:12px;align-items:flex-end}
+.row>*{flex:1;min-width:0}
+.fl{font-size:11px;color:var(--muted);margin-bottom:3px;font-weight:600}
+.in{background:var(--bg);border:1px solid var(--border);padding:6px 8px;min-height:30px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.in.mono{font-family:var(--mono);font-size:12px}
+.in.focus{border-color:var(--accent)}
+.in.dirty{border-left:3px solid var(--info)}
+.help{font-size:11.5px;color:var(--faint);margin-top:3px}
+.btn{border:1px solid var(--border);padding:7px 12px;font-weight:800;font-size:12px;background:var(--bg);white-space:nowrap;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.off{opacity:.4}
+.segc{display:flex}.segc span{border:1px solid var(--border);padding:6px 10px;font-size:12px}.segc span.on{background:var(--raised);font-weight:700}
+.facts{background:var(--bg);border:1px solid var(--border);padding:8px 10px;font-size:12px}
+.facts div{display:flex;gap:10px}.facts b{color:var(--muted);font-weight:600;min-width:80px}
+.facts code{font-family:var(--mono);font-size:11.5px}
+.result{border:1px solid var(--border);border-left:4px solid var(--faint);padding:8px 10px;background:var(--bg)}
+.result.ok{border-left-color:var(--ok)}.result.warn{border-left-color:var(--warn)}.result.err{border-left-color:var(--err)}.result.busy{border-left-color:var(--info)}
+.result .h{font-weight:700}
+.result .d{color:var(--muted);font-size:12px;margin-top:2px}
+.result .d code,.mono{font-family:var(--mono);font-size:11.5px}
+.tag{display:inline-block;font-size:10.5px;padding:1px 6px;border:1px solid var(--info);color:var(--info);margin-left:6px;font-weight:600;vertical-align:1px}
+pre.json{font-family:var(--mono);font-size:11.5px;background:#0f0e0d;border:1px solid var(--border);padding:8px;margin:6px 0 0;max-height:220px;overflow:auto;white-space:pre}
+.hit{background:#5fbf7f33;outline:1px solid var(--ok)}
+.miss{background:#e8b34a33;outline:1px dashed var(--warn)}
+.leaf{cursor:pointer}.leaf:hover{background:#ffffff14}
+details summary{cursor:pointer;color:var(--muted);font-size:12px;margin-top:6px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.split>.dlg-b+.dlg-b{border-left:1px solid var(--border);background:#221f1e}
+.toast{position:relative;margin:12px auto 0;max-width:420px;background:var(--raised);border:1px solid var(--border);border-left:4px solid var(--info);padding:8px 10px}
+.toast.ok{border-left-color:var(--ok)}.toast.warn{border-left-color:var(--warn)}.toast.err{border-left-color:var(--err)}
+.statusline{margin-top:12px;font-family:var(--mono);font-size:11.5px;background:#0f0e0d;border:1px solid var(--border);padding:4px 8px;color:var(--muted)}
+.page{background:var(--bg);border:1px solid var(--border);font-size:12px}
+.page .tr{display:grid;grid-template-columns:140px 1fr 110px;padding:4px 10px;border-bottom:1px solid #2e2b2a}
+.page .tr.sel{background:#ff4a2b22;outline:1px solid var(--accent)}
+.page .th{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em}
+/* TUI */
+pre.tui{font-family:var(--mono);font-size:12px;line-height:1.35;background:#0b0a0a;color:#d8d6d4;border:1px solid var(--border);padding:10px;margin:0;overflow-x:auto;white-space:pre}
+.tui .g{color:var(--ok)}.tui .y{color:var(--warn)}.tui .r{color:var(--err)}.tui .b{color:var(--info)}.tui .a{color:var(--accent)}.tui .f{color:var(--faint)}
+/* state + questions */
+.vm{margin-top:16px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media(max-width:1100px){.vm{grid-template-columns:1fr}}
+pre.state{font-family:var(--mono);font-size:11.5px;background:var(--surface);border:1px solid var(--border);padding:10px;margin:0;white-space:pre-wrap}
+.qs{background:var(--surface);border:1px solid var(--border);padding:10px 14px}
+.qs li{margin:4px 0}
+.qs b{color:var(--accent)}
+/* switcher */
+.switcher{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#fff;color:#111;border-radius:999px;box-shadow:0 6px 24px #000a;display:flex;align-items:center;gap:6px;padding:6px 8px;font-weight:700;z-index:9}
+.switcher button{border:0;background:#111;color:#fff;border-radius:999px;width:30px;height:30px;font-size:15px;cursor:pointer}
+.switcher span{padding:0 10px;min-width:280px;text-align:center}
+</style>
+</head>
+<body>
+<h1>PROTOTYPE · Test price source and Test with symbol <span style="color:var(--faint);font-weight:400">(#1373, throwaway)</span></h1>
+<p class="sub">Three variants of where a test runs and what it shows. Pick a variant (bottom bar or ← →), an entry point and a state. The Desktop draws on the left, the TUI on the right, both from the view model printed below. Every variant writes nothing: no price, no Weekly Price, no key.</p>
+
+<div class="controls">
+  <div><label>Entry point</label><div class="seg" id="entry"></div></div>
+  <div><label>State</label><div class="seg" id="state"></div></div>
+</div>
+
+<div class="stage">
+  <div><p class="panel-title">Desktop</p><div id="desktop"></div></div>
+  <div><p class="panel-title">TUI</p><pre class="tui" id="tui"></pre></div>
+</div>
+
+<div class="vm">
+  <div><p class="panel-title">View model (what lib-units' Presenter would hand both Clients)</p><pre class="state" id="vm"></pre></div>
+  <div><p class="panel-title">What this variant answers</p><div class="qs" id="qs"></div></div>
+</div>
+
+<div class="switcher"><button id="prev">←</button><span id="vlabel"></span><button id="next">→</button></div>
+
+<script>
+const VARIANTS = {
+  A: 'Inline result (the 16z mockups)',
+  B: 'Test Dialog of its own',
+  C: 'Response explorer beside the form',
+};
+const ENTRIES = {
+  custom: 'Custom form · Add (unsaved)',
+  customEdit: 'Custom form · Edit (edited, unsaved)',
+  builtin: 'Built-in · Edit price source',
+  row: '`t` on a Price Source row',
+};
+const STATES = {
+  found: 'Price found',
+  busy: 'Testing…',
+  offline: 'Offline',
+  sourceError: 'Source error',
+  rateLimited: 'Rate limited',
+  notFound: 'Not found',
+  noPrice: 'No price (path finds nothing)',
+  keyMissing: 'Key missing',
+  keyRejected: 'Key rejected',
+  incomplete: 'Unsaved form incomplete',
+};
+
+const params = new URLSearchParams(location.search);
+let variant = VARIANTS[params.get('variant')] ? params.get('variant') : 'A';
+let entry = ENTRIES[params.get('entry')] ? params.get('entry') : 'custom';
+let state = STATES[params.get('state')] ? params.get('state') : 'found';
+let pickedPath = null; // variant C: a leaf clicked in the response
+
+function sync(){
+  const p = new URLSearchParams({variant, entry, state});
+  history.replaceState(null,'','?'+p);
+}
+
+// ---------- the source under test ----------
+function source(){
+  if (entry === 'builtin' || entry === 'row') return {
+    kind:'builtin', name:'CoinGecko', address:'https://api.coingecko.com/api/v3',
+    request:'/simple/price?ids={symbol}&vs_currencies={quote}', path:'/{symbol}/{quote}',
+    auth:'none (optional Demo key)', symbol:'bitcoin', unit:'btc', quote:'aud', usage:'Values 1 unit: btc.',
+  };
+  return {
+    kind:'custom', name:'Alpha Vantage', address: state==='incomplete' ? '' : 'https://www.alphavantage.co',
+    request:'/query?function=GLOBAL_QUOTE&symbol={symbol}',
+    path: (pickedPath ?? (state==='noPrice' ? '/Global Quote/5. price' : '/Global Quote/05. price')),
+    auth:'API key', keyParam:'apikey', symbol:'VAS.AX', unit:'vas', quote:'aud',
+    key: state==='keyMissing' ? '' : '••••••••••••',
+    dirty: entry==='customEdit', usage: entry==='customEdit' ? 'Values 2 units: vas, vgs.' : null,
+  };
+}
+
+function requestUrl(s){
+  const sym = s.symbol, q = s.quote;
+  let u = s.address + s.request.replace('{symbol}', sym).replace('{quote}', q);
+  if (s.kind==='custom') u += '&apikey=•••';
+  return u;
+}
+
+// ---------- the outcome a test would produce (one shape both Clients draw) ----------
+function outcome(){
+  const s = source();
+  const base = {source:s.name, symbol:s.symbol, quote:s.quote, request: s.address ? requestUrl(s) : null, unsaved: s.kind==='custom', writes:'nothing'};
+  const resp = responseFor(s);
+  switch(state){
+    case 'found': return {...base, level:'ok', head:'Price found', price: s.kind==='builtin' ? '148,212.40 aud' : '101.84 aud', ms:412, http:200, response:resp, at:'14:36'};
+    case 'busy': return {...base, level:'busy', head:'Testing…', detail:'Asking '+s.name+' for '+s.symbol+'. Esc stops the test.'};
+    case 'offline': return {...base, level:'err', head:'Offline', detail:"Couldn't reach "+host(s)+'. Check the connection and test again.', response:null};
+    case 'sourceError': return {...base, level:'err', head:'Source error', detail:host(s)+' answered HTTP 502 Bad Gateway, not a price.', http:502, response:'<html><body><h1>502 Bad Gateway</h1></body></html>'};
+    case 'rateLimited': return {...base, level:'warn', head:'Rate limited', detail:s.name+' asks to wait 60 s before the next request (HTTP 429).', http:429, response:resp};
+    case 'notFound': return {...base, level:'warn', head:'Not found', detail:s.name+" doesn't know the symbol "+(s.kind==='builtin'?'bitcon':s.symbol)+'.', http: s.kind==='builtin'?200:404, response: s.kind==='builtin' ? '{}' : resp};
+    case 'noPrice': return {...base, level:'warn', head:'No price', detail:'The response has nothing at '+s.path+'.', http:200, response:resp, missPath:s.path};
+    case 'keyMissing': return {...base, level:'err', head:'Key missing', detail: s.kind==='builtin' ? 'CoinGecko needs no key: not reachable for a built-in today.' : 'Alpha Vantage needs an API key. Type one in API key to test.', request:null, response:null};
+    case 'keyRejected': return {...base, level:'err', head:'Key rejected', detail:s.name+' refused the API key (HTTP 401). Check it and test again.', http:401, response:resp};
+    case 'incomplete': return {...base, level:'off', head:"Can't test yet", detail:'Fill in Address to test.', request:null};
+  }
+}
+function host(s){ try { return new URL(s.address).host } catch { return s.name } }
+
+function responseFor(s){
+  if (s.kind==='builtin'){
+    if (state==='rateLimited') return '{"status":{"error_code":429,"error_message":"You\'ve exceeded the Rate Limit."}}';
+    return '{"bitcoin":{"aud":148212.4}}';
+  }
+  if (state==='keyRejected') return '{"Error Message":"the parameter apikey is invalid or missing."}';
+  if (state==='rateLimited') return '{"Note":"Thank you for using Alpha Vantage! Our standard API rate limit is 25 requests per day."}';
+  if (state==='notFound') return '{"Error Message":"Invalid API call."}';
+  return JSON.stringify({"Global Quote":{"01. symbol":"VAS.AX","02. open":"101.2000","03. high":"102.0100","04. low":"101.0500","05. price":"101.8400","07. latest trading day":"2026-11-20","09. change":"0.6400"}},null,2);
+}
+
+// Pretty JSON with the price path marked; in C leaves are clickable to set the path.
+function jsonHtml(text, path, clickable, cls){
+  let obj; try { obj = JSON.parse(text) } catch { return esc(text) }
+  const want = path && path.split('/').slice(1);
+  const out=[];
+  function walk(v, ptr, ind, key, last){
+    const pad='  '.repeat(ind);
+    const k = key!==undefined ? '"'+esc(key)+'": ' : '';
+    const comma = last ? '' : ',';
+    if (v && typeof v==='object'){
+      const ks=Object.keys(v);
+      out.push(pad+k+'{');
+      ks.forEach((kk,i)=>walk(v[kk], ptr.concat(kk), ind+1, kk, i===ks.length-1));
+      out.push(pad+'}'+comma);
+    } else {
+      const p='/'+ptr.join('/');
+      const isHit = want && want.join('/')===ptr.join('/');
+      const val=esc(JSON.stringify(v));
+      let line = k+val;
+      if (clickable) line = '<span class="leaf" data-path="'+esc(p)+'" title="Use '+esc(p)+' as the Price path">'+line+'</span>';
+      if (isHit) line = '<span class="hit">'+line+'</span>';
+      out.push(pad+line+comma);
+    }
+  }
+  walk(obj, [], 0, undefined, true);
+  return out.join('\n');
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+// ---------- Desktop ----------
+function field(label, value, opts={}){
+  return `<div><div class="fl">${label}</div><div class="in ${opts.mono?'mono':''} ${opts.focus?'focus':''} ${opts.dirty?'dirty':''}">${value===''?'<span style="color:var(--faint)">'+(opts.ph||'')+'</span>':esc(value)}</div>${opts.help?'<div class="help">'+opts.help+'</div>':''}</div>`;
+}
+function resultBox(o, s, {showResponse='auto', compact=false}={}){
+  if (!o) return '';
+  const cls = {ok:'ok',warn:'warn',err:'err',busy:'busy',off:''}[o.level];
+  let head = o.head;
+  if (o.level==='ok') head += ` · ${o.ms} ms`;
+  let detail = o.level==='ok'
+    ? `<code>${s.kind==='builtin'?s.unit:s.symbol} · ${o.price} · tested ${o.at}</code>`
+    : esc(o.detail);
+  const tag = (s.dirty && o.level!=='off') ? '<span class="tag">with unsaved changes</span>' : '';
+  let resp = '';
+  const wantResp = showResponse==='always' || (showResponse==='auto' && s.kind==='custom' && o.response && ['noPrice','notFound','keyRejected','rateLimited','sourceError','found'].includes(state));
+  if (wantResp && o.response){
+    const open = ['noPrice','notFound','keyRejected'].includes(state) ? 'open' : '';
+    resp = `<details ${open}><summary>Response${o.http?' · HTTP '+o.http:''}</summary><pre class="json">${jsonHtml(o.response, s.path)}</pre>${state==='noPrice'?'<div class="help">The Price path must match a value in the response. Here it is <code>/Global Quote/05. price</code>.</div>':''}</details>`;
+  }
+  return `<div class="result ${cls}"><div class="h">${head}${tag}</div><div class="d">${detail}</div>${resp}</div>`;
+}
+
+function customFields(s, o){
+  return `
+  <div class="row">${field('Name', s.name)}${field('Updates','Daily')}</div>
+  ${field('Address', s.address, {mono:1, ph:'https://', focus: state==='incomplete', help: state==='incomplete' ? '<span style="color:var(--warn)">Needed to test and to save.</span>':''})}
+  ${field('Request', s.request, {mono:1, help:'{symbol} is the unit\'s symbol and {quote} the unit it\'s quoted in.'})}
+  ${field('Price path', s.path, {mono:1, dirty: s.dirty || pickedPath, help:'A JSON pointer to the price in the response.'})}
+  <div class="row" style="align-items:flex-start"><div><div class="fl">Authentication</div><div class="segc"><span>None</span><span class="on">API key</span></div></div>${field('Key parameter', s.keyParam, {mono:1})}${field('API key', s.key, {ph: entry==='customEdit' ? 'stored · leave blank to keep' : 'required', focus: state==='keyMissing'})}</div>`;
+}
+function builtinFields(s){
+  return `
+  ${field('Name', s.name, {help:'Shown in the Price Sources table and the unit picker.'})}
+  <div class="facts">
+    <div><b>Source</b> CoinGecko · built-in</div>
+    <div><b>Address</b> <code>${s.address}</code></div>
+    <div><b>Request</b> <code>${esc(s.request)}</code></div>
+    <div><b>Price path</b> <code>${s.path}</code></div>
+  </div>
+  <div><div class="fl">Updates</div><div class="segc"><span class="on">Every 15 min</span><span>Hourly</span><span>Daily</span><span>Manual only</span></div></div>
+  <div class="facts" style="border-color:#3d3a39">${s.usage} Last price 148,212.40 aud, 5 minutes ago.</div>`;
+}
+function testButton(s, o, label){
+  const off = state==='incomplete' || state==='busy' || (s.kind==='custom' && state==='keyMissing');
+  return `<span class="btn ${off?'off':''}">${state==='busy'?'Testing…':label}</span>`;
+}
+function formDialog(s, o, testArea, width){
+  const title = s.kind==='builtin' ? 'Edit price source — CoinGecko' : (entry==='customEdit' ? 'Edit price source — Alpha Vantage' : 'Add price source');
+  const submit = s.kind==='builtin' || entry==='customEdit' ? 'Save' : 'Add price source';
+  const body = s.kind==='builtin' ? builtinFields(s) : customFields(s, o);
+  const usage = s.usage && s.kind==='custom' ? `<div class="facts">${s.usage}</div>` : '';
+  return `<div class="dlg" style="width:${width}px"><div class="dlg-h">${title}<span class="x">esc</span></div>
+    <div class="dlg-b">${body}${usage}${testArea}</div>
+    <div class="dlg-f"><span class="note">A test writes nothing.</span><span class="btn">Cancel</span><span class="btn primary ${state==='incomplete'?'off':''}">${submit}</span></div></div>`;
+}
+
+function sourcesPage(){
+  return `<div class="page">
+    <div class="tr th"><span>Price source</span><span>Values</span><span>Updates</span></div>
+    <div class="tr"><span>Manual entry</span><span>aud, usd</span><span>—</span></div>
+    <div class="tr"><span>Alpha Vantage</span><span>vas, vgs</span><span>Daily</span></div>
+    <div class="tr sel"><span>CoinGecko</span><span>btc</span><span>Every 15 min</span></div>
+    <div class="tr"><span>Frankfurter</span><span>usd</span><span>Daily</span></div>
+    <div class="tr"><span>Yahoo Finance</span><span>—</span><span>Daily</span></div>
+  </div>`;
+}
+
+function desktopA(s,o){
+  if (entry==='row'){
+    // A: `t` runs in the background on the first Unit the source values and answers with a Toast.
+    const lvl = {ok:'ok',warn:'warn',err:'err',busy:'',off:''}[o.level];
+    let t;
+    if (state==='busy') return `<div class="backdrop">${sourcesPage()}<div class="statusline">testing CoinGecko with btc…</div></div>`;
+    if (o.level==='ok') t = `<b>CoinGecko works.</b> btc · ${o.price} · ${o.ms} ms`;
+    else t = `<b>CoinGecko test: ${o.head}.</b> ${esc(o.detail)}`;
+    return `<div class="backdrop">${sourcesPage()}<div class="toast ${lvl}">${t}</div><div class="statusline">t test · e edit · f fetch now · enter open</div></div>`;
+  }
+  const testRow = s.kind==='custom'
+    ? `<div class="row" style="align-items:center"><div style="flex:0 0 160px">${field('Symbol', s.symbol, {mono:1})}</div><div style="flex:0 0 auto;padding-top:16px">${testButton(s,o,'Test with symbol')}</div><div class="help" style="padding-top:16px">Quoted in aud, the base unit.</div></div>`
+    : `<div class="row" style="align-items:center"><div style="flex:0 0 auto">${testButton(s,o,'Test price source')}</div><div class="help">Prices btc, the first unit it values.</div></div>`;
+  return `<div class="backdrop">${formDialog(s,o, testRow + resultBox(o,s), s.kind==='custom'?620:480)}</div>`;
+}
+
+function testDialog(s,o){
+  const resp = o.response ? `<div><div class="fl">Response${o.http?' · HTTP '+o.http:''}${o.ms?' · '+o.ms+' ms':''}</div><pre class="json">${jsonHtml(o.response, s.kind==='custom'?s.path:'/bitcoin/aud')}</pre></div>` : '';
+  const req = o.request ? `<div><div class="fl">Request</div><div class="in mono" title="${esc(o.request)}">${esc(o.request)}</div></div>` : '';
+  const head = o.level==='ok' ? `Price found · ${o.price}` : o.head;
+  const cls = {ok:'ok',warn:'warn',err:'err',busy:'busy',off:''}[o.level];
+  const detail = o.level==='ok' ? `${s.kind==='builtin'?s.unit:s.symbol} at ${s.path==='/{symbol}/{quote}'?'/bitcoin/aud':s.path}` : esc(o.detail);
+  const tag = s.dirty ? '<span class="tag">with unsaved changes</span>' : (s.kind==='custom' && entry==='custom' ? '<span class="tag">unsaved source</span>':'');
+  return `<div class="dlg stacked" style="width:560px"><div class="dlg-h">Test price source — ${s.name}${tag}<span class="x">esc</span></div>
+   <div class="dlg-b">
+    <div class="row">${field('Symbol', s.symbol, {mono:1, focus:1, help: s.kind==='builtin' ? 'From btc, the first unit it values.' : ''})}${field('Quoted in', s.quote, {mono:1})}<div style="flex:0 0 auto">${testButton(s,o,'Test')}</div></div>
+    ${req}
+    <div class="result ${cls}"><div class="h">${head}</div><div class="d">${detail}</div></div>
+    ${resp}
+   </div>
+   <div class="dlg-f"><span class="note">A test writes nothing.</span><span class="btn primary">Close</span></div></div>`;
+}
+
+function desktopB(s,o){
+  const under = entry==='row' ? sourcesPage()
+    : formDialog(s,o, `<div class="row" style="align-items:center"><div style="flex:0 0 auto">${testButton(s,o, s.kind==='custom'?'Test…':'Test…')}</div><div class="help">Opens Test price source with these values.</div></div>`, s.kind==='custom'?620:480);
+  const dim = `<div style="opacity:.35;pointer-events:none">${under}</div>`;
+  if (state==='incomplete') return `<div class="backdrop">${under}<div class="statusline">Fill in Address to test.</div></div>`;
+  return `<div class="backdrop">${dim}${testDialog(s,o)}</div>`;
+}
+
+function desktopC(s,o){
+  if (entry==='row' || s.kind==='builtin') {
+    // C only changes the Custom form; a built-in's path is code, so it falls back to A.
+    return desktopA(s,o).replace('<div class="backdrop">','<div class="backdrop"><div class="help" style="margin-bottom:8px">C changes only the Custom form. Built-ins and <code>t</code> fall back to A.</div>');
+  }
+  const left = `<div class="dlg-b">${customFields(s,o)}</div>`;
+  let rightBody;
+  if (state==='incomplete') rightBody = `<div class="result"><div class="h">Can't test yet</div><div class="d">Fill in Address to test.</div></div>`;
+  else {
+    const req = o.request ? `<div><div class="fl">Request</div><div class="in mono">${esc(o.request)}</div></div>` : '';
+    const resp = o.response ? `<div><div class="fl">Response${o.http?' · HTTP '+o.http:''} · click a value to use its path</div><pre class="json" style="max-height:300px">${jsonHtml(o.response, s.path, true)}</pre></div>` : '';
+    rightBody = `${req}${resultBox(o,s,{showResponse:'never'})}${resp}`;
+  }
+  const right = `<div class="dlg-b"><div class="fl" style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase">Try it</div>
+    <div class="row" style="align-items:flex-end">${field('Symbol', s.symbol, {mono:1})}<div style="flex:0 0 auto">${testButton(s,o,'Test')}</div></div>${rightBody}</div>`;
+  const title = entry==='customEdit' ? 'Edit price source — Alpha Vantage' : 'Add price source';
+  return `<div class="backdrop"><div class="dlg" style="width:980px"><div class="dlg-h">${title}<span class="x">esc</span></div>
+    <div class="split">${left}${right}</div>
+    <div class="dlg-f"><span class="note">A test writes nothing.</span><span class="btn">Cancel</span><span class="btn primary ${state==='incomplete'?'off':''}">${entry==='customEdit'?'Save':'Add price source'}</span></div></div></div>`;
+}
+
+// ---------- TUI ----------
+const W = 64;
+function box(title, lines, w=W){
+  const top = '┌─ '+title+' '+'─'.repeat(Math.max(0,w-title.length-5))+'┐';
+  const body = lines.map(l=>{ const vis = l.replace(/<[^>]+>/g,'').replace(/&[a-z]+;/g,'x'); return '│ '+l+' '.repeat(Math.max(0,w-vis.length-4))+' │' });
+  return [top, ...body, '└'+'─'.repeat(w-2)+'┘'].join('\n');
+}
+function c(cls, t){ return `<span class="${cls}">${esc(t)}</span>` }
+function tuiResult(o,s){
+  const col = {ok:'g',warn:'y',err:'r',busy:'b',off:'f'}[o.level];
+  const lines=[];
+  if (o.level==='ok') lines.push(c(col,'✓ Price found · '+o.ms+' ms')+'  '+(s.kind==='builtin'?s.unit:s.symbol)+' · '+o.price);
+  else lines.push(c(col, (o.level==='busy'?'… ':'✗ ')+o.head));
+  if (o.level!=='ok') wrap(o.detail, W-6).forEach(l=>lines.push('  '+esc(l)));
+  if (s.dirty && o.level!=='off') lines.push(c('b','  with unsaved changes'));
+  return lines;
+}
+function wrap(t,n){ const w=t.split(' '),out=[];let cur='';for(const x of w){ if((cur+' '+x).trim().length>n){out.push(cur);cur=x}else cur=(cur+' '+x).trim()} if(cur)out.push(cur); return out }
+function tuiResp(o,s,max=7){
+  if (!o.response) return [];
+  let lines; try { lines = JSON.stringify(JSON.parse(o.response),null,1).split('\n') } catch { lines=[o.response] }
+  const leaf = s.path.split('/').pop();
+  return [c('f','  Response · HTTP '+(o.http||'')), ...lines.slice(0,max).map(l=>{ const t=('  '+l).slice(0,W-4); return (s.kind==='custom' && l.includes('"'+leaf+'"')) ? c('g',t) : c('f',t) }), ...(lines.length>max?[c('f','  … '+(lines.length-max)+' more lines')]:[])];
+}
+function tuiForm(s,o,extra){
+  const L=[];
+  if (s.kind==='builtin'){
+    L.push('Name       '+s.name, 'Address    '+c('f',s.address), 'Request    '+c('f','/simple/price?ids={symbol}&vs_cur…'), 'Price path '+c('f',s.path), 'Updates    ‹ Every 15 min ›', c('f',s.usage));
+  } else {
+    L.push('Name       '+s.name+'          Updates ‹ Daily ›');
+    L.push('Address    '+(s.address||c('y','(empty)')));
+    L.push('Request    /query?function=GLOBAL_QUOTE&symbol={symbol}');
+    L.push('Price path '+(s.dirty||pickedPath?c('b',s.path):s.path));
+    L.push('Auth       ‹ API key ›  Key param apikey  Key '+(s.key?s.key.slice(0,8):c('y','(empty)')));
+  }
+  L.push('');
+  return L.concat(extra);
+}
+function tuiA(s,o){
+  if (entry==='row'){
+    const page = box('Price Sources',['  Manual entry     aud, usd      —','  Alpha Vantage    vas, vgs      Daily',c('a','▶ CoinGecko        btc           Every 15 min'),'  Frankfurter      usd           Daily']);
+    const toast = state==='busy' ? c('b','testing CoinGecko with btc…') : (o.level==='ok' ? c('g','ⓘ CoinGecko works. btc · '+o.price+' · '+o.ms+' ms') : c(o.level==='warn'?'y':'r','⚠ CoinGecko test: '+o.head+'. ')+esc(o.detail));
+    return page+'\n\n'+toast+'\n'+c('f','t test  e edit  f fetch now  enter open');
+  }
+  const testLine = s.kind==='custom'
+    ? 'Symbol '+c('a','[VAS.AX    ]')+'  '+(state==='incomplete'||state==='keyMissing'?c('f','[ Test with symbol ]'):'[ Test with symbol ]')+c('f','  ctrl+t')
+    : '[ Test price source ]'+c('f','  ctrl+t · prices btc');
+  const extra = [testLine, ...tuiResult(o,s)];
+  if (s.kind==='custom' && ['noPrice','notFound','keyRejected'].includes(state)) extra.push(...tuiResp(o,s));
+  const title = s.kind==='builtin' ? 'Edit price source — CoinGecko' : (entry==='customEdit'?'Edit price source — Alpha Vantage':'Add price source');
+  return box(title, tuiForm(s,o,extra).concat(['',c('f','A test writes nothing.     esc cancel   enter '+(s.kind==='builtin'||entry==='customEdit'?'save':'add'))]));
+}
+function tuiB(s,o){
+  if (state==='incomplete') return c('f','(form stays open)')+'\n'+c('y','Fill in Address to test.');
+  const L = ['Symbol '+c('a','[ '+s.symbol+' ]')+'   Quoted in [ '+s.quote+' ]   [ Test ]', ''];
+  if (o.request) L.push(c('f','GET '+o.request.slice(0,W-8)), '');
+  L.push(...tuiResult(o,s));
+  L.push('', ...tuiResp(o, s.kind==='custom'?s:{...s,path:'/bitcoin/aud',kind:'custom'}, 9));
+  L.push('', c('f','A test writes nothing.              enter test   esc close'));
+  return c('f',(entry==='row'?'(Price Sources behind)':'(form behind)'))+'\n'+box('Test price source — '+s.name, L);
+}
+function tuiC(s,o){
+  if (entry==='row' || s.kind==='builtin') return c('f','C changes only the Custom form; this falls back to A.')+'\n'+tuiA(s,o);
+  return c('f','C needs a second column, which an 80-column TUI does not have:\nthe TUI would draw the Try it column below the form, as A with the response always open.')+'\n'+tuiA(s,o)+'\n'+box('Try it',[...tuiResp(o,s,10).length?tuiResp(o,s,10):[c('f','  no response')], c('f','  ↑/↓ on a value · enter uses its path')]);
+}
+
+// ---------- view model + questions ----------
+function vm(s,o){
+  const v = {
+    dialog: variant==='B' ? 'TestPriceSource' : (entry==='row' && variant!=='B' ? null : 'PriceSourceForm'),
+    source: {name:s.name, origin:s.kind, values: s.kind==='custom' ? (entry==='customEdit'?'form (unsaved changes)':'form (unsaved source)') : 'stored'},
+    symbol: s.kind==='builtin' ? s.symbol+'  (from the first unit it values: btc)' : s.symbol,
+    quote: s.quote+'  (the base unit)',
+    request: o.request,
+    outcome: {state, reason: o.head, level:o.level, price:o.price??null, http:o.http??null, ms:o.ms??null},
+    response_shown: variant==='B' || (variant==='C'&&s.kind==='custom') || (s.kind==='custom' && ['noPrice','notFound','keyRejected'].includes(state)) ? 'yes' : 'collapsed or no',
+    writes: 'nothing (no price, no Weekly Price, no key, no failure state for scheduled fetching)',
+  };
+  if (pickedPath) v.price_path_from_click = pickedPath;
+  return JSON.stringify(v,null,2);
+}
+const QS = {
+  A: `<ul>
+   <li><b>Where:</b> in the form, under its fields, as the 16z·custom and 16z·edit mockups already draw. <code>t</code> on a row runs on the first Unit the source values and answers with one Toast; no Dialog.</li>
+   <li><b>Response:</b> collapsed under the result, opened by itself on No price, Not found and Key rejected, so a Custom source's path can be fixed beside the field.</li>
+   <li><b>Symbol:</b> typed for a Custom source; a built-in's comes from the first Unit it values (none → asks for one).</li>
+   <li><b>Cost:</b> the smallest change; the 620px Dialog grows taller when the response opens.</li></ul>`,
+  B: `<ul>
+   <li><b>Where:</b> a Dialog of its own, stacked over the form or the page. One Dialog for every entry point: the form's <b>Test…</b>, <code>t</code> on a row, <code>t</code> on a Unit.</li>
+   <li><b>Shows:</b> symbol and quote you can change, the request sent (key masked), the result, and the whole response with the price path marked.</li>
+   <li><b>Cost:</b> a second Dialog on top of the form, which neither Client stacks today (lib-shell knows one open Dialog).</li></ul>`,
+  C: `<ul>
+   <li><b>Where:</b> a Try it column beside the Custom form; built-ins and <code>t</code> fall back to A.</li>
+   <li><b>Shows:</b> the response always, as a tree. Clicking a value sets the Price path (try it: pick <i>No price</i>, then click <code>"05. price"</code>).</li>
+   <li><b>Cost:</b> a 980px Dialog, wider than the Medium window, and the TUI has no room for a second column.</li></ul>`,
+};
+
+// ---------- render ----------
+function render(){
+  const s = source(), o = outcome();
+  document.getElementById('desktop').innerHTML = ({A:desktopA,B:desktopB,C:desktopC})[variant](s,o);
+  document.getElementById('tui').innerHTML = ({A:tuiA,B:tuiB,C:tuiC})[variant](s,o);
+  document.getElementById('vm').textContent = vm(s,o);
+  document.getElementById('qs').innerHTML = QS[variant];
+  document.getElementById('vlabel').textContent = variant+' ('+VARIANTS[variant]+')';
+  for (const [id,map,cur] of [['entry',ENTRIES,entry],['state',STATES,state]]){
+    const el=document.getElementById(id); el.innerHTML='';
+    for (const k in map){
+      const b=document.createElement('button'); b.textContent=map[k]; b.className = k===cur?'on':'';
+      const builtinish = (entry==='builtin'||entry==='row');
+      if (id==='state' && k==='incomplete' && builtinish) b.disabled=true;
+      if (id==='state' && k==='keyMissing' && builtinish) b.title='A built-in that needs a key (none do today) would show this';
+      b.onclick=()=>{ if(id==='entry'){entry=k; if((k==='builtin'||k==='row')&&state==='incomplete')state='found'} else state=k; pickedPath=null; sync(); render() };
+      el.appendChild(b);
+    }
+  }
+  document.querySelectorAll('.leaf').forEach(n=>n.onclick=()=>{ pickedPath=n.dataset.path; if(state==='noPrice') state='found'; render() });
+  sync();
+}
+function step(d){ const ks=Object.keys(VARIANTS); variant = ks[(ks.indexOf(variant)+d+ks.length)%ks.length]; pickedPath=null; render() }
+document.getElementById('prev').onclick=()=>step(-1);
+document.getElementById('next').onclick=()=>step(1);
+addEventListener('keydown',e=>{ if(e.target.closest('input,textarea,[contenteditable]'))return; if(e.key==='ArrowLeft')step(-1); if(e.key==='ArrowRight')step(1) });
+render();
+</script>
+</body>
+</html>
