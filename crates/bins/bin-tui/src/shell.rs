@@ -5743,7 +5743,7 @@ mod tests {
             .expect("a test Ledger is open")
             .units
             .settings
-            .units;
+            .ledger;
         (
             reads.name().as_str().to_string(),
             reads.owner().map(|owner| owner.as_str().to_string()),

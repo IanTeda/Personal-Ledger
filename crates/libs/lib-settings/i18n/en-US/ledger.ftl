@@ -1,6 +1,5 @@
 ## Settings › Ledger: the Ledger name, Owner and Financial year starts edited in place, the Base
-## unit select and the THIS LEDGER summary. The summary figures are the mockup's own placeholder
-## values.
+## unit select and the THIS LEDGER summary, which counts the Ledger's rows through `LedgerSummaries`.
 
 settings-ledger-name = Ledger name
 settings-ledger-owner = Owner

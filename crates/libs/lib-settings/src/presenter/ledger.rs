@@ -82,7 +82,7 @@ pub enum LedgerEvent {
 
 /// What the Client hands Settings › Ledger as it builds it.
 pub struct LedgerSetup {
-    pub units: Rc<dyn LedgerReads>,
+    pub ledger: Rc<dyn LedgerReads>,
     pub summaries: Rc<dyn LedgerSummaries>,
     pub preferences: Rc<dyn LedgerPreferences>,
 }
@@ -201,7 +201,7 @@ pub struct LedgerPresenter {
 impl LedgerPresenter {
     pub fn new(setup: LedgerSetup, config: &KeyBindingConfig) -> Self {
         Self {
-            units: setup.units,
+            units: setup.ledger,
             summaries: setup.summaries,
             preferences: setup.preferences,
             keys: Keys::new(config),
@@ -720,7 +720,7 @@ mod tests {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         let mut presenter = LedgerPresenter::new(
             LedgerSetup {
-                units: Rc::new(units.clone()),
+                ledger: Rc::new(units.clone()),
                 summaries: Rc::new(FixedLedgerSummaries::sample()),
                 preferences: Rc::new(units.clone()),
             },
@@ -743,7 +743,7 @@ mod tests {
         }
         let presenter = LedgerPresenter::new(
             LedgerSetup {
-                units: Rc::new(units.clone()),
+                ledger: Rc::new(units.clone()),
                 summaries: Rc::new(Live(summaries.clone())),
                 preferences: Rc::new(units),
             },

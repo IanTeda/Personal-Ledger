@@ -409,7 +409,7 @@ impl LedgerPorts {
     #[must_use]
     pub fn settings_ledger(&self) -> lib_settings::SettingsLedger {
         lib_settings::SettingsLedger {
-            units: self.settings_reads.clone(),
+            ledger: self.settings_reads.clone(),
             summaries: self.settings_reads.clone(),
             preferences: self.ledger_preferences.clone(),
         }

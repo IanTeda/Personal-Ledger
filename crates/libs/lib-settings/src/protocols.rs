@@ -211,17 +211,18 @@ pub trait TracingLog {
     fn clear(&self);
 }
 
-/// What the Client hands the Ledger page and the Settings index as one value: the Units read, the
-/// summaries read and the base Unit write, all trait objects the persistence layer fills.
+/// What the Client hands the Ledger page and the Settings index as one value: the Ledger read, the
+/// summaries read and the Preferences write, all trait objects the persistence layer fills.
 #[derive(Clone)]
 pub struct SettingsLedger {
-    pub units: Rc<dyn LedgerReads>,
+    pub ledger: Rc<dyn LedgerReads>,
     pub summaries: Rc<dyn LedgerSummaries>,
     pub preferences: Rc<dyn LedgerPreferences>,
 }
 
-/// What Settings › Ledger reads of the Units: the Client answers it over the Units store
-/// (through `LedgerPorts::settings_ledger()`), so the page never holds a copy.
+/// What Settings › Ledger reads of the Ledger: its name, Owner, Financial year start and base
+/// Unit, and the Units the base Unit select offers. The Client answers it over the Ledger and Units
+/// stores (through `LedgerPorts::settings_ledger()`), so the page never holds a copy.
 pub trait LedgerReads {
     /// The Units the Base unit select offers: the active ones, by code.
     fn choices(&self) -> Vec<UnitRef>;

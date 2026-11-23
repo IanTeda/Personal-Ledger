@@ -161,7 +161,7 @@ fn row(field: SettingField, context: &Context<'_>) -> FieldRow {
 
 /// The stored value of one of the Ledger's Preferences, as its row shows it.
 fn stored(field: SettingField, settings: &SettingsLedger) -> String {
-    let reads = &settings.units;
+    let reads = &settings.ledger;
     match field {
         SettingField::LedgerName => reads.name().as_str().to_string(),
         SettingField::Owner => reads
@@ -188,7 +188,7 @@ fn base_unit_label(units: &TuiPorts) -> String {
 /// field Ledger doesn't hold, or with no Open Ledger.
 pub(super) fn draft(field: SettingField, context: &Context<'_>) -> Option<(Draft, String)> {
     let units = context.units?;
-    let reads = &units.settings.units;
+    let reads = &units.settings.ledger;
     Some(match field {
         SettingField::LedgerName => {
             let name = reads.name().as_str().to_string();
@@ -254,7 +254,7 @@ fn sub_rows(editor: &FieldEditor, context: &Context<'_>) -> Vec<(String, String)
         SettingField::FinancialYearStart => {
             let Some(stored) = context
                 .units
-                .map(|units| units.settings.units.financial_year_start())
+                .map(|units| units.settings.ledger.financial_year_start())
             else {
                 return Vec::new();
             };

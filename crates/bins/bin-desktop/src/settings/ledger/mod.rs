@@ -3,8 +3,8 @@
 //! hosts (ADR-0056), which the Settings View hosts as any other page. The Ledger name and Owner
 //! are edited in place (the Presenter's Insert mode) and Financial year starts and Base unit are
 //! selects, all read through `lib-settings`' `LedgerReads` and written through its
-//! `LedgerPreferences`, so the page holds none of them. The THIS LEDGER summary is the mockup's
-//! placeholder figures. Clicks are Presenter events through `PageClicks`, and the view model is
+//! `LedgerPreferences`, so the page holds none of them. The THIS LEDGER summary counts the Ledger's
+//! rows through `LedgerSummaries`. Clicks are Presenter events through `PageClicks`, and the view model is
 //! drawn in `render.rs`. Each key and click is one input (`crate::input::send`).
 
 mod render;
@@ -36,7 +36,7 @@ pub fn ledger_page(
 ) -> LedgerPage {
     let presenter = LedgerPresenter::new(
         LedgerSetup {
-            units: ledger.units,
+            ledger: ledger.ledger,
             summaries: ledger.summaries,
             preferences: ledger.preferences,
         },

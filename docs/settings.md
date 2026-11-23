@@ -494,7 +494,7 @@ The fields `set` takes are `on-start`, `start-view`, `ledger-name`, `owner`, `fy
 - `set date-style iso`: dates are drawn as `2026-07-01` (or `default`, `short`, `medium` or `long`).
 - `set appearance dark` and `set colour-theme nord`: the same as choosing them from their lists.
 - `set ledger-name The Teda house`: the rest of the line is the value, spaces and all. Spaces round it are dropped, and a blank name or one over 60 characters is refused.
-- `set owner Alex`: sets the Owner; `set owner` with nothing after it clears it.
+- `set owner Alex`: sets the Owner; `set owner` with nothing after it opens the field, and emptying it there clears it.
 - `set fy-start january`, `set ledger-name` and `set owner` save to the Ledger itself, and every change to `fy-start` moves every derived Financial Year at once.
 - `set base btc`: opens the confirmation that changing the base unit always asks for.
 - `set terminal-colours on`, `set glyphs ascii` and `set hint-bar off`: saved to your `personal-ledger.conf` (`off`, `unicode` and `on` undo them).

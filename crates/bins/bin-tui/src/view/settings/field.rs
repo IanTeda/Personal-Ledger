@@ -212,7 +212,7 @@ pub fn save_ledger_preference(
     field: SettingField,
     value: &str,
 ) -> Option<LedgerSave> {
-    let reads = &ledger.units;
+    let reads = &ledger.ledger;
     let preferences = &ledger.preferences;
     Some(match field {
         SettingField::LedgerName => match LedgerName::new(value) {
