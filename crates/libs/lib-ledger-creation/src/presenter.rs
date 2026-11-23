@@ -11,7 +11,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use lib_core::{FinancialYearStart, LedgerName, LedgerNameError, Owner, UnitId};
+use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId};
 use lib_locale::Currency;
 use lib_locale::Label as _;
 use lib_units::interactor::AddUnit;
@@ -315,13 +315,9 @@ impl CreateLedgerPresenter {
 
     /// Why the typed Ledger name can't be created with, `None` while it can.
     fn ledger_name_error(&self) -> Option<String> {
-        match LedgerName::new(&self.ledger_name) {
-            Ok(_) => None,
-            Err(LedgerNameError::Blank) => Some(lib_locale::msg::ledger_name_error_blank()),
-            Err(LedgerNameError::TooLong) => Some(lib_locale::msg::ledger_name_error_too_long(
-                i64::try_from(LedgerName::NAME_MAX).unwrap_or(i64::MAX),
-            )),
-        }
+        LedgerName::new(&self.ledger_name)
+            .err()
+            .map(lib_locale::format::ledger_name_error_message)
     }
 
     /// Shows `stage`, focusing its first field.
@@ -901,7 +897,7 @@ mod tests {
     #[test]
     fn create_is_refused_while_the_ledger_name_is_blank_or_too_long() {
         for (text, error) in [
-            ("   ", "A ledger needs a name"),
+            ("   ", "A Ledger needs a name"),
             (
                 &"x".repeat(61) as &str,
                 "A ledger name is at most 60 characters",

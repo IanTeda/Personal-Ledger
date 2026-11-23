@@ -315,12 +315,7 @@ impl LedgerPresenter {
                 Err(error) => {
                     let refusal = match (error, leaving) {
                         (LedgerNameError::Blank, true) => msg::settings_ledger_name_kept(),
-                        (LedgerNameError::Blank, false) => {
-                            lib_locale::msg::ledger_name_error_blank()
-                        }
-                        (LedgerNameError::TooLong, _) => {
-                            lib_locale::msg::ledger_name_error_too_long(max_chars())
-                        }
+                        _ => lib_locale::format::ledger_name_error_message(error),
                     };
                     router.notify(Notice::Status(refusal));
                     if !leaving {
@@ -471,11 +466,6 @@ impl LedgerPresenter {
 /// What History calls a saved field.
 fn changed(label: &str, value: &str) -> String {
     msg::settings_ledger_changed(label, value)
-}
-
-/// The most characters a Ledger name holds, as the over-limit Message's plural argument.
-fn max_chars() -> i64 {
-    lib_viper::view::count(LedgerName::NAME_MAX)
 }
 
 impl Presenter for LedgerPresenter {
@@ -949,7 +939,7 @@ mod tests {
         send(&mut presenter, &typing("  "));
 
         let routed = send(&mut presenter, &[LedgerEvent::Save(None)]);
-        assert_eq!(routed, [status("A ledger needs a name")]);
+        assert_eq!(routed, [status("A Ledger needs a name")]);
         let name = presenter.view_model().name;
         assert!(name.editing && name.refused);
         assert_eq!(name.field.text, "  ", "the draft stays");

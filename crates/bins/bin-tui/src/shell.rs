@@ -5829,7 +5829,7 @@ mod tests {
         press(&mut shell, &[KeyCode::Char(' '), KeyCode::Enter]);
         assert_eq!(
             shell.status_message.as_deref(),
-            Some("A ledger needs a name")
+            Some("A Ledger needs a name")
         );
         assert!(shell.view.editing(), "the typed text is kept open");
         assert_eq!(stored(&shell).0, "Sample Ledger");

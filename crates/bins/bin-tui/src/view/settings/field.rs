@@ -14,7 +14,7 @@ use chrono::NaiveDate;
 use lib_colour_theme::ColourAppearance;
 use lib_config::{ConfigKey, ConfigValue, ConfigWriter, Overrides, StatusGlyphs};
 use lib_core::{DateStyle, OnStart, StartView};
-use lib_core::{FinancialYearStart, LedgerName, LedgerNameError, Owner};
+use lib_core::{FinancialYearStart, LedgerName, Owner};
 use lib_locale::Locale;
 use lib_settings::SettingsLedger;
 
@@ -222,14 +222,7 @@ pub fn save_ledger_preference(
                 preferences.set_name(name);
                 LedgerSave::Saved(said)
             }
-            Err(LedgerNameError::Blank) => {
-                LedgerSave::Refused(lib_locale::msg::ledger_name_error_blank())
-            }
-            Err(LedgerNameError::TooLong) => {
-                LedgerSave::Refused(lib_locale::msg::ledger_name_error_too_long(
-                    i64::try_from(LedgerName::NAME_MAX).unwrap_or(i64::MAX),
-                ))
-            }
+            Err(error) => LedgerSave::Refused(lib_locale::format::ledger_name_error_message(error)),
         },
         SettingField::Owner => {
             let owner = Owner::new(value);

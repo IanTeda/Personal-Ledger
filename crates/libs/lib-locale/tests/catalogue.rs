@@ -131,9 +131,23 @@ fn generated_rich_accessor_survives_en_xa() {
 }
 
 #[test]
+fn a_refused_ledger_name_reads_as_one_message_for_every_client() {
+    with_locale(Locale::EnUs, || {
+        assert_eq!(
+            lib_locale::format::ledger_name_error_message(lib_core::LedgerNameError::Blank),
+            "A Ledger needs a name"
+        );
+        assert_eq!(
+            lib_locale::format::ledger_name_error_message(lib_core::LedgerNameError::TooLong),
+            "A ledger name is at most 60 characters"
+        );
+    });
+}
+
+#[test]
 fn the_ledger_name_messages_read_through_their_accessors() {
     with_locale(Locale::EnUs, || {
-        assert_eq!(msg::ledger_name_error_blank(), "A ledger needs a name");
+        assert_eq!(msg::ledger_name_error_blank(), "A Ledger needs a name");
         assert_eq!(
             msg::ledger_name_error_too_long(60),
             "A ledger name is at most 60 characters"

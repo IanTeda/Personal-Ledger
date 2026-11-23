@@ -3,7 +3,7 @@
 
 ## Why a Ledger name can't be saved: it is blank once trimmed, or over the limit. `$max` is the most
 ## characters a name holds.
-ledger-name-error-blank = A ledger needs a name
+ledger-name-error-blank = A Ledger needs a name
 ledger-name-error-too-long = { $max ->
     [one] A ledger name is at most { $max } character
    *[other] A ledger name is at most { $max } characters

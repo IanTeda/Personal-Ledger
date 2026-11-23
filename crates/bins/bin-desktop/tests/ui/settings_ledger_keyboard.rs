@@ -289,7 +289,7 @@ fn a_blank_name_is_refused_and_leaving_keeps_the_stored_one(app: &mut TestAppCon
     let page = ledger(&mut ui);
     assert!(page.editing && page.refused, "the field stays open");
     assert_eq!(page.name, " ", "with the draft");
-    assert_eq!(status(&mut ui).as_deref(), Some("A ledger needs a name"));
+    assert_eq!(status(&mut ui).as_deref(), Some("A Ledger needs a name"));
     assert_eq!(mode(&mut ui), InputMode::Insert);
 
     ui.click("primary-rail-Dashboard");

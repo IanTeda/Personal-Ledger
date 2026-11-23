@@ -878,12 +878,12 @@ fn create_is_refused_while_the_ledger_name_is_blank_or_too_long(app: &mut TestAp
     assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
     assert_eq!(
         ui.dialog_value("ledger_name_error").as_deref(),
-        Some("A ledger needs a name")
+        Some("A Ledger needs a name")
     );
     let status = ui.status().expect("the status line");
     assert_eq!(
         status.hints.last().map(|(_, action)| action.as_str()),
-        Some("A ledger needs a name"),
+        Some("A Ledger needs a name"),
         "the status line says why"
     );
     ui.press("enter ctrl-enter");

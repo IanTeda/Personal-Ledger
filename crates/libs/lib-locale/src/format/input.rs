@@ -10,7 +10,7 @@
 //! have four digits.
 
 use chrono::{Datelike, Duration, NaiveDate};
-use lib_core::DateStyle;
+use lib_core::{DateStyle, LedgerName, LedgerNameError};
 
 use super::date::short_pattern;
 use super::{Cache, cached, format_date};
@@ -350,6 +350,17 @@ pub fn optional_date_message(
     style: Option<DateStyle>,
 ) -> String {
     date_error_message(error, today, &optional_date_options(style))
+}
+
+/// The user-facing text for a refused Ledger name, shared by every Client so the same refusal reads
+/// the same everywhere. The limit is `LedgerName::NAME_MAX`, which always fits an `i64`.
+pub fn ledger_name_error_message(error: LedgerNameError) -> String {
+    match error {
+        LedgerNameError::Blank => crate::msg::ledger_name_error_blank(),
+        LedgerNameError::TooLong => crate::msg::ledger_name_error_too_long(
+            LedgerName::NAME_MAX.try_into().unwrap_or(i64::MAX),
+        ),
+    }
 }
 
 /// The user-facing text for a typed-date error, as a Message with the expected format as an
