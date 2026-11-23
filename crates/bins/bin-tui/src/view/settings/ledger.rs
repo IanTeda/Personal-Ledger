@@ -374,7 +374,7 @@ mod tests {
             "financial year starts",
             "July",
             "base unit",
-            "aud — Australian Dollar",
+            "AUD — Australian Dollar",
             "this ledger",
             "transactions",
             "institutions",

@@ -92,7 +92,7 @@ fn a_named_ledger_that_opens_starts_on_it_on_the_dashboard(app: &mut TestAppCont
         Noun::Dashboard,
         "Start view's default, whatever noun it last showed"
     );
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "VAS"]);
 }
 
 /// The Shell started on a new Ledger file in `dir`, under Start view `start_view`, from a state
@@ -415,12 +415,7 @@ fn new_with_a_fresh_name_creates_the_ledger_file_and_opens_it(app: &mut TestAppC
 
     let created = dir.path().join("teda2027.pldb");
     assert_eq!(ui.dialog(), Some("CreateLedger"), "the Dialog asks first");
-    assert_eq!(
-        ui.dialog_value("file").as_deref(),
-        Some("teda2027.pldb"),
-        ".pldb is added and shown, read-only"
-    );
-    assert_eq!(ui.dialog_value("code").as_deref(), Some("usd"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("USD"));
     assert_eq!(ui.dialog_value("name").as_deref(), Some("US Dollar"));
     assert_eq!(ui.dialog_value("kind").as_deref(), Some("Currency"));
     assert!(!created.exists(), "nothing is written until Create");
@@ -441,7 +436,7 @@ fn new_with_a_fresh_name_creates_the_ledger_file_and_opens_it(app: &mut TestAppC
     assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
     assert_eq!(
         ui.unit_codes(),
-        ["usd"],
+        ["USD"],
         "the Locale's Currency is the only Unit"
     );
     assert!(ui.dashboard_bills().is_empty(), "none of the sample rows");
@@ -614,11 +609,11 @@ fn create_ledger_with_a_changed_base_unit_makes_it_the_new_ledgers_base(app: &mu
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.noun(), Noun::Dashboard);
-    assert_eq!(ui.base_unit_code().as_deref(), Some("btc"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("BTC"));
     assert_eq!(
         ui.unit_rows(),
         [(
-            "btc".to_string(),
+            "BTC".to_string(),
             "Bitcoin".to_string(),
             "Crypto".to_string()
         )]
@@ -929,7 +924,7 @@ fn esc_goes_back_from_the_ledger_stage_keeping_everything_and_cancels_on_base_un
         Some("Code"),
         "its first field"
     );
-    assert_eq!(ui.dialog_value("code").as_deref(), Some("eur"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("EUR"));
 
     ui.press("enter");
     assert_eq!(ui.dialog_value("ledger_name").as_deref(), Some("teda 2027"));

@@ -298,7 +298,7 @@ mod tests {
                 "Australian Dollar",
                 "[base]",
                 "CoinGecko",
-                "aud is used by 5 accounts and 772 transactions. Renaming it is safe.",
+                "AUD is used by 5 accounts and 772 transactions. Renaming it is safe.",
                 "Deleting asks you to type the code.",
             ] {
                 assert!(
@@ -340,7 +340,7 @@ mod tests {
         view.handle_key(key(KeyCode::Char('j')));
         view.handle_key(key(KeyCode::Enter));
         let text = render_at(&view, 128, 69);
-        assert!(text.contains("btc · Bitcoin · prices"), "{text}");
+        assert!(text.contains("BTC · Bitcoin · prices"), "{text}");
         assert!(!text.contains("n add unit"), "the tables give way:\n{text}");
         let hints = view.hints("esc").expect("Settings names its keys");
         assert!(hints.contains(&("[".into(), "earlier".into())), "{hints:?}");
@@ -356,8 +356,8 @@ mod tests {
         let text = render_at(&view, 128, 69);
         assert!(text.contains("Settings › Units"), "{text}");
         assert!(
-            text.contains("btc is used by"),
-            "btc is still selected:\n{text}"
+            text.contains("BTC is used by"),
+            "BTC is still selected:\n{text}"
         );
     }
 
@@ -373,7 +373,7 @@ mod tests {
         // `tab` moves to the Price Sources, whose first row's note names the Units it values.
         view.handle_key(key(KeyCode::Tab));
         let text = render_at(&view, 96, 30);
-        assert!(text.contains("Values 1 unit: btc."), "{text}");
+        assert!(text.contains("Values 1 unit: BTC."), "{text}");
         // Testing isn't built in `lib-units` yet, which it says through the page's Toasts.
         view.handle_key(key(KeyCode::Char('t')));
         assert_eq!(

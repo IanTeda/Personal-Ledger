@@ -178,5 +178,5 @@ fn a_usual_unit_is_there_after_a_restart(app: &mut TestAppContext) {
     let mut ui = Harness::with_storage(app, storage);
     institution_names(&mut ui);
     ui.click("institution-edit-1");
-    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("aud"));
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("AUD"));
 }

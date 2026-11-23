@@ -17,7 +17,7 @@ fn g_u_draws_the_sample_units_and_price_sources() {
     let frame = screen(&mut shell);
 
     assert!(frame.contains("UNITS"), "{frame}");
-    for code in ["aud", "btc", "vas"] {
+    for code in ["AUD", "BTC", "VAS"] {
         assert!(frame.contains(code), "{code} missing:\n{frame}");
     }
     assert!(frame.contains("PRICE SOURCES"), "{frame}");
@@ -47,14 +47,14 @@ fn a_unit_added_through_its_dialog_shows_in_the_table() {
     assert!(open.contains("esc close unit form"), "{open}");
 
     // Code, then Tab past Type to Name.
-    type_text(&mut shell, "eur");
+    type_text(&mut shell, "EUR");
     press(&mut shell, "Tab Tab");
     type_text(&mut shell, "Euro");
     press(&mut shell, "Enter");
     let frame = screen(&mut shell);
 
     assert!(!frame.contains("INSERT"), "the Dialog closed:\n{frame}");
-    assert!(frame.contains("eur"), "{frame}");
+    assert!(frame.contains("EUR"), "{frame}");
 }
 
 /// The words on the Dialog's Precision line, none when it isn't drawn.
@@ -94,11 +94,11 @@ fn deleting_a_unit_in_use_opens_offering_deactivate_with_its_usage() {
     let frame = screen(&mut shell);
 
     assert!(
-        frame.contains(&lib_units::msg::units_deactivate_title("aud")),
+        frame.contains(&lib_units::msg::units_deactivate_title("AUD")),
         "{frame}"
     );
     assert!(
-        frame.contains("aud is used by") && frame.contains("locations"),
+        frame.contains("AUD is used by") && frame.contains("locations"),
         "the usage says why, Locations included:\n{frame}"
     );
     assert!(
@@ -154,7 +154,7 @@ fn deleting_the_base_unit_moves_the_base_first() {
     // Add xau, which nothing uses, and make it the base: the base select lists by code, so it is
     // the last option.
     press(&mut shell, "g u n");
-    type_text(&mut shell, "xau");
+    type_text(&mut shell, "XAU");
     press(&mut shell, "Tab Tab");
     type_text(&mut shell, "Gold");
     press(&mut shell, "Enter B Right Right Right Enter");
@@ -166,14 +166,14 @@ fn deleting_the_base_unit_moves_the_base_first() {
         "the base can't go without a new one:\n{dialog}"
     );
 
-    type_text(&mut shell, "xau");
+    type_text(&mut shell, "XAU");
     press(&mut shell, "Enter");
     let frame = screen(&mut shell);
 
-    assert!(frame.contains("Deleted unit xau"), "{frame}");
+    assert!(frame.contains("Deleted unit XAU"), "{frame}");
     assert!(
         frame.contains("Currency \u{b7} base"),
-        "aud, the first candidate, is the base:\n{frame}"
+        "AUD, the first candidate, is the base:\n{frame}"
     );
 }
 
@@ -216,17 +216,17 @@ fn p_sets_a_manual_entry_units_price_and_toasts_its_week() {
     // vas, the third Unit, is on Manual entry.
     press(&mut shell, "g u j j p");
     let open = screen(&mut shell);
-    assert!(open.contains("Set price — vas"), "{open}");
+    assert!(open.contains("Set price — VAS"), "{open}");
 
     type_text(&mut shell, "42");
     press(&mut shell, "Enter");
     let frame = screen(&mut shell);
 
     assert!(
-        !frame.contains("Set price — vas"),
+        !frame.contains("Set price — VAS"),
         "the Dialog closed:\n{frame}"
     );
-    assert!(frame.contains("Set the price of vas"), "{frame}");
+    assert!(frame.contains("Set the price of VAS"), "{frame}");
 }
 
 #[test]
@@ -249,9 +249,9 @@ fn deleting_a_unit_an_account_in_the_opened_file_uses_is_refused() {
             .units
             .units()
             .unit(lib_core::UnitId::SEED_BTC)
-            .expect("the seed has btc");
+            .expect("the seed has BTC");
         xau.id = lib_core::UnitId::new();
-        xau.code = "xau".to_string();
+        xau.code = "XAU".to_string();
         xau.name = "Gold".to_string();
         let unused = lib_units::UnitUse::default();
         storage
@@ -271,10 +271,10 @@ fn deleting_a_unit_an_account_in_the_opened_file_uses_is_refused() {
     let frame = screen(&mut shell);
 
     assert!(
-        frame.contains(&lib_units::msg::units_deactivate_title("xau")),
+        frame.contains(&lib_units::msg::units_deactivate_title("XAU")),
         "refused before the commit, offering Deactivate:\n{frame}"
     );
-    assert!(frame.contains("xau is used by"), "{frame}");
+    assert!(frame.contains("XAU is used by"), "{frame}");
 }
 
 #[test]
@@ -289,9 +289,9 @@ fn deleting_a_unit_a_budget_in_the_opened_file_uses_is_refused() {
             .units
             .units()
             .unit(lib_core::UnitId::SEED_BTC)
-            .expect("the seed has btc");
+            .expect("the seed has BTC");
         xau.id = lib_core::UnitId::new();
-        xau.code = "xau".to_string();
+        xau.code = "XAU".to_string();
         xau.name = "Gold".to_string();
         let unused = lib_units::UnitUse::default();
         storage
@@ -314,11 +314,11 @@ fn deleting_a_unit_a_budget_in_the_opened_file_uses_is_refused() {
     let frame = screen(&mut shell);
 
     assert!(
-        frame.contains(&lib_units::msg::units_deactivate_title("xau")),
+        frame.contains(&lib_units::msg::units_deactivate_title("XAU")),
         "refused before the commit, offering Deactivate:\n{frame}"
     );
     assert!(
-        frame.contains("xau is used by") && frame.contains("budget"),
+        frame.contains("XAU is used by") && frame.contains("budget"),
         "{frame}"
     );
 }
@@ -354,12 +354,12 @@ fn a_unit_only_the_sample_uses_can_be_deleted_from_the_opened_file() {
     press(&mut shell, "g u j d");
     let dialog = screen(&mut shell);
     assert!(
-        !dialog.contains(&lib_units::msg::units_deactivate_title("btc")),
+        !dialog.contains(&lib_units::msg::units_deactivate_title("BTC")),
         "the sample's usage doesn't count:\n{dialog}"
     );
-    type_text(&mut shell, "btc");
+    type_text(&mut shell, "BTC");
     press(&mut shell, "Enter");
     let frame = screen(&mut shell);
 
-    assert!(frame.contains("Deleted unit btc"), "{frame}");
+    assert!(frame.contains("Deleted unit BTC"), "{frame}");
 }

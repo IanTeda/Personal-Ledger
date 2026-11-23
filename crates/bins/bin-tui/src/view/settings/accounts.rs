@@ -339,7 +339,7 @@ mod tests {
             let text = render_at(&accounts_page(), width, height);
             for needle in [
                 "Settings › Accounts",
-                "7 accounts · net worth \u{2212}113,943.13 aud",
+                "7 accounts · net worth \u{2212}113,943.13 AUD",
                 "BY TYPE",
                 "n add account",
                 "INSTITUTION",
@@ -352,7 +352,7 @@ mod tests {
                 "\u{2212}381,311.34",
                 "1,240 u",
                 "0.4120 u",
-                "Unit balances convert to aud",
+                "Unit balances convert to AUD",
             ] {
                 assert!(
                     text.contains(needle),

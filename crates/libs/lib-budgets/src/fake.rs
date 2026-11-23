@@ -73,9 +73,9 @@ impl InMemoryBudgetReads {
             categories: sample_categories(),
             accounts: sample_accounts(),
             unit_codes: HashMap::from([
-                (UnitId::SEED_AUD, "aud".to_string()),
-                (UnitId::SEED_VAS, "vas".to_string()),
-                (UnitId::SEED_BTC, "btc".to_string()),
+                (UnitId::SEED_AUD, "AUD".to_string()),
+                (UnitId::SEED_VAS, "VAS".to_string()),
+                (UnitId::SEED_BTC, "BTC".to_string()),
             ]),
             ..Self::default()
         }

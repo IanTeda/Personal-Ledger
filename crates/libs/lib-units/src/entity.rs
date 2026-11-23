@@ -23,6 +23,8 @@ pub use price_source::{
 pub struct UnitRow {
     /// Addresses the row across edits; `code` can change, so nothing else holds it as a key.
     pub id: UnitId,
+    /// Always upper case: [`UnitRow::new`] and [`UnitRow::edit`] uppercase what was typed, so `aud`
+    /// and `AUD` can never be two Units.
     pub code: String,
     pub name: String,
     pub kind: UnitKind,
@@ -51,7 +53,7 @@ impl UnitRow {
     ) -> Self {
         Self {
             id: UnitId::new(),
-            code,
+            code: code.to_uppercase(),
             name,
             kind,
             precision,
@@ -75,7 +77,7 @@ impl UnitRow {
         if self.link.quote != link.quote {
             self.prices.clear();
         }
-        self.code = code;
+        self.code = code.to_uppercase();
         self.name = name;
         self.kind = kind;
         self.precision = precision;
@@ -261,7 +263,7 @@ pub fn sample_units(now: DateTime<Utc>) -> Vec<UnitRow> {
     vec![
         UnitRow {
             id: UnitId::SEED_AUD,
-            code: "aud".to_string(),
+            code: "AUD".to_string(),
             name: "Australian Dollar".to_string(),
             kind: UnitKind::Currency,
             precision: Precision::of_kind(UnitKind::Currency),
@@ -271,7 +273,7 @@ pub fn sample_units(now: DateTime<Utc>) -> Vec<UnitRow> {
         },
         UnitRow {
             id: UnitId::SEED_BTC,
-            code: "btc".to_string(),
+            code: "BTC".to_string(),
             name: "Bitcoin".to_string(),
             kind: UnitKind::Crypto,
             precision: Precision::of_kind(UnitKind::Crypto),
@@ -285,7 +287,7 @@ pub fn sample_units(now: DateTime<Utc>) -> Vec<UnitRow> {
         },
         UnitRow {
             id: UnitId::SEED_VAS,
-            code: "vas".to_string(),
+            code: "VAS".to_string(),
             name: "Vanguard Aus Shares".to_string(),
             kind: UnitKind::Equity,
             precision: Precision::of_kind(UnitKind::Equity),
@@ -372,7 +374,7 @@ mod tests {
     #[test]
     fn a_price_in_a_new_week_starts_that_weeks_entry_with_a_close_only() {
         let mut unit = UnitRow::new(
-            "eth".into(),
+            "ETH".into(),
             "Ethereum".into(),
             UnitKind::Crypto,
             Precision::of_kind(UnitKind::Crypto),
@@ -398,7 +400,7 @@ mod tests {
     #[test]
     fn a_price_in_the_current_week_overwrites_its_close_and_widens_its_high_and_low() {
         let mut unit = UnitRow::new(
-            "eth".into(),
+            "ETH".into(),
             "Ethereum".into(),
             UnitKind::Crypto,
             Precision::of_kind(UnitKind::Crypto),
@@ -440,7 +442,7 @@ mod tests {
     #[test]
     fn the_last_price_is_the_newest_weeks_close_and_its_age_when_that_was_written() {
         let mut unit = UnitRow::new(
-            "eth".into(),
+            "ETH".into(),
             "Ethereum".into(),
             UnitKind::Crypto,
             Precision::of_kind(UnitKind::Crypto),
@@ -496,9 +498,9 @@ mod tests {
         assert_eq!(
             places,
             vec![
-                ("aud".to_string(), 2),
-                ("btc".to_string(), 8),
-                ("vas".to_string(), 2),
+                ("AUD".to_string(), 2),
+                ("BTC".to_string(), 8),
+                ("VAS".to_string(), 2),
             ]
         );
     }
@@ -513,13 +515,13 @@ mod tests {
         let edited = edit_unit(
             &mut units,
             UnitId::SEED_BTC,
-            "btc".into(),
+            "BTC".into(),
             "Bitcoin".into(),
             UnitKind::Crypto,
             six,
             link,
         )
-        .expect("btc is seeded");
+        .expect("BTC is seeded");
 
         assert_eq!(edited.precision, six);
         assert_eq!(edited.prices, prices, "a Precision change only reformats");
@@ -534,9 +536,9 @@ mod tests {
         assert_eq!(
             units,
             vec![
-                ("aud".to_string(), UnitKind::Currency),
-                ("btc".to_string(), UnitKind::Crypto),
-                ("vas".to_string(), UnitKind::Equity),
+                ("AUD".to_string(), UnitKind::Currency),
+                ("BTC".to_string(), UnitKind::Crypto),
+                ("VAS".to_string(), UnitKind::Equity),
             ]
         );
     }
@@ -554,7 +556,7 @@ mod tests {
                 quote: UnitId::SEED_AUD
             }
         );
-        let last = btc.last_price().expect("btc is seeded with prices");
+        let last = btc.last_price().expect("BTC is seeded with prices");
         assert_eq!(
             (&last.close, last.written_at),
             (&"148212.40".parse().unwrap(), now - Duration::minutes(5))
@@ -573,7 +575,7 @@ mod tests {
     #[test]
     fn a_balance_is_valued_at_the_last_price_in_the_quote_unit_to_its_precision() {
         let btc = &seed()[1];
-        let price = btc.last_price().expect("btc is seeded with a price");
+        let price = btc.last_price().expect("BTC is seeded with a price");
         let aud = Precision::of_kind(UnitKind::Currency);
 
         let value = price.value(&"0.4120".parse().unwrap(), aud);
@@ -606,7 +608,7 @@ mod tests {
             .into_iter()
             .map(|unit| unit.code.as_str())
             .collect();
-        assert_eq!(codes, vec!["Ada", "aud", "btc", "ETH", "vas"]);
+        assert_eq!(codes, vec!["ADA", "AUD", "BTC", "ETH", "VAS"]);
     }
 
     #[test]
@@ -619,13 +621,13 @@ mod tests {
         };
         let added = add_unit(
             &mut units,
-            "eth".into(),
+            "ETH".into(),
             "Ethereum".into(),
             UnitKind::Crypto,
             Precision::of_kind(UnitKind::Crypto),
             link.clone(),
         );
-        assert_eq!(added.code, "eth");
+        assert_eq!(added.code, "ETH");
         assert_eq!(added.link, link);
         assert!(added.prices.is_empty());
         assert_eq!(units.len(), 4);
@@ -643,14 +645,14 @@ mod tests {
         let edited = edit_unit(
             &mut units,
             UnitId::SEED_BTC,
-            "xbt".into(),
+            "XBT".into(),
             "Bitcoin".into(),
             UnitKind::Crypto,
             Precision::of_kind(UnitKind::Crypto),
             link.clone(),
         )
-        .expect("btc is seeded");
-        assert_eq!(edited.code, "xbt");
+        .expect("BTC is seeded");
+        assert_eq!(edited.code, "XBT");
         assert_eq!(edited.link, link);
         assert_eq!(edited.prices, prices);
         assert!(!prices.is_empty());
@@ -664,13 +666,13 @@ mod tests {
         let edited = edit_unit(
             &mut units,
             UnitId::SEED_BTC,
-            "btc".into(),
+            "BTC".into(),
             "Bitcoin".into(),
             UnitKind::Crypto,
             Precision::of_kind(UnitKind::Crypto),
             link,
         )
-        .expect("btc is seeded");
+        .expect("BTC is seeded");
         assert!(edited.prices.is_empty());
     }
 
@@ -682,13 +684,13 @@ mod tests {
             let edited = edit_unit(
                 &mut units,
                 UnitId::SEED_BTC,
-                "btc".into(),
+                "BTC".into(),
                 "Bitcoin".into(),
                 *kind,
                 Precision::of_kind(*kind),
                 link,
             )
-            .expect("btc is seeded");
+            .expect("BTC is seeded");
             assert_eq!(edited.kind, *kind);
         }
     }
@@ -717,8 +719,8 @@ mod tests {
         let mut units = seed();
         assert!(remove_unit(&mut units, UnitId::new()).is_none());
         assert_eq!(units.len(), 3);
-        let removed = remove_unit(&mut units, UnitId::SEED_BTC).expect("btc is seeded");
-        assert_eq!(removed.code, "btc");
+        let removed = remove_unit(&mut units, UnitId::SEED_BTC).expect("BTC is seeded");
+        assert_eq!(removed.code, "BTC");
         assert_eq!(units.len(), 2);
     }
 
@@ -729,13 +731,13 @@ mod tests {
         let edited = edit_unit(
             &mut units,
             UnitId::SEED_BTC,
-            "xbt".into(),
+            "XBT".into(),
             "Bitcoin".into(),
             UnitKind::Crypto,
             Precision::of_kind(UnitKind::Crypto),
             link,
         )
-        .expect("btc is seeded");
+        .expect("BTC is seeded");
         assert_eq!(edited.id, UnitId::SEED_BTC);
     }
 
@@ -745,7 +747,7 @@ mod tests {
         assert!(units.iter().all(|unit| unit.is_active));
         let added = add_unit(
             &mut units,
-            "eth".into(),
+            "ETH".into(),
             "Ethereum".into(),
             UnitKind::Crypto,
             Precision::of_kind(UnitKind::Crypto),
@@ -769,7 +771,7 @@ mod tests {
         edit_unit(
             &mut units,
             UnitId::SEED_VAS,
-            "vas".into(),
+            "VAS".into(),
             "Vanguard".into(),
             UnitKind::Equity,
             Precision::of_kind(UnitKind::Equity),

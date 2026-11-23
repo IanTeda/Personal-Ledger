@@ -1611,7 +1611,7 @@ mod tests {
 
     #[test]
     fn a_closed_ledger_leaves_history_with_only_what_is_not_the_ledgers() {
-        let mut shell = recorded(&["Add unit nzd", "Toasts: Off", "Delete unit btc"]);
+        let mut shell = recorded(&["Add unit NZD", "Toasts: Off", "Delete unit BTC"]);
         press(&mut shell, &["u"]);
 
         shell.ledger_closed(|reversal| !reversal.contains("unit"));

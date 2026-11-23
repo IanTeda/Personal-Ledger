@@ -584,7 +584,7 @@ mod tests {
             !values.set(SettingField::Owner, "Alex"),
             "the Ledger's, not held here"
         );
-        assert!(!values.set(SettingField::BaseUnit, "btc"), "not held here");
+        assert!(!values.set(SettingField::BaseUnit, "BTC"), "not held here");
         assert!(values.set(SettingField::StatusGlyphs, "ascii"));
         assert!(values.set(SettingField::HintBar, "off"));
         assert!(!values.set(SettingField::TerminalColours, "maybe"));

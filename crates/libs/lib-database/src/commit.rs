@@ -264,7 +264,7 @@ mod tests {
             let ports = self.units.split_mut(&usage);
             AddUnit {
                 id: UnitId::new(),
-                code: "nzd".into(),
+                code: "NZD".into(),
                 name: "New Zealand dollar".into(),
                 kind: UnitKind::Currency,
                 precision: Precision::of_kind(UnitKind::Currency),
@@ -329,7 +329,7 @@ mod tests {
             .flush()
             .expect("the writer is running");
 
-        assert!(ledger.stored_codes().contains(&"nzd".to_string()));
+        assert!(ledger.stored_codes().contains(&"NZD".to_string()));
         assert_eq!(ledger.stored_notes(), ["paid"]);
         assert_eq!(committed.wrote, [Domain::Units, Domain::Test]);
         assert!(
@@ -353,7 +353,7 @@ mod tests {
         assert_eq!(failure.domains, [Domain::Units, Domain::Test]);
         assert!(matches!(failure.error, Error::Sqlx(_)));
         assert!(
-            !ledger.stored_codes().contains(&"nzd".to_string()),
+            !ledger.stored_codes().contains(&"NZD".to_string()),
             "the Unit written before the refused note is rolled back with it"
         );
         assert!(ledger.stored_notes().is_empty());
@@ -375,7 +375,7 @@ mod tests {
             .flush()
             .expect("the writer is running");
 
-        assert!(!ledger.stored_codes().contains(&"nzd".to_string()));
+        assert!(!ledger.stored_codes().contains(&"NZD".to_string()));
         assert_eq!(ledger.stored_notes(), ["kept"]);
     }
 }

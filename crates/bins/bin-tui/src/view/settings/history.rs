@@ -199,7 +199,7 @@ const APPLIED: [Change; 9] = [
         ..change(
             NaiveTime::from_hms_opt(12, 2, 0),
             Kind::Accounts,
-            "Created ANZ Offset · aud",
+            "Created ANZ Offset · AUD",
             Some("laptop"),
         )
     },

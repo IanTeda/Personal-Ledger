@@ -1452,8 +1452,8 @@ mod tests {
         for needle in [
             "ACCOUNT",
             "ANZ Offset",
-            "bank · ANZ · aud",
-            "61,204.10 aud",
+            "bank · ANZ · AUD",
+            "61,204.10 AUD",
             "offsets           Home Loan",
             "212",
             "enter open ledger  ·  e edit  ·  d delete",

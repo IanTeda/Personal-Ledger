@@ -217,7 +217,7 @@ fn editing_fixes_the_unit_and_balance_and_tab_skips_them(app: &mut TestAppContex
 fn a_btc_balance_is_padded_to_its_precision_and_edit_shows_it_there(app: &mut TestAppContext) {
     let mut ui = add_dialog(app);
     ui.press("C o i n s tab down down down down");
-    assert_eq!(ui.account_form().unit.as_deref(), Some("btc"));
+    assert_eq!(ui.account_form().unit.as_deref(), Some("BTC"));
     ui.press("tab tab tab 0 . 5 enter");
     assert_eq!(ui.dialog(), None);
 
@@ -264,18 +264,18 @@ fn the_edit_dialog_is_a_form_too_and_enter_saves_it(app: &mut TestAppContext) {
 #[gpui::test]
 fn stepping_to_an_institution_with_a_usual_unit_starts_the_unit_on_it(app: &mut TestAppContext) {
     let mut ui = add_dialog(app);
-    assert_eq!(ui.account_form().unit.as_deref(), Some("aud"));
+    assert_eq!(ui.account_form().unit.as_deref(), Some("AUD"));
 
     ui.press("tab down down down down");
     let form = ui.account_form();
     assert_eq!(form.institution.as_deref(), Some("Cryptocurrency Exchange"));
-    assert_eq!(form.unit.as_deref(), Some("btc"));
+    assert_eq!(form.unit.as_deref(), Some("BTC"));
 
     // Back to an Institution with no Usual unit: the unit falls back to the base unit.
     ui.press("up");
     let form = ui.account_form();
     assert_eq!(form.institution.as_deref(), Some("Westpac Banking"));
-    assert_eq!(form.unit.as_deref(), Some("aud"));
+    assert_eq!(form.unit.as_deref(), Some("AUD"));
 }
 
 #[gpui::test]
@@ -285,7 +285,7 @@ fn a_unit_picked_with_the_keys_stays_through_a_change_of_institution(app: &mut T
     ui.press("tab tab tab down");
     assert_eq!(ui.account_form().focused, "Unit");
     let picked = ui.account_form().unit;
-    assert_ne!(picked.as_deref(), Some("aud"));
+    assert_ne!(picked.as_deref(), Some("AUD"));
 
     ui.press("shift-tab shift-tab down down down down");
     let form = ui.account_form();

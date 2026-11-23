@@ -741,7 +741,7 @@ mod tests {
             [PriceSourceField::Name, PriceSourceField::Updates]
         );
         assert_eq!(view.built_in_facts[0].1, "CoinGecko · built-in");
-        assert_eq!(view.usage.as_deref(), Some("Values 1 unit: btc."));
+        assert_eq!(view.usage.as_deref(), Some("Values 1 unit: BTC."));
 
         send(
             &mut form,

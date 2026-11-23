@@ -273,7 +273,7 @@ impl Presenter for UnitFormPresenter {
             UnitFormEvent::Input(input) => self.input(input, router),
             UnitFormEvent::ToggleList(field) => self.toggle_list(field),
             UnitFormEvent::CloseList => {}
-            UnitFormEvent::Code(text) => self.code = text,
+            UnitFormEvent::Code(text) => self.code = text.to_uppercase(),
             UnitFormEvent::Name(text) => self.name = text,
             UnitFormEvent::Symbol(text) => self.symbol = text,
             UnitFormEvent::Precision(text) => {
@@ -448,8 +448,14 @@ impl UnitFormPresenter {
             _ if on_select => self.select_input(input),
             DialogInput::Select => self.save(router),
             DialogInput::Char(ch) => {
+                // A Unit's code is upper case, so the Code field shows what will be saved.
+                let upper = self.focused == UnitField::Code;
                 if let Some(text) = self.text_mut() {
-                    text.push(ch);
+                    if upper {
+                        text.extend(ch.to_uppercase());
+                    } else {
+                        text.push(ch);
+                    }
                 }
                 self.typed();
             }
@@ -774,7 +780,7 @@ mod tests {
         );
         let quote = view.quote.expect("a fetching source shows Quoted in");
         assert_eq!(quote.chosen, Some(UnitId::SEED_AUD));
-        assert_eq!(quote.options[0].label, "aud (base unit)");
+        assert_eq!(quote.options[0].label, "AUD (base unit)");
 
         send(&mut form, vec![UnitFormEvent::Kind(UnitKind::Equity)]);
 
@@ -818,7 +824,7 @@ mod tests {
         let calls = send(
             &mut form,
             vec![
-                UnitFormEvent::Code("eth".into()),
+                UnitFormEvent::Code("ETH".into()),
                 UnitFormEvent::Name("Ethereum".into()),
                 UnitFormEvent::Kind(UnitKind::Crypto),
                 UnitFormEvent::Source(COINGECKO),
@@ -831,11 +837,11 @@ mod tests {
             calls,
             [RouterCall::CloseDialog(Some(UnitsOutcome::Unit {
                 change: UnitChange::Saved,
-                code: "eth".into()
+                code: "ETH".into()
             }))]
         );
         let ports = ports.borrow();
-        let added = ports.units.units.last().expect("eth was added");
+        let added = ports.units.units.last().expect("ETH was added");
         assert_eq!(
             added.link,
             PriceLink {
@@ -854,7 +860,7 @@ mod tests {
         let calls = send(
             &mut form,
             vec![
-                UnitFormEvent::Code("eth".into()),
+                UnitFormEvent::Code("ETH".into()),
                 UnitFormEvent::Name("  ".into()),
                 UnitFormEvent::Confirm,
             ],
@@ -901,10 +907,10 @@ mod tests {
         let (ports, shared) = sample();
         ports.borrow_mut().units.units[1].kind = UnitKind::Currency;
         let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_BTC, DialogKeys::default())
-            .expect("btc is seeded");
+            .expect("BTC is seeded");
         let view = form.view_model();
-        assert_eq!(view.frame.title, "Edit unit — btc");
-        assert_eq!(view.code.text, "btc");
+        assert_eq!(view.frame.title, "Edit unit — BTC");
+        assert_eq!(view.code.text, "BTC");
         assert_eq!(
             view.source.chosen,
             Some(COINGECKO),
@@ -913,20 +919,20 @@ mod tests {
 
         let calls = send(
             &mut form,
-            vec![UnitFormEvent::Code("xbt".into()), UnitFormEvent::Confirm],
+            vec![UnitFormEvent::Code("XBT".into()), UnitFormEvent::Confirm],
         );
 
         assert_eq!(
             calls,
             [RouterCall::CloseDialog(Some(UnitsOutcome::Unit {
                 change: UnitChange::Saved,
-                code: "xbt".into()
+                code: "XBT".into()
             }))]
         );
         let edited = ports.borrow().units.units[1].clone();
         assert_eq!(
             (edited.code.as_str(), edited.link.source_id),
-            ("xbt", COINGECKO)
+            ("XBT", COINGECKO)
         );
     }
 
@@ -1009,7 +1015,7 @@ mod tests {
             assert_eq!(
                 form.view_model().refusal.as_deref(),
                 Some("The unit it's quoted in was removed while the dialog was open."),
-                "aud, the quote, is gone"
+                "AUD, the quote, is gone"
             );
         }
         assert_eq!(*ports.borrow(), before, "a refused save writes nothing");
@@ -1061,7 +1067,7 @@ mod tests {
     fn editing_prefills_the_precision_and_a_type_change_keeps_it() {
         let (_, shared) = sample();
         let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_AUD, DialogKeys::default())
-            .expect("aud is seeded");
+            .expect("AUD is seeded");
         assert_eq!(form.view_model().precision.text, "2");
 
         send(&mut form, vec![UnitFormEvent::Kind(UnitKind::Crypto)]);
@@ -1098,7 +1104,7 @@ mod tests {
     fn a_precision_outside_0_to_18_does_not_confirm_and_one_inside_is_saved() {
         let (ports, shared) = sample();
         let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_BTC, DialogKeys::default())
-            .expect("btc is seeded");
+            .expect("BTC is seeded");
 
         for refused in ["", "19", "2.5"] {
             let calls = send(
@@ -1165,7 +1171,7 @@ mod tests {
             ],
         );
         let view = form.view_model();
-        assert_eq!(view.code.text, "a");
+        assert_eq!(view.code.text, "A", "the code types upper case");
         assert!(
             view.kind.focused && view.list.is_open(),
             "Space opens Type's list"

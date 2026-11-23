@@ -316,7 +316,7 @@ fn an_earlier_overdue_row_carries_into_the_current_month() {
     );
     assert!(own.iter().any(|r| r.id == august && !r.carried));
     let summary = period_summary(&september, &w.plans, &w.entries, &w.splits, |_| {
-        "aud".to_string()
+        "AUD".to_string()
     });
     assert_eq!(summary.overdue, 3);
 }
@@ -405,14 +405,14 @@ fn the_period_summary_counts_and_totals_its_own_rows() {
     let w = world();
     let rows = schedule_rows(&w.plans, &w.entries, Some(Period::of(today())), today());
     let summary = period_summary(&rows, &w.plans, &w.entries, &w.splits, |_| {
-        "aud".to_string()
+        "AUD".to_string()
     });
     assert_eq!((summary.due, summary.overdue, summary.paid), (3, 2, 1));
     // 29.99 + 25.00 + 64.00 + 22.99 + 89.00 + 150.00 + 1180.00
     assert_eq!(
         summary.planned,
         Total::Single {
-            unit: "aud".into(),
+            unit: "AUD".into(),
             amount: cents_money(156_098),
         }
     );

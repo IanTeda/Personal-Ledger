@@ -953,7 +953,7 @@ mod tests {
         page.ports.borrow_mut().units.units.push(first);
 
         let codes: Vec<_> = page.view().units.iter().map(|u| u.code.clone()).collect();
-        assert_eq!(codes, ["Aaa", "aud", "btc", "vas"]);
+        assert_eq!(codes, ["Aaa", "AUD", "BTC", "VAS"]);
         assert_eq!(page.selected(), "Aaa");
     }
 
@@ -999,9 +999,9 @@ mod tests {
         assert_eq!(
             units,
             [
-                ("aud", "Currency", "Manual entry"),
-                ("btc", "Crypto", "CoinGecko"),
-                ("vas", "Equity", "Manual entry"),
+                ("AUD", "Currency", "Manual entry"),
+                ("BTC", "Crypto", "CoinGecko"),
+                ("VAS", "Equity", "Manual entry"),
             ]
         );
         assert_eq!(view.units[0].base_flag.as_deref(), Some("base"));
@@ -1030,10 +1030,10 @@ mod tests {
             last,
             [
                 ("—", None),
-                ("148,212.40 aud", Some("5 minutes ago")),
+                ("148,212.40 AUD", Some("5 minutes ago")),
                 ("—", None),
             ],
-            "btc's newest Weekly Price at aud's Precision; aud and vas have none"
+            "BTC's newest Weekly Price at AUD's Precision; AUD and VAS have none"
         );
         assert_eq!(view.scope, "3 units · synced");
         let sources: Vec<_> = view
@@ -1070,7 +1070,7 @@ mod tests {
         );
         assert!(view.price_sources[1].not_fetched);
         assert!(!view.price_sources[2].not_fetched);
-        assert_eq!(page.selected(), "aud");
+        assert_eq!(page.selected(), "AUD");
     }
 
     #[test]
@@ -1078,7 +1078,7 @@ mod tests {
         let mut page = Page::new();
 
         page.send(UnitsPageEvent::Move(Step::Prev));
-        assert_eq!(page.selected(), "aud");
+        assert_eq!(page.selected(), "AUD");
         for _ in 0..3 {
             page.send(UnitsPageEvent::Move(Step::Next));
         }
@@ -1092,7 +1092,7 @@ mod tests {
         page.send(UnitsPageEvent::Move(Step::Next));
         assert_eq!(page.selected(), "Yahoo Finance");
         page.send(UnitsPageEvent::Move(Step::First));
-        assert_eq!(page.selected(), "aud");
+        assert_eq!(page.selected(), "AUD");
     }
 
     #[test]
@@ -1108,7 +1108,7 @@ mod tests {
         );
         page.send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
         page.send(UnitsPageEvent::NextTable);
-        assert_eq!(page.selected(), "vas");
+        assert_eq!(page.selected(), "VAS");
         page.send(UnitsPageEvent::NextTable);
         assert_eq!(page.selected(), "Frankfurter");
     }
@@ -1185,7 +1185,7 @@ mod tests {
         );
         assert_eq!(
             page.selected(),
-            "btc",
+            "BTC",
             "the selection stays for the way back"
         );
 
@@ -1253,7 +1253,7 @@ mod tests {
             page.presenter.keymap().event("n"),
             Some(UnitsPageEvent::New)
         );
-        assert_eq!(page.selected(), "btc", "the selection is as it was");
+        assert_eq!(page.selected(), "BTC", "the selection is as it was");
     }
 
     #[test]
@@ -1351,7 +1351,7 @@ mod tests {
         page.ports.borrow_mut().units.units[2].is_active = false;
 
         page.send(UnitsPageEvent::OpenMenu(UnitsRow::Unit(UnitId::SEED_VAS)));
-        let menu = page.view().menu.expect("vas has actions");
+        let menu = page.view().menu.expect("VAS has actions");
         let labels: Vec<_> = menu
             .entries
             .iter()
@@ -1368,7 +1368,7 @@ mod tests {
             ]
         );
         assert!(menu.entries[4].destructive);
-        assert_eq!(page.selected(), "vas", "opening the menu selects its row");
+        assert_eq!(page.selected(), "VAS", "opening the menu selects its row");
 
         assert_eq!(
             page.send(UnitsPageEvent::Menu(MenuAction::DeleteUnit)),
@@ -1392,7 +1392,7 @@ mod tests {
         let labels: Vec<_> = page
             .view()
             .menu
-            .expect("vas has actions")
+            .expect("VAS has actions")
             .entries
             .into_iter()
             .map(|entry| entry.label)
@@ -1452,7 +1452,7 @@ mod tests {
         page.ports.borrow_mut().units.units[2] = vas;
         let set = || {
             UnitsPageEvent::DialogClosed(Some(UnitsOutcome::PriceSet {
-                code: "vas".into(),
+                code: "VAS".into(),
                 week: chrono::NaiveDate::from_ymd_opt(2026, 10, 19).expect("a real date"),
             }))
         };
@@ -1461,11 +1461,11 @@ mod tests {
             page.send(set()),
             vec![
                 RouterCall::Notice(Notice::Changed(
-                    "Set the price of vas for the week of Oct 19, 2026".into()
+                    "Set the price of VAS for the week of Oct 19, 2026".into()
                 )),
                 RouterCall::Notice(Notice::Toast(
                     ToastKind::Success,
-                    "Set the price of vas for the week of Oct 19, 2026".into()
+                    "Set the price of VAS for the week of Oct 19, 2026".into()
                 ))
             ]
         );
@@ -1475,14 +1475,14 @@ mod tests {
 
         assert_eq!(
             page.view().activity[0].text,
-            "Set the price of vas for the week of Oct 19, 2026"
+            "Set the price of VAS for the week of Oct 19, 2026"
         );
         let source = source_group(&pane(&page));
         assert_eq!(
             facts(&source),
             [
                 ("Source", "Manual entry"),
-                ("Last price", "101.20 aud"),
+                ("Last price", "101.20 AUD"),
                 ("Last updated", "just now"),
             ]
         );
@@ -1521,10 +1521,10 @@ mod tests {
         assert_eq!(
             calls,
             vec![
-                RouterCall::Notice(Notice::Changed("Reactivate unit btc".into())),
+                RouterCall::Notice(Notice::Changed("Reactivate unit BTC".into())),
                 RouterCall::Notice(Notice::Toast(
                     ToastKind::Success,
-                    "Reactivated unit btc".into()
+                    "Reactivated unit BTC".into()
                 ))
             ]
         );
@@ -1555,7 +1555,7 @@ mod tests {
         let saved = || {
             UnitsPageEvent::DialogClosed(Some(UnitsOutcome::Unit {
                 change: UnitChange::Saved,
-                code: "nzd".into(),
+                code: "NZD".into(),
             }))
         };
 
@@ -1566,11 +1566,11 @@ mod tests {
 
         assert_eq!(
             added,
-            [RouterCall::Notice(Notice::Changed("Add unit nzd".into()))]
+            [RouterCall::Notice(Notice::Changed("Add unit NZD".into()))]
         );
         assert_eq!(
             edited,
-            [RouterCall::Notice(Notice::Changed("Edit unit nzd".into()))]
+            [RouterCall::Notice(Notice::Changed("Edit unit NZD".into()))]
         );
     }
 
@@ -1579,30 +1579,30 @@ mod tests {
         let mut page = Page::new();
         let deleted = || UnitsOutcome::Unit {
             change: UnitChange::Deleted,
-            code: "btc".into(),
+            code: "BTC".into(),
         };
 
         let changed = |label: &str| RouterCall::Notice(Notice::Changed(label.into()));
         assert_eq!(
             page.send(UnitsPageEvent::DialogClosed(Some(deleted()))),
             vec![
-                changed("Delete unit btc"),
-                RouterCall::Notice(Notice::Toast(ToastKind::Success, "Deleted unit btc".into()))
+                changed("Delete unit BTC"),
+                RouterCall::Notice(Notice::Toast(ToastKind::Success, "Deleted unit BTC".into()))
             ]
         );
         assert_eq!(
             page.send(UnitsPageEvent::DialogClosed(Some(UnitsOutcome::Unit {
                 change: UnitChange::Saved,
-                code: "eth".into()
+                code: "ETH".into()
             }))),
-            vec![changed("Edit unit eth")],
+            vec![changed("Edit unit ETH")],
             "a save raises no Toast"
         );
 
         page.send(UnitsPageEvent::SetDocked(true));
         assert_eq!(
             page.send(UnitsPageEvent::DialogClosed(Some(deleted()))),
-            vec![changed("Delete unit btc")]
+            vec![changed("Delete unit BTC")]
         );
         page.send(UnitsPageEvent::DialogClosed(Some(
             UnitsOutcome::SourceDeleted {
@@ -1616,7 +1616,7 @@ mod tests {
             .into_iter()
             .map(|line| line.text)
             .collect();
-        assert_eq!(lines, ["Deleted price source Broker", "Deleted unit btc"]);
+        assert_eq!(lines, ["Deleted price source Broker", "Deleted unit BTC"]);
     }
 
     #[test]
@@ -1651,7 +1651,7 @@ mod tests {
         page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
         assert!(
             !hints(&page).iter().any(|(_, action)| action == "set price"),
-            "btc's source prices it"
+            "BTC's source prices it"
         );
         page.send(UnitsPageEvent::NextTable);
         assert_eq!(hints(&page)[0], ("j/k".into(), "price source".into()));
@@ -1714,8 +1714,8 @@ mod tests {
         let PaneGroup::Unit(unit) = &groups[0] else {
             panic!("UNIT first")
         };
-        assert_eq!(unit.title, "aud · Australian Dollar");
-        assert_eq!(unit.meta, "Currency · valued in aud");
+        assert_eq!(unit.title, "AUD · Australian Dollar");
+        assert_eq!(unit.meta, "Currency · valued in AUD");
         assert_eq!(unit.facts[0].value, "base");
         assert_eq!(
             button_slugs(&unit.buttons),
@@ -1746,7 +1746,7 @@ mod tests {
                 ("Source", "CoinGecko"),
                 ("URL", "https://api.coingecko.com/api/v3"),
                 ("Updates", "Every 15 min"),
-                ("Last price", "148,212.40 aud"),
+                ("Last price", "148,212.40 AUD"),
                 ("Last updated", "5 minutes ago"),
             ]
         );
@@ -1802,7 +1802,7 @@ mod tests {
         assert_eq!(price.empty, None);
         let labels: Vec<_> = price.facts.iter().map(|fact| fact.label.as_str()).collect();
         assert_eq!(labels, ["Last price", "Week change", "52w range"]);
-        assert_eq!(price.facts[0].value, "148,212.40 aud · 5 minutes ago");
+        assert_eq!(price.facts[0].value, "148,212.40 AUD · 5 minutes ago");
     }
 
     #[test]
@@ -1825,7 +1825,7 @@ mod tests {
                 .units
                 .iter_mut()
                 .find(|unit| unit.id == UnitId::SEED_VAS)
-                .expect("the sample's vas");
+                .expect("the sample's VAS");
             vas.prices = vec![
                 // 53 weeks before the newest: out of the range.
                 price(week(2025, 10, 20), "50", None),
@@ -1840,9 +1840,9 @@ mod tests {
         assert_eq!(
             values,
             [
-                "110.00 aud · 5 minutes ago",
-                "+10.00 aud (+10.00%)",
-                "100.00 – 120.00 aud",
+                "110.00 AUD · 5 minutes ago",
+                "+10.00 AUD (+10.00%)",
+                "100.00 – 120.00 AUD",
             ]
         );
     }
@@ -1892,8 +1892,8 @@ mod tests {
             (
                 "Cold wallet",
                 "Investment",
-                "0.41200000 btc",
-                Some("61,063.51 aud")
+                "0.41200000 BTC",
+                Some("61,063.51 AUD")
             )
         );
         assert_eq!(
@@ -1924,7 +1924,7 @@ mod tests {
         let groups = pane(&page);
 
         let source = source_group(&groups);
-        assert_eq!(source.facts[3].value, "148,212 aud", "aud's 0 places");
+        assert_eq!(source.facts[3].value, "148,212 AUD", "AUD's 0 places");
         let PaneGroup::Accounts(accounts) = &groups[3] else {
             panic!("ACCOUNTS fourth")
         };
@@ -1934,13 +1934,13 @@ mod tests {
                 accounts.rows[0].balance.as_str(),
                 accounts.rows[0].value.as_deref()
             ),
-            ("0.413 btc", Some("61,138 aud"))
+            ("0.413 BTC", Some("61,138 AUD"))
         );
         page.send(UnitsPageEvent::Select(UnitsRow::Source(COINGECKO)));
         let PaneGroup::Values(values) = &pane(&page)[1] else {
             panic!("VALUES second")
         };
-        assert_eq!(values.rows[0].price, "148,212 aud");
+        assert_eq!(values.rows[0].price, "148,212 AUD");
     }
 
     #[test]
@@ -1985,13 +1985,13 @@ mod tests {
                 row.price.as_str()
             ),
             (
-                "btc",
+                "BTC",
                 Some(("symbol".to_string(), "bitcoin".to_string())),
-                "quoted in aud",
-                "148,212.40 aud"
+                "quoted in AUD",
+                "148,212.40 AUD"
             )
         );
-        assert_eq!(row.detail, "symbol bitcoin · quoted in aud");
+        assert_eq!(row.detail, "symbol bitcoin · quoted in AUD");
     }
 
     #[test]
@@ -2027,7 +2027,7 @@ mod tests {
             panic!("VALUES second")
         };
         let codes: Vec<_> = values.rows.iter().map(|row| row.code.as_str()).collect();
-        assert_eq!(codes, ["aud", "vas"]);
+        assert_eq!(codes, ["AUD", "VAS"]);
     }
 
     #[test]
@@ -2104,6 +2104,6 @@ mod tests {
         page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
         page.ports.borrow_mut().units.units.remove(2);
 
-        assert_eq!(page.selected(), "aud");
+        assert_eq!(page.selected(), "AUD");
     }
 }

@@ -39,32 +39,32 @@ fn clicking_a_unit_in_the_base_unit_select_makes_it_the_base_unit(app: &mut Test
     ui.click("settings-index-Ledger");
     assert_eq!(
         ui.settings::<SettingsLedgerSnapshot>().base_unit.as_deref(),
-        Some("aud")
+        Some("AUD")
     );
 
     ui.click("settings-ledger-base-unit");
     ui.click("settings-ledger-base-unit-option-2");
     assert_eq!(
         ui.settings::<SettingsLedgerSnapshot>().base_unit.as_deref(),
-        Some("vas")
+        Some("VAS")
     );
     ui.click("settings-ledger-base-unit");
     ui.click("settings-ledger-base-unit-option-0");
     assert_eq!(
         ui.settings::<SettingsLedgerSnapshot>().base_unit.as_deref(),
-        Some("aud")
+        Some("AUD")
     );
 }
 
 #[gpui::test]
 fn the_units_page_marks_the_unit_picked_on_ledger(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
-    assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("AUD"));
     ui.click("settings-index-Ledger");
 
     ui.click("settings-ledger-base-unit");
     ui.click("settings-ledger-base-unit-option-1");
-    assert_eq!(ui.base_unit_code().as_deref(), Some("btc"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("BTC"));
 }
 
 #[gpui::test]
@@ -73,7 +73,7 @@ fn a_deactivated_unit_has_no_base_unit_option_to_click(app: &mut TestAppContext)
     assert!(
         ui.settings::<SettingsLedgerSnapshot>()
             .options
-            .contains(&"btc".to_string())
+            .contains(&"BTC".to_string())
     );
 
     ui.click("settings-index-Units");
@@ -85,13 +85,13 @@ fn a_deactivated_unit_has_no_base_unit_option_to_click(app: &mut TestAppContext)
 
     assert_eq!(
         ui.settings::<SettingsLedgerSnapshot>().options,
-        vec!["aud", "vas"]
+        vec!["AUD", "VAS"]
     );
     ui.click("settings-ledger-base-unit");
     ui.click("settings-ledger-base-unit-option-1");
     assert_eq!(
         ui.settings::<SettingsLedgerSnapshot>().base_unit.as_deref(),
-        Some("vas")
+        Some("VAS")
     );
 }
 

@@ -14,11 +14,10 @@ ledger-creation-quote-gone = its base unit can only be quoted in itself
 ledger-creation-base-unit-invalid = its base unit isn't valid
 
 ## The Create ledger Dialog. Its fields are Add unit's, so their labels and placeholders are
-## `lib-units`' and the file name is the one the person chose in the file explorer.
+## `lib-units`'.
 
 ledger-creation-title = Create ledger
 ledger-creation-submit = Create
-ledger-creation-field-file = File
 ledger-creation-base-unit-help = The base unit is what your accounts and totals are kept in. It can't be changed once an account uses it.
 
 ## The Create ledger Dialog's two stages (#1344): Base unit, then Ledger, with Create on the last.

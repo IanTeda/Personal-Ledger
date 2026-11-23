@@ -156,9 +156,9 @@ mod tests {
         let mut deletion = world();
         let before = deletion.clone();
 
-        let deleted = delete(&mut deletion, VAS, None, Vec::new()).expect("nothing names vas");
+        let deleted = delete(&mut deletion, VAS, None, Vec::new()).expect("nothing names VAS");
 
-        assert_eq!(deleted.unit.code, "vas");
+        assert_eq!(deleted.unit.code, "VAS");
         assert_eq!((deleted.reassigned, deleted.cleared), (0, 0));
         assert_eq!(deletion.units.unit(VAS), None);
         assert_eq!(deletion.base_unit.0, AUD);
@@ -178,7 +178,7 @@ mod tests {
                 unit: VAS,
             }],
         )
-        .expect("only Institutions name btc");
+        .expect("only Institutions name BTC");
 
         assert_eq!((deleted.reassigned, deleted.cleared), (1, 1));
         assert_eq!(deletion.units.unit(BTC), None);
@@ -218,7 +218,7 @@ mod tests {
             });
         let before = deletion.clone();
 
-        let deleted = delete(&mut deletion, AUD, Some(VAS), Vec::new()).expect("nothing names aud");
+        let deleted = delete(&mut deletion, AUD, Some(VAS), Vec::new()).expect("nothing names AUD");
 
         assert_eq!((deleted.reassigned, deleted.cleared), (0, 0));
         assert_eq!(deletion.units.unit(AUD), None);
@@ -239,7 +239,7 @@ mod tests {
                 unit: BTC,
             }],
         )
-        .expect("Westpac names aud");
+        .expect("Westpac names AUD");
 
         assert_eq!(deletion.units.unit(AUD), None);
         assert_eq!(deletion.base_unit.0, VAS);
@@ -286,7 +286,7 @@ mod tests {
                 institutions: 0,
                 ..uses
             }))),
-            "an Account holding btc still refuses it, counting only what this can't reassign"
+            "an Account holding BTC still refuses it, counting only what this can't reassign"
         );
         assert_eq!(deletion, before);
     }
@@ -365,7 +365,7 @@ mod tests {
                 },
             ],
         )
-        .expect("neither names btc");
+        .expect("neither names BTC");
 
         assert_eq!(usual_unit(&deletion, ANZ), None);
         assert_eq!(usual_unit(&deletion, WESTPAC), Some(AUD));

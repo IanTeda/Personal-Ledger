@@ -343,7 +343,7 @@ fn the_usual_unit_select_opens_closes_and_picks_a_unit_by_click(app: &mut TestAp
     ui.click("institution-usual-unit");
     assert_eq!(ui.dialog_value("focused").as_deref(), Some("UsualUnit"));
     ui.click("institution-usual-unit-option-2");
-    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("btc"));
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("BTC"));
 
     ui.click("institution-usual-unit");
     ui.click("institution-usual-unit-option-0");
@@ -367,7 +367,7 @@ fn a_usual_unit_is_saved_reopens_intact_and_clears_back_to_none(app: &mut TestAp
 
     let row = format!("settings-institutions-row-{last}");
     row_action(&mut ui, &row, "edit-institution");
-    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("aud"));
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("AUD"));
     ui.click("institution-usual-unit");
     ui.click("institution-usual-unit-option-0");
     ui.click("add-institution-confirm");
@@ -386,7 +386,7 @@ fn the_seeded_exchange_opens_its_edit_dialog_on_its_usual_unit(app: &mut TestApp
         ui.dialog_value("name").as_deref(),
         Some("Cryptocurrency Exchange")
     );
-    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("btc"));
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("BTC"));
 }
 
 #[gpui::test]

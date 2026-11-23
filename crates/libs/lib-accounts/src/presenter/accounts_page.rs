@@ -482,7 +482,7 @@ mod tests {
         let bank = &view.groups[1].lines;
         assert_eq!(bank[0].name, "ANZ Everyday");
         assert_eq!(bank[0].institution, "ANZ Banking Group");
-        assert_eq!(bank[0].unit, "aud");
+        assert_eq!(bank[0].unit, "AUD");
         assert_eq!(
             view.groups[0].lines[0].institution, "Personal",
             "Cash is at the Personal Institution"
@@ -497,14 +497,14 @@ mod tests {
 
         assert_eq!(
             page.view().scope,
-            "7 accounts \u{b7} net worth 83,995.87 aud \u{b7} vas, btc held separately"
+            "7 accounts \u{b7} net worth 83,995.87 AUD \u{b7} VAS, BTC held separately"
         );
         assert_eq!(page.view().status, "7 accounts");
 
         ports.borrow_mut().accounts.accounts.truncate(1);
         let view = page.view();
         assert_eq!(view.status, "1 account");
-        assert_eq!(view.scope, "1 account \u{b7} net worth 240.00 aud");
+        assert_eq!(view.scope, "1 account \u{b7} net worth 240.00 AUD");
     }
 
     #[test]
@@ -518,7 +518,7 @@ mod tests {
 
         assert_eq!(
             Page::new(shared).view().scope,
-            "7 accounts \u{b7} net worth 83,996 aud \u{b7} vas, btc held separately"
+            "7 accounts \u{b7} net worth 83,996 AUD \u{b7} VAS, BTC held separately"
         );
     }
 

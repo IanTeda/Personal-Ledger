@@ -290,7 +290,7 @@ pub fn usage_answers_the_figures_for_a_tag<F: PortsFactory>(factory: &mut F) {
     let used = TagUse {
         transactions: 3,
         total: Total::Single {
-            unit: "aud".into(),
+            unit: "AUD".into(),
             amount: "-17.50".parse::<Money>().expect("a decimal"),
         },
         last_used: NaiveDate::from_ymd_opt(2026, 9, 1),

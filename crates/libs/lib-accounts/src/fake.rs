@@ -114,9 +114,9 @@ pub fn sample_institutions() -> Vec<AccountInstitution> {
 /// The sample Units the sample Accounts count in: aud (the base), the vas fund and btc.
 pub fn sample_units() -> Vec<UnitRef> {
     [
-        (UnitId::SEED_AUD, "aud", "Australian Dollar", 2),
-        (UnitId::SEED_VAS, "vas", "Vanguard Aus Shares", 2),
-        (UnitId::SEED_BTC, "btc", "Bitcoin", 8),
+        (UnitId::SEED_AUD, "AUD", "Australian Dollar", 2),
+        (UnitId::SEED_VAS, "VAS", "Vanguard Aus Shares", 2),
+        (UnitId::SEED_BTC, "BTC", "Bitcoin", 8),
     ]
     .into_iter()
     .map(|(id, code, name, precision)| UnitRef {

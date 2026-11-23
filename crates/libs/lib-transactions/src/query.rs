@@ -557,14 +557,14 @@ mod tests {
             reads.units = vec![
                 UnitRef {
                     id: UnitId::SEED_AUD,
-                    code: "aud".to_string(),
+                    code: "AUD".to_string(),
                     name: "Australian Dollar".to_string(),
                     is_active: true,
                     precision: 2,
                 },
                 UnitRef {
                     id: UnitId::SEED_BTC,
-                    code: "btc".to_string(),
+                    code: "BTC".to_string(),
                     name: "Bitcoin".to_string(),
                     is_active: true,
                     precision: 8,
@@ -1047,7 +1047,7 @@ mod tests {
         }
         match &visible.total {
             Total::Single { unit, amount } => {
-                assert_eq!(unit, "aud");
+                assert_eq!(unit, "AUD");
                 assert_eq!(Some(amount), visible.rows.last().unwrap().running.as_ref());
             }
             other => panic!("expected a single-Unit total, got {other:?}"),
@@ -1088,7 +1088,7 @@ mod tests {
         filters.account = Some(world.account("Amex Platinum"));
         let visible = world.run(&filters, "");
         match visible.total {
-            Total::Single { unit, .. } => assert_eq!(unit, "btc"),
+            Total::Single { unit, .. } => assert_eq!(unit, "BTC"),
             other => panic!("expected a single-Unit total, got {other:?}"),
         }
         assert!(visible.rows.iter().all(|r| r.running.is_some()));

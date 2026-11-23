@@ -750,7 +750,7 @@ mod tests {
         let mut reads = reads();
         reads.units = vec![UnitRef {
             id: UnitId::SEED_AUD,
-            code: "aud".to_string(),
+            code: "AUD".to_string(),
             name: "Australian Dollar".to_string(),
             is_active: true,
             precision: 2,
@@ -1039,7 +1039,7 @@ mod tests {
         assert_eq!(
             view.footer.total,
             FooterTotal::Single {
-                unit: "aud".to_string(),
+                unit: "AUD".to_string(),
                 negative: true,
                 text: "\u{2212}1,175.00".to_string(),
             }

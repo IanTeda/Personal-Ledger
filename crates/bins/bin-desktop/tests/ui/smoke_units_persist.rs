@@ -40,13 +40,13 @@ fn a_unit_added_on_a_new_ledger_is_there_after_a_restart(app: &mut TestAppContex
         let mut ui = Harness::with_storage(app, storage);
         assert_eq!(
             ui.unit_codes(),
-            ["aud", "btc", "vas"],
+            ["AUD", "BTC", "VAS"],
             "a new Ledger starts with the sample's Units"
         );
-        assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
+        assert_eq!(ui.base_unit_code().as_deref(), Some("AUD"));
 
-        add_unit(&mut ui, "nzd", "New Zealand dollar");
-        assert!(ui.unit_codes().contains(&"nzd".to_string()));
+        add_unit(&mut ui, "NZD", "New Zealand dollar");
+        assert!(ui.unit_codes().contains(&"NZD".to_string()));
         bin_desktop::quit(&writer);
     }
 
@@ -54,5 +54,5 @@ fn a_unit_added_on_a_new_ledger_is_there_after_a_restart(app: &mut TestAppContex
         .storage()
         .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "nzd", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "NZD", "VAS"]);
 }

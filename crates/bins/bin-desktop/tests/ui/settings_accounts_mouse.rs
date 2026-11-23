@@ -154,7 +154,7 @@ fn a_new_account_defaults_to_the_base_unit_set_on_ledger(app: &mut TestAppContex
 
     ui.press("n");
     assert_eq!(ui.dialog(), Some("AddAccount"));
-    assert_eq!(ui.account_form().unit.as_deref(), Some("btc"));
+    assert_eq!(ui.account_form().unit.as_deref(), Some("BTC"));
 }
 
 #[gpui::test]
@@ -169,8 +169,8 @@ fn a_deactivated_unit_is_missing_from_the_add_account_unit_picker(app: &mut Test
     ui.click("settings-index-Accounts");
     ui.click("settings-accounts-add");
     let offered = ui.dialog_value("unit_options").unwrap_or_default();
-    assert!(!offered.split('|').any(|code| code == "btc"), "{offered}");
-    assert!(offered.split('|').any(|code| code == "aud"));
+    assert!(!offered.split('|').any(|code| code == "BTC"), "{offered}");
+    assert!(offered.split('|').any(|code| code == "AUD"));
 }
 
 #[gpui::test]
@@ -181,13 +181,13 @@ fn an_account_on_a_deactivated_unit_still_edits_with_its_unit(app: &mut TestAppC
     ui.click("settings-units-menu-delete-unit");
     // A Unit in use opens its Delete dialog as Deactivate.
     ui.click("delete-unit-confirm");
-    assert_eq!(ui.inactive_unit_codes(), vec!["btc".to_string()]);
+    assert_eq!(ui.inactive_unit_codes(), vec!["BTC".to_string()]);
 
     ui.click("settings-index-Accounts");
     ui.click(&format!("settings-accounts-edit-{}", AccountId::seed(7)));
 
     assert_eq!(ui.dialog(), Some("EditAccount"));
-    assert_eq!(ui.account_form().unit.as_deref(), Some("btc"));
+    assert_eq!(ui.account_form().unit.as_deref(), Some("BTC"));
 }
 
 /// A click on the Delete Dialog's confirm, once the name is typed back, deletes in one commit.

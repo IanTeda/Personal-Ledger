@@ -15,7 +15,7 @@ The defining constraint on this domain is that **Personal Ledger does not conver
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | UUID | Primary key, a `RowID` (UUIDv7) |
-| `code` | TEXT | Unique, not null — e.g. `AUD`, `AAPL` |
+| `code` | TEXT | Unique, not null, always upper case (`UnitRow::new` and `UnitRow::edit` uppercase it) — e.g. `AUD`, `AAPL` |
 | `name` | TEXT | Not null — note **not** unique, unlike `code` |
 | `unit_kind` | TEXT | Not null; `CHECK`ed against the six Unit Kind tokens |
 | `precision` | INTEGER | Not null, `CHECK`ed 0 to 18; defaults to 2 only for the older per-entity queries, which don't write it |

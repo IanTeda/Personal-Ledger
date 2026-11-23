@@ -1076,9 +1076,9 @@ mod tests {
         let view = presenter(&units).view_model().base_unit;
 
         let codes: Vec<_> = view.options.iter().map(|o| o.code.as_str()).collect();
-        assert_eq!(codes, ["aud", "btc"]);
+        assert_eq!(codes, ["AUD", "BTC"]);
         assert_eq!(view.chosen, Some(UnitId::SEED_AUD));
-        assert!(view.options[0].label.starts_with("aud — "));
+        assert!(view.options[0].label.starts_with("AUD — "));
     }
 
     #[test]
@@ -1101,7 +1101,7 @@ mod tests {
         assert_eq!(base(&presenter), Some(UnitId::SEED_VAS));
         assert_eq!(
             routed,
-            [changed("Base unit changed to vas"), Routed::BaseUnitChanged]
+            [changed("Base unit changed to VAS"), Routed::BaseUnitChanged]
         );
     }
 
@@ -1144,7 +1144,7 @@ mod tests {
         assert_eq!(base(&presenter), Some(UnitId::SEED_BTC));
         assert_eq!(
             routed,
-            [changed("Base unit changed to btc"), Routed::BaseUnitChanged]
+            [changed("Base unit changed to BTC"), Routed::BaseUnitChanged]
         );
     }
 

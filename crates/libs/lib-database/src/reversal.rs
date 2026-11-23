@@ -728,7 +728,7 @@ mod tests {
             .units()
             .into_iter()
             .find(|unit| unit.id == UnitId::SEED_AUD)
-            .expect("the sample's aud");
+            .expect("the sample's AUD");
         unit.code = code.into();
         unit
     }
@@ -738,7 +738,7 @@ mod tests {
         let journal = Journal::default();
 
         journal.record(RowImage::Unit(Image {
-            before: Some(unit("aud")),
+            before: Some(unit("AUD")),
             after: Some(unit("audx")),
         }));
         journal.record(RowImage::BaseUnit(UnitId::SEED_AUD, UnitId::SEED_BTC));
@@ -751,7 +751,7 @@ mod tests {
             journal.take().map(|reversal| reversal.images),
             Some(vec![
                 RowImage::Unit(Image {
-                    before: Some(unit("aud")),
+                    before: Some(unit("AUD")),
                     after: Some(unit("audy"))
                 }),
                 RowImage::BaseUnit(UnitId::SEED_AUD, UnitId::SEED_BTC),
@@ -766,7 +766,7 @@ mod tests {
         let codes: Vec<String> = (0..500).map(|step| format!("u{step}")).collect();
 
         journal.record(RowImage::Unit(Image {
-            before: Some(unit("aud")),
+            before: Some(unit("AUD")),
             after: Some(unit(&codes[0])),
         }));
         for written in codes.windows(2) {
@@ -781,7 +781,7 @@ mod tests {
             journal.take().map(|reversal| reversal.images),
             Some(vec![
                 RowImage::Unit(Image {
-                    before: Some(unit("aud")),
+                    before: Some(unit("AUD")),
                     after: Some(unit("u499")),
                 }),
                 RowImage::BaseUnit(UnitId::SEED_AUD, UnitId::SEED_BTC),
@@ -795,10 +795,10 @@ mod tests {
 
         journal.record(RowImage::Unit(Image {
             before: None,
-            after: Some(unit("nzd")),
+            after: Some(unit("NZD")),
         }));
         journal.record(RowImage::Unit(Image {
-            before: Some(unit("nzd")),
+            before: Some(unit("NZD")),
             after: None,
         }));
 
@@ -812,7 +812,7 @@ mod tests {
         journal.unrecorded(|| {
             journal.record(RowImage::Unit(Image {
                 before: None,
-                after: Some(unit("nzd")),
+                after: Some(unit("NZD")),
             }))
         });
 
@@ -841,7 +841,7 @@ mod tests {
     #[test]
     fn a_units_write_through_the_ports_is_recorded_as_whole_row_images() {
         let ports = ports();
-        let mut nzd = unit("nzd");
+        let mut nzd = unit("NZD");
         nzd.id = UnitId::new();
         let mut renamed = nzd.clone();
         renamed.name = "Kiwi".into();
@@ -903,7 +903,7 @@ mod tests {
     fn reverse_puts_the_rows_back_and_replay_writes_them_again_recording_neither() {
         let ports = ports();
         let before = units(&ports);
-        let mut nzd = unit("nzd");
+        let mut nzd = unit("NZD");
         nzd.id = UnitId::new();
         {
             let shared = ports.units();
@@ -935,7 +935,7 @@ mod tests {
         let crypto = institutions(&ports)
             .into_iter()
             .find(|institution| institution.usual_unit == Some(UnitId::SEED_BTC))
-            .expect("the sample's crypto exchange counts in btc");
+            .expect("the sample's crypto exchange counts in BTC");
         reassigned.push(Institution {
             usual_unit: Some(UnitId::SEED_AUD),
             ..crypto
@@ -2046,7 +2046,7 @@ mod tests {
     fn an_undone_delete_lands_in_the_ledger_file_under_its_own_id() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let ports = crate::ports::test_support::file(dir.path());
-        let mut nzd = unit("nzd");
+        let mut nzd = unit("NZD");
         nzd.id = UnitId::new();
         {
             let shared = ports.units();

@@ -496,7 +496,7 @@ The fields `set` takes are `on-start`, `start-view`, `ledger-name`, `owner`, `fy
 - `set ledger-name The Teda house`: the rest of the line is the value, spaces and all. Spaces round it are dropped, and a blank name or one over 60 characters is refused.
 - `set owner Alex`: sets the Owner; `set owner` with nothing after it opens the field, and emptying it there clears it.
 - `set fy-start january`, `set ledger-name` and `set owner` save to the Ledger itself, and every change to `fy-start` moves every derived Financial Year at once.
-- `set base btc`: opens the confirmation that changing the base unit always asks for.
+- `set base BTC`: opens the confirmation that changing the base unit always asks for.
 - `set terminal-colours on`, `set glyphs ascii` and `set hint-bar off`: saved to your `personal-ledger.conf` (`off`, `unicode` and `on` undo them).
 - `set on-start none`, `set start-view last` and `set toasts off`: saved to your `personal-ledger.conf` too, as every General and Display field is.
 

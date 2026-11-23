@@ -497,7 +497,7 @@ pub fn the_choices_are_the_active_units_by_code(factory: &mut impl LedgerFactory
     let (reads, _) = factory.create(&[UnitId::SEED_BTC]);
 
     let codes: Vec<_> = reads.choices().into_iter().map(|unit| unit.code).collect();
-    assert_eq!(codes, ["aud", "vas"]);
+    assert_eq!(codes, ["AUD", "VAS"]);
     assert_eq!(reads.base_unit(), Some(UnitId::SEED_AUD));
 }
 

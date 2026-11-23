@@ -86,7 +86,7 @@ pub fn overlay(
 
 /// The header row: `padding:18px 20px; border-bottom:2px solid rgba(32,30,29,.30)`, title
 /// `800 16px`. `destructive` swaps the rule to `negative` and the title to its text shade
-/// (`docs/ux/desktop-mockups/16-settings/README.md`'s "Destructive header" row, e.g. "Delete unit — btc").
+/// (`docs/ux/desktop-mockups/16-settings/README.md`'s "Destructive header" row, e.g. "Delete unit — BTC").
 pub fn header(title: impl Into<SharedString>, destructive: bool, cx: &App) -> impl IntoElement {
     div()
         .px(px(20.0))

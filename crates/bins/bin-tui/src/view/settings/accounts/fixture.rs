@@ -6,7 +6,7 @@ use bigdecimal::BigDecimal;
 use lib_core::{AccountType, Money};
 
 /// The base Unit every balance converts to for net worth.
-pub const BASE_UNIT: &str = "aud";
+pub const BASE_UNIT: &str = "AUD";
 
 /// One Account as the page lists it.
 #[derive(Debug, Clone, PartialEq)]
@@ -130,7 +130,7 @@ pub fn accounts() -> Vec<FixtureAccount> {
             name: "Vanguard VAS",
             institution: "Vanguard",
             kind: AccountType::Investment,
-            unit: "vas",
+            unit: "VAS",
             balance: amount(1_240, 0),
             places: 0,
             base_price: amount(100, 0),
@@ -142,7 +142,7 @@ pub fn accounts() -> Vec<FixtureAccount> {
             name: "Bitcoin",
             institution: "Crypto.com",
             kind: AccountType::Investment,
-            unit: "btc",
+            unit: "BTC",
             balance: amount(4_120, 4),
             places: 4,
             base_price: amount(150_000, 0),

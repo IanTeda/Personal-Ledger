@@ -62,7 +62,7 @@ fn header(cx: &App) -> impl IntoElement {
             div()
                 .text_size(px(11.5))
                 .text_color(color::faint_text(cx))
-                .child("13 september 2026 · all accounts · aud"),
+                .child("13 september 2026 · all accounts · AUD"),
         )
 }
 

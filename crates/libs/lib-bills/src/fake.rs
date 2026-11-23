@@ -123,9 +123,9 @@ impl InMemoryBillUnits {
     pub fn sample() -> Self {
         Self {
             codes: vec![
-                (UnitId::SEED_AUD, "aud".to_string()),
-                (UnitId::SEED_BTC, "btc".to_string()),
-                (UnitId::SEED_VAS, "vas".to_string()),
+                (UnitId::SEED_AUD, "AUD".to_string()),
+                (UnitId::SEED_BTC, "BTC".to_string()),
+                (UnitId::SEED_VAS, "VAS".to_string()),
             ],
             base: Some(UnitId::SEED_AUD),
         }

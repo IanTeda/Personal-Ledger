@@ -103,10 +103,10 @@ fn j_j_from_the_index_swaps_to_units_and_l_steps_into_it(app: &mut TestAppContex
 #[gpui::test]
 fn the_movement_keys_reach_the_presenter_and_walk_both_tables(app: &mut TestAppContext) {
     let mut ui = on_units(app);
-    assert_eq!(selected(&mut ui), "aud");
+    assert_eq!(selected(&mut ui), "AUD");
 
     ui.press("j");
-    assert_eq!(selected(&mut ui), "btc");
+    assert_eq!(selected(&mut ui), "BTC");
     ui.press("tab");
     assert_eq!(
         selected(&mut ui),
@@ -118,11 +118,11 @@ fn the_movement_keys_reach_the_presenter_and_walk_both_tables(app: &mut TestAppC
     ui.press("g g");
     assert_eq!(
         selected(&mut ui),
-        "aud",
+        "AUD",
         "g g passes the Shell's `g` on to the keymap's move_first"
     );
     ui.press("down");
-    assert_eq!(selected(&mut ui), "btc", "the arrows too");
+    assert_eq!(selected(&mut ui), "BTC", "the arrows too");
 }
 
 #[gpui::test]
@@ -132,11 +132,11 @@ fn home_end_and_the_page_keys_move_through_the_units_keymap(app: &mut TestAppCon
     ui.press("end");
     assert_eq!(selected(&mut ui), "Yahoo Finance");
     ui.press("home");
-    assert_eq!(selected(&mut ui), "aud");
+    assert_eq!(selected(&mut ui), "AUD");
     ui.press("pagedown");
-    assert_ne!(selected(&mut ui), "aud");
+    assert_ne!(selected(&mut ui), "AUD");
     ui.press("pageup");
-    assert_eq!(selected(&mut ui), "aud");
+    assert_eq!(selected(&mut ui), "AUD");
 }
 
 #[gpui::test]
@@ -147,9 +147,9 @@ fn an_override_of_arrow_down_moves_it_and_frees_down(app: &mut TestAppContext) {
     to_units(&mut ui);
 
     ui.press("ctrl-n");
-    assert_eq!(selected(&mut ui), "btc");
+    assert_eq!(selected(&mut ui), "BTC");
     ui.press("down");
-    assert_eq!(selected(&mut ui), "btc", "down is no longer bound");
+    assert_eq!(selected(&mut ui), "BTC", "down is no longer bound");
 }
 
 #[gpui::test]
@@ -169,7 +169,7 @@ fn shift_tab_and_b_stay_the_shells(app: &mut TestAppContext) {
 
     ui.press("shift-tab");
     assert_ne!(ui.read(|shell| shell.nav().focus()), FocusZone::View);
-    assert_eq!(selected(&mut ui), "aud");
+    assert_eq!(selected(&mut ui), "AUD");
 }
 
 #[gpui::test]
@@ -206,7 +206,7 @@ fn n_e_and_d_open_the_selected_tables_dialogs_and_escape_closes_them(app: &mut T
     ui.press("escape");
     ui.press("j e");
     assert_eq!(ui.dialog(), Some("EditUnit"));
-    assert_eq!(ui.dialog_value("code").as_deref(), Some("btc"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("BTC"));
     ui.press("escape");
     ui.press("d");
     assert_eq!(ui.dialog(), Some("DeleteUnit"));
@@ -222,7 +222,7 @@ fn n_e_and_d_open_the_selected_tables_dialogs_and_escape_closes_them(app: &mut T
     assert_eq!(ui.dialog(), None);
     assert_eq!(
         ui.unit_codes(),
-        ["aud", "btc", "vas"],
+        ["AUD", "BTC", "VAS"],
         "nothing was written"
     );
 }
@@ -234,7 +234,7 @@ fn typing_tab_and_enter_fill_and_save_an_add_unit_dialog(app: &mut TestAppContex
     assert_eq!(ui.dialog_value("field").as_deref(), Some("Code"));
     assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
 
-    type_word(&mut ui, "eth");
+    type_word(&mut ui, "ETH");
     ui.press("backspace h");
     ui.press("tab");
     assert_eq!(ui.dialog_value("field").as_deref(), Some("Type"));
@@ -242,13 +242,13 @@ fn typing_tab_and_enter_fill_and_save_an_add_unit_dialog(app: &mut TestAppContex
     assert_eq!(ui.dialog_value("kind").as_deref(), Some("Crypto"));
     ui.press("tab");
     type_word(&mut ui, "Ether");
-    assert_eq!(ui.dialog_value("code").as_deref(), Some("eth"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("ETH"));
     ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.unit_rows().iter().find(|row| row.0 == "eth"),
-        Some(&("eth".to_string(), "Ether".to_string(), "Crypto".to_string()))
+        ui.unit_rows().iter().find(|row| row.0 == "ETH"),
+        Some(&("ETH".to_string(), "Ether".to_string(), "Crypto".to_string()))
     );
 }
 
@@ -257,7 +257,7 @@ fn precision_follows_type_on_add_takes_typed_digits_and_reopens_in_edit(app: &mu
     let mut ui = on_units(app);
     ui.press("n");
     assert_eq!(ui.dialog_value("precision").as_deref(), Some("2"));
-    type_word(&mut ui, "eth");
+    type_word(&mut ui, "ETH");
     ui.press("tab down");
     assert_eq!(ui.dialog_value("precision").as_deref(), Some("8"));
 
@@ -273,7 +273,7 @@ fn precision_follows_type_on_add_takes_typed_digits_and_reopens_in_edit(app: &mu
 
     // A new Unit lands in its place by code, between btc and vas.
     ui.press("g g j j");
-    assert_eq!(selected(&mut ui), "eth");
+    assert_eq!(selected(&mut ui), "ETH");
     ui.press("e");
     assert_eq!(ui.dialog_value("precision").as_deref(), Some("1"));
 }
@@ -309,13 +309,13 @@ fn a_unit_in_use_opens_delete_as_deactivate_with_its_counts_and_enter_deactivate
     assert!(
         ui.dialog_value("in_use_text")
             .unwrap_or_default()
-            .starts_with("btc is used by "),
+            .starts_with("BTC is used by "),
     );
     assert!(!ui.is_drawn("delete-unit-base-note"));
 
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.inactive_unit_codes(), ["btc"]);
+    assert_eq!(ui.inactive_unit_codes(), ["BTC"]);
 }
 
 #[gpui::test]
@@ -349,18 +349,18 @@ fn edit_unit_draws_the_real_usage_line(app: &mut TestAppContext) {
 fn a_confirmed_delete_below_x_large_raises_the_presenters_toast(app: &mut TestAppContext) {
     let mut ui = on_units_unused(app);
     ui.press("j j d");
-    type_word(&mut ui, "vas");
+    type_word(&mut ui, "VAS");
     ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.unit_codes(), ["aud", "btc"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC"]);
     let toasts: Vec<String> = ui
         .toasts()
         .visible
         .into_iter()
         .map(|toast| toast.text)
         .collect();
-    assert_eq!(toasts, ["Deleted unit vas"]);
+    assert_eq!(toasts, ["Deleted unit VAS"]);
 }
 
 #[gpui::test]
@@ -392,27 +392,27 @@ fn deleting_the_base_unit_moves_the_base_with_down(app: &mut TestAppContext) {
     ui.press("d");
     assert_eq!(
         ui.dialog_value("new_base").as_deref(),
-        Some("btc — Bitcoin")
+        Some("BTC — Bitcoin")
     );
     ui.press("down");
     assert_eq!(
         ui.dialog_value("new_base").as_deref(),
-        Some("vas — Vanguard Aus Shares")
+        Some("VAS — Vanguard Aus Shares")
     );
-    type_word(&mut ui, "aud");
+    type_word(&mut ui, "AUD");
     ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.base_unit_code().as_deref(), Some("vas"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("VAS"));
 }
 
 #[gpui::test]
 fn r_reactivates_the_selected_deactivated_unit(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.press("j d");
-    type_word(&mut ui, "btc");
+    type_word(&mut ui, "BTC");
     ui.press("enter");
-    assert_eq!(ui.inactive_unit_codes(), ["btc"]);
+    assert_eq!(ui.inactive_unit_codes(), ["BTC"]);
 
     ui.press("r");
     assert!(ui.inactive_unit_codes().is_empty());
@@ -422,7 +422,7 @@ fn r_reactivates_the_selected_deactivated_unit(app: &mut TestAppContext) {
 fn t_puts_the_presenters_not_built_on_the_status_line(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.press("t");
-    assert_eq!(status_message(&mut ui), None, "aud is priced by hand");
+    assert_eq!(status_message(&mut ui), None, "AUD is priced by hand");
     ui.press("j t");
     assert_eq!(
         status_message(&mut ui).as_deref(),
@@ -525,7 +525,7 @@ fn the_units_table_draws_each_units_last_price_and_its_age_under_last(app: &mut 
         [
             ("—".to_string(), None),
             (
-                "148,212.40 aud".to_string(),
+                "148,212.40 AUD".to_string(),
                 Some("5 minutes ago".to_string())
             ),
             ("—".to_string(), None),
@@ -542,11 +542,11 @@ fn at_x_large_the_pane_is_drawn_and_follows_the_selection(app: &mut TestAppConte
     assert!(ui.is_drawn("units-detail-pane"));
     assert!(
         ui.is_drawn("units-pane-add-source"),
-        "aud is priced by hand"
+        "AUD is priced by hand"
     );
 
     ui.press("j");
-    assert!(ui.is_drawn("units-pane-edit-source"), "btc's CoinGecko");
+    assert!(ui.is_drawn("units-pane-edit-source"), "BTC's CoinGecko");
     ui.press("tab");
     assert!(ui.is_drawn("units-pane-values"));
 }
@@ -588,7 +588,7 @@ fn at_x_large_seeded_btc_docks_unit_with_its_precision_then_price_source_price_a
 fn at_x_large_an_outcome_lands_in_activity_without_a_toast(app: &mut TestAppContext) {
     let mut ui = on_units_unused_at(app, WindowSize::XLarge);
     ui.press("j j d");
-    type_word(&mut ui, "vas");
+    type_word(&mut ui, "VAS");
     ui.press("enter");
 
     let activity: Vec<String> = ui
@@ -597,7 +597,7 @@ fn at_x_large_an_outcome_lands_in_activity_without_a_toast(app: &mut TestAppCont
         .into_iter()
         .map(|line| line.text)
         .collect();
-    assert_eq!(activity, ["Deleted unit vas"]);
+    assert_eq!(activity, ["Deleted unit VAS"]);
     assert!(ui.toasts().visible.is_empty());
 }
 
@@ -608,12 +608,12 @@ fn a_renamed_unit_reaches_the_bill_plan_form_without_a_restart(app: &mut TestApp
     ui.press("backspace backspace backspace");
     type_word(&mut ui, "aux");
     ui.press("enter");
-    assert_eq!(ui.unit_codes()[0], "aux");
+    assert_eq!(ui.unit_codes()[0], "AUX");
 
     ui.press("g w");
     assert_eq!(ui.noun(), Noun::Bills);
     ui.press("n");
-    assert_eq!(ui.bills().plan_unit.as_deref(), Some("aux"));
+    assert_eq!(ui.bills().plan_unit.as_deref(), Some("AUX"));
 }
 
 /// Both tables fill the page from Medium's floor to X-Large, past the 840px other pages cap at,
@@ -660,7 +660,7 @@ fn rename_aud_to_aux(ui: &mut Harness<'_>) {
     ui.press("backspace backspace backspace");
     type_word(ui, "aux");
     ui.press("enter");
-    assert_eq!(ui.unit_codes()[0], "aux", "memory changes at once");
+    assert_eq!(ui.unit_codes()[0], "AUX", "memory changes at once");
 }
 
 fn visible_toasts(ui: &mut Harness<'_>) -> Vec<(String, String)> {
@@ -680,7 +680,7 @@ fn a_failed_write_puts_the_units_back_as_stored_with_an_error_toast(app: &mut Te
 
     ui.settle_writes();
 
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "VAS"]);
     assert!(visible_toasts(&mut ui).contains(&(
         "Error".to_string(),
         "Couldn't save the change to units, so they are back as last saved".to_string()
@@ -688,7 +688,7 @@ fn a_failed_write_puts_the_units_back_as_stored_with_an_error_toast(app: &mut Te
     ui.press("g w n");
     assert_eq!(
         ui.bills().plan_unit.as_deref(),
-        Some("aud"),
+        Some("AUD"),
         "the Bill Plan form's Unit picker reads the stored rows"
     );
 }
@@ -723,7 +723,7 @@ fn each_units_key_commits_once_whether_or_not_it_writes(app: &mut TestAppContext
     type_word(&mut ui, "aux");
     let before = ui.commits();
     ui.press("enter");
-    assert_eq!(ui.unit_codes()[0], "aux", "the confirm saved the rename");
+    assert_eq!(ui.unit_codes()[0], "AUX", "the confirm saved the rename");
     assert_eq!(
         ui.commits(),
         before + 1,
@@ -751,7 +751,7 @@ fn a_failed_reload_leaves_the_units_in_memory_with_an_error_toast(app: &mut Test
 
     ui.settle_writes();
 
-    assert_eq!(ui.unit_codes()[0], "aux");
+    assert_eq!(ui.unit_codes()[0], "AUX");
     assert!(visible_toasts(&mut ui).contains(&(
         "Error".to_string(),
         "Couldn't save the change to units or reload them, so what you see isn't saved".to_string()
@@ -762,16 +762,16 @@ fn a_failed_reload_leaves_the_units_in_memory_with_an_error_toast(app: &mut Test
 fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut TestAppContext) {
     let mut ui = on_units_unused(app);
     ui.press("d");
-    type_word(&mut ui, "aud");
+    type_word(&mut ui, "AUD");
     ui.press("enter");
 
     assert_eq!(ui.dialog(), Some("DeleteUnit"));
     assert!(
         ui.dialog_value("refusal")
-            .is_some_and(|text| text.starts_with("aud is the quote unit of 2 other units")),
+            .is_some_and(|text| text.starts_with("AUD is the quote unit of 2 other units")),
         "the refusal says how many units quote it"
     );
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "VAS"]);
 }
 
 #[gpui::test]
@@ -782,9 +782,9 @@ fn a_unit_a_budget_uses_opens_delete_as_deactivate_naming_the_budget(app: &mut T
     assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
     assert_eq!(
         ui.dialog_value("in_use_text").as_deref(),
-        Some("vas is used by 1 budget, so it can't be deleted."),
+        Some("VAS is used by 1 budget, so it can't be deleted."),
     );
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "VAS"]);
 }
 
 #[gpui::test]
@@ -799,9 +799,9 @@ fn a_unit_a_location_names_opens_delete_as_deactivate_naming_the_location(
     assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
     assert_eq!(
         ui.dialog_value("in_use_text").as_deref(),
-        Some("vas is used by 1 location, so it can't be deleted."),
+        Some("VAS is used by 1 location, so it can't be deleted."),
     );
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "VAS"]);
 }
 
 #[gpui::test]
@@ -817,7 +817,7 @@ fn a_unit_an_institution_names_asks_for_its_usual_unit_on_none_and_deletes_leavi
     assert_eq!(
         ui.dialog_value("usual_units_help").as_deref(),
         Some(
-            "1 institution uses btc as its usual unit. Choose the unit it uses instead, or leave \
+            "1 institution uses BTC as its usual unit. Choose the unit it uses instead, or leave \
              it on None."
         ),
     );
@@ -828,14 +828,14 @@ fn a_unit_an_institution_names_asks_for_its_usual_unit_on_none_and_deletes_leavi
     );
     assert_eq!(
         ui.dialog_value("usual_unit_options").as_deref(),
-        Some("None|aud — Australian Dollar|vas — Vanguard Aus Shares"),
+        Some("None|AUD — Australian Dollar|VAS — Vanguard Aus Shares"),
     );
 
-    type_word(&mut ui, "btc");
+    type_word(&mut ui, "BTC");
     ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.unit_codes(), ["aud", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "VAS"]);
     assert_eq!(
         ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE),
         None
@@ -849,18 +849,18 @@ fn down_on_an_institutions_usual_unit_reassigns_it_as_the_unit_goes(app: &mut Te
     ui.press("down");
     assert_eq!(
         ui.dialog_value("usual_units").as_deref(),
-        Some("Cryptocurrency Exchange=aud — Australian Dollar"),
+        Some("Cryptocurrency Exchange=AUD — Australian Dollar"),
     );
 
-    type_word(&mut ui, "btc");
+    type_word(&mut ui, "BTC");
     ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.unit_codes(), ["aud", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "VAS"]);
     assert_eq!(
         ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
             .as_deref(),
-        Some("aud")
+        Some("AUD")
     );
 }
 
@@ -873,7 +873,7 @@ fn the_named_base_unit_asks_for_both_and_tab_moves_between_the_selects(app: &mut
     ui.press("d");
     assert_eq!(
         ui.dialog_value("new_base").as_deref(),
-        Some("btc — Bitcoin")
+        Some("BTC — Bitcoin")
     );
     assert_eq!(
         ui.dialog_value("usual_units").as_deref(),
@@ -889,21 +889,21 @@ fn the_named_base_unit_asks_for_both_and_tab_moves_between_the_selects(app: &mut
     ui.press("down");
     assert_eq!(
         ui.dialog_value("usual_units").as_deref(),
-        Some("Westpac Banking=btc — Bitcoin")
+        Some("Westpac Banking=BTC — Bitcoin")
     );
     ui.press("shift-tab down");
     assert_eq!(
         ui.dialog_value("new_base").as_deref(),
-        Some("vas — Vanguard Aus Shares")
+        Some("VAS — Vanguard Aus Shares")
     );
-    type_word(&mut ui, "aud");
+    type_word(&mut ui, "AUD");
     ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.base_unit_code().as_deref(), Some("vas"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("VAS"));
     assert_eq!(
         ui.usual_unit_code(InstitutionId::SEED_WESTPAC).as_deref(),
-        Some("btc")
+        Some("BTC")
     );
 }
 
@@ -911,16 +911,16 @@ fn the_named_base_unit_asks_for_both_and_tab_moves_between_the_selects(app: &mut
 fn escape_cancels_a_named_units_delete_having_reassigned_nothing(app: &mut TestAppContext) {
     let mut ui = on_units_unused(app);
     ui.press("j d down");
-    type_word(&mut ui, "btc");
+    type_word(&mut ui, "BTC");
 
     ui.press("escape");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "VAS"]);
     assert_eq!(
         ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
             .as_deref(),
-        Some("btc")
+        Some("BTC")
     );
 }
 
@@ -947,7 +947,7 @@ fn enter_confirms_only_a_valid_form_and_on_a_select_opens_it(app: &mut TestAppCo
     ui.press("n enter");
     assert_eq!(ui.dialog(), Some("AddUnit"), "an empty Code can't confirm");
 
-    type_word(&mut ui, "eth");
+    type_word(&mut ui, "ETH");
     ui.press("tab tab");
     type_word(&mut ui, "Ether");
     ui.press("shift-tab");
@@ -962,7 +962,7 @@ fn enter_confirms_only_a_valid_form_and_on_a_select_opens_it(app: &mut TestAppCo
 fn ctrl_enter_confirms_a_valid_form_from_a_select(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.press("n");
-    type_word(&mut ui, "eth");
+    type_word(&mut ui, "ETH");
     ui.press("tab tab");
     type_word(&mut ui, "Ether");
     ui.press("shift-tab enter");
@@ -971,7 +971,7 @@ fn ctrl_enter_confirms_a_valid_form_from_a_select(app: &mut TestAppContext) {
     ui.press("ctrl-enter");
 
     assert_eq!(ui.dialog(), None);
-    assert!(ui.unit_codes().contains(&"eth".to_string()));
+    assert!(ui.unit_codes().contains(&"ETH".to_string()));
 }
 
 #[gpui::test]
@@ -1047,17 +1047,17 @@ fn p_on_a_manual_entry_unit_sets_this_weeks_price_and_the_pane_shows_it(app: &mu
 
     ui.press("p");
     assert_eq!(ui.dialog(), Some("SetPrice"));
-    assert_eq!(ui.dialog_value("title").as_deref(), Some("Set price — vas"));
+    assert_eq!(ui.dialog_value("title").as_deref(), Some("Set price — VAS"));
     assert_eq!(ui.dialog_value("field").as_deref(), Some("Close"));
     assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
     type_word(&mut ui, "42");
     ui.press("enter");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(pane_last_price(&mut ui).as_deref(), Some("42.00 aud"));
+    assert_eq!(pane_last_price(&mut ui).as_deref(), Some("42.00 AUD"));
     let activity = ui.settings::<SettingsUnitsSnapshot>().activity;
     assert!(
-        activity[0].text.starts_with("Set the price of vas"),
+        activity[0].text.starts_with("Set the price of VAS"),
         "{activity:?}"
     );
 }
@@ -1092,7 +1092,7 @@ fn a_future_week_is_refused_with_its_message_and_a_past_week_is_set(app: &mut Te
     assert_eq!(ui.dialog(), None);
     assert_eq!(
         ui.toast_texts(),
-        ["Set the price of vas for the week of Jan 6, 2020"]
+        ["Set the price of VAS for the week of Jan 6, 2020"]
     );
 }
 
@@ -1102,7 +1102,7 @@ fn p_on_a_unit_its_source_prices_opens_nothing(app: &mut TestAppContext) {
 
     ui.press("j p");
 
-    assert_eq!(ui.dialog(), None, "btc is priced by CoinGecko");
+    assert_eq!(ui.dialog(), None, "BTC is priced by CoinGecko");
 }
 
 /// Every Unit as the stores hold it, by code: what an Undo must put back under its own id.
@@ -1126,7 +1126,7 @@ fn u_undoes_an_added_unit_and_ctrl_r_redoes_it_under_its_own_id(app: &mut TestAp
     let mut ui = on_units(app);
     let before = stored_units(&mut ui);
     ui.press("n");
-    type_word(&mut ui, "eth");
+    type_word(&mut ui, "ETH");
     ui.press("tab down tab");
     type_word(&mut ui, "Ether");
     ui.press("enter");
@@ -1134,18 +1134,18 @@ fn u_undoes_an_added_unit_and_ctrl_r_redoes_it_under_its_own_id(app: &mut TestAp
 
     ui.press("u");
     assert_eq!(stored_units(&mut ui), before);
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"], "the page repaints");
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "VAS"], "the page repaints");
     assert_eq!(
         status_message(&mut ui).as_deref(),
-        Some("Undid Add unit eth")
+        Some("Undid Add unit ETH")
     );
 
     ui.press("ctrl-r");
     assert_eq!(stored_units(&mut ui), added, "back under its own id");
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "eth", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "ETH", "VAS"]);
     assert_eq!(
         status_message(&mut ui).as_deref(),
-        Some("Redid Add unit eth")
+        Some("Redid Add unit ETH")
     );
 }
 
@@ -1155,14 +1155,14 @@ fn u_undoes_an_edited_unit_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
     rename_aud_to_aux(&mut ui);
 
     ui.press("u");
-    assert_eq!(ui.unit_codes()[0], "aud");
+    assert_eq!(ui.unit_codes()[0], "AUD");
     assert_eq!(
         status_message(&mut ui).as_deref(),
-        Some("Undid Edit unit aux")
+        Some("Undid Edit unit AUX")
     );
 
     ui.press("ctrl-r");
-    assert_eq!(ui.unit_codes()[0], "aux");
+    assert_eq!(ui.unit_codes()[0], "AUX");
 }
 
 #[gpui::test]
@@ -1170,33 +1170,33 @@ fn u_undoes_a_unit_delete_with_the_institutions_it_reassigned(app: &mut TestAppC
     let mut ui = on_units_unused(app);
     let before = stored_units(&mut ui);
     ui.press("j d down");
-    type_word(&mut ui, "btc");
+    type_word(&mut ui, "BTC");
     ui.press("enter");
     assert_eq!(
         ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
             .as_deref(),
-        Some("aud")
+        Some("AUD")
     );
 
     ui.press("u");
-    assert_eq!(stored_units(&mut ui), before, "btc back under its own id");
+    assert_eq!(stored_units(&mut ui), before, "BTC back under its own id");
     assert_eq!(
         ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
             .as_deref(),
-        Some("btc"),
-        "the Institution names btc again"
+        Some("BTC"),
+        "the Institution names BTC again"
     );
     assert_eq!(
         status_message(&mut ui).as_deref(),
-        Some("Undid Delete unit btc")
+        Some("Undid Delete unit BTC")
     );
 
     ui.press("ctrl-r");
-    assert_eq!(ui.unit_codes(), ["aud", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "VAS"]);
     assert_eq!(
         ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
             .as_deref(),
-        Some("aud")
+        Some("AUD")
     );
 }
 
@@ -1204,21 +1204,21 @@ fn u_undoes_a_unit_delete_with_the_institutions_it_reassigned(app: &mut TestAppC
 fn u_undoes_a_deleted_base_unit_and_the_base_it_moved(app: &mut TestAppContext) {
     let mut ui = on_units_with(app, common::unquote_units);
     ui.press("d down");
-    type_word(&mut ui, "aud");
+    type_word(&mut ui, "AUD");
     ui.press("enter");
-    assert_eq!(ui.base_unit_code().as_deref(), Some("vas"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("VAS"));
 
     ui.press("u");
     assert_eq!(
         ui.unit_codes(),
-        ["aud", "btc", "vas"],
+        ["AUD", "BTC", "VAS"],
         "restored in its place by code"
     );
-    assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("AUD"));
 
     ui.press("ctrl-r");
-    assert_eq!(ui.unit_codes(), ["btc", "vas"]);
-    assert_eq!(ui.base_unit_code().as_deref(), Some("vas"));
+    assert_eq!(ui.unit_codes(), ["BTC", "VAS"]);
+    assert_eq!(ui.base_unit_code().as_deref(), Some("VAS"));
 }
 
 #[gpui::test]
@@ -1227,10 +1227,10 @@ fn a_moved_base_unit_is_undone_and_redone(app: &mut TestAppContext) {
     ui.press("B down enter");
     assert_eq!(ui.dialog(), None);
     let moved = ui.base_unit_code();
-    assert_ne!(moved.as_deref(), Some("aud"), "the base moved");
+    assert_ne!(moved.as_deref(), Some("AUD"), "the base moved");
 
     ui.press("u");
-    assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("AUD"));
 
     ui.press("ctrl-r");
     assert_eq!(ui.base_unit_code(), moved);
@@ -1248,13 +1248,13 @@ fn a_failed_undo_reloads_the_units_keeps_the_entry_and_says_why(app: &mut TestAp
     to_units(&mut ui);
     rename_aud_to_aux(&mut ui);
     ui.settle_writes();
-    assert_eq!(ui.unit_codes()[0], "aux", "the rename landed");
+    assert_eq!(ui.unit_codes()[0], "AUX", "the rename landed");
 
     arm.arm();
     ui.press("u");
 
-    assert_eq!(ui.unit_codes()[0], "aux", "read back as stored");
-    assert_eq!(undo_labels(&mut ui), ["Edit unit aux"], "still to undo");
+    assert_eq!(ui.unit_codes()[0], "AUX", "read back as stored");
+    assert_eq!(undo_labels(&mut ui), ["Edit unit AUX"], "still to undo");
     assert_eq!(
         status_message(&mut ui).as_deref(),
         Some("Couldn't save that, so the Ledger is back as last saved")
@@ -1331,9 +1331,9 @@ fn u_restores_a_deleted_unit_to_its_place_by_code(app: &mut TestAppContext) {
     let mut ui = on_units_unused(app);
     let before = ui.unit_codes();
     ui.press("j d");
-    type_word(&mut ui, "btc");
+    type_word(&mut ui, "BTC");
     ui.press("enter");
-    assert_eq!(ui.unit_codes(), ["aud", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "VAS"]);
 
     ui.press("u");
 

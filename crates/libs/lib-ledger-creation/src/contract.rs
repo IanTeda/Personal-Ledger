@@ -119,7 +119,7 @@ pub fn usd_ledger() -> NewLedger {
     let unit = UnitRow {
         id,
         ..UnitRow::new(
-            "usd".to_string(),
+            "USD".to_string(),
             "US Dollar".to_string(),
             UnitKind::Currency,
             Precision::of_kind(UnitKind::Currency),

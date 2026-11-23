@@ -278,7 +278,7 @@ mod tests {
         let of = |page| summarise(page, of_ledger(Some(&ledger)));
         assert_eq!(
             pairs(&of(SettingsPage::Accounts)),
-            [("Accounts", "7"), ("Net worth", "83,995.87 aud")]
+            [("Accounts", "7"), ("Net worth", "83,995.87 AUD")]
         );
         assert_eq!(
             pairs(&of(SettingsPage::Tags)),
@@ -298,7 +298,7 @@ mod tests {
         );
         assert_eq!(
             pairs(&of(SettingsPage::Units)),
-            [("Units", "3"), ("Base unit", "aud")]
+            [("Units", "3"), ("Base unit", "AUD")]
         );
         assert_eq!(
             pairs(&of(SettingsPage::Institutions)),
@@ -308,7 +308,7 @@ mod tests {
             pairs(&of(SettingsPage::Payees)),
             [("Payees", "11"), ("Without a default category", "3")]
         );
-        assert_eq!(pairs(&of(SettingsPage::Ledger)), [("Base unit", "aud")]);
+        assert_eq!(pairs(&of(SettingsPage::Ledger)), [("Base unit", "AUD")]);
     }
 
     #[test]
@@ -319,7 +319,7 @@ mod tests {
             worth.amount = lib_core::Money("-120.5".parse().expect("a decimal literal"));
         }
         let summary = summarise(SettingsPage::Accounts, of_ledger(Some(&counts)));
-        assert_eq!(summary.rows[1].value, "\u{2212}120.50 aud");
+        assert_eq!(summary.rows[1].value, "\u{2212}120.50 AUD");
     }
 
     #[test]

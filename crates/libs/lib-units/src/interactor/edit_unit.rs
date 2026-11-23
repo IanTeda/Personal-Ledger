@@ -63,7 +63,7 @@ mod tests {
     fn edit(id: UnitId, link: PriceLink) -> EditUnit {
         EditUnit {
             id,
-            code: "xbt".into(),
+            code: "XBT".into(),
             name: "Bitcoin core".into(),
             kind: UnitKind::Crypto,
             precision: Precision::of_kind(UnitKind::Crypto),
@@ -83,7 +83,7 @@ mod tests {
         assert_eq!(edited.id, UnitId::SEED_BTC);
         assert_eq!(
             (edited.code.as_str(), edited.name.as_str()),
-            ("xbt", "Bitcoin core")
+            ("XBT", "Bitcoin core")
         );
         assert_eq!(edited.prices, btc.prices);
         assert!(!edited.prices.is_empty());

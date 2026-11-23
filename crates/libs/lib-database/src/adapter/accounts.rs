@@ -807,7 +807,7 @@ mod tests {
         let held = holdings
             .iter()
             .find(|holding| holding.name == "ANZ Everyday")
-            .expect("ANZ Everyday counts in aud");
+            .expect("ANZ Everyday counts in AUD");
         assert_eq!(held.transactions, 2);
         assert_eq!(
             unit_accounts(&adapter.accounts.rows, UnitId::SEED_AUD),
@@ -864,7 +864,7 @@ mod tests {
         let aud = accounts
             .iter()
             .find(|account| account.unit == UnitId::SEED_AUD)
-            .expect("the sample has an aud Account");
+            .expect("the sample has an AUD Account");
         let other = accounts
             .iter()
             .find(|account| account.unit != UnitId::SEED_AUD)

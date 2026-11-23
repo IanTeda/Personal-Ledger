@@ -3931,7 +3931,7 @@ mod tests {
             (Action::OpenCommandPopup, "esc close command window"),
             (Action::OpenNewUnitPopup, "esc close unit form"),
             (
-                Action::SetSetting(SettingField::BaseUnit, Some("btc".into())),
+                Action::SetSetting(SettingField::BaseUnit, Some("BTC".into())),
                 "esc close dialog",
             ),
         ];
@@ -5088,7 +5088,7 @@ mod tests {
         shell.update(Action::OpenSettingsPage(SettingsPage::Ledger));
         shell.update(Action::SetSetting(
             SettingField::BaseUnit,
-            Some("btc".into()),
+            Some("BTC".into()),
         ));
         assert!(matches!(
             shell.settings_popup,
@@ -5392,25 +5392,25 @@ mod tests {
         assert!(!shell.view.editing(), "the field closes as the guard opens");
         let text = drawn(&mut shell);
         assert!(lines(&text)[0].contains("CONFIRM"), "{text}");
-        assert!(text.contains("aud → btc"), "{text}");
+        assert!(text.contains("AUD → BTC"), "{text}");
 
         type_text(&mut shell, "bt");
         press(&mut shell, &[KeyCode::Enter]);
-        assert!(shell.settings_popup.is_some(), "bt isn't btc");
+        assert!(shell.settings_popup.is_some(), "bt isn't BTC");
         type_text(&mut shell, "c");
         press(&mut shell, &[KeyCode::Enter]);
         assert!(shell.settings_popup.is_none());
         let text = drawn(&mut shell);
         assert!(
-            row_of(&text, "base unit").contains("btc — Bitcoin"),
+            row_of(&text, "base unit").contains("BTC — Bitcoin"),
             "{text}"
         );
-        assert!(text.contains("btc is now the base unit"), "{text}");
+        assert!(text.contains("BTC is now the base unit"), "{text}");
 
         shell.update(Action::OpenUnits);
         let text = drawn(&mut shell);
-        assert!(row_of(&text, "btc    Crypto").contains("base"), "{text}");
-        assert!(!row_of(&text, "aud    Currency").contains("base"), "{text}");
+        assert!(row_of(&text, "BTC    Crypto").contains("base"), "{text}");
+        assert!(!row_of(&text, "AUD    Currency").contains("base"), "{text}");
     }
 
     #[test]
@@ -5450,7 +5450,7 @@ mod tests {
         shell.update(Action::OpenCommandPopup);
         shell.update(Action::SetSetting(
             SettingField::BaseUnit,
-            Some("btc".into()),
+            Some("BTC".into()),
         ));
         assert!(shell.settings_popup.is_some());
         assert!(shell.command_popup.is_none());
@@ -5472,8 +5472,8 @@ mod tests {
         let text = drawn(&mut shell);
         assert!(text.contains("Settings › Units"), "{text}");
         assert!(
-            text.contains("btc is used by"),
-            "the second row, btc, is still selected:\n{text}"
+            text.contains("BTC is used by"),
+            "the second row, BTC, is still selected:\n{text}"
         );
     }
 

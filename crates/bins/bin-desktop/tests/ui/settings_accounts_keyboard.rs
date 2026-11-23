@@ -324,7 +324,7 @@ fn a_deactivated_unit_is_missing_from_the_add_account_unit_picker(app: &mut Test
     let mut ui = in_accounts(app);
     ui.press("n");
     let offered = ui.dialog_value("unit_options").unwrap_or_default();
-    assert!(offered.split('|').any(|code| code == "btc"));
+    assert!(offered.split('|').any(|code| code == "BTC"));
     ui.press("escape");
 
     // Deactivate btc from the Units page: it is in use by an Account, so Delete offers it.
@@ -343,8 +343,8 @@ fn a_deactivated_unit_is_missing_from_the_add_account_unit_picker(app: &mut Test
     ui.press("n");
 
     let offered = ui.dialog_value("unit_options").unwrap_or_default();
-    assert!(!offered.split('|').any(|code| code == "btc"), "{offered}");
-    assert!(offered.split('|').any(|code| code == "aud"));
+    assert!(!offered.split('|').any(|code| code == "BTC"), "{offered}");
+    assert!(offered.split('|').any(|code| code == "AUD"));
 }
 
 #[gpui::test]
@@ -358,9 +358,9 @@ fn a_unit_recoded_on_the_units_page_is_offered_by_its_new_code(app: &mut TestApp
     ui.press("l");
     ui.press("j");
     ui.press("e");
-    assert_eq!(ui.dialog_value("code").as_deref(), Some("btc"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("BTC"));
     ui.press("backspace backspace backspace");
-    type_text(&mut ui, "xbt");
+    type_text(&mut ui, "XBT");
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
     ui.press("escape");
@@ -370,8 +370,8 @@ fn a_unit_recoded_on_the_units_page_is_offered_by_its_new_code(app: &mut TestApp
     ui.press("n");
 
     let offered = ui.dialog_value("unit_options").unwrap_or_default();
-    assert!(offered.split('|').any(|code| code == "xbt"), "{offered}");
-    assert!(!offered.split('|').any(|code| code == "btc"), "{offered}");
+    assert!(offered.split('|').any(|code| code == "XBT"), "{offered}");
+    assert!(!offered.split('|').any(|code| code == "BTC"), "{offered}");
 }
 
 #[gpui::test]

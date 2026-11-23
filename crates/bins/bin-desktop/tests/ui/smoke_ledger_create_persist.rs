@@ -54,7 +54,7 @@ fn a_created_ledger_is_there_with_its_base_unit_and_starting_rows_after_a_restar
         ui.press("tab enter down down down down down down enter");
         ui.press("ctrl-enter");
         assert_eq!(ui.noun(), Noun::Dashboard);
-        assert_eq!(ui.base_unit_code().as_deref(), Some("btc"));
+        assert_eq!(ui.base_unit_code().as_deref(), Some("BTC"));
         // Closing flushes the Ledger's writes into the file, as quitting does.
         ui.press(": c l o s e enter");
         assert!(!ui.read(|shell| shell.ledger_open()));
@@ -77,12 +77,12 @@ fn a_created_ledger_is_there_with_its_base_unit_and_starting_rows_after_a_restar
     assert_eq!(
         ui.unit_rows(),
         [(
-            "btc".to_string(),
+            "BTC".to_string(),
             "Bitcoin".to_string(),
             "Crypto".to_string()
         )]
     );
-    assert_eq!(ui.base_unit_code().as_deref(), Some("btc"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("BTC"));
     let institutions = on_page(&mut ui, "Institutions", |ui| {
         ui.settings::<SettingsInstitutionsSnapshot>().institutions
     });

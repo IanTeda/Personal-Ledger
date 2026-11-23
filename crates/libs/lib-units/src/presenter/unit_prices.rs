@@ -485,7 +485,7 @@ mod tests {
     fn seeded_btc_shows_a_year_of_weeks_newest_first_in_the_table_and_oldest_first_in_the_chart() {
         let view = View::of(UnitId::SEED_BTC).view();
 
-        assert_eq!(view.title, "btc · Bitcoin · prices");
+        assert_eq!(view.title, "BTC · Bitcoin · prices");
         assert_eq!(view.rows.len(), 52);
         assert_eq!(view.chart.len(), 52);
         // The tests' clock reads Wednesday 21 Oct 2026, in the week of Monday 19 Oct.
@@ -522,15 +522,15 @@ mod tests {
     fn the_header_repeats_the_price_figures() {
         let view = View::of(UnitId::SEED_BTC).view();
 
-        assert_eq!(fact(&view, "Last price"), "148,212.40 aud · 5 minutes ago");
+        assert_eq!(fact(&view, "Last price"), "148,212.40 AUD · 5 minutes ago");
         let change = fact(&view, "Week change");
         assert!(
-            change.ends_with("%)") && change.contains(" aud ("),
+            change.ends_with("%)") && change.contains(" AUD ("),
             "{change}"
         );
         let range = fact(&view, "52w range");
-        assert!(range.ends_with(" aud") && range.contains(" – "), "{range}");
-        assert_eq!(fact(&view, "Symbol · priced in"), "bitcoin · aud");
+        assert!(range.ends_with(" AUD") && range.contains(" – "), "{range}");
+        assert_eq!(fact(&view, "Symbol · priced in"), "bitcoin · AUD");
     }
 
     #[test]
@@ -589,10 +589,10 @@ mod tests {
     fn a_unit_with_no_weekly_prices_shows_the_empty_state() {
         let view = View::of(UnitId::SEED_VAS).view();
 
-        assert_eq!(view.empty.as_deref(), Some("vas has no weekly prices yet."));
+        assert_eq!(view.empty.as_deref(), Some("VAS has no weekly prices yet."));
         assert!(view.rows.is_empty() && view.chart.is_empty());
         assert_eq!(fact(&view, "Last price"), "—");
-        assert_eq!(fact(&view, "Symbol · priced in"), "— · aud");
+        assert_eq!(fact(&view, "Symbol · priced in"), "— · AUD");
     }
 
     #[test]
@@ -615,7 +615,7 @@ mod tests {
             .borrow()
             .units
             .unit(UnitId::SEED_VAS)
-            .expect("vas");
+            .expect("VAS");
         let at = super::super::test_support::now();
         vas.set_price(
             Money(BigDecimal::from(42)),

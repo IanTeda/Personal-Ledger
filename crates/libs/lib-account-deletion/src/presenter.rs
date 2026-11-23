@@ -249,7 +249,7 @@ mod tests {
                     budgets: 1,
                 },
             );
-            reads.unit_codes.insert(UnitId::SEED_AUD, "aud".into());
+            reads.unit_codes.insert(UnitId::SEED_AUD, "AUD".into());
             let shared: SharedDeletion = deletion.clone();
             let presenter = DeleteAccountPresenter::new(shared, &reads, id, DialogKeys::default())
                 .expect("a world Account");
@@ -291,7 +291,7 @@ mod tests {
         assert!(view.frame.destructive);
         assert_eq!(
             strong(&view.warning),
-            ["\u{2212}2,318.44 aud", "2 transactions."]
+            ["\u{2212}2,318.44 AUD", "2 transactions."]
         );
         assert_eq!(
             view.reference,

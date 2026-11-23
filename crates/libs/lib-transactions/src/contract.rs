@@ -418,7 +418,7 @@ where
         is_active: true,
         precision: 2,
     };
-    let stored = vec![unit(11, "aud"), unit(12, "usd"), unit(13, "btc")];
+    let stored = vec![unit(11, "AUD"), unit(12, "USD"), unit(13, "BTC")];
     let codes = |reads: &F::Reads| -> Vec<Option<String>> {
         stored
             .iter()

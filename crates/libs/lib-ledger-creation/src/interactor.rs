@@ -193,7 +193,7 @@ mod tests {
         let id = UnitId::new();
         AddUnit {
             id,
-            code: "aud".into(),
+            code: "AUD".into(),
             name: "Australian Dollar".into(),
             kind: UnitKind::Currency,
             precision: Precision::of_kind(UnitKind::Currency),
@@ -250,7 +250,7 @@ mod tests {
         assert_eq!(ledger.personal.usual_unit, None, "no Usual unit");
         assert_eq!(
             (ledger.base_unit.id, ledger.base_unit.code.as_str()),
-            (base.id, "aud")
+            (base.id, "AUD")
         );
         assert!(ledger.base_unit.is_active && ledger.base_unit.prices.is_empty());
         assert_eq!(ledger.budget.unit, base.id);
@@ -285,7 +285,7 @@ mod tests {
         let (outcome, _) = create(
             &mut port,
             AddUnit {
-                code: " aud ".into(),
+                code: " AUD ".into(),
                 name: "Australian Dollar\t".into(),
                 ..aud()
             },
@@ -295,7 +295,7 @@ mod tests {
         let unit = &port.ledgers[&path()].base_unit;
         assert_eq!(
             (unit.code.as_str(), unit.name.as_str()),
-            ("aud", "Australian Dollar")
+            ("AUD", "Australian Dollar")
         );
     }
 
@@ -413,10 +413,10 @@ mod tests {
     fn each_locales_prefill_is_its_currency_on_manual_entry_and_creates_a_ledger() {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         for (locale, code, name) in [
-            (lib_locale::Locale::EnUs, "usd", "US Dollar"),
-            (lib_locale::Locale::EnGb, "gbp", "British Pound"),
-            (lib_locale::Locale::EnAu, "aud", "Australian Dollar"),
-            (lib_locale::Locale::EnXa, "usd", "US Dollar"),
+            (lib_locale::Locale::EnUs, "USD", "US Dollar"),
+            (lib_locale::Locale::EnGb, "GBP", "British Pound"),
+            (lib_locale::Locale::EnAu, "AUD", "Australian Dollar"),
+            (lib_locale::Locale::EnXa, "USD", "US Dollar"),
         ] {
             let base = base_unit_for(locale.currency());
             assert_eq!(

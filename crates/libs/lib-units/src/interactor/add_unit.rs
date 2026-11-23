@@ -63,7 +63,7 @@ mod tests {
     fn add(link: PriceLink) -> AddUnit {
         AddUnit {
             id: UnitId::new(),
-            code: "eth".into(),
+            code: "ETH".into(),
             name: "Ethereum".into(),
             kind: UnitKind::Crypto,
             precision: Precision::of_kind(UnitKind::Crypto),
@@ -86,7 +86,7 @@ mod tests {
 
         assert_eq!(
             (added.code.as_str(), added.name.as_str()),
-            ("eth", "Ethereum")
+            ("ETH", "Ethereum")
         );
         assert_eq!(added.link, link);
         assert!(added.prices.is_empty());

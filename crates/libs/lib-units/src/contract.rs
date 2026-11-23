@@ -170,7 +170,7 @@ pub fn usage_counts_the_accounts_and_transactions_in_a_unit<F: UsageFactory>(fac
     let account = before
         .iter()
         .find(|holding| holding.transactions > 0)
-        .expect("an aud Account holds Transactions")
+        .expect("an AUD Account holds Transactions")
         .name
         .clone();
     let nothing = UnitId::new();
@@ -267,7 +267,7 @@ pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
     let source = custom_source("Example prices").run(ports.split_mut(&usage).price_sources);
     let eur = add_unit(
         ports.split_mut(&usage),
-        "eur",
+        "EUR",
         UnitKind::Currency,
         PriceLink {
             source_id: source.id,
@@ -278,7 +278,7 @@ pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
     let split = ports.split_mut(&usage);
     EditUnit {
         id: UnitId::SEED_VAS,
-        code: "vas".into(),
+        code: "VAS".into(),
         name: "Vanguard Australian Shares".into(),
         kind: UnitKind::Equity,
         // Off Equity's 2, so a stored Precision, not a default, is what reloads.
@@ -286,15 +286,15 @@ pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
         link: PriceLink::manual(eur.id),
     }
     .run(split.units, split.price_sources)
-    .expect("vas is on the sample");
+    .expect("VAS is on the sample");
     let split = ports.split_mut(&usage);
     DeactivateUnit(UnitId::SEED_BTC)
         .run(split.units, split.base_unit)
-        .expect("btc is not the base");
+        .expect("BTC is not the base");
     let split = ports.split_mut(&usage);
     SetBaseUnit(eur.id)
         .run(split.units, split.base_unit)
-        .expect("eur is active");
+        .expect("EUR is active");
     EditPriceSource {
         id: COINGECKO,
         name: "Coins".into(),
@@ -323,14 +323,14 @@ pub fn deleting_the_base_unit_with_a_move_lands_in_order<F: PortsFactory>(factor
     // A base nothing quotes, so the delete only has the base to move.
     let usd = add_unit(
         ports.split_mut(&usage),
-        "usd",
+        "USD",
         UnitKind::Currency,
         PriceLink::manual(UnitId::SEED_AUD),
     );
     let split = ports.split_mut(&usage);
     SetBaseUnit(usd.id)
         .run(split.units, split.base_unit)
-        .expect("usd is active");
+        .expect("USD is active");
     let mut ports = factory.reload(ports);
 
     let split = ports.split_mut(&usage);
@@ -339,7 +339,7 @@ pub fn deleting_the_base_unit_with_a_move_lands_in_order<F: PortsFactory>(factor
         new_base: Some(UnitId::SEED_AUD),
     }
     .run(split.units, split.base_unit, split.usage)
-    .expect("usd is unused and aud is active");
+    .expect("USD is unused and AUD is active");
     let before = snapshot(&mut ports);
     let mut ports = factory.reload(ports);
 
@@ -362,7 +362,7 @@ pub fn deleting_a_quoted_unit_is_refused_and_writes_nothing<F: PortsFactory>(fac
         new_base: Some(UnitId::SEED_BTC),
     }
     .run(split.units, split.base_unit, split.usage)
-    .expect_err("btc and vas are quoted in aud");
+    .expect_err("BTC and VAS are quoted in AUD");
     assert_eq!(refusal, Error::QuotedBy(2));
     factory.commit(&mut ports);
 
@@ -386,7 +386,7 @@ pub fn a_gone_quote_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory:
     let split = ports.split_mut(&usage);
     let refusal = AddUnit {
         id: UnitId::new(),
-        code: "eth".into(),
+        code: "ETH".into(),
         name: "ETH".into(),
         kind: UnitKind::Crypto,
         precision: Precision::of_kind(UnitKind::Crypto),
@@ -400,7 +400,7 @@ pub fn a_gone_quote_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory:
     let split = ports.split_mut(&usage);
     let refusal = EditUnit {
         id: UnitId::SEED_BTC,
-        code: "btc".into(),
+        code: "BTC".into(),
         name: "BTC".into(),
         kind: UnitKind::Crypto,
         precision: Precision::of_kind(UnitKind::Crypto),
@@ -423,7 +423,7 @@ pub fn a_gone_quote_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory:
     let split = ports.split_mut(&usage);
     let eth = AddUnit {
         id,
-        code: "eth".into(),
+        code: "ETH".into(),
         name: "ETH".into(),
         kind: UnitKind::Crypto,
         precision: Precision::of_kind(UnitKind::Crypto),
@@ -443,7 +443,7 @@ pub fn deleting_a_custom_source_moves_its_units_to_manual_entry<F: PortsFactory>
     let source = custom_source("Doomed prices").run(ports.split_mut(&usage).price_sources);
     let gold = add_unit(
         ports.split_mut(&usage),
-        "xau",
+        "XAU",
         UnitKind::Commodity,
         PriceLink {
             source_id: source.id,
@@ -480,7 +480,7 @@ pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(fact
     let mut ports = factory.create(InMemoryPorts::sample(Utc::now()));
     let eth = add_unit(
         ports.split_mut(&usage),
-        "eth",
+        "ETH",
         UnitKind::Crypto,
         PriceLink::manual(UnitId::SEED_AUD),
     );
@@ -493,7 +493,7 @@ pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(fact
             close: close.parse().expect("a decimal"),
         }
         .run(ports.split_mut(&usage).units, day(on), at(on))
-        .expect("eth is on Manual entry");
+        .expect("ETH is on Manual entry");
     }
     let before = snapshot(&mut ports);
     let mut ports = factory.reload(ports);
@@ -503,14 +503,14 @@ pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(fact
         let split = ports.split_mut(&usage);
         EditUnit {
             id: UnitId::SEED_BTC,
-            code: "btc".into(),
+            code: "BTC".into(),
             name: "Bitcoin".into(),
             kind: UnitKind::Crypto,
             precision: Precision::of_kind(UnitKind::Crypto),
             link: PriceLink::manual(quote),
         }
         .run(split.units, split.price_sources)
-        .expect("btc is on the sample")
+        .expect("BTC is on the sample")
     };
     let kept = edit(&mut ports, UnitId::SEED_AUD);
     assert_eq!(kept.prices.len(), 52, "a source change keeps them");
@@ -524,7 +524,7 @@ pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(fact
         new_base: None,
     }
     .run(split.units, split.base_unit, split.usage)
-    .expect_err("btc is quoted in eth now");
+    .expect_err("BTC is quoted in ETH now");
     edit(&mut ports, UnitId::SEED_AUD);
     let split = ports.split_mut(&usage);
     DeleteUnit {
@@ -532,7 +532,7 @@ pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(fact
         new_base: None,
     }
     .run(split.units, split.base_unit, split.usage)
-    .expect("eth is unused");
+    .expect("ETH is unused");
     let before = snapshot(&mut ports);
     let mut ports = factory.reload(ports);
     assert_eq!(snapshot(&mut ports), before);
@@ -561,7 +561,7 @@ pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
     factory.break_writes(&mut ports);
     add_unit(
         ports.split_mut(&usage),
-        "eur",
+        "EUR",
         UnitKind::Currency,
         PriceLink::manual(UnitId::SEED_AUD),
     );

@@ -87,9 +87,9 @@ impl InMemoryInstitutionUnits {
         };
         Self {
             units: vec![
-                unit(UnitId::SEED_AUD, "aud", "Australian Dollar", 2),
-                unit(UnitId::SEED_BTC, "btc", "Bitcoin", 8),
-                unit(UnitId::SEED_VAS, "vas", "Vanguard Aus Shares", 2),
+                unit(UnitId::SEED_AUD, "AUD", "Australian Dollar", 2),
+                unit(UnitId::SEED_BTC, "BTC", "Bitcoin", 8),
+                unit(UnitId::SEED_VAS, "VAS", "Vanguard Aus Shares", 2),
             ],
         }
     }

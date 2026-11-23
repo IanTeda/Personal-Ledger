@@ -949,7 +949,7 @@ mod tests {
         assert_eq!(*personal, new.personal);
 
         assert_eq!(sample.units.base_unit.0, UnitId::SEED_AUD);
-        assert_eq!(new.base_unit.code, "aud");
+        assert_eq!(new.base_unit.code, "AUD");
         assert!(sample.units.units.units.contains(&new.base_unit));
 
         let spending = sample
@@ -1286,7 +1286,7 @@ mod tests {
 
             assert!(
                 priced.iter().any(|unit| unit.id == UnitId::SEED_BTC),
-                "the sample's btc on {now}"
+                "the sample's BTC on {now}"
             );
             assert!(priced.len() > 1, "and some generated Units on {now}");
             for unit in priced {

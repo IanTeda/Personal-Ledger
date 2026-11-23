@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(view.warning, "This price source values 1 unit.");
         assert_eq!(
             view.fallback.as_deref(),
-            Some("1 unit falls back to Manual entry and keeps its last price: btc.")
+            Some("1 unit falls back to Manual entry and keeps its last price: BTC.")
         );
 
         assert_eq!(

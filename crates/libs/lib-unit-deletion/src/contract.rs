@@ -152,7 +152,7 @@ pub fn a_delete_lands_the_unit_the_base_move_and_the_reassignment<F: DeletionFac
             unit: BTC,
         }],
     )
-    .expect("Westpac names aud");
+    .expect("Westpac names AUD");
     let stored = factory.stored(ports);
 
     assert_eq!(stored.units, [BTC, VAS]);
@@ -165,7 +165,7 @@ pub fn a_delete_lands_the_unit_the_base_move_and_the_reassignment<F: DeletionFac
 pub fn a_delete_left_on_none_lands_the_institutions_with_none<F: DeletionFactory>(factory: &mut F) {
     let mut ports = factory.create(world());
 
-    delete(&mut ports, BTC, None, Vec::new()).expect("only Institutions name btc");
+    delete(&mut ports, BTC, None, Vec::new()).expect("only Institutions name BTC");
     let stored = factory.stored(ports);
 
     assert_eq!(stored.units, [AUD, VAS]);

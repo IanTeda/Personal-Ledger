@@ -220,7 +220,7 @@ mod tests {
             .into_iter()
             .map(|unit| unit.code)
             .collect();
-        assert_eq!(codes, vec!["aud", "btc", "vas"]);
+        assert_eq!(codes, vec!["AUD", "BTC", "VAS"]);
         assert_eq!(ports.base_unit.base_unit(), UnitId::SEED_AUD);
         assert!(ports.price_sources.price_source_records().is_empty());
         assert!(!ports.usage.unit_usage(UnitId::SEED_AUD).is_used());
@@ -233,7 +233,7 @@ mod tests {
         btc.name = "Bitcoin core".into();
         units.upsert_unit(btc.clone());
         let eth = UnitRow::new(
-            "eth".into(),
+            "ETH".into(),
             "Ethereum".into(),
             UnitKind::Crypto,
             Precision::of_kind(UnitKind::Crypto),

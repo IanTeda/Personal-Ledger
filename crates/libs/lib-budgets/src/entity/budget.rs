@@ -62,7 +62,7 @@ pub struct Budget {
     pub id: BudgetId,
     pub name: String,
     pub method: Method,
-    /// The Unit code (e.g. `"aud"`), locked at creation; every on-budget Account shares it.
+    /// The Unit code (e.g. `"AUD"`), locked at creation; every on-budget Account shares it.
     pub unit: UnitId,
     /// The Account ids whose Splits this Budget counts. Storage drops a deleted Account's id
     /// (its link cascades), but a Budget already in memory keeps it until it next loads, and

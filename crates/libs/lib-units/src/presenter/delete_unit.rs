@@ -178,13 +178,15 @@ impl Presenter for DeleteUnitPresenter {
                     self.handle(DeleteUnitEvent::Confirm, router)
                 }
                 // Deactivating has no confirmation field to type into.
-                DialogInput::Char(ch) if self.in_use.is_none() => self.confirm_text.push(ch),
+                DialogInput::Char(ch) if self.in_use.is_none() => {
+                    self.confirm_text.extend(ch.to_uppercase());
+                }
                 DialogInput::Backspace if self.in_use.is_none() => {
                     self.confirm_text.pop();
                 }
                 _ => {}
             },
-            DeleteUnitEvent::ConfirmText(text) => self.confirm_text = text,
+            DeleteUnitEvent::ConfirmText(text) => self.confirm_text = text.to_uppercase(),
             DeleteUnitEvent::NewBase(id) => {
                 if self.candidates.iter().any(|choice| choice.value == id) {
                     self.new_base = Some(id);
@@ -368,8 +370,8 @@ mod tests {
         let mut dialog =
             DeleteUnitPresenter::new(shared, UnitId::SEED_BTC, DialogKeys::default()).unwrap();
         let view = dialog.view_model();
-        assert_eq!(view.frame.title, "Delete unit — btc");
-        assert_eq!(view.confirm.unwrap().label, "Type btc to confirm");
+        assert_eq!(view.frame.title, "Delete unit — BTC");
+        assert_eq!(view.confirm.unwrap().label, "Type BTC to confirm");
         assert!(
             view.new_base.is_none(),
             "only the base Unit asks for a new base"
@@ -379,7 +381,7 @@ mod tests {
             send(
                 &mut dialog,
                 vec![
-                    DeleteUnitEvent::ConfirmText("BTC".into()),
+                    DeleteUnitEvent::ConfirmText("BT".into()),
                     DeleteUnitEvent::Confirm
                 ]
             ),
@@ -387,7 +389,7 @@ mod tests {
         );
         assert!(
             !dialog.view_model().frame.can_confirm,
-            "the match is case-sensitive"
+            "a partial code doesn't confirm"
         );
 
         let calls = send(
@@ -401,7 +403,7 @@ mod tests {
             calls,
             [RouterCall::CloseDialog(Some(UnitsOutcome::Unit {
                 change: UnitChange::Deleted,
-                code: "btc".into()
+                code: "BTC".into()
             }))]
         );
         assert!(ports.borrow().units.unit(UnitId::SEED_BTC).is_none());
@@ -414,7 +416,7 @@ mod tests {
         ports.borrow_mut().units.units[1].is_active = false;
         let mut dialog =
             DeleteUnitPresenter::new(shared, UnitId::SEED_AUD, DialogKeys::default()).unwrap();
-        let new_base = dialog.view_model().new_base.expect("aud is the base");
+        let new_base = dialog.view_model().new_base.expect("AUD is the base");
         let labels: Vec<_> = new_base
             .select
             .options
@@ -423,19 +425,19 @@ mod tests {
             .collect();
         assert_eq!(
             labels,
-            ["vas — Vanguard Aus Shares"],
-            "deactivated btc isn't offered"
+            ["VAS — Vanguard Aus Shares"],
+            "deactivated BTC isn't offered"
         );
         assert_eq!(
             new_base.help,
-            "aud is the base unit. Choose the unit that takes over before it is deleted."
+            "AUD is the base unit. Choose the unit that takes over before it is deleted."
         );
 
         send(
             &mut dialog,
             vec![
                 DeleteUnitEvent::NewBase(UnitId::SEED_VAS),
-                DeleteUnitEvent::ConfirmText("aud".into()),
+                DeleteUnitEvent::ConfirmText("AUD".into()),
                 DeleteUnitEvent::Confirm,
             ],
         );
@@ -453,14 +455,14 @@ mod tests {
         send(
             &mut dialog,
             vec![
-                DeleteUnitEvent::ConfirmText("aud".into()),
+                DeleteUnitEvent::ConfirmText("AUD".into()),
                 DeleteUnitEvent::Confirm,
             ],
         );
         assert_eq!(
             dialog.view_model().refusal.as_deref(),
             Some(
-                "aud is the quote unit of 2 other units, so it can't be deleted. Change their \
+                "AUD is the quote unit of 2 other units, so it can't be deleted. Change their \
                  quotes first."
             )
         );
@@ -473,14 +475,14 @@ mod tests {
         send(
             &mut dialog,
             vec![
-                DeleteUnitEvent::ConfirmText("aud".into()),
+                DeleteUnitEvent::ConfirmText("AUD".into()),
                 DeleteUnitEvent::Confirm,
             ],
         );
         assert_eq!(
             dialog.view_model().refusal.as_deref(),
             Some(
-                "aud is the quote unit of 1 other unit, so it can't be deleted. Change that \
+                "AUD is the quote unit of 1 other unit, so it can't be deleted. Change that \
                  unit's quote first."
             )
         );
@@ -501,14 +503,14 @@ mod tests {
             DeleteUnitPresenter::new(shared, UnitId::SEED_BTC, DialogKeys::default()).unwrap();
 
         let view = dialog.view_model();
-        assert_eq!(view.frame.title, "Deactivate unit — btc");
+        assert_eq!(view.frame.title, "Deactivate unit — BTC");
         assert_eq!(view.frame.submit, "Deactivate unit");
         assert!(view.frame.can_confirm && !view.frame.destructive);
         assert_eq!(view.confirm, None);
         let in_use = view.in_use.unwrap();
         assert_eq!(
             in_use.text,
-            "btc is used by 2 accounts, 1 budget, so it can't be deleted."
+            "BTC is used by 2 accounts, 1 budget, so it can't be deleted."
         );
         assert_eq!(in_use.base, None);
 
@@ -517,7 +519,7 @@ mod tests {
             calls,
             [RouterCall::CloseDialog(Some(UnitsOutcome::Unit {
                 change: UnitChange::Deactivated,
-                code: "btc".into()
+                code: "BTC".into()
             }))]
         );
         let ports = ports.borrow();
@@ -541,13 +543,13 @@ mod tests {
         let calls = send(
             &mut dialog,
             vec![
-                DeleteUnitEvent::ConfirmText("btc".into()),
+                DeleteUnitEvent::ConfirmText("BTC".into()),
                 DeleteUnitEvent::Confirm,
             ],
         );
 
         assert_eq!(calls, [], "the refused delete keeps the Dialog open");
-        assert_eq!(dialog.view_model().frame.title, "Deactivate unit — btc");
+        assert_eq!(dialog.view_model().frame.title, "Deactivate unit — BTC");
     }
 
     #[test]
@@ -602,13 +604,13 @@ mod tests {
         send(
             &mut only,
             vec![
-                DeleteUnitEvent::ConfirmText("aud".into()),
+                DeleteUnitEvent::ConfirmText("AUD".into()),
                 DeleteUnitEvent::Confirm,
             ],
         );
         assert_eq!(
             only.view_model().refusal.as_deref(),
-            Some("aud is the only unit, so it can't be deleted.")
+            Some("AUD is the only unit, so it can't be deleted.")
         );
 
         let (ports, shared) = sample();
@@ -621,13 +623,13 @@ mod tests {
         send(
             &mut base,
             vec![
-                DeleteUnitEvent::ConfirmText("aud".into()),
+                DeleteUnitEvent::ConfirmText("AUD".into()),
                 DeleteUnitEvent::Confirm,
             ],
         );
         assert_eq!(
             base.view_model().refusal.as_deref(),
-            Some("aud is the base unit, and no active unit can take over as base.")
+            Some("AUD is the base unit, and no active unit can take over as base.")
         );
     }
 
@@ -641,7 +643,7 @@ mod tests {
         send(
             &mut dialog,
             vec![
-                DeleteUnitEvent::ConfirmText("vas".into()),
+                DeleteUnitEvent::ConfirmText("VAS".into()),
                 DeleteUnitEvent::Confirm,
             ],
         );
@@ -658,7 +660,7 @@ mod tests {
         send(
             &mut base,
             vec![
-                DeleteUnitEvent::ConfirmText("aud".into()),
+                DeleteUnitEvent::ConfirmText("AUD".into()),
                 DeleteUnitEvent::Confirm,
             ],
         );
@@ -674,7 +676,7 @@ mod tests {
         send(
             &mut inactive,
             vec![
-                DeleteUnitEvent::ConfirmText("aud".into()),
+                DeleteUnitEvent::ConfirmText("AUD".into()),
                 DeleteUnitEvent::Confirm,
             ],
         );
@@ -697,7 +699,7 @@ mod tests {
             DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_AUD, DialogKeys::default())
                 .unwrap()
                 .view_model();
-        assert!(view.new_base.is_some(), "aud is the base");
+        assert!(view.new_base.is_some(), "AUD is the base");
         assert_eq!(
             hints(&view.frame),
             pairs(&[
@@ -716,7 +718,7 @@ mod tests {
         let view = DeleteUnitPresenter::new(shared, UnitId::SEED_BTC, DialogKeys::default())
             .unwrap()
             .view_model();
-        assert!(view.in_use.is_some(), "btc deactivates");
+        assert!(view.in_use.is_some(), "BTC deactivates");
         assert_eq!(hints(&view.frame), pairs(&[("back", "cancel")]));
     }
 }

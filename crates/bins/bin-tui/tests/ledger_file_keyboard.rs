@@ -181,9 +181,9 @@ fn new_creates_the_ledger_on_the_locales_currency_with_none_of_the_sample_rows()
     press(&mut shell, "g u");
     let frame = screen(&mut shell);
 
-    assert!(frame.contains("usd"), "en-US's Currency:\n{frame}");
+    assert!(frame.contains("USD"), "en-US's Currency:\n{frame}");
     assert!(frame.contains("US Dollar"), "{frame}");
-    for sample in ["aud", "btc", "vas"] {
+    for sample in ["AUD", "BTC", "VAS"] {
         assert!(!frame.contains(sample), "the sample's {sample}:\n{frame}");
     }
     let storage = lib_database::open_storage(&path).expect("the new Ledger opens");
@@ -321,8 +321,8 @@ fn a_unit_added_after_new_is_there_after_close_and_open() {
     press(&mut shell, "g u");
     let frame = screen(&mut shell);
 
-    assert!(frame.contains("xau"), "{frame}");
-    assert!(frame.contains("usd"), "the base Unit stays:\n{frame}");
+    assert!(frame.contains("XAU"), "{frame}");
+    assert!(frame.contains("USD"), "the base Unit stays:\n{frame}");
 }
 
 #[test]
@@ -337,13 +337,13 @@ fn reopening_the_open_ledger_file_keeps_its_last_write() {
     press(&mut shell, "g u");
     let frame = screen(&mut shell);
 
-    assert!(frame.contains("xau"), "{frame}");
+    assert!(frame.contains("XAU"), "{frame}");
 }
 
 /// Adds the Unit `xau` (Gold) in the Units View.
 fn add_gold(shell: &mut bin_tui::Shell) {
     press(shell, "g u n");
-    type_text(shell, "xau");
+    type_text(shell, "XAU");
     press(shell, "Tab Tab");
     type_text(shell, "Gold");
     press(shell, "Enter");
@@ -450,7 +450,7 @@ fn open_over_an_open_ledger_that_fails_keeps_the_open_ledger() {
         hint_bar(&frame).trim_end().ends_with("household.pldb"),
         "{frame}"
     );
-    assert!(frame.contains("xau"), "the Units View closed:\n{frame}");
+    assert!(frame.contains("XAU"), "the Units View closed:\n{frame}");
 }
 
 #[test]
@@ -471,7 +471,7 @@ fn open_over_an_open_ledger_swaps_to_the_new_file_on_the_dashboard() {
         hint_bar(&frame).trim_end().ends_with("business.pldb"),
         "{frame}"
     );
-    assert!(!frame.contains("xau"), "still on the Units View:\n{frame}");
+    assert!(!frame.contains("XAU"), "still on the Units View:\n{frame}");
 }
 
 #[test]

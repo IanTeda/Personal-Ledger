@@ -12,12 +12,12 @@ pub enum Currency {
 }
 
 impl Currency {
-    /// The ISO 4217 code, lower case as a Unit's code is written.
+    /// The ISO 4217 code, upper case as a Unit's code is written.
     pub fn code(self) -> &'static str {
         match self {
-            Currency::Usd => "usd",
-            Currency::Gbp => "gbp",
-            Currency::Aud => "aud",
+            Currency::Usd => "USD",
+            Currency::Gbp => "GBP",
+            Currency::Aud => "AUD",
         }
     }
 
@@ -51,14 +51,14 @@ mod tests {
     #[test]
     fn en_us_names_the_us_dollar() {
         let currency = Locale::EnUs.currency();
-        assert_eq!(currency.code(), "usd");
+        assert_eq!(currency.code(), "USD");
         assert_eq!(with_locale(Locale::EnUs, || currency.name()), "US Dollar");
     }
 
     #[test]
     fn en_gb_names_the_pound_sterling() {
         let currency = Locale::EnGb.currency();
-        assert_eq!(currency.code(), "gbp");
+        assert_eq!(currency.code(), "GBP");
         assert_eq!(
             with_locale(Locale::EnGb, || currency.name()),
             "British Pound"
@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn en_au_names_the_australian_dollar() {
         let currency = Locale::EnAu.currency();
-        assert_eq!(currency.code(), "aud");
+        assert_eq!(currency.code(), "AUD");
         assert_eq!(
             with_locale(Locale::EnAu, || currency.name()),
             "Australian Dollar"

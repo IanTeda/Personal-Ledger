@@ -61,8 +61,8 @@ fn the_base_unit_select_starts_on_aud_and_lists_every_unit(app: &mut TestAppCont
     let mut ui = on_ledger(app);
 
     let general = ui.settings::<SettingsLedgerSnapshot>();
-    assert_eq!(general.base_unit.as_deref(), Some("aud"));
-    assert_eq!(general.options, ["aud", "btc", "vas"]);
+    assert_eq!(general.base_unit.as_deref(), Some("AUD"));
+    assert_eq!(general.options, ["AUD", "BTC", "VAS"]);
 }
 
 #[gpui::test]
@@ -73,7 +73,7 @@ fn j_on_the_index_changes_the_page_and_not_the_base_unit(app: &mut TestAppContex
     assert_eq!(ui.settings_frame().page, "Units");
     assert_eq!(
         ui.settings::<SettingsLedgerSnapshot>().base_unit.as_deref(),
-        Some("aud")
+        Some("AUD")
     );
 }
 
@@ -85,7 +85,7 @@ fn a_base_unit_set_by_key_moves_the_units_pages_glyph(app: &mut TestAppContext) 
     ui.press("escape");
     ui.press("j");
     assert_eq!(ui.settings_frame().page, "Units");
-    assert_eq!(ui.base_unit_code().as_deref(), Some("btc"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("BTC"));
 }
 
 #[gpui::test]
@@ -94,7 +94,7 @@ fn a_deactivated_unit_is_not_offered_as_the_base_unit(app: &mut TestAppContext) 
     assert!(
         ui.settings::<SettingsLedgerSnapshot>()
             .options
-            .contains(&"btc".to_string())
+            .contains(&"BTC".to_string())
     );
 
     ui.press("j");
@@ -107,8 +107,8 @@ fn a_deactivated_unit_is_not_offered_as_the_base_unit(app: &mut TestAppContext) 
     ui.press("k");
 
     let general = ui.settings::<SettingsLedgerSnapshot>();
-    assert!(!general.options.contains(&"btc".to_string()));
-    assert_eq!(general.base_unit.as_deref(), Some("aud"));
+    assert!(!general.options.contains(&"BTC".to_string()));
+    assert_eq!(general.base_unit.as_deref(), Some("AUD"));
 }
 
 #[gpui::test]
@@ -116,17 +116,17 @@ fn u_undoes_the_base_unit_and_ctrl_r_redoes_it_saying_so(app: &mut TestAppContex
     let mut ui = on_ledger(app);
     ui.press("l j j j enter j enter");
     let base = |ui: &mut Harness<'_>| ui.settings::<SettingsLedgerSnapshot>().base_unit;
-    assert_eq!(base(&mut ui).as_deref(), Some("btc"));
+    assert_eq!(base(&mut ui).as_deref(), Some("BTC"));
 
     ui.press("u");
-    assert_eq!(base(&mut ui).as_deref(), Some("aud"));
+    assert_eq!(base(&mut ui).as_deref(), Some("AUD"));
     assert_eq!(
         ui.read(|shell| shell.status_message()).as_deref(),
-        Some("Undid Base unit changed to btc")
+        Some("Undid Base unit changed to BTC")
     );
 
     ui.press("ctrl-r");
-    assert_eq!(base(&mut ui).as_deref(), Some("btc"));
+    assert_eq!(base(&mut ui).as_deref(), Some("BTC"));
 }
 
 fn ledger(ui: &mut Harness<'_>) -> SettingsLedgerSnapshot {
@@ -181,7 +181,7 @@ fn arriving_focuses_the_name_and_j_k_walk_the_fields_stopping_at_the_ends(
     assert_eq!(ledger(&mut ui).focused, Some("base_unit"));
     assert_eq!(
         ledger(&mut ui).base_unit.as_deref(),
-        Some("aud"),
+        Some("AUD"),
         "j/k no longer change the base unit"
     );
 

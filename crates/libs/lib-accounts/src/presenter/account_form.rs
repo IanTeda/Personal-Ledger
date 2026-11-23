@@ -829,7 +829,7 @@ mod tests {
             .iter()
             .map(|choice| choice.label.as_str())
             .collect();
-        assert_eq!(codes, ["vas", "btc"]);
+        assert_eq!(codes, ["VAS", "BTC"]);
         assert_eq!(view.unit.chosen, Some(UnitId::SEED_VAS));
     }
 
@@ -1306,7 +1306,7 @@ mod tests {
         assert_eq!(view.frame.submit, "Save");
         assert_eq!(view.name.text, "ANZ Everyday");
         assert_eq!(view.account_number.text, "1234 5678");
-        assert_eq!(view.unit_read_only.as_deref(), Some("aud"));
+        assert_eq!(view.unit_read_only.as_deref(), Some("AUD"));
         assert_eq!(view.balance_read_only.as_deref(), Some("4,182.55"));
         let usage = view.usage.expect("an Edit quotes its use");
         assert!(
@@ -1391,8 +1391,8 @@ mod tests {
                 .view_model();
 
         assert_eq!(view.unit.chosen, Some(UnitId::SEED_VAS));
-        assert!(view.unit.options.iter().any(|c| c.label == "vas"));
-        assert_eq!(view.unit_read_only.as_deref(), Some("vas"));
+        assert!(view.unit.options.iter().any(|c| c.label == "VAS"));
+        assert_eq!(view.unit_read_only.as_deref(), Some("VAS"));
     }
 
     #[test]

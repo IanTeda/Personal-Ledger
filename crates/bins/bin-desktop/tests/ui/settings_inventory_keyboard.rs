@@ -244,7 +244,7 @@ fn add_needs_a_name_then_adds_expands_selects_and_toasts(app: &mut TestAppContex
     let inventory_page = ui.settings::<SettingsInventorySnapshot>();
     assert_eq!(ui.dialog(), None);
     let added = inventory_page.inventory_locations.last().cloned().unwrap();
-    assert_eq!(added, ("cabin".to_string(), "aud".to_string(), None));
+    assert_eq!(added, ("cabin".to_string(), "AUD".to_string(), None));
     assert_eq!(
         inventory_page.selected_inventory.as_deref(),
         Some("location:cabin")
@@ -727,7 +727,7 @@ fn a_unit_recoded_on_the_units_page_shows_by_its_new_code_on_a_location(app: &mu
             .1
             .clone()
     };
-    assert_eq!(unit(&mut ui), "aud");
+    assert_eq!(unit(&mut ui), "AUD");
 
     // Recode aud, the Units page's first row, from its Edit unit Dialog.
     ui.press("escape");
@@ -735,14 +735,14 @@ fn a_unit_recoded_on_the_units_page_shows_by_its_new_code_on_a_location(app: &mu
     assert_eq!(ui.settings_frame().page, "Units");
     ui.press("l");
     ui.press("e");
-    assert_eq!(ui.dialog_value("code").as_deref(), Some("aud"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("AUD"));
     ui.press("backspace backspace backspace a u x enter");
     assert_eq!(ui.dialog(), None);
     ui.press("escape");
     ui.press(&["j"; 7].join(" "));
     assert_eq!(ui.settings_frame().page, "Inventory");
 
-    assert_eq!(unit(&mut ui), "aux");
+    assert_eq!(unit(&mut ui), "AUX");
 }
 
 /// A saved add is undone by the Shell's `u` and redone by `ctrl+r`, the row back under its own id

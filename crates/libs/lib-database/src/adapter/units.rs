@@ -812,8 +812,8 @@ mod tests {
         let (gate, release) = Gate::batch();
         factory.writer.write(gate);
         // A second aud breaks units.code's UNIQUE; eur queues behind it.
-        add(&mut adapter, "aud");
-        add(&mut adapter, "eur");
+        add(&mut adapter, "AUD");
+        add(&mut adapter, "EUR");
         assert_eq!(
             adapter.units().units().len(),
             5,
@@ -827,7 +827,7 @@ mod tests {
         adapter.reload().expect("the rows load");
         assert_eq!(snapshot(&mut adapter), stored, "both writes are gone");
         let mut fresh = UnitsAdapter::load(factory.pending.clone()).expect("the rows load");
-        assert_eq!(snapshot(&mut fresh), stored, "the queued eur was dropped");
+        assert_eq!(snapshot(&mut fresh), stored, "the queued EUR was dropped");
     }
 
     #[sqlx::test(migrations = "migrations/client")]

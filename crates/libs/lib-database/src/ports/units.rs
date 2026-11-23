@@ -241,7 +241,7 @@ mod tests {
                 .borrow()
                 .units()
                 .unit(UnitId::SEED_AUD)
-                .expect("the sample's aud");
+                .expect("the sample's AUD");
             aud.name.push_str(" renamed");
 
             units.borrow_mut().split_mut().units.upsert_unit(aud);
@@ -262,7 +262,7 @@ mod tests {
 
         let usage = ledger.units.borrow().usage().unit_usage(UnitId::SEED_AUD);
 
-        assert!(usage.accounts > 0, "the sample's Accounts count in aud");
+        assert!(usage.accounts > 0, "the sample's Accounts count in AUD");
         assert!(ledger.commit.commit().is_empty(), "a read writes nothing");
     }
 
@@ -280,7 +280,7 @@ mod tests {
                 .borrow()
                 .units()
                 .unit(UnitId::SEED_AUD)
-                .expect("the sample's aud");
+                .expect("the sample's AUD");
             spare.id = UnitId::new();
             spare.code = "zzz".into();
             spare.link.quote = spare.id;

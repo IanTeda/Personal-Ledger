@@ -310,7 +310,7 @@ fn the_add_dialog_asks_only_for_the_name_and_unit(app: &mut TestAppContext) {
     assert_eq!(ui.dialog(), None);
     assert_eq!(
         inventory_page.inventory_locations.last().cloned(),
-        Some(("cabin".to_string(), "aud".to_string(), None))
+        Some(("cabin".to_string(), "AUD".to_string(), None))
     );
 }
 

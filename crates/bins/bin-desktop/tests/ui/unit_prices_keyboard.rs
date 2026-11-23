@@ -19,7 +19,7 @@ fn on_btc(app: &mut TestAppContext) -> Harness<'_> {
     assert_eq!(ui.settings_frame().page, "Units");
     ui.press("l");
     ui.press("j");
-    assert_eq!(selected(&mut ui), "btc");
+    assert_eq!(selected(&mut ui), "BTC");
     ui
 }
 
@@ -40,8 +40,8 @@ fn enter_opens_btcs_prices_drawn_in_place_of_the_tables(app: &mut TestAppContext
     let prices = ui
         .settings::<Option<UnitPricesSnapshot>>()
         .expect("enter opens the prices view");
-    assert_eq!(prices.title, "btc · Bitcoin · prices");
-    assert_eq!(prices.rows.len(), 52, "seeded btc has a year of weeks");
+    assert_eq!(prices.title, "BTC · Bitcoin · prices");
+    assert_eq!(prices.rows.len(), 52, "seeded BTC has a year of weeks");
     for selector in [
         "unit-prices-header",
         "unit-prices-facts",
@@ -118,7 +118,7 @@ fn escape_returns_to_the_tables_with_the_same_unit_selected(app: &mut TestAppCon
         ui.settings_frame().page_focused,
         "Esc closed only the prices view"
     );
-    assert_eq!(selected(&mut ui), "btc");
+    assert_eq!(selected(&mut ui), "BTC");
     assert!(ui.is_drawn("settings-units-table"));
 }
 
@@ -126,14 +126,14 @@ fn escape_returns_to_the_tables_with_the_same_unit_selected(app: &mut TestAppCon
 fn a_unit_with_no_prices_shows_the_empty_state_and_p_sets_one(app: &mut TestAppContext) {
     let mut ui = on_btc(app);
     ui.press("j");
-    assert_eq!(selected(&mut ui), "vas");
+    assert_eq!(selected(&mut ui), "VAS");
     ui.press("enter");
     assert_eq!(
         ui.settings::<Option<UnitPricesSnapshot>>()
             .expect("open")
             .empty
             .as_deref(),
-        Some("vas has no weekly prices yet.")
+        Some("VAS has no weekly prices yet.")
     );
     assert!(ui.is_drawn("unit-prices-empty"));
 

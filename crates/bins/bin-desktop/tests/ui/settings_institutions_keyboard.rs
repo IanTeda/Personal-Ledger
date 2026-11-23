@@ -536,11 +536,11 @@ fn tab_moves_to_the_usual_unit_where_the_arrows_pick_and_tab_returns_to_the_name
     ui.press("tab");
     assert_eq!(ui.dialog_value("focused").as_deref(), Some("UsualUnit"));
     ui.press("down");
-    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("aud"));
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("AUD"));
     ui.press("down");
-    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("btc"));
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("BTC"));
     ui.press("up");
-    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("aud"));
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("AUD"));
     ui.press("tab");
     assert_eq!(ui.dialog_value("focused").as_deref(), Some("Name"));
     assert_eq!(ui.dialog_value("name").as_deref(), Some("bank"));
@@ -558,7 +558,7 @@ fn the_usual_unit_list_opens_on_enter_commits_on_enter_and_the_form_saves_it(
     ui.press("enter");
     ui.press("down down");
     ui.press("enter");
-    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("btc"));
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("BTC"));
     assert_eq!(
         ui.dialog(),
         Some("AddInstitution"),
@@ -570,7 +570,7 @@ fn the_usual_unit_list_opens_on_enter_commits_on_enter_and_the_form_saves_it(
 
     ui.press("e");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("bank"));
-    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("btc"));
+    assert_eq!(ui.dialog_value("usual_unit").as_deref(), Some("BTC"));
 }
 
 #[gpui::test]

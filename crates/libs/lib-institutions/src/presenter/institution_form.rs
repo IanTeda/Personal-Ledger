@@ -793,7 +793,7 @@ mod tests {
             ..form
         };
 
-        assert_eq!(usual_labels(&form), ["None", "aud", "vas"]);
+        assert_eq!(usual_labels(&form), ["None", "AUD", "VAS"]);
         let view = form.view();
         assert_eq!(view.usual_unit.label, "Usual unit");
         assert_eq!(view.usual_unit.chosen, Some(None));
@@ -958,8 +958,8 @@ mod tests {
                 .map(|choice| choice.label)
                 .collect()
         };
-        assert_eq!(codes(&edit), ["None", "aud", "btc", "vas"]);
-        assert_eq!(codes(&add), ["None", "aud", "vas"]);
+        assert_eq!(codes(&edit), ["None", "AUD", "BTC", "VAS"]);
+        assert_eq!(codes(&add), ["None", "AUD", "VAS"]);
     }
 
     #[test]

@@ -41,37 +41,37 @@ const FIXTURE: [FixtureInstitution; 6] = [
     FixtureInstitution {
         name: "American Express",
         types: &[AccountType::CreditCard],
-        unit: "aud",
+        unit: "AUD",
         accounts: &["Amex Platinum"],
     },
     FixtureInstitution {
         name: "ANZ",
         types: &[AccountType::Bank, AccountType::Loan],
-        unit: "aud",
+        unit: "AUD",
         accounts: &["ANZ Everyday", "ANZ Offset", "Home Loan"],
     },
     FixtureInstitution {
         name: "AustralianSuper",
         types: &[AccountType::Investment],
-        unit: "aud",
+        unit: "AUD",
         accounts: &[],
     },
     FixtureInstitution {
         name: "Crypto.com",
         types: &[AccountType::Investment],
-        unit: "btc",
+        unit: "BTC",
         accounts: &["Bitcoin"],
     },
     FixtureInstitution {
         name: "Vanguard",
         types: &[AccountType::Investment],
-        unit: "vas",
+        unit: "VAS",
         accounts: &["Vanguard VAS"],
     },
     FixtureInstitution {
         name: "Westpac",
         types: &[AccountType::Bank],
-        unit: "aud",
+        unit: "AUD",
         accounts: &["Westpac Savings"],
     },
 ];

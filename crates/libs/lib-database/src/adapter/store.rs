@@ -3254,11 +3254,11 @@ mod tests {
 
         let choices = reads.account_units();
         let codes: Vec<&str> = choices.iter().map(|unit| unit.code.as_str()).collect();
-        assert_eq!(codes, ["aud", "btc", "vas"], "in the Units' order");
+        assert_eq!(codes, ["AUD", "BTC", "VAS"], "in the Units' order");
         let aud = choices
             .iter()
             .find(|unit| unit.id == UnitId::SEED_AUD)
-            .expect("the sample's aud");
+            .expect("the sample's AUD");
         assert!(aud.is_active);
         assert_eq!(aud.precision, 2);
         assert_eq!(AccountUnits::base_unit(&reads), Some(UnitId::SEED_AUD));
@@ -3269,8 +3269,8 @@ mod tests {
             .units()
             .into_iter()
             .find(|unit| unit.id == UnitId::SEED_BTC)
-            .expect("the sample's btc");
-        btc.code = "xbt".into();
+            .expect("the sample's BTC");
+        btc.code = "XBT".into();
         btc.is_active = false;
         btc.precision = lib_units::Precision::new(6).expect("six places is within the most");
         let unread = lib_units::fake::InMemoryUnitUsage::default();
@@ -3283,8 +3283,8 @@ mod tests {
             .account_units()
             .into_iter()
             .find(|unit| unit.id == UnitId::SEED_BTC)
-            .expect("btc is still a Unit");
-        assert_eq!(edited.code, "xbt", "written since the reads were built");
+            .expect("BTC is still a Unit");
+        assert_eq!(edited.code, "XBT", "written since the reads were built");
         assert!(!edited.is_active);
         assert_eq!(edited.precision, 6);
         assert_eq!(AccountUnits::base_unit(&reads), Some(UnitId::SEED_BTC));
@@ -3313,7 +3313,7 @@ mod tests {
 
         assert_eq!(
             DeletionReads::unit_code(&reads, UnitId::SEED_AUD).as_deref(),
-            Some("aud")
+            Some("AUD")
         );
         assert_eq!(DeletionReads::unit_code(&reads, UnitId::new()), None);
     }
@@ -3378,7 +3378,7 @@ mod tests {
         let everyday = holdings
             .iter()
             .find(|holding| holding.name == "ANZ Everyday")
-            .expect("ANZ Everyday counts in aud");
+            .expect("ANZ Everyday counts in AUD");
         assert_eq!(
             usize::try_from(everyday.transactions).ok(),
             Some(
@@ -3458,7 +3458,7 @@ mod tests {
         let units: SharedUnitsStore =
             Rc::new(RefCell::new(InMemoryPorts::sample(chrono::Utc::now())));
         let reads = StoredBillUnits { units };
-        assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("aud"));
+        assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("AUD"));
         assert_eq!(reads.unit_code(UnitId::new()), None);
         assert_eq!(reads.base_unit(), Some(UnitId::SEED_AUD));
     }
@@ -3498,7 +3498,7 @@ mod tests {
         assert_eq!(reads.open_bills().len(), open);
         assert!(!reads.budget_categories().is_empty());
         assert!(!reads.budget_accounts().is_empty());
-        assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("aud"));
+        assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("AUD"));
         assert!(reads.payee_name(PayeeId::seed(1)).is_some());
         assert!(reads.active_bill_plans().len() <= sample.bills.plans.len());
     }
@@ -3610,9 +3610,9 @@ mod dashboard_reads_tests {
             assert_eq!(row.plan, plan.name);
             assert_eq!(row.amount, plan.planned_amount);
             assert_eq!(row.overdue, row.id.due < today());
-            assert_eq!(row.unit_code, "aud");
+            assert_eq!(row.unit_code, "AUD");
         }
-        assert_eq!(reads.base_unit_code().as_deref(), Some("aud"));
+        assert_eq!(reads.base_unit_code().as_deref(), Some("AUD"));
     }
 
     /// The default Budget's current month has its fullest top-level bars, named by Category.

@@ -137,8 +137,6 @@ pub struct CreateLedgerViewModel {
     pub back: String,
     /// The status line: the stage showing and, while the Ledger name is refused, why.
     pub hints: Vec<Hint>,
-    /// The chosen file's name, shown read-only.
-    pub file: TextFieldView,
     pub code: TextFieldView,
     pub kind: SelectView<UnitKind>,
     pub name: TextFieldView,
@@ -237,8 +235,14 @@ impl CreateLedgerPresenter {
             _ if self.focused.is_select() => self.select_input(input),
             DialogInput::Select => self.confirm(router),
             DialogInput::Char(ch) => {
+                // A Unit's code is upper case, so the Code field shows what will be saved.
+                let upper = self.focused == LedgerField::Code;
                 if let Some(text) = self.text_mut() {
-                    text.push(ch);
+                    if upper {
+                        text.extend(ch.to_uppercase());
+                    } else {
+                        text.push(ch);
+                    }
                 }
                 self.typed();
             }
@@ -401,7 +405,7 @@ impl Presenter for CreateLedgerPresenter {
     fn handle(&mut self, event: CreateLedgerEvent, router: &mut Self::Router<'_>) {
         match event {
             CreateLedgerEvent::Input(input) => self.input(input, router),
-            CreateLedgerEvent::Code(text) => self.code = text,
+            CreateLedgerEvent::Code(text) => self.code = text.to_uppercase(),
             CreateLedgerEvent::Name(text) => self.name = text,
             CreateLedgerEvent::Precision(text) => {
                 self.precision = text;
@@ -483,17 +487,6 @@ impl Presenter for CreateLedgerPresenter {
                 .collect(),
             back: msg::ledger_creation_back(),
             hints,
-            file: TextFieldView {
-                label: msg::ledger_creation_field_file(),
-                text: self
-                    .path
-                    .file_name()
-                    .unwrap_or(self.path.as_os_str())
-                    .to_string_lossy()
-                    .into_owned(),
-                placeholder: String::new(),
-                focused: false,
-            },
             code: text(
                 lib_locale::msg::column_code(),
                 &self.code,
@@ -659,10 +652,10 @@ mod tests {
     fn the_prefill_is_the_locales_currency_per_locale() {
         lib_locale::init_with_layers("en-US", &[lib_units::msg::LAYER, msg::LAYER]);
         for (locale, code, name) in [
-            (lib_locale::Locale::EnUs, "usd", "US Dollar"),
-            (lib_locale::Locale::EnGb, "gbp", "British Pound"),
-            (lib_locale::Locale::EnAu, "aud", "Australian Dollar"),
-            (lib_locale::Locale::EnXa, "usd", "US Dollar"),
+            (lib_locale::Locale::EnUs, "USD", "US Dollar"),
+            (lib_locale::Locale::EnGb, "GBP", "British Pound"),
+            (lib_locale::Locale::EnAu, "AUD", "Australian Dollar"),
+            (lib_locale::Locale::EnXa, "USD", "US Dollar"),
         ] {
             let dialog = Dialog::new(locale.currency());
             let view = dialog.presenter.view_model();
@@ -678,7 +671,7 @@ mod tests {
     }
 
     #[test]
-    fn the_dialog_shows_the_chosen_file_name() {
+    fn the_dialog_opens_on_the_base_unit_stage() {
         let dialog = Dialog::new(Currency::Aud);
         let view = dialog.presenter.view_model();
         assert_eq!(view.frame.title, "Create ledger");
@@ -687,7 +680,6 @@ mod tests {
             "Create waits on the Ledger stage"
         );
         assert_eq!(view.stage, LedgerStage::BaseUnit);
-        assert_eq!(view.file.text, "teda.pldb");
     }
 
     #[test]
@@ -729,7 +721,7 @@ mod tests {
     fn create_calls_the_port_once_with_the_edited_base_unit_and_closes_with_it() {
         let mut dialog = Dialog::new(Currency::Aud);
         dialog.send([
-            CreateLedgerEvent::Code("btc".into()),
+            CreateLedgerEvent::Code("BTC".into()),
             CreateLedgerEvent::Name("Bitcoin".into()),
             CreateLedgerEvent::Kind(UnitKind::Crypto),
         ]);
@@ -748,7 +740,7 @@ mod tests {
         assert_eq!(ledger.base_unit.id, created.base_unit);
         assert_eq!(
             (ledger.base_unit.code.as_str(), ledger.base_unit.kind),
-            ("btc", UnitKind::Crypto)
+            ("BTC", UnitKind::Crypto)
         );
         assert_eq!(
             (
@@ -812,7 +804,8 @@ mod tests {
         dialog.press([DialogInput::Backspace, DialogInput::Char('x')]);
         assert_eq!(
             dialog.presenter.view_model().code.text,
-            "auX".to_lowercase()
+            "AUX",
+            "the code types upper case"
         );
         dialog.press([DialogInput::PreviousField]);
         assert!(dialog.presenter.view_model().precision.focused);
@@ -953,7 +946,7 @@ mod tests {
     #[test]
     fn back_keeps_everything_typed_both_ways() {
         let mut dialog = Dialog::new(Currency::Aud);
-        dialog.send([CreateLedgerEvent::Code("btc".into())]);
+        dialog.send([CreateLedgerEvent::Code("BTC".into())]);
         dialog.press([DialogInput::Submit]);
         dialog.send([
             CreateLedgerEvent::LedgerName("Household".into()),
@@ -964,7 +957,7 @@ mod tests {
         let view = dialog.presenter.view_model();
         assert_eq!(view.stage, LedgerStage::BaseUnit);
         assert!(view.code.focused, "its first field");
-        assert_eq!(view.code.text, "btc");
+        assert_eq!(view.code.text, "BTC");
         assert!(dialog.router.closed.is_empty(), "Back closes nothing");
 
         dialog.press([DialogInput::Submit]);
@@ -1041,7 +1034,7 @@ mod tests {
         assert_eq!(dialog.presenter.view_model().stage, LedgerStage::BaseUnit);
 
         dialog.send([
-            CreateLedgerEvent::Code("aud".into()),
+            CreateLedgerEvent::Code("AUD".into()),
             CreateLedgerEvent::Step(LedgerStage::Ledger),
         ]);
         assert_eq!(dialog.presenter.view_model().stage, LedgerStage::Ledger);

@@ -307,7 +307,7 @@ mod tests {
 
     fn vas(shared: SharedPorts) -> SetPricePresenter {
         SetPricePresenter::new(shared, clock(), UnitId::SEED_VAS, DialogKeys::default())
-            .expect("vas is on Manual entry")
+            .expect("VAS is on Manual entry")
     }
 
     fn day(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -319,13 +319,13 @@ mod tests {
         let (_, shared) = sample();
         let view = vas(shared).view_model();
 
-        assert_eq!(view.frame.title, "Set price — vas");
+        assert_eq!(view.frame.title, "Set price — VAS");
         assert_eq!(view.frame.submit, "Set price");
         assert_eq!(view.week.text, format_date_input(today(&clock()), None));
         // The tests' clock reads Wednesday 21 October 2026, in the week starting Monday 19th.
         assert_eq!(view.week_help, "Week of Oct 19, 2026");
         assert_eq!(view.close.placeholder, "0.00");
-        assert_eq!(view.close_help, "In aud, to 2 places.");
+        assert_eq!(view.close_help, "In AUD, to 2 places.");
         assert!(view.close.focused && !view.week.focused);
         assert!(!view.frame.can_confirm, "no close yet");
     }
@@ -361,7 +361,7 @@ mod tests {
         assert_eq!(
             calls,
             [RouterCall::CloseDialog(Some(UnitsOutcome::PriceSet {
-                code: "vas".into(),
+                code: "VAS".into(),
                 week: day(2026, 10, 19),
             }))]
         );
@@ -371,7 +371,7 @@ mod tests {
         assert_eq!(
             last.close.0.to_string(),
             "101.20",
-            "padded to aud's 2 places"
+            "padded to AUD's 2 places"
         );
         assert_eq!(last.written_at, now());
     }
@@ -467,7 +467,7 @@ mod tests {
 
         assert_eq!(
             dialog.view_model().refusal.as_deref(),
-            Some("vas is priced by its price source, so it takes no price by hand.")
+            Some("VAS is priced by its price source, so it takes no price by hand.")
         );
     }
 

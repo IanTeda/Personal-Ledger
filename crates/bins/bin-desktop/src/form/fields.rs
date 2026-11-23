@@ -27,7 +27,7 @@ pub(crate) fn field_label(label: impl Into<SharedString>) -> impl IntoElement {
 /// `crate::settings::field_value`'s own border/padding, plus the focused-state border and caret this
 /// crate's first real text input needs (see the module doc). `label`/`placeholder` take
 /// non-`'static` strings too -- the Delete unit dialog's own confirm field (issue #186) needs a
-/// row-specific label ("Type btc to confirm") and placeholder (the code itself), neither known
+/// row-specific label ("Type BTC to confirm") and placeholder (the code itself), neither known
 /// until render time.
 pub(crate) fn text_field(
     id: &'static str,

@@ -85,7 +85,7 @@ fn selected(ui: &mut Harness<'_>) -> String {
 fn a_click_on_a_units_last_price_selects_its_row(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.click("unit-last-1");
-    assert_eq!(selected(&mut ui), "btc");
+    assert_eq!(selected(&mut ui), "BTC");
 }
 
 /// The open row menu's entries as their slugs.
@@ -126,7 +126,7 @@ fn clicking_a_row_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
     let mut ui = on_units(app);
 
     ui.click("unit-row-2");
-    assert_eq!(selected(&mut ui), "vas");
+    assert_eq!(selected(&mut ui), "VAS");
     assert!(ui.settings_frame().page_focused);
     let row = source_row(&mut ui, "Frankfurter");
     ui.click(&row);
@@ -138,7 +138,7 @@ fn double_clicking_a_row_opens_its_edit_dialog(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.double_click("unit-row-1");
     assert_eq!(ui.dialog(), Some("EditUnit"));
-    assert_eq!(ui.dialog_value("code").as_deref(), Some("btc"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("BTC"));
     ui.click("edit-unit-cancel");
 
     let row = source_row(&mut ui, "CoinGecko");
@@ -150,7 +150,7 @@ fn double_clicking_a_row_opens_its_edit_dialog(app: &mut TestAppContext) {
 fn a_right_click_opens_the_rows_menu_and_an_entry_runs_its_action(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.right_click("unit-row-1");
-    assert_eq!(selected(&mut ui), "btc");
+    assert_eq!(selected(&mut ui), "BTC");
     assert_eq!(
         menu(&mut ui),
         Some(vec!["prices", "edit-unit", "delete-unit"])
@@ -183,7 +183,7 @@ fn the_delete_dialogs_cancel_button_closes_it(app: &mut TestAppContext) {
 
     ui.click("delete-unit-cancel");
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "VAS"]);
 }
 
 #[gpui::test]
@@ -212,7 +212,7 @@ fn the_plus_buttons_open_their_tables_add_dialogs(app: &mut TestAppContext) {
     assert_eq!(ui.dialog(), Some("AddUnit"));
     ui.click("add-unit-cancel");
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "VAS"]);
 }
 
 #[gpui::test]
@@ -233,9 +233,9 @@ fn the_add_unit_controls_and_confirm_button_add_the_unit(app: &mut TestAppContex
 
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        ui.unit_rows().iter().find(|row| row.0 == "gold"),
+        ui.unit_rows().iter().find(|row| row.0 == "GOLD"),
         Some(&(
-            "gold".to_string(),
+            "GOLD".to_string(),
             "Gold".to_string(),
             "Commodity".to_string()
         ))
@@ -295,7 +295,7 @@ fn the_delete_confirm_button_deactivates_a_unit_in_use(app: &mut TestAppContext)
 
     ui.click("delete-unit-confirm");
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.inactive_unit_codes(), ["btc"]);
+    assert_eq!(ui.inactive_unit_codes(), ["BTC"]);
 
     ui.right_click("unit-row-1");
     assert_eq!(
@@ -321,13 +321,13 @@ fn the_new_base_select_moves_the_base_by_click(app: &mut TestAppContext) {
     ui.click("delete-unit-new-base-option-1");
     assert_eq!(
         ui.dialog_value("new_base").as_deref(),
-        Some("vas — Vanguard Aus Shares")
+        Some("VAS — Vanguard Aus Shares")
     );
     ui.press("a u d");
     ui.click("delete-unit-confirm");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.base_unit_code().as_deref(), Some("vas"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("VAS"));
 }
 
 #[gpui::test]
@@ -344,17 +344,17 @@ fn an_institutions_usual_unit_select_reassigns_it_by_click(app: &mut TestAppCont
     ui.click("delete-unit-usual-unit-0-option-2");
     assert_eq!(
         ui.dialog_value("usual_units").as_deref(),
-        Some("Cryptocurrency Exchange=vas — Vanguard Aus Shares")
+        Some("Cryptocurrency Exchange=VAS — Vanguard Aus Shares")
     );
     ui.press("b t c");
     ui.click("delete-unit-confirm");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.unit_codes(), ["aud", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "VAS"]);
     assert_eq!(
         ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
             .as_deref(),
-        Some("vas")
+        Some("VAS")
     );
 }
 
@@ -378,10 +378,10 @@ fn the_named_base_units_two_selects_are_each_chosen_by_click(app: &mut TestAppCo
     ui.click("delete-unit-confirm");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.base_unit_code().as_deref(), Some("vas"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("VAS"));
     assert_eq!(
         ui.usual_unit_code(InstitutionId::SEED_WESTPAC).as_deref(),
-        Some("btc")
+        Some("BTC")
     );
 }
 
@@ -395,7 +395,7 @@ fn confirming_a_named_unit_untouched_by_click_leaves_its_institution_on_none(
     ui.press("b t c");
     ui.click("delete-unit-confirm");
 
-    assert_eq!(ui.unit_codes(), ["aud", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "VAS"]);
     assert_eq!(
         ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE),
         None
@@ -412,11 +412,11 @@ fn cancel_on_a_named_units_delete_reassigns_nothing(app: &mut TestAppContext) {
     ui.click("delete-unit-cancel");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "VAS"]);
     assert_eq!(
         ui.usual_unit_code(InstitutionId::SEED_CRYPTO_EXCHANGE)
             .as_deref(),
-        Some("btc")
+        Some("BTC")
     );
 }
 
@@ -469,7 +469,7 @@ fn at_x_large_the_pane_draws_its_groups_and_its_buttons_open_the_dialogs(app: &m
     ui.click("edit-built-in-source-cancel");
     ui.click("units-pane-edit-unit");
     assert_eq!(ui.dialog(), Some("EditUnit"));
-    assert_eq!(ui.dialog_value("code").as_deref(), Some("btc"));
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("BTC"));
 }
 
 #[gpui::test]
@@ -487,20 +487,20 @@ fn at_x_large_the_pane_draws_a_units_accounts(app: &mut TestAppContext) {
             _ => None,
         })
         .expect("an ACCOUNTS group");
-    assert!(!accounts.rows.is_empty(), "btc's sample Accounts");
+    assert!(!accounts.rows.is_empty(), "BTC's sample Accounts");
     assert!(accounts.rows.iter().all(|row| {
         row.value
             .as_deref()
-            .is_some_and(|value| value.ends_with(" aud"))
+            .is_some_and(|value| value.ends_with(" AUD"))
     }));
     assert!(
         accounts.rows.iter().all(|row| {
             row.balance
-                .strip_suffix(" btc")
+                .strip_suffix(" BTC")
                 .and_then(|amount| amount.split_once('.'))
                 .is_some_and(|(_, places)| places.len() == 8)
         }),
-        "btc's balances show at its Precision of 8"
+        "BTC's balances show at its Precision of 8"
     );
 }
 
@@ -526,12 +526,12 @@ fn a_click_on_precision_focuses_it_for_typing(app: &mut TestAppContext) {
 #[gpui::test]
 fn the_base_glyph_follows_the_unit_picked_on_ledger(app: &mut TestAppContext) {
     let mut ui = on_units(app);
-    assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("AUD"));
     ui.click("settings-index-Ledger");
     ui.click("settings-ledger-base-unit");
     ui.click("settings-ledger-base-unit-option-1");
     ui.click("settings-index-Units");
-    assert_ne!(ui.base_unit_code().as_deref(), Some("aud"));
+    assert_ne!(ui.base_unit_code().as_deref(), Some("AUD"));
 }
 
 #[gpui::test]
@@ -558,10 +558,10 @@ fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut Te
     assert_eq!(ui.dialog(), Some("DeleteUnit"));
     assert!(
         ui.dialog_value("refusal")
-            .is_some_and(|text| text.starts_with("aud is the quote unit of 2 other units")),
+            .is_some_and(|text| text.starts_with("AUD is the quote unit of 2 other units")),
         "the refusal says how many units quote it"
     );
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+    assert_eq!(ui.unit_codes(), ["AUD", "BTC", "VAS"]);
 }
 
 #[gpui::test]
@@ -577,9 +577,9 @@ fn the_set_price_menu_entry_and_pane_button_open_set_price_and_confirm_sets_it(
     ui.right_click("unit-row-1");
     assert!(
         !menu(&mut ui)
-            .expect("btc has a menu")
+            .expect("BTC has a menu")
             .contains(&"set-price"),
-        "btc is priced by CoinGecko"
+        "BTC is priced by CoinGecko"
     );
     // The open menu draws over the rows under btc, so it closes before vas is clicked.
     ui.press("escape");
@@ -608,7 +608,7 @@ fn the_set_price_menu_entry_and_pane_button_open_set_price_and_confirm_sets_it(
         .filter(|fact| fact.label == "Last price")
         .map(|fact| fact.value)
         .collect();
-    assert_eq!(prices, ["7.50 aud"]);
+    assert_eq!(prices, ["7.50 AUD"]);
 }
 
 #[gpui::test]
@@ -625,14 +625,14 @@ fn the_headers_undo_takes_back_a_deactivation_and_its_list_redoes_it(app: &mut T
     ui.right_click("unit-row-1");
     ui.click("settings-units-menu-delete-unit");
     ui.click("delete-unit-confirm");
-    assert_eq!(ui.inactive_unit_codes(), ["btc"]);
+    assert_eq!(ui.inactive_unit_codes(), ["BTC"]);
 
     ui.click("topbar-undo");
-    assert!(ui.inactive_unit_codes().is_empty(), "btc is active again");
+    assert!(ui.inactive_unit_codes().is_empty(), "BTC is active again");
 
     ui.click("topbar-undo-menu");
     ui.click("topbar-history-redo-1");
-    assert_eq!(ui.inactive_unit_codes(), ["btc"]);
+    assert_eq!(ui.inactive_unit_codes(), ["BTC"]);
 }
 
 #[gpui::test]
@@ -643,11 +643,11 @@ fn the_headers_undo_takes_back_a_unit_deleted_by_mouse(app: &mut TestAppContext)
     ui.click("settings-units-menu-delete-unit");
     ui.press("b t c");
     ui.click("delete-unit-confirm");
-    assert!(!ui.unit_codes().contains(&"btc".to_string()));
+    assert!(!ui.unit_codes().contains(&"BTC".to_string()));
 
     ui.click("topbar-undo");
 
     let mut after = ui.unit_codes();
     after.sort();
-    assert_eq!(after, before, "btc back");
+    assert_eq!(after, before, "BTC back");
 }

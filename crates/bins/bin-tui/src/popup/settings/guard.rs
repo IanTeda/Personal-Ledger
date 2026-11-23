@@ -2,7 +2,7 @@
 //! every reported total is converted again when the base changes. It states what changes and asks
 //! you to type the new Unit's code; `enter` stays dim until the text matches exactly, and
 //! `ctrl p` goes to Settings › Units for the price sources instead. (`p` is the card's key, but a
-//! code can hold a `p`, as `gbp` does, so the typed field keeps every plain letter.)
+//! code can hold a `P`, as `GBP` does, so the typed field keeps every plain letter.)
 //!
 //! The guard hosts `lib-units`' Set base unit Presenter on the Open Ledger's shared ports, so the
 //! Interactor, which Units can be the base, and the refusals are `lib-units`' alone: the editor
@@ -124,8 +124,9 @@ impl BaseUnitGuardPopup {
         })
     }
 
+    /// Types `ch` upper case, as a Unit's code is, so the field reads as the code it must match.
     pub fn push(&mut self, ch: char) {
-        self.typed.push(ch);
+        self.typed.extend(ch.to_uppercase());
     }
 
     pub fn backspace(&mut self) {
@@ -378,20 +379,20 @@ mod tests {
     fn it_opens_only_on_a_new_base_the_presenter_offers() {
         let ports = sample();
         assert!(
-            BaseUnitGuardPopup::open(&ports, "aud").is_none(),
+            BaseUnitGuardPopup::open(&ports, "AUD").is_none(),
             "already the base"
         );
         assert!(
             BaseUnitGuardPopup::open(&ports, "zzz").is_none(),
             "not a Unit"
         );
-        assert!(BaseUnitGuardPopup::open(&ports, "btc").is_some());
+        assert!(BaseUnitGuardPopup::open(&ports, "BTC").is_some());
     }
 
     #[test]
     fn enter_does_nothing_until_the_typed_code_matches_then_sets_the_base() {
         let ports = sample();
-        let mut guard = BaseUnitGuardPopup::open(&ports, "btc").expect("btc can be the base");
+        let mut guard = BaseUnitGuardPopup::open(&ports, "BTC").expect("BTC can be the base");
         guard.push('b');
         guard.push('t');
         assert_eq!(guard.confirm(), Confirmed::NotYet);
@@ -399,7 +400,7 @@ mod tests {
         guard.backspace();
         guard.push('c');
         assert!(guard.matches());
-        assert_eq!(guard.confirm(), Confirmed::Set("btc".into()));
+        assert_eq!(guard.confirm(), Confirmed::Set("BTC".into()));
         let base = ports.ports.borrow().base_unit().base_unit();
         assert_eq!(base, UnitId::SEED_BTC);
     }
@@ -426,7 +427,7 @@ mod tests {
                 .expect("the keys row is drawn");
             buffer[(u16::try_from(x).unwrap_or_default(), y)].style()
         };
-        let mut guard = BaseUnitGuardPopup::open(&sample(), "btc").expect("btc can be the base");
+        let mut guard = BaseUnitGuardPopup::open(&sample(), "BTC").expect("BTC can be the base");
         guard.push('b');
         assert_eq!(enter_style(&guard).fg, c.muted().fg);
         guard.push('t');
@@ -437,16 +438,16 @@ mod tests {
     #[test]
     fn it_states_the_change_and_names_the_code_to_type() {
         crate::locale::init_for_tests();
-        let guard = BaseUnitGuardPopup::open(&sample(), "btc").expect("btc can be the base");
+        let guard = BaseUnitGuardPopup::open(&sample(), "BTC").expect("BTC can be the base");
         let text = render(&guard);
         for needle in [
-            "base unit  aud → btc",
-            ":set base btc",
-            "converted again into btc",
+            "base unit  AUD → BTC",
+            ":set base BTC",
+            "converted again into BTC",
             "· unchanged",
-            "already in btc",
+            "already in BTC",
             "missing prices",
-            "type btc to confirm",
+            "type BTC to confirm",
             "enter change base unit",
             "ctrl p price sources",
         ] {

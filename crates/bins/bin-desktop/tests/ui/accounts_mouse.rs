@@ -118,13 +118,13 @@ fn the_confirm_button_adds_only_a_valid_form(app: &mut TestAppContext) {
 #[gpui::test]
 fn choosing_an_institution_with_a_usual_unit_starts_the_unit_on_it(app: &mut TestAppContext) {
     let mut ui = add_dialog(app);
-    assert_eq!(ui.account_form().unit.as_deref(), Some("aud"));
+    assert_eq!(ui.account_form().unit.as_deref(), Some("AUD"));
 
     ui.click("add-account-institution");
     ui.click("add-account-institution-option-5");
     let form = ui.account_form();
     assert_eq!(form.institution.as_deref(), Some("Cryptocurrency Exchange"));
-    assert_eq!(form.unit.as_deref(), Some("btc"));
+    assert_eq!(form.unit.as_deref(), Some("BTC"));
 }
 
 #[gpui::test]
@@ -134,7 +134,7 @@ fn a_unit_picked_with_the_mouse_stays_through_a_change_of_institution(app: &mut 
     ui.click("add-account-unit");
     ui.click("add-account-unit-option-2");
     let picked = ui.account_form().unit;
-    assert_ne!(picked.as_deref(), Some("btc"));
+    assert_ne!(picked.as_deref(), Some("BTC"));
 
     ui.click("add-account-institution");
     ui.click("add-account-institution-option-5");
@@ -147,10 +147,10 @@ fn an_institution_without_a_usual_unit_leaves_the_unit_on_the_base_unit(app: &mu
 
     ui.click("add-account-institution");
     ui.click("add-account-institution-option-5");
-    assert_eq!(ui.account_form().unit.as_deref(), Some("btc"));
+    assert_eq!(ui.account_form().unit.as_deref(), Some("BTC"));
     ui.click("add-account-institution");
     ui.click("add-account-institution-option-2");
     let form = ui.account_form();
     assert_eq!(form.institution.as_deref(), Some("American Express"));
-    assert_eq!(form.unit.as_deref(), Some("aud"));
+    assert_eq!(form.unit.as_deref(), Some("AUD"));
 }

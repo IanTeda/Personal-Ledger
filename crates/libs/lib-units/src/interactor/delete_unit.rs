@@ -135,7 +135,7 @@ mod tests {
 
         let removed = delete(&mut ports, UnitId::SEED_BTC, None).unwrap();
 
-        assert_eq!(removed.code, "btc");
+        assert_eq!(removed.code, "BTC");
         assert_eq!(ports.units.unit(UnitId::SEED_BTC), None);
         assert_eq!(ports.units.units.len(), 2);
         assert_eq!(ports.base_unit.0, UnitId::SEED_AUD);
@@ -217,7 +217,7 @@ mod tests {
         assert_eq!(
             refused(&mut ports, UnitId::SEED_AUD, Some(UnitId::SEED_BTC)),
             Error::QuotedBy(2),
-            "btc and vas are quoted in aud"
+            "BTC and VAS are quoted in AUD"
         );
 
         ports.units.units[2].link.quote = UnitId::SEED_BTC;
@@ -237,7 +237,7 @@ mod tests {
         let mut ports = InMemoryPorts::sample(Utc::now());
         ports.units.units[1].link.quote = UnitId::SEED_BTC;
 
-        delete(&mut ports, UnitId::SEED_BTC, None).expect("only btc quotes btc");
+        delete(&mut ports, UnitId::SEED_BTC, None).expect("only BTC quotes BTC");
     }
 
     #[test]

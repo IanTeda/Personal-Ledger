@@ -295,7 +295,7 @@ impl Deleting {
     ) -> Option<UnitsDeletePresenter> {
         match event {
             DeleteUnitEvent::Input(input) => return self.input(input, router),
-            DeleteUnitEvent::ConfirmText(text) => self.confirm_text = text,
+            DeleteUnitEvent::ConfirmText(text) => self.confirm_text = text.to_uppercase(),
             DeleteUnitEvent::NewBase(id) => {
                 self.list.close();
                 if self.candidates.iter().any(|choice| choice.value == id) {
@@ -343,7 +343,8 @@ impl Deleting {
             DialogInput::Select | DialogInput::SelectNext | DialogInput::SelectPrevious => {
                 self.select_input(input);
             }
-            DialogInput::Char(ch) => self.confirm_text.push(ch),
+            // The code is upper case, so the confirmation types as it reads.
+            DialogInput::Char(ch) => self.confirm_text.extend(ch.to_uppercase()),
             DialogInput::Backspace => {
                 self.confirm_text.pop();
             }
@@ -576,14 +577,14 @@ mod tests {
         let mut dialog = Dialog::open(VAS);
         let view = dialog.view();
 
-        assert_eq!(view.unit.frame.title, "Delete unit \u{2014} vas");
+        assert_eq!(view.unit.frame.title, "Delete unit \u{2014} VAS");
         assert!(view.unit.frame.destructive);
         assert!(view.unit.new_base.is_none());
         assert!(view.usual_units.is_none());
 
-        dialog.confirm("vas");
+        dialog.confirm("VAS");
 
-        dialog.closed_deleting("vas");
+        dialog.closed_deleting("VAS");
         assert!(dialog.deletion.borrow().units.unit(VAS).is_none());
     }
 
@@ -592,11 +593,11 @@ mod tests {
         let mut rows = world();
         rows.units.units[2].is_active = false;
         let dialog = Dialog::open_on(rows, BTC, UnitUse::default());
-        let usual_units = dialog.view().usual_units.expect("two exchanges name btc");
+        let usual_units = dialog.view().usual_units.expect("two exchanges name BTC");
 
         assert_eq!(
             usual_units.help,
-            "2 institutions use btc as their usual unit. Choose the unit each uses instead, or \
+            "2 institutions use BTC as their usual unit. Choose the unit each uses instead, or \
              leave them on None."
         );
         let names: Vec<_> = usual_units
@@ -609,8 +610,8 @@ mod tests {
             assert_eq!(named.select.chosen, Some(None), "never silently the base");
             assert_eq!(
                 labels(&named.select),
-                ["None", "aud \u{2014} Australian Dollar"],
-                "deactivated vas and btc itself aren't offered"
+                ["None", "AUD \u{2014} Australian Dollar"],
+                "deactivated VAS and BTC itself aren't offered"
             );
         }
         assert!(dialog.view().unit.new_base.is_none());
@@ -624,9 +625,9 @@ mod tests {
             institution: COINSPOT,
             unit: Some(VAS),
         });
-        dialog.confirm("btc");
+        dialog.confirm("BTC");
 
-        dialog.closed_deleting("btc");
+        dialog.closed_deleting("BTC");
         assert_eq!(dialog.usual_unit(COINSPOT), Some(VAS));
         assert_eq!(dialog.usual_unit(KRAKEN), None);
         assert!(dialog.deletion.borrow().units.unit(BTC).is_none());
@@ -645,7 +646,7 @@ mod tests {
             unit: Some(VAS),
         });
 
-        let usual_units = dialog.view().usual_units.expect("btc is named");
+        let usual_units = dialog.view().usual_units.expect("BTC is named");
         assert!(
             usual_units
                 .selects
@@ -662,17 +663,17 @@ mod tests {
         let mut dialog = Dialog::open_on(rows, AUD, UnitUse::default());
         let view = dialog.view();
 
-        let new_base = view.unit.new_base.expect("aud is the base");
+        let new_base = view.unit.new_base.expect("AUD is the base");
         assert_eq!(
             labels(&new_base.select),
-            ["btc \u{2014} Bitcoin", "vas \u{2014} Vanguard Aus Shares"]
+            ["BTC \u{2014} Bitcoin", "VAS \u{2014} Vanguard Aus Shares"]
         );
         assert!(view.usual_units.is_none());
 
         dialog.send(DeleteUnitEvent::NewBase(VAS));
-        dialog.confirm("aud");
+        dialog.confirm("AUD");
 
-        dialog.closed_deleting("aud");
+        dialog.closed_deleting("AUD");
         assert_eq!(dialog.deletion.borrow().base_unit.0, VAS);
     }
 
@@ -682,10 +683,10 @@ mod tests {
         let view = dialog.view();
 
         assert!(view.unit.new_base.is_some());
-        let usual_units = view.usual_units.expect("Westpac names aud");
+        let usual_units = view.usual_units.expect("Westpac names AUD");
         assert_eq!(
             usual_units.help,
-            "1 institution uses aud as its usual unit. Choose the unit it uses instead, or leave \
+            "1 institution uses AUD as its usual unit. Choose the unit it uses instead, or leave \
              it on None."
         );
         assert_eq!(usual_units.selects[0].institution, WESTPAC);
@@ -695,9 +696,9 @@ mod tests {
             institution: WESTPAC,
             unit: Some(BTC),
         });
-        dialog.confirm("aud");
+        dialog.confirm("AUD");
 
-        dialog.closed_deleting("aud");
+        dialog.closed_deleting("AUD");
         assert_eq!(dialog.deletion.borrow().base_unit.0, VAS);
         assert_eq!(dialog.usual_unit(WESTPAC), Some(BTC));
     }
@@ -712,7 +713,7 @@ mod tests {
         let mut dialog = Dialog::open_on(world(), BTC, uses);
         let view = dialog.view();
 
-        assert_eq!(view.unit.frame.title, "Deactivate unit \u{2014} btc");
+        assert_eq!(view.unit.frame.title, "Deactivate unit \u{2014} BTC");
         assert!(view.unit.in_use.is_some());
         assert!(view.usual_units.is_none());
 
@@ -722,7 +723,7 @@ mod tests {
             dialog.router.calls,
             [RouterCall::CloseDialog(Some(UnitsOutcome::Unit {
                 change: UnitChange::Deactivated,
-                code: "btc".into(),
+                code: "BTC".into(),
             }))]
         );
         assert!(
@@ -748,11 +749,11 @@ mod tests {
         );
         let before = dialog.deletion.borrow().clone();
 
-        dialog.confirm("btc");
+        dialog.confirm("BTC");
 
         assert!(dialog.router.calls.is_empty());
         let view = dialog.view();
-        assert_eq!(view.unit.frame.title, "Deactivate unit \u{2014} btc");
+        assert_eq!(view.unit.frame.title, "Deactivate unit \u{2014} BTC");
         assert!(view.usual_units.is_none());
         assert_eq!(*dialog.deletion.borrow(), before);
     }
@@ -767,7 +768,7 @@ mod tests {
         dialog.deletion.borrow_mut().units.units[2].is_active = false;
         let before = dialog.deletion.borrow().clone();
 
-        dialog.confirm("btc");
+        dialog.confirm("BTC");
         assert_eq!(
             dialog.view().unit.refusal.as_deref(),
             Some("A usual unit you chose has since been deleted or deactivated. Choose another.")
@@ -845,17 +846,17 @@ mod tests {
             !view.list.is_open(),
             "Space types rather than opening a list"
         );
-        assert_eq!(view.unit.confirm.expect("deleting").text, "btc");
+        assert_eq!(view.unit.confirm.expect("deleting").text, "BTC");
 
         input(&mut dialog, &[DialogInput::Select]);
 
-        dialog.closed_deleting("btc");
+        dialog.closed_deleting("BTC");
     }
 
     #[test]
     fn a_click_opens_a_select_whose_list_select_commits_rather_than_confirming() {
         let mut dialog = Dialog::open(BTC);
-        dialog.send(DeleteUnitEvent::ConfirmText("btc".into()));
+        dialog.send(DeleteUnitEvent::ConfirmText("BTC".into()));
         dialog.send(DeleteUnitEvent::ToggleSelect(1));
         let view = dialog.view();
         assert_eq!(view.focus, 1);

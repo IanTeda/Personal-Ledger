@@ -227,9 +227,9 @@ impl InMemoryLedgerUnits {
         Self {
             rows: Rc::new(RefCell::new(LedgerRows {
                 units: vec![
-                    unit(UnitId::SEED_AUD, "aud", "Australian dollar", 2),
-                    unit(UnitId::SEED_BTC, "btc", "Bitcoin", 8),
-                    unit(UnitId::SEED_VAS, "vas", "Vanguard Australian Shares", 2),
+                    unit(UnitId::SEED_AUD, "AUD", "Australian dollar", 2),
+                    unit(UnitId::SEED_BTC, "BTC", "Bitcoin", 8),
+                    unit(UnitId::SEED_VAS, "VAS", "Vanguard Australian Shares", 2),
                 ],
                 base: UnitId::SEED_AUD,
                 name: LedgerName::new("Sample Ledger").expect("a short, non-blank name"),
@@ -600,14 +600,14 @@ impl FixedLedgerSummaries {
     pub fn sample() -> Self {
         Self(LedgerCounts {
             units: 3,
-            base_unit: Some("aud".to_string()),
+            base_unit: Some("AUD".to_string()),
             institutions: 7,
             accounts: 7,
             transactions: 680,
             net_worth: Some(HeadlineAmount {
                 amount: lib_core::Money("83995.87".parse().expect("a decimal literal")),
                 places: 2,
-                code: "aud".to_string(),
+                code: "AUD".to_string(),
             }),
             categories: 12,
             category_levels: 3,

@@ -277,9 +277,9 @@ mod tests {
             counts.category_levels,
             lib_categories::levels_deep(&categories)
         );
-        assert_eq!(counts.base_unit.as_deref(), Some("aud"));
+        assert_eq!(counts.base_unit.as_deref(), Some("AUD"));
         let worth = counts.net_worth.expect("the base Unit is known");
-        assert_eq!(worth.code, "aud");
+        assert_eq!(worth.code, "AUD");
         assert_eq!(
             worth.amount,
             lib_accounts::net_worth(&accounts, Some(UnitId::SEED_AUD)).base_net

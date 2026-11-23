@@ -971,20 +971,20 @@ mod tests {
         };
         let text = render(&view, 128, 40);
         assert!(text.contains("LAST"), "{text}");
-        assert!(row(&text, "btc").contains("148,212.40 aud"), "{text}");
-        assert!(row(&text, "vas").contains('—'), "{text}");
+        assert!(row(&text, "BTC").contains("148,212.40 AUD"), "{text}");
+        assert!(row(&text, "VAS").contains('—'), "{text}");
         let summary_last = |text: &str| {
             text.lines()
                 .find(|line| line.contains("\u{2502} Last "))
                 .map(str::to_string)
                 .unwrap_or_default()
         };
-        assert!(summary_last(&text).contains('—'), "aud has none:\n{text}");
+        assert!(summary_last(&text).contains('—'), "AUD has none:\n{text}");
 
         view.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
         let text = render(&view, 128, 40);
         assert!(
-            summary_last(&text).contains("148,212.40 aud  5 minutes ago"),
+            summary_last(&text).contains("148,212.40 AUD  5 minutes ago"),
             "the summary adds its age:\n{text}"
         );
     }
@@ -1028,7 +1028,7 @@ mod tests {
         let model = view.prices_view_model().expect("enter opens it");
         let text = render(&view, 120, 50);
 
-        assert!(text.contains("btc · Bitcoin · prices"), "{text}");
+        assert!(text.contains("BTC · Bitcoin · prices"), "{text}");
         assert!(text.contains(&model.window), "{text}");
         assert!(text.contains("WEEKLY CLOSE"), "{text}");
         assert!(text.contains("WEEKLY PRICES"), "{text}");
@@ -1077,7 +1077,7 @@ mod tests {
             .units
             .into_iter()
             .find(|unit| unit.selected);
-        assert_eq!(selected.map(|unit| unit.code).as_deref(), Some("btc"));
+        assert_eq!(selected.map(|unit| unit.code).as_deref(), Some("BTC"));
         assert!(!view.back(), "a second back is the Shell's");
     }
 
@@ -1087,7 +1087,7 @@ mod tests {
         view.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
         view.handle_key(key(KeyCode::Enter));
         let text = render(&view, 120, 50);
-        assert!(text.contains("vas has no weekly prices yet."), "{text}");
+        assert!(text.contains("VAS has no weekly prices yet."), "{text}");
     }
 
     #[test]
@@ -1157,7 +1157,7 @@ mod tests {
                 .any(|line| line.trim_end().ends_with("\u{2502} PRICE")),
             "PRICE missing:\n{text}"
         );
-        assert!(text.contains("btc · Bitcoin"), "the UNIT title:\n{text}");
+        assert!(text.contains("BTC · Bitcoin"), "the UNIT title:\n{text}");
         for figure in ["Precision", "Week change", "52w range"] {
             assert!(text.contains(figure), "{figure} missing:\n{text}");
         }
@@ -1198,8 +1198,8 @@ mod tests {
 
         assert!(!view.dialog_open(), "enter confirms Set price");
         let text = render(&view, 256, 72);
-        assert!(text.contains("42.00 aud"), "the last price:\n{text}");
-        assert!(text.contains("Set the price of vas"), "ACTIVITY:\n{text}");
+        assert!(text.contains("42.00 AUD"), "the last price:\n{text}");
+        assert!(text.contains("Set the price of VAS"), "ACTIVITY:\n{text}");
     }
 
     #[test]

@@ -28,7 +28,7 @@ fn differing_file(path: &Path) -> Option<Counts> {
             return;
         };
         xau.id = UnitId::new();
-        xau.code = "xau".to_string();
+        xau.code = "XAU".to_string();
         xau.name = "Gold".to_string();
         let unused = lib_units::UnitUse::default();
         storage.units.split_mut(&unused).units.upsert_unit(xau);
@@ -84,7 +84,7 @@ fn drawn(count: usize) -> String {
 fn this_ledger_counts_the_opened_file_s_rows() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("household.pldb");
-    let counts = differing_file(&path).expect("the seed has btc");
+    let counts = differing_file(&path).expect("the seed has BTC");
     let mut shell = cold_shell(None);
     run_command(&mut shell, &format!("open {}", path.display()));
 
@@ -116,7 +116,7 @@ fn this_ledger_counts_the_opened_file_s_rows() {
 fn the_base_unit_guard_quotes_the_opened_file_s_rows() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("household.pldb");
-    let counts = differing_file(&path).expect("the seed has btc");
+    let counts = differing_file(&path).expect("the seed has BTC");
     let mut shell = cold_shell(None);
     run_command(&mut shell, &format!("open {}", path.display()));
     run_command(&mut shell, "settings ledger");
@@ -125,11 +125,11 @@ fn the_base_unit_guard_quotes_the_opened_file_s_rows() {
     press(&mut shell, "G Enter Right Enter");
     let frame = screen(&mut shell);
 
-    assert!(frame.contains("aud → btc"), "the guard is open:\n{frame}");
+    assert!(frame.contains("AUD → BTC"), "the guard is open:\n{frame}");
     let transactions = format!("{} · unchanged", drawn(counts.transactions));
     assert!(frame.contains(&transactions), "{transactions}:\n{frame}");
     let accounts = format!(
-        "{} · {} already in btc",
+        "{} · {} already in BTC",
         drawn(counts.accounts),
         drawn(counts.in_btc)
     );

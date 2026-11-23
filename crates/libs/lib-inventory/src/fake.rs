@@ -92,8 +92,8 @@ impl InMemoryUnits {
         };
         Self {
             units: vec![
-                unit(UnitId::SEED_AUD, "aud", "Australian dollar"),
-                unit(UnitId::seed(20), "usd", "US dollar"),
+                unit(UnitId::SEED_AUD, "AUD", "Australian dollar"),
+                unit(UnitId::seed(20), "USD", "US dollar"),
             ],
         }
     }

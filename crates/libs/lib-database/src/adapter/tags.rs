@@ -576,7 +576,7 @@ mod tests {
         assert_eq!(
             used.total,
             Total::Single {
-                unit: "aud".into(),
+                unit: "AUD".into(),
                 amount: Money(BigDecimal::from(-15)),
             }
         );

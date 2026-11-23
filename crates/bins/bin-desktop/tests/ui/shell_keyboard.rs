@@ -402,7 +402,7 @@ fn a_dialogs_text_field_types_u_and_takes_ctrl_r_before_the_shell(app: &mut Test
 
     assert_eq!(
         ui.dialog_value("code").as_deref(),
-        Some("u"),
+        Some("U"),
         "typed, not Undo"
     );
     assert_eq!(status(&mut ui), None);
@@ -474,7 +474,7 @@ fn an_open_dialog_takes_a_key_the_shell_keeps(app: &mut TestAppContext) {
 
     assert_eq!(
         ui.dialog_value("code").as_deref(),
-        Some("b"),
+        Some("B"),
         "typed, not the rail toggle"
     );
     assert_eq!(rail(&mut ui), before);

@@ -1,12 +1,10 @@
-//! The Create ledger Dialog, in two stages under a step strip (#1344): Base unit, the chosen file's
-//! name (read-only), then Code and Type, Name and Precision, as Add unit draws them; then Ledger,
-//! the Ledger name, Owner and Financial year starts, each with its line of help. An Entity in the
+//! The Create ledger Dialog, in two stages under a step strip (#1344): Base unit, Code and Type,
+//! Name and Precision, as Add unit draws them; then Ledger, the Ledger name, Owner and Financial
+//! year starts, each with its line of help. An Entity in the
 //! Dialog host (`shell::view::dialog_entity`); every Dialog command and typed key reaches the
 //! Presenter as a `lib-viper` `DialogInput` and every click as a Presenter event.
 
-use std::rc::Rc;
-
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_core::FinancialYearStart;
 use lib_ledger_creation::presenter::{
     CreateLedgerEvent, CreateLedgerPresenter, CreateLedgerViewModel, LedgerField, LedgerStage,
@@ -78,7 +76,6 @@ impl DialogView for CreateLedgerPresenter {
                     .join("|"),
             ),
             ("submit", view.frame.submit.clone()),
-            ("file", view.file.text.clone()),
             ("code", view.code.text.clone()),
             ("name", view.name.text.clone()),
             ("precision", view.precision.text.clone()),
@@ -292,17 +289,7 @@ fn base_unit_body(
         actions,
         cx,
     );
-    let file = text_field(
-        "create-ledger-file",
-        label(view.file.label.clone()),
-        &view.file.text,
-        "",
-        false,
-        Rc::new(|_window: &mut Window, _cx: &mut App| {}),
-        cx,
-    );
     vec![
-        file,
         div().child(view.help.clone()).into_any_element(),
         two_up([
             text(

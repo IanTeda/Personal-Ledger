@@ -347,15 +347,15 @@ mod tests {
     fn reads_with_bills(bills: Vec<DashboardBill>) -> InMemoryDashboardReads {
         let mut reads = InMemoryDashboardReads::default();
         reads.bills.bills = bills;
-        reads.bills.base_unit_code = Some("aud".to_string());
+        reads.bills.base_unit_code = Some("AUD".to_string());
         reads
     }
 
     #[test]
     fn needs_attention_keeps_the_ports_order_and_marks_the_overdue() {
         let (_, presenter) = presenter(reads_with_bills(vec![
-            bill(1, "Netflix", date(2026, 9, 18), "22.99", "aud"),
-            bill(2, "Rent", date(2026, 9, 24), "2400.00", "aud"),
+            bill(1, "Netflix", date(2026, 9, 18), "22.99", "AUD"),
+            bill(2, "Rent", date(2026, 9, 24), "2400.00", "AUD"),
         ]));
 
         let rows = presenter.view_model().bills;
@@ -372,8 +372,8 @@ mod tests {
     #[test]
     fn an_amount_names_its_unit_only_when_it_is_not_the_base_unit() {
         let (_, presenter) = presenter(reads_with_bills(vec![
-            bill(1, "Rent", date(2026, 9, 24), "2400.00", "aud"),
-            bill(2, "Vanguard", date(2026, 9, 25), "12.5000", "vas"),
+            bill(1, "Rent", date(2026, 9, 24), "2400.00", "AUD"),
+            bill(2, "Vanguard", date(2026, 9, 25), "12.5000", "VAS"),
         ]));
 
         let amounts: Vec<String> = presenter
@@ -383,7 +383,7 @@ mod tests {
             .map(|row| row.amount)
             .collect();
 
-        assert_eq!(amounts, ["2,400.00", "12.5000 vas"]);
+        assert_eq!(amounts, ["2,400.00", "12.5000 VAS"]);
     }
 
     fn bar(category: &str, spent: &str, budget: &str) -> DashboardBudgetBar {
@@ -471,7 +471,7 @@ mod tests {
             "Netflix",
             date(2026, 9, 21),
             "22.99",
-            "aud",
+            "AUD",
         )]));
         assert!(!presenter.view_model().bills[0].overdue);
 
@@ -522,7 +522,7 @@ mod tests {
     fn the_view_model_reads_the_ports_once_until_a_change_or_a_new_day() {
         locale();
         let reads = Rc::new(CountingReads {
-            inner: reads_with_bills(vec![bill(1, "Rent", date(2026, 9, 24), "2400.00", "aud")]),
+            inner: reads_with_bills(vec![bill(1, "Rent", date(2026, 9, 24), "2400.00", "AUD")]),
             asked: Cell::new(0),
         });
         let (clock, day) = Clock::settable(date(2026, 9, 21));
@@ -558,7 +558,7 @@ mod tests {
             "Netflix",
             date(2026, 9, 18),
             "22.99",
-            "aud",
+            "AUD",
         )]));
         let before = presenter.view_model();
         assert_eq!(before.flag, "\u{2691}");

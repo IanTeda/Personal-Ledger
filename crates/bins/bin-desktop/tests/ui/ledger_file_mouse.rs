@@ -382,7 +382,7 @@ fn clicking_create_makes_the_named_ledger_in_place_of_the_open_one(app: &mut Tes
     assert!(created.is_file());
     assert_eq!(
         ui.unit_codes(),
-        ["usd"],
+        ["USD"],
         "the Locale's Currency is the only Unit"
     );
     assert!(tag_names(&mut ui).is_empty(), "none of the sample rows");
@@ -488,10 +488,10 @@ fn clicking_a_changed_base_unit_through_the_dialog_makes_it_the_new_ledgers_base
     ui.click("create-ledger-confirm");
 
     assert_eq!(ui.dialog(), None);
-    assert_eq!(ui.base_unit_code().as_deref(), Some("eth"));
+    assert_eq!(ui.base_unit_code().as_deref(), Some("ETH"));
     assert_eq!(
         ui.unit_rows(),
-        [("eth".to_string(), "Ether".to_string(), "Crypto".to_string())]
+        [("ETH".to_string(), "Ether".to_string(), "Crypto".to_string())]
     );
 }
 
@@ -653,7 +653,7 @@ fn the_steps_go_back_by_click_and_on_only_when_next_would(app: &mut TestAppConte
     ui.press("I a n");
     ui.click("create-ledger-step-base-unit");
     assert_eq!(ui.dialog_value("stage").as_deref(), Some("BaseUnit"));
-    assert_eq!(ui.dialog_value("code").as_deref(), Some("eur"), "kept");
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("EUR"), "kept");
 
     ui.click("create-ledger-confirm");
     assert_eq!(ui.dialog_value("owner").as_deref(), Some("Ian"), "kept");

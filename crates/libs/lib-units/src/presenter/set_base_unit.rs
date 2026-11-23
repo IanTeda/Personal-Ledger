@@ -220,7 +220,7 @@ mod tests {
         let view = SetBaseUnitPresenter::new(shared, DialogKeys::default()).view_model();
 
         let labels: Vec<_> = view.base.options.iter().map(|o| o.label.as_str()).collect();
-        assert_eq!(labels, ["aud — Australian Dollar", "btc — Bitcoin"]);
+        assert_eq!(labels, ["AUD — Australian Dollar", "BTC — Bitcoin"]);
         assert_eq!(view.base.chosen, Some(UnitId::SEED_AUD));
     }
 
@@ -241,7 +241,7 @@ mod tests {
             calls,
             [RouterCall::CloseDialog(Some(UnitsOutcome::Unit {
                 change: UnitChange::BaseSet,
-                code: "btc".into()
+                code: "BTC".into()
             }))]
         );
         assert_eq!(ports.borrow().base_unit.0, UnitId::SEED_BTC);

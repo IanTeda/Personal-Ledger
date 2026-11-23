@@ -493,7 +493,7 @@ pub fn the_currencies_are_the_fiat_units<F: ReadsFactory>(factory: &mut F) {
         reads.unit_code(UnitId::SEED_AUD).as_deref(),
         Some(aud.code.as_str())
     );
-    assert_eq!(reads.unit_code(UnitId::SEED_BTC).as_deref(), Some("btc"));
+    assert_eq!(reads.unit_code(UnitId::SEED_BTC).as_deref(), Some("BTC"));
     assert_eq!(reads.unit_code(UnitId::seed(9_999)), None);
 }
 
