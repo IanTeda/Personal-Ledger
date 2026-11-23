@@ -24,6 +24,14 @@ CREATE TABLE IF NOT EXISTS price_sources (
     -- A Custom source's fixed request headers, never secret: one `Name: value` per line, in the
     -- order sent, or NULL for none. A header can't hold a line break, so a line is a header.
     headers TEXT,
+    -- A Custom source's optional history request (ADR-0043's amendment "a Custom source's
+    -- history request"): its request, the JSON pointers to the series and, relative to each
+    -- point, its date and price, and the series' shape. All NULL for none; a built-in's is code.
+    history_request TEXT,
+    history_series_path TEXT,
+    history_date_path TEXT,
+    history_price_path TEXT,
+    history_shape TEXT CHECK (history_shape IN ('points', 'keyed')),
     created_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     -- A Custom source has its whole endpoint; a built-in's endpoint is code.
@@ -33,7 +41,13 @@ CREATE TABLE IF NOT EXISTS price_sources (
     CHECK ((key_placement IS NULL) = (key_name IS NULL)),
     CHECK (origin = 'custom' OR key_placement IS NULL),
     -- A built-in's headers are code.
-    CHECK (origin = 'custom' OR headers IS NULL)
+    CHECK (origin = 'custom' OR headers IS NULL),
+    -- A history request comes whole, and only on a Custom source.
+    CHECK ((history_request IS NULL) = (history_series_path IS NULL)
+        AND (history_request IS NULL) = (history_date_path IS NULL)
+        AND (history_request IS NULL) = (history_price_path IS NULL)
+        AND (history_request IS NULL) = (history_shape IS NULL)),
+    CHECK (origin = 'custom' OR history_request IS NULL)
 );
 
 

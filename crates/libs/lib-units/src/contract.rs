@@ -229,8 +229,8 @@ pub fn snapshot(ports: &mut impl StoredPorts) -> Snapshot {
     }
 }
 
-/// A Custom source whose key travels in a header and that sends a fixed header, so its auth and
-/// headers round-trip too.
+/// A Custom source whose key travels in a header, that sends a fixed header and that has a keyed
+/// history request, so its auth, headers and history round-trip too.
 fn custom_source(name: &str) -> AddPriceSource {
     AddPriceSource {
         name: name.into(),
@@ -249,7 +249,13 @@ fn custom_source(name: &str) -> AddPriceSource {
             }]
             .into(),
             batch: None,
-            history: None,
+            history: Some(crate::HistoryRef::from(crate::HistoryEndpoint {
+                request: "/history/{symbol}?from={from_unix}&to={to_unix}".into(),
+                series_path: "/rates".into(),
+                date_path: "".into(),
+                price_path: "/{quote}".into(),
+                shape: crate::SeriesShape::Keyed,
+            })),
         },
         updates: Updates::Hourly,
     }

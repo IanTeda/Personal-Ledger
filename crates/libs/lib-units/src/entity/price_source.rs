@@ -93,10 +93,10 @@ pub struct Endpoint {
     /// amendment), so a Custom source's is `None`.
     pub batch: Option<BatchRequest>,
     /// How to ask for a symbol's past prices, which a Unit backfills its empty weeks from; `None`
-    /// for a source that has none, whose Units never backfill (ADR-0043's backfill amendment).
-    /// Only a built-in declares one, so it is borrowed from the `const` table, keeping a stored
-    /// Custom source's record small.
-    pub history: Option<&'static HistoryEndpoint>,
+    /// for a source that has none, whose Units never backfill (ADR-0043's backfill amendment). A
+    /// built-in borrows its own from the `const` table; a Custom source owns what a person typed
+    /// (ADR-0043's amendment "a Custom source's history request").
+    pub history: Option<HistoryRef>,
 }
 
 /// A source's request for a symbol's daily prices over a range (ADR-0043's amendment "a Custom
@@ -116,6 +116,40 @@ pub struct HistoryEndpoint {
     /// A JSON pointer, relative to each point, to its close.
     pub price_path: Cow<'static, str>,
     pub shape: SeriesShape,
+}
+
+/// A source's history request as its [`Endpoint`] holds it: a built-in's borrowed from the `const`
+/// table, a Custom source's boxed, so a stored Custom source's record stays small. Derefs to the
+/// [`HistoryEndpoint`] either way, and compares by it.
+#[derive(Debug, Clone)]
+pub enum HistoryRef {
+    BuiltIn(&'static HistoryEndpoint),
+    Custom(Box<HistoryEndpoint>),
+}
+
+impl std::ops::Deref for HistoryRef {
+    type Target = HistoryEndpoint;
+
+    fn deref(&self) -> &HistoryEndpoint {
+        match self {
+            Self::BuiltIn(history) => history,
+            Self::Custom(history) => history,
+        }
+    }
+}
+
+impl PartialEq for HistoryRef {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+
+impl Eq for HistoryRef {}
+
+impl From<HistoryEndpoint> for HistoryRef {
+    fn from(history: HistoryEndpoint) -> Self {
+        Self::Custom(Box::new(history))
+    }
 }
 
 /// How a history reply lays out its points.
@@ -192,7 +226,7 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
                 max_symbols: 250,
             }),
             // `[ms, price]` pairs at 00:00 UTC, the day crypto trades by.
-            history: Some(&HistoryEndpoint {
+            history: Some(HistoryRef::BuiltIn(&HistoryEndpoint {
                 request: Cow::Borrowed(
                     "/coins/{symbol_lower}/market_chart/range?vs_currency={quote_lower}&from={from}&to={to}&interval=daily",
                 ),
@@ -200,7 +234,7 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
                 date_path: Cow::Borrowed("/0"),
                 price_path: Cow::Borrowed("/1"),
                 shape: SeriesShape::Points,
-            }),
+            })),
         },
         updates: Updates::Every15Minutes,
         kinds: &[UnitKind::Crypto],
@@ -222,7 +256,7 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
             // Its batch endpoint is undocumented, so one chart call per Unit.
             batch: None,
             // Daily bars, since its weekly ones don't start on Monday for every market (ADR-0043).
-            history: Some(&HistoryEndpoint {
+            history: Some(HistoryRef::BuiltIn(&HistoryEndpoint {
                 request: Cow::Borrowed(
                     "/v8/finance/chart/{symbol}?period1={from_unix}&period2={to_unix}&interval=1d",
                 ),
@@ -235,7 +269,7 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
                     low_path: Cow::Borrowed("/indicators/quote/0/low"),
                     offset_path: Cow::Borrowed("/meta/gmtoffset"),
                 },
-            }),
+            })),
         },
         updates: Updates::Hourly,
         kinds: &[UnitKind::Equity, UnitKind::FixedIncome, UnitKind::Commodity],
@@ -253,7 +287,7 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
             // v2 batches only as an unordered array a price path can't read (ADR-0043).
             batch: None,
             // An array of `{"date", "base", "quote", "rate"}`, one a day.
-            history: Some(&HistoryEndpoint {
+            history: Some(HistoryRef::BuiltIn(&HistoryEndpoint {
                 request: Cow::Borrowed(
                     "/v2/rates?base={symbol}&quotes={quote}&from={from}&to={to}",
                 ),
@@ -261,7 +295,7 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
                 date_path: Cow::Borrowed("/date"),
                 price_path: Cow::Borrowed("/rate"),
                 shape: SeriesShape::Points,
-            }),
+            })),
         },
         // v2 blends its rates from several central banks, same day (ADR-0043).
         updates: Updates::Daily,

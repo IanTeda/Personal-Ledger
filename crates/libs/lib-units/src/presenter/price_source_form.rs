@@ -12,6 +12,12 @@
 //! prices the first Unit (by code) it values. The result shows under the button, a Custom
 //! source's response in a disclosure that opens by itself where it helps fix the Price path. A
 //! test writes nothing, and closing the form drops one still out.
+//!
+//! A Custom source's form has a History section under the price request (ADR-0043's amendment "a
+//! Custom source's history request"): an optional request, the shape of its series (a list of
+//! points or an object keyed by date, never the built-in table's columns) and the JSON pointers
+//! to the series and each point's date and close. A test of a source with a history request asks
+//! it for the last 14 days once the price passes, and shows how many points came back.
 
 use lib_core::{PriceSourceId, UnitId};
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
@@ -19,18 +25,19 @@ use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView, count};
 use secrecy::{ExposeSecret as _, SecretString};
 
-use super::fetch_text::test_lines;
+use super::fetch_text::{failure_lines, test_lines};
 use super::{Clock, UnitsOutcome, cycle, step, updates_choices};
 use crate::fetching::{
-    FetchFailure, RequestId, SharedFetching, TestOutcome, TestResult, key_missing,
+    FetchFailure, HistoryTestOutcome, HistoryTestResult, RequestId, SharedFetching, TestOutcome,
+    TestResult, key_missing,
 };
 use crate::interactor::{
     AddPriceSource, EditPriceSource, KeyChange, SavePriceSourceKey, TestPriceSource,
 };
 use crate::protocols::SharedPorts;
 use crate::{
-    Endpoint, Error, KeyPlacement, KeyState, PriceSourceAuth, RequestHeader, SourceOrigin, Updates,
-    msg, units_by_code,
+    Endpoint, Error, HistoryEndpoint, HistoryRef, KeyPlacement, KeyState, PriceSourceAuth,
+    RequestHeader, SeriesShape, SourceOrigin, Updates, msg, units_by_code,
 };
 
 /// The Authentication control's value: whether the source needs a key.
@@ -39,6 +46,17 @@ pub enum AuthChoice {
     #[default]
     None,
     ApiKey,
+}
+
+/// The History section's Series control: the shapes a person can type (ADR-0043's amendment "a
+/// Custom source's history request").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HistoryShape {
+    /// An array of points, each read at the date and close paths.
+    #[default]
+    Points,
+    /// An object keyed by date, each value read at the close path.
+    Keyed,
 }
 
 /// A field of the price source forms, in `Tab` order. The built-in form has Name and Updates only.
@@ -57,6 +75,16 @@ pub enum PriceSourceField {
     ApiKey,
     /// The Remove key button beside the API key, while a saved key can be removed.
     RemoveKey,
+    /// A Custom source's optional history request, with `{from}`/`{to}` or `{from_unix}`/
+    /// `{to_unix}`.
+    HistoryRequest,
+    /// Its series' [`HistoryShape`].
+    SeriesShape,
+    SeriesPath,
+    /// Relative to each point; blank on a keyed series for the key.
+    DatePath,
+    /// Relative to each point, its close.
+    HistoryPricePath,
     /// A Custom source's symbol to test with.
     Symbol,
     /// Test with symbol, or a built-in's Test price source, while it can run.
@@ -66,7 +94,7 @@ pub enum PriceSourceField {
 }
 
 impl PriceSourceField {
-    const CUSTOM_ORDER: [Self; 13] = [
+    const CUSTOM_ORDER: [Self; 18] = [
         Self::Name,
         Self::Updates,
         Self::Address,
@@ -77,6 +105,11 @@ impl PriceSourceField {
         Self::KeyParam,
         Self::ApiKey,
         Self::RemoveKey,
+        Self::HistoryRequest,
+        Self::SeriesShape,
+        Self::SeriesPath,
+        Self::DatePath,
+        Self::HistoryPricePath,
         Self::Symbol,
         Self::Test,
         Self::Response,
@@ -107,6 +140,8 @@ pub enum PriceSourceFormEvent {
     RemoveKey,
     Updates(Updates),
     Auth(AuthChoice),
+    /// The History section's Series.
+    Shape(HistoryShape),
     /// `Left`/`Right` on the focused control (`-1`/`1`), stopping at either end; with
     /// `NextField` and `PrevField`, the TUI's, which reads its own keys until its redesign (#805).
     Step(isize),
@@ -161,6 +196,24 @@ pub struct EndpointFields {
     /// The key parameter's name, shown only with API key authentication; the key itself is the
     /// form's [`PriceSourceFormViewModel::api_key`].
     pub key_param: Option<TextFieldView>,
+    pub history: HistoryFields,
+}
+
+/// A Custom source's History section, under the price request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryFields {
+    /// *History*, which each Client sets as the section's heading.
+    pub heading: String,
+    pub request: TextFieldView,
+    /// That it is optional, and its date placeholders.
+    pub request_help: String,
+    pub shape: SelectView<HistoryShape>,
+    pub series_path: TextFieldView,
+    pub series_path_help: String,
+    pub date_path: TextFieldView,
+    pub price_path: TextFieldView,
+    /// What the date and close paths are relative to, and the dates a point may carry.
+    pub point_paths_help: String,
 }
 
 /// The masked API key field, which never shows a key.
@@ -215,6 +268,17 @@ pub struct TestResultView {
     /// A Custom source's response; `None` for a built-in, whose price path is code, and when
     /// nothing came back.
     pub response: Option<ResponseView>,
+    /// The history the test asked once the price passed; `None` for a source with no history
+    /// request, and when the price failed.
+    pub history: Option<TestHistoryView>,
+}
+
+/// *History · 10 points · newest 2026-11-20 · 1.2345*, or the reason it failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestHistoryView {
+    /// Found or Failed; an empty series is Failed, No price.
+    pub state: TestState,
+    pub text: String,
 }
 
 /// The collapsed *Response · HTTP n* disclosure.
@@ -223,8 +287,20 @@ pub struct ResponseView {
     pub label: String,
     /// The body, indented when it is JSON, as text when it isn't, any echo of the key masked.
     pub body: String,
+    /// Open by itself on a price reason that helps fix the Price path, or on a failed history.
     pub open: bool,
     pub focused: bool,
+    /// The history's response, under the price's, once a history came back.
+    pub history: Option<HistoryResponseView>,
+}
+
+/// The history's part of the Response disclosure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryResponseView {
+    /// `History response · HTTP 200`.
+    pub label: String,
+    /// The body, indented when it is JSON, any echo of the key masked.
+    pub body: String,
 }
 
 /// Why the test is off, or the test ready to send.
@@ -273,6 +349,11 @@ pub struct PriceSourceFormPresenter {
     headers: String,
     auth: AuthChoice,
     key_param: String,
+    history_request: String,
+    shape: HistoryShape,
+    series_path: String,
+    date_path: String,
+    history_price_path: String,
     /// Typed over any saved key, stored on Save only when not blank.
     api_key: SecretString,
     /// What the Ledger held for the source's key when the form opened.
@@ -326,6 +407,11 @@ impl PriceSourceFormPresenter {
             headers: String::new(),
             auth: AuthChoice::None,
             key_param: String::new(),
+            history_request: String::new(),
+            shape: HistoryShape::Points,
+            series_path: String::new(),
+            date_path: String::new(),
+            history_price_path: String::new(),
             api_key: SecretString::default(),
             saved_key: KeyState::NotSet,
             remove_key: false,
@@ -376,6 +462,17 @@ impl PriceSourceFormPresenter {
                     form.key_param = name.to_string();
                     form.placement = *placement;
                 }
+                if let Some(history) = endpoint.history.as_deref() {
+                    form.history_request = history.request.to_string();
+                    form.series_path = history.series_path.to_string();
+                    form.date_path = history.date_path.to_string();
+                    form.history_price_path = history.price_path.to_string();
+                    // A Custom source never holds the columns shape, which the form doesn't offer.
+                    form.shape = match history.shape {
+                        SeriesShape::Keyed => HistoryShape::Keyed,
+                        SeriesShape::Points | SeriesShape::Columns { .. } => HistoryShape::Points,
+                    };
+                }
                 form.opened = Some(Opened {
                     name: form.name.clone(),
                     updates: form.updates,
@@ -410,6 +507,8 @@ impl Presenter for PriceSourceFormPresenter {
             PriceSourceFormEvent::Updates(updates) => self.updates = updates,
             PriceSourceFormEvent::Auth(auth) if self.is_custom() => self.set_auth(auth),
             PriceSourceFormEvent::Auth(_) => {}
+            PriceSourceFormEvent::Shape(shape) if self.is_custom() => self.shape = shape,
+            PriceSourceFormEvent::Shape(_) => {}
             PriceSourceFormEvent::Step(delta) => self.step_focused(delta),
             PriceSourceFormEvent::NextField => self.cycle_focus(false),
             PriceSourceFormEvent::PrevField => self.cycle_focus(true),
@@ -495,6 +594,51 @@ impl Presenter for PriceSourceFormPresenter {
                     PriceSourceField::KeyParam,
                 )
             }),
+            history: HistoryFields {
+                heading: msg::units_price_source_history_heading(),
+                request: text(
+                    msg::units_price_source_field_history_request(),
+                    &self.history_request,
+                    msg::units_price_source_history_request_placeholder(),
+                    PriceSourceField::HistoryRequest,
+                ),
+                request_help: msg::units_price_source_history_help(),
+                shape: SelectView {
+                    label: msg::units_price_source_field_series_shape(),
+                    options: vec![
+                        Choice {
+                            value: HistoryShape::Points,
+                            label: msg::units_price_source_series_points(),
+                        },
+                        Choice {
+                            value: HistoryShape::Keyed,
+                            label: msg::units_price_source_series_keyed(),
+                        },
+                    ],
+                    chosen: Some(self.shape),
+                    focused: self.focused == PriceSourceField::SeriesShape,
+                },
+                series_path: text(
+                    msg::units_price_source_field_series_path(),
+                    &self.series_path,
+                    msg::units_price_source_series_path_placeholder(),
+                    PriceSourceField::SeriesPath,
+                ),
+                series_path_help: msg::units_price_source_series_path_help(),
+                date_path: text(
+                    msg::units_price_source_field_date_path(),
+                    &self.date_path,
+                    msg::units_price_source_date_path_placeholder(),
+                    PriceSourceField::DatePath,
+                ),
+                price_path: text(
+                    msg::units_price_source_field_history_price_path(),
+                    &self.history_price_path,
+                    msg::units_price_source_history_price_path_placeholder(),
+                    PriceSourceField::HistoryPricePath,
+                ),
+                point_paths_help: msg::units_price_source_point_paths_help(),
+            },
         });
         let (built_in_facts, built_in_help) = match self.mode {
             Mode::EditBuiltIn(id) => (
@@ -611,6 +755,13 @@ impl PriceSourceFormPresenter {
             PriceSourceField::Auth => {
                 let auth = step(&[AuthChoice::None, AuthChoice::ApiKey], self.auth, delta);
                 self.set_auth(auth);
+            }
+            PriceSourceField::SeriesShape => {
+                self.shape = step(
+                    &[HistoryShape::Points, HistoryShape::Keyed],
+                    self.shape,
+                    delta,
+                );
             }
             _ => {}
         }
@@ -752,21 +903,39 @@ impl PriceSourceFormPresenter {
             PriceSourceField::PricePath => &mut self.price_path,
             PriceSourceField::Headers => &mut self.headers,
             PriceSourceField::KeyParam => &mut self.key_param,
+            PriceSourceField::HistoryRequest => &mut self.history_request,
+            PriceSourceField::SeriesPath => &mut self.series_path,
+            PriceSourceField::DatePath => &mut self.date_path,
+            PriceSourceField::HistoryPricePath => &mut self.history_price_path,
             PriceSourceField::Symbol => &mut self.symbol,
             PriceSourceField::ApiKey
             | PriceSourceField::RemoveKey
             | PriceSourceField::Test
             | PriceSourceField::Response
             | PriceSourceField::Updates
-            | PriceSourceField::Auth => {
+            | PriceSourceField::Auth
+            | PriceSourceField::SeriesShape => {
                 return None;
             }
         })
     }
 
+    /// The History section's first field left blank that its request needs: the Close path, and
+    /// on a list of points the Date path. `None` with no history request, or none missing.
+    fn history_needs(&self) -> Option<PriceSourceField> {
+        let blank = |text: &String| text.trim().is_empty();
+        if blank(&self.history_request) {
+            return None;
+        }
+        if self.shape == HistoryShape::Points && blank(&self.date_path) {
+            return Some(PriceSourceField::DatePath);
+        }
+        blank(&self.history_price_path).then_some(PriceSourceField::HistoryPricePath)
+    }
+
     /// Name is required; a Custom source also needs its Address, Request and Price path, any
-    /// Headers well formed, and with API key authentication the Key parameter and, on a new source
-    /// on a Ledger this device can write keys to, the key itself.
+    /// Headers well formed, any history request's paths, and with API key authentication the Key
+    /// parameter and, on a new source on a Ledger this device can write keys to, the key itself.
     fn is_valid(&self) -> bool {
         let filled = |text: &String| !text.trim().is_empty();
         if !filled(&self.name) {
@@ -781,7 +950,7 @@ impl PriceSourceFormPresenter {
         {
             return false;
         }
-        if parse_headers(&self.headers).is_none() {
+        if parse_headers(&self.headers).is_none() || self.history_needs().is_some() {
             return false;
         }
         match self.auth {
@@ -813,8 +982,23 @@ impl PriceSourceFormPresenter {
             // Saving checks they parse first.
             headers: parse_headers(&self.headers).unwrap_or_default().into(),
             batch: None,
-            history: None,
+            history: self.history_endpoint().map(HistoryRef::from),
         }
+    }
+
+    /// The history request the History section describes, `None` while its request is blank.
+    fn history_endpoint(&self) -> Option<HistoryEndpoint> {
+        let request = self.history_request.trim();
+        (!request.is_empty()).then(|| HistoryEndpoint {
+            request: request.to_string().into(),
+            series_path: self.series_path.trim().to_string().into(),
+            date_path: self.date_path.trim().to_string().into(),
+            price_path: self.history_price_path.trim().to_string().into(),
+            shape: match self.shape {
+                HistoryShape::Points => SeriesShape::Points,
+                HistoryShape::Keyed => SeriesShape::Keyed,
+            },
+        })
     }
 
     fn built_in_facts(&self, id: PriceSourceId) -> Vec<(String, String)> {
@@ -916,6 +1100,9 @@ impl PriceSourceFormPresenter {
                 if parse_headers(&self.headers).is_none() {
                     return Readiness::Off(TestOff::FixField(PriceSourceField::Headers));
                 }
+                if let Some(field) = self.history_needs() {
+                    return Readiness::Off(TestOff::NeedsField(field));
+                }
                 if blank(&self.symbol) {
                     return Readiness::Off(TestOff::NeedsSymbol);
                 }
@@ -1015,28 +1202,37 @@ impl PriceSourceFormPresenter {
         fetching.borrow().test_result(self.test?).cloned()
     }
 
-    /// A Custom source's last response, open by itself on No price, Not found and Key rejected.
+    /// A Custom source's last response, open by itself on No price, Not found and Key rejected,
+    /// and on a failed history, whose response is its second part.
     fn response(&self) -> Option<ResponseView> {
         if !self.is_custom() {
             return None;
         }
         let result = self.result()?;
         let (status, body) = result.response?;
-        let auto = matches!(
-            result.outcome,
-            TestOutcome::Failed(
-                FetchFailure::NoPrice | FetchFailure::NotFound | FetchFailure::KeyRejected
-            )
-        );
-        let body = serde_json::from_str::<serde_json::Value>(&body)
-            .ok()
-            .and_then(|json| serde_json::to_string_pretty(&json).ok())
-            .unwrap_or(body);
+        let history_failed = result
+            .history
+            .as_ref()
+            .is_some_and(|history| matches!(history.outcome, HistoryTestOutcome::Failed(_)));
+        let auto = history_failed
+            || matches!(
+                result.outcome,
+                TestOutcome::Failed(
+                    FetchFailure::NoPrice | FetchFailure::NotFound | FetchFailure::KeyRejected
+                )
+            );
         Some(ResponseView {
             label: msg::units_price_source_test_response(&status.to_string()),
-            body,
+            body: pretty(body),
             open: self.response_open.unwrap_or(auto),
             focused: self.focused == PriceSourceField::Response,
+            history: result
+                .history
+                .and_then(|history| history.response)
+                .map(|(status, body)| HistoryResponseView {
+                    label: msg::units_price_source_test_history_response(&status.to_string()),
+                    body: pretty(body),
+                }),
         })
     }
 
@@ -1049,6 +1245,10 @@ impl PriceSourceFormPresenter {
             PriceSourceField::Request => msg::units_price_source_field_request(),
             PriceSourceField::PricePath => msg::units_price_source_field_price_path(),
             PriceSourceField::Headers => msg::units_price_source_field_headers(),
+            PriceSourceField::DatePath => msg::units_price_source_field_date_path(),
+            PriceSourceField::HistoryPricePath => {
+                msg::units_price_source_field_history_price_path()
+            }
             _ => msg::units_price_source_field_key_param(),
         };
         let ready_help = || match self.mode {
@@ -1097,6 +1297,7 @@ impl PriceSourceFormPresenter {
                 detail: String::new(),
                 unsaved: None,
                 response: None,
+                history: None,
             })
         } else {
             self.result().map(|result| {
@@ -1114,6 +1315,10 @@ impl PriceSourceFormPresenter {
                         .unsaved
                         .then(msg::units_price_source_test_unsaved),
                     response: self.response(),
+                    history: result
+                        .history
+                        .as_ref()
+                        .map(|history| test_history_view(&result, history)),
                 }
             })
         };
@@ -1205,6 +1410,39 @@ impl PriceSourceFormPresenter {
                 Some(msg::units_refusal_price_source_gone())
             }
         };
+    }
+}
+
+/// `body` indented when it is JSON, else as it came.
+fn pretty(body: String) -> String {
+    serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|json| serde_json::to_string_pretty(&json).ok())
+        .unwrap_or(body)
+}
+
+/// A test's history line: *History · 10 points · newest 2026-11-20 · 1.2345*, or the reason.
+fn test_history_view(result: &TestResult, history: &HistoryTestResult) -> TestHistoryView {
+    match &history.outcome {
+        HistoryTestOutcome::Points {
+            count: points,
+            newest,
+            close,
+        } => TestHistoryView {
+            state: TestState::Found,
+            text: msg::units_price_source_test_history_found(
+                count(*points),
+                &newest.format("%Y-%m-%d").to_string(),
+                &close.to_string(),
+            ),
+        },
+        HistoryTestOutcome::Failed(reason) => {
+            let (name, detail) = failure_lines(*reason, result);
+            TestHistoryView {
+                state: TestState::Failed,
+                text: msg::units_price_source_test_history_failed(&name, &detail),
+            }
+        }
     }
 }
 
@@ -1348,6 +1586,121 @@ mod tests {
     }
 
     #[test]
+    fn a_custom_sources_history_request_is_optional_and_saves_either_shape() {
+        let (ports, shared) = sample();
+        let mut form = PriceSourceFormPresenter::add(shared.clone(), DialogKeys::default());
+        send(&mut form, filled());
+        assert!(form.view_model().frame.can_confirm, "history is optional");
+        let history = form.view_model().endpoint.expect("custom").history;
+        assert_eq!(history.heading, "History");
+        assert_eq!(history.shape.chosen, Some(HistoryShape::Points));
+        assert_eq!(
+            history
+                .shape
+                .options
+                .iter()
+                .map(|choice| choice.value)
+                .collect::<Vec<_>>(),
+            [HistoryShape::Points, HistoryShape::Keyed],
+            "never the columns shape"
+        );
+
+        send(
+            &mut form,
+            vec![typed(
+                PriceSourceField::HistoryRequest,
+                " /history/{symbol}?from={from_unix}&to={to_unix} ",
+            )],
+        );
+        assert!(!form.view_model().frame.can_confirm, "Close path is blank");
+        send(
+            &mut form,
+            vec![
+                typed(PriceSourceField::SeriesPath, "/prices"),
+                typed(PriceSourceField::HistoryPricePath, "/1"),
+            ],
+        );
+        assert!(
+            !form.view_model().frame.can_confirm,
+            "a list of points needs its date path"
+        );
+        send(&mut form, vec![typed(PriceSourceField::DatePath, "/0")]);
+        assert!(form.view_model().frame.can_confirm);
+        send(&mut form, vec![PriceSourceFormEvent::Confirm]);
+
+        let saved = custom_records(&ports.borrow());
+        assert_eq!(
+            saved[0].endpoint.history.as_deref(),
+            Some(&HistoryEndpoint {
+                request: "/history/{symbol}?from={from_unix}&to={to_unix}".into(),
+                series_path: "/prices".into(),
+                date_path: "/0".into(),
+                price_path: "/1".into(),
+                shape: SeriesShape::Points,
+            })
+        );
+
+        let mut edit =
+            PriceSourceFormPresenter::edit(shared.clone(), saved[0].id, DialogKeys::default())
+                .expect("a Custom source");
+        let history = edit.view_model().endpoint.expect("custom").history;
+        assert_eq!(history.date_path.text, "/0", "prefilled");
+        send(
+            &mut edit,
+            vec![
+                PriceSourceFormEvent::Focus(PriceSourceField::SeriesShape),
+                PriceSourceFormEvent::Step(1),
+                typed(PriceSourceField::DatePath, ""),
+            ],
+        );
+        assert!(
+            edit.view_model().frame.can_confirm,
+            "a blank date path on a keyed series reads the key"
+        );
+        send(&mut edit, vec![PriceSourceFormEvent::Confirm]);
+        let saved = custom_records(&ports.borrow());
+        let history = saved[0].endpoint.history.clone().expect("kept");
+        assert_eq!(
+            (history.shape.clone(), history.date_path.as_ref()),
+            (SeriesShape::Keyed, "")
+        );
+
+        let mut edit = PriceSourceFormPresenter::edit(shared, saved[0].id, DialogKeys::default())
+            .expect("a Custom source");
+        send(
+            &mut edit,
+            vec![
+                typed(PriceSourceField::HistoryRequest, " "),
+                PriceSourceFormEvent::Confirm,
+            ],
+        );
+        assert_eq!(
+            custom_records(&ports.borrow())[0].endpoint.history,
+            None,
+            "a blank history request is none"
+        );
+    }
+
+    #[test]
+    fn tab_walks_the_history_section_after_the_price_request() {
+        let (_, shared) = sample();
+        let form = PriceSourceFormPresenter::add(shared, DialogKeys::default());
+        let fields = form.view_model().fields;
+        let at = |field| fields.iter().position(|f| *f == field).expect("shown");
+        assert!(at(PriceSourceField::Auth) < at(PriceSourceField::HistoryRequest));
+        assert_eq!(
+            fields[at(PriceSourceField::HistoryRequest)..],
+            [
+                PriceSourceField::HistoryRequest,
+                PriceSourceField::SeriesShape,
+                PriceSourceField::SeriesPath,
+                PriceSourceField::DatePath,
+                PriceSourceField::HistoryPricePath,
+            ]
+        );
+    }
+
+    #[test]
     fn a_header_with_no_name_or_no_colon_keeps_the_form_from_saving() {
         let (_, shared) = sample();
         let mut form = PriceSourceFormPresenter::add(shared, DialogKeys::default());
@@ -1419,8 +1772,13 @@ mod tests {
         );
         send(&mut form, vec![PriceSourceFormEvent::NextField]);
         assert!(
-            form.view_model().name.focused,
-            "the hidden key fields are skipped"
+            form.view_model()
+                .endpoint
+                .expect("custom")
+                .history
+                .request
+                .focused,
+            "the hidden key fields are skipped, onto the History section"
         );
 
         send(
@@ -2129,6 +2487,139 @@ mod tests {
                 yahoo.help,
                 "Yahoo Finance values no unit, so there is nothing to test."
             );
+        }
+
+        /// A new Custom source with a list-of-points history, ready to test VAS.AX.
+        fn with_history(on: &Tested) -> PriceSourceFormPresenter {
+            let mut form = on.add();
+            let mut events = filled();
+            events.extend([
+                typed(
+                    PriceSourceField::HistoryRequest,
+                    "/history?symbol={symbol}&from={from}&to={to}",
+                ),
+                typed(PriceSourceField::SeriesPath, "/data"),
+                typed(PriceSourceField::DatePath, "/date"),
+                typed(PriceSourceField::HistoryPricePath, "/close"),
+                typed(PriceSourceField::Symbol, "VAS.AX"),
+            ]);
+            send(&mut form, events);
+            form
+        }
+
+        const PRICED: &str = r#"{"Global Quote":{"05. price":"101.84"}}"#;
+
+        #[test]
+        fn once_the_price_passes_the_test_asks_14_days_of_history_and_shows_its_line() {
+            let on = tested();
+            let mut form = with_history(&on);
+            send(&mut form, vec![PriceSourceFormEvent::Test]);
+            on.land(on.transport.answer_last(200, PRICED));
+
+            assert_eq!(
+                on.transport.urls()[1],
+                "https://www.alphavantage.co/history?symbol=VAS.AX&from=2026-10-08&to=2026-10-21"
+            );
+            assert_eq!(
+                test_view(&form).button,
+                "Testing…",
+                "out until its history lands"
+            );
+
+            on.land(on.transport.answer_last(
+                200,
+                r#"{"data":[{"date":"2026-10-19","close":1.2},{"date":"2026-10-20","close":"1.2345"}]}"#,
+            ));
+            let result = test_view(&form).result.expect("landed");
+            assert_eq!(result.heading, "Price found · 0 ms");
+            let history = result.history.expect("the history ran");
+            assert_eq!(history.state, TestState::Found);
+            assert_eq!(
+                history.text,
+                "History · 2 points · newest 2026-10-20 · 1.2345"
+            );
+            let response = result.response.expect("a Custom source's");
+            assert!(!response.open, "nothing failed");
+            let part = response.history.expect("the history's part");
+            assert_eq!(part.label, "History response · HTTP 200");
+            assert!(part.body.contains("\"1.2345\""), "{}", part.body);
+            assert!(on.wrote_nothing());
+        }
+
+        #[test]
+        fn an_empty_history_reads_no_price_and_opens_the_response_by_itself() {
+            let on = tested();
+            let mut form = with_history(&on);
+            send(&mut form, vec![PriceSourceFormEvent::Test]);
+            on.land(on.transport.answer_last(200, PRICED));
+            on.land(on.transport.answer_last(200, r#"{"data":[]}"#));
+
+            let result = test_view(&form).result.expect("landed");
+            assert_eq!(result.state, TestState::Found, "the price passed");
+            let history = result.history.expect("the history ran");
+            assert_eq!(
+                (history.state, history.text.as_str()),
+                (
+                    TestState::Failed,
+                    "History · No price · Alpha Vantage gave no price for VAS.AX in AUD"
+                )
+            );
+            assert!(
+                result.response.expect("shown").open,
+                "a failed history opens it"
+            );
+        }
+
+        #[test]
+        fn a_failed_price_asks_no_history_and_a_source_without_one_shows_no_line() {
+            let on = tested();
+            let mut form = with_history(&on);
+            send(&mut form, vec![PriceSourceFormEvent::Test]);
+            on.land(on.transport.answer_last(404, "{}"));
+            assert_eq!(on.transport.requests().len(), 1);
+            assert_eq!(test_view(&form).result.expect("landed").history, None);
+
+            let mut plain = on.add();
+            let mut events = filled();
+            events.extend([
+                typed(PriceSourceField::Symbol, "VAS.AX"),
+                PriceSourceFormEvent::Test,
+            ]);
+            send(&mut plain, events);
+            on.land(on.transport.answer_last(200, PRICED));
+            assert_eq!(
+                on.transport.requests().len(),
+                2,
+                "no history request to ask"
+            );
+            let result = test_view(&plain).result.expect("landed");
+            assert_eq!(result.history, None);
+            assert_eq!(result.response.expect("shown").history, None);
+        }
+
+        #[test]
+        fn a_built_ins_test_asks_its_history_too_and_shows_only_its_line() {
+            let on = tested();
+            let mut form = on.edit(COINGECKO);
+            send(&mut form, vec![PriceSourceFormEvent::Test]);
+            on.land(on.transport.answer_last(200, r#"{"bitcoin":{"aud":1}}"#));
+            assert!(
+                on.transport.urls()[1].contains("/coins/bitcoin/market_chart/range?"),
+                "{:?}",
+                on.transport.urls()
+            );
+            // 20 October 2026, in milliseconds.
+            on.land(
+                on.transport
+                    .answer_last(200, r#"{"prices":[[1792454400000,2]]}"#),
+            );
+
+            let result = test_view(&form).result.expect("landed");
+            assert_eq!(
+                result.history.map(|history| history.text).as_deref(),
+                Some("History · 1 point · newest 2026-10-20 · 2")
+            );
+            assert_eq!(result.response, None, "a built-in's paths are code");
         }
 
         #[test]

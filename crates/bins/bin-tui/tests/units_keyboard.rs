@@ -818,8 +818,20 @@ fn a_built_ins_edit_dialog_tests_its_first_unit_inline() {
     assert!(screen(&mut shell).contains("Testing…"));
     transport.answer_last(200, r#"{"bitcoin":{"aud":92568}}"#);
     shell.handle_event(Event::Tick);
+    // The price passed, so the test asks CoinGecko's history too and is out until it lands.
+    assert!(
+        transport.urls()[1].contains("/coins/bitcoin/market_chart/range?"),
+        "{:?}",
+        transport.urls()
+    );
+    transport.answer_last(200, r#"{"prices":[[1792454400000,92000]]}"#);
+    shell.handle_event(Event::Tick);
 
     let tested = screen(&mut shell);
+    assert!(
+        tested.contains("History · 1 point · newest 2026-10-20 · 92000"),
+        "{tested}"
+    );
     assert!(tested.contains("Price found"), "{tested}");
     assert!(
         tested.contains("bitcoin · 92,568.00 AUD · tested"),
@@ -840,13 +852,15 @@ fn test_with_symbol_on_an_unsaved_custom_source_shows_no_price_and_its_response_
     type_text(&mut shell, "/quote/{symbol}");
     press(&mut shell, "Tab");
     type_text(&mut shell, "/last");
-    let incomplete = screen(&mut shell);
+    // The form is taller than the usual terminal until focus moves down it.
+    let incomplete = common::screen_sized(&mut shell, common::WIDTH, 60);
     assert!(
         incomplete.contains("Type a symbol to test."),
         "{incomplete}"
     );
 
-    press(&mut shell, "Tab Tab Tab");
+    // Past Headers, Authentication and the History section.
+    press(&mut shell, "Tab Tab Tab Tab Tab Tab Tab Tab");
     type_text(&mut shell, "ABC");
     press(&mut shell, "Enter");
     assert_eq!(transport.urls(), ["https://broker.example/quote/ABC"]);
@@ -962,4 +976,177 @@ fn a_failed_backfill_says_so_in_place_and_raises_no_toast() {
     );
     assert!(!frame.contains("Couldn't fetch"), "never a Toast:\n{frame}");
     assert!(!frame.contains("fetch failed"), "{frame}");
+}
+
+#[test]
+fn a_custom_sources_history_request_is_typed_and_tested_after_its_price() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u Tab n");
+    type_text(&mut shell, "Broker");
+    press(&mut shell, "Tab Tab");
+    type_text(&mut shell, "https://broker.example");
+    press(&mut shell, "Tab");
+    type_text(&mut shell, "/quote/{symbol}");
+    press(&mut shell, "Tab");
+    type_text(&mut shell, "/last");
+    press(&mut shell, "Tab Tab Tab");
+    type_text(&mut shell, "/history/{symbol}?from={from}&to={to}");
+    let frame = common::screen_sized(&mut shell, 220, 80);
+    assert!(frame.contains("History request"), "{frame}");
+    assert!(frame.contains("Fill in Date path to test."), "{frame}");
+    // Series: List of points, then the series, date and close paths.
+    press(&mut shell, "Tab Tab");
+    type_text(&mut shell, "/data");
+    press(&mut shell, "Tab");
+    type_text(&mut shell, "/d");
+    press(&mut shell, "Tab");
+    type_text(&mut shell, "/c");
+    press(&mut shell, "Tab");
+    type_text(&mut shell, "ABC");
+    press(&mut shell, "Enter");
+    transport.answer_last(200, r#"{"last":12.5}"#);
+    shell.handle_event(Event::Tick);
+
+    let asked = transport.urls();
+    assert_eq!(asked.len(), 2, "{asked:?}");
+    assert!(
+        asked[1].starts_with("https://broker.example/history/ABC?from="),
+        "{asked:?}"
+    );
+    transport.answer_last(
+        200,
+        r#"{"data":[{"d":"2026-11-19","c":1.2},{"d":1795132800,"c":"1.2345"}]}"#,
+    );
+    shell.handle_event(Event::Tick);
+
+    let frame = common::screen_sized(&mut shell, 220, 80);
+    assert!(frame.contains("Price found"), "{frame}");
+    assert!(
+        frame.contains("History · 2 points · newest 2026-11-20 · 1.2345"),
+        "{frame}"
+    );
+}
+
+/// Adds AAA on a Custom source whose history is a list of `[ms, close]` pairs, AAB on one keyed
+/// by date and AAC on one with no history request, each created three weeks ago. Their codes sort
+/// first, so `g u` selects AAA.
+fn custom_units(fakes: &mut lib_database::FakeStores) {
+    let mut source = |name: &str, history: Option<lib_units::HistoryEndpoint>| {
+        lib_units::add_custom_source(
+            &mut fakes.units.price_sources.records,
+            name.into(),
+            lib_units::Endpoint {
+                address: "https://rates.example".to_string().into(),
+                request: "/{symbol}".to_string().into(),
+                price_path: "/price".to_string().into(),
+                auth: lib_units::PriceSourceAuth::None,
+                headers: Vec::new().into(),
+                batch: None,
+                history: history.map(lib_units::HistoryRef::from),
+            },
+            lib_units::Updates::Daily,
+        )
+        .id
+    };
+    let points = source(
+        "Pairs",
+        Some(lib_units::HistoryEndpoint {
+            request: "/pairs/{symbol}?from={from_unix}&to={to_unix}"
+                .to_string()
+                .into(),
+            series_path: "/prices".to_string().into(),
+            date_path: "/0".to_string().into(),
+            price_path: "/1".to_string().into(),
+            shape: lib_units::SeriesShape::Points,
+        }),
+    );
+    let keyed = source(
+        "Keyed",
+        Some(lib_units::HistoryEndpoint {
+            request: "/keyed/{symbol}?from={from}&to={to}".to_string().into(),
+            series_path: "/rates".to_string().into(),
+            date_path: "".into(),
+            price_path: "/{quote}".to_string().into(),
+            shape: lib_units::SeriesShape::Keyed,
+        }),
+    );
+    let plain = source("Plain", None);
+    let created = chrono::Local::now().date_naive() - chrono::Duration::weeks(3);
+    for (code, source_id) in [("AAA", points), ("AAB", keyed), ("AAC", plain)] {
+        let mut unit = lib_units::UnitRow::new(
+            code.into(),
+            code.into(),
+            lib_core::UnitKind::Custom,
+            lib_units::Precision::of_kind(lib_core::UnitKind::Custom),
+            lib_units::PriceLink {
+                source_id,
+                symbol: code.into(),
+                quote: lib_core::UnitId::SEED_AUD,
+            },
+        );
+        unit.created_on = Some(created);
+        fakes.units.units.units.push(unit);
+    }
+}
+
+#[test]
+fn a_custom_source_backfills_from_either_shape_and_one_without_a_history_request_says_so() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell_with(transport.clone(), responses, custom_units);
+    press(&mut shell, "g u");
+    let history = |path: &str| {
+        transport
+            .requests()
+            .into_iter()
+            .find(|(_, request)| request.url.contains(path))
+            .map(|(id, _)| id)
+    };
+    assert!(
+        !transport
+            .urls()
+            .iter()
+            .any(|url| url.contains("AAC") && url != "https://rates.example/AAC"),
+        "no history request, no backfill: only its price is asked"
+    );
+
+    // The TUI reads the real day, so each source answers for last week, whenever that is.
+    let last_week = lib_units::WeeklyPrice::week_of(chrono::Local::now().date_naive())
+        - chrono::Duration::weeks(1);
+    let millis = last_week
+        .and_hms_opt(0, 0, 0)
+        .map(|at| at.and_utc().timestamp_millis())
+        .unwrap_or_default();
+    let answer = |id, body: String| {
+        transport.answer(
+            id,
+            lib_units::TransportOutcome::Answered {
+                status: 200,
+                body,
+                retry_after: None,
+            },
+        );
+    };
+    answer(
+        history("/pairs/AAA").expect("AAA asked its history"),
+        format!(r#"{{"prices":[[{millis},3.4567]]}}"#),
+    );
+    answer(
+        history("/keyed/AAB").expect("AAB asked its history"),
+        format!(r#"{{"rates":{{"{last_week}":{{"AUD":"5.6789"}}}}}}"#),
+    );
+    shell.handle_event(Event::Tick);
+
+    let frame = common::screen_sized(&mut shell, 220, 60);
+    assert!(frame.contains("3.46"), "AAA's backfilled close:\n{frame}");
+    press(&mut shell, "j");
+    let frame = common::screen_sized(&mut shell, 220, 60);
+    assert!(frame.contains("5.68"), "AAB's backfilled close:\n{frame}");
+    press(&mut shell, "j");
+    let frame = common::screen_sized(&mut shell, 220, 60);
+    assert!(
+        frame.contains("Plain has no history request, so past weeks fill only by hand"),
+        "{frame}"
+    );
+    assert!(!frame.contains("Fetching history"), "{frame}");
 }

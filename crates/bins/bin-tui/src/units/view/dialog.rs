@@ -222,10 +222,11 @@ impl Dialog {
         let lines: Vec<Line<'_>> = items.iter().map(|item| item_line(item, c)).collect();
         // A long note wraps, so the body is as tall as its lines wrap to inside the border.
         let wrap_width = usize::from(POPUP_WIDTH.min(area.width).saturating_sub(2)).max(1);
-        let body_rows: usize = lines
+        let rows: Vec<usize> = lines
             .iter()
             .map(|line| line.width().div_ceil(wrap_width).max(1))
-            .sum();
+            .collect();
+        let body_rows: usize = rows.iter().sum();
         // Title and its rule, the body, then the footer's rule and the footer.
         let content = u16::try_from(body_rows)
             .unwrap_or(u16::MAX)
@@ -250,7 +251,13 @@ impl Dialog {
             title,
         );
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rule);
-        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), body);
+        let offset = scroll_offset(&items, &rows, usize::from(body.height));
+        frame.render_widget(
+            Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .scroll((u16::try_from(offset).unwrap_or(u16::MAX), 0)),
+            body,
+        );
         frame.render_widget(Block::new().borders(Borders::BOTTOM), footer_rule);
         frame.render_widget(Paragraph::new(footer_line(&dialog, keymap, c)), footer);
     }
@@ -306,6 +313,10 @@ impl Dialog {
                 items.push(Item::Text(view.name));
                 items.push(Item::Note(view.name_help));
                 items.push(select(&view.updates));
+                let history = view
+                    .endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.history.clone());
                 if let Some(endpoint) = view.endpoint {
                     items.push(Item::Text(endpoint.address));
                     items.push(Item::Text(endpoint.request));
@@ -330,6 +341,18 @@ impl Dialog {
                         focused: api_key.remove_focused,
                     }));
                     items.push(Item::Note(api_key.note));
+                }
+                // Under the price request, as the Desktop draws it.
+                if let Some(history) = history {
+                    items.push(Item::Heading(history.heading));
+                    items.push(Item::Text(history.request));
+                    items.push(Item::Note(history.request_help));
+                    items.push(select(&history.shape));
+                    items.push(Item::Text(history.series_path));
+                    items.push(Item::Note(history.series_path_help));
+                    items.push(Item::Text(history.date_path));
+                    items.push(Item::Text(history.price_path));
+                    items.push(Item::Note(history.point_paths_help));
                 }
                 items.extend(view.usage.map(Item::Note));
                 if let Some(test) = view.test {
@@ -368,6 +391,9 @@ fn test_items(test: TestView, items: &mut Vec<Item>) {
         if !result.detail.is_empty() {
             items.push(Item::Note(format!("  {}", result.detail)));
         }
+        if let Some(history) = result.history {
+            items.push(Item::Result(format!("  {}", history.text), history.state));
+        }
         if let Some(response) = result.response {
             let caret = if response.open {
                 "\u{25be}"
@@ -385,6 +411,15 @@ fn test_items(test: TestView, items: &mut Vec<Item>) {
                         .lines()
                         .map(|line| Item::Response(format!("    {line}"))),
                 );
+                if let Some(history) = response.history {
+                    items.push(Item::Note(format!("  {}", history.label)));
+                    items.extend(
+                        history
+                            .body
+                            .lines()
+                            .map(|line| Item::Response(format!("    {line}"))),
+                    );
+                }
             }
         }
     }
@@ -497,6 +532,19 @@ fn price_source_event(
         (Some(endpoint.price_path), PriceSourceField::PricePath),
         (Some(endpoint.headers), PriceSourceField::Headers),
         (endpoint.key_param, PriceSourceField::KeyParam),
+        (
+            Some(endpoint.history.request),
+            PriceSourceField::HistoryRequest,
+        ),
+        (
+            Some(endpoint.history.series_path),
+            PriceSourceField::SeriesPath,
+        ),
+        (Some(endpoint.history.date_path), PriceSourceField::DatePath),
+        (
+            Some(endpoint.history.price_path),
+            PriceSourceField::HistoryPricePath,
+        ),
     ];
     let (text, field) = fields
         .into_iter()
@@ -583,6 +631,36 @@ fn stepped<T: Copy + PartialEq>(select: &SelectView<T>, delta: isize) -> Option<
         None => 0,
     };
     select.options.get(next).map(|choice| choice.value)
+}
+
+/// How many rows a body of `items`, each `rows` tall, scrolls by in `height` rows: none while the
+/// focused item fits, else down to it, as far as the last row allows, so a Custom source's long
+/// form keeps its focused field, and the test result under it, in view.
+fn scroll_offset(items: &[Item], rows: &[usize], height: usize) -> usize {
+    let total: usize = rows.iter().sum();
+    let Some(focused) = items.iter().position(Item::is_focused) else {
+        return 0;
+    };
+    let start: usize = rows[..focused].iter().sum();
+    if start + rows[focused] <= height {
+        return 0;
+    }
+    start.min(total.saturating_sub(height))
+}
+
+impl Item {
+    fn is_focused(&self) -> bool {
+        match self {
+            Self::Text(field) => field.focused,
+            Self::Select { focused, .. } | Self::Button { focused, .. } => *focused,
+            Self::Heading(_)
+            | Self::Note(_)
+            | Self::Fact(..)
+            | Self::Refusal(_)
+            | Self::Result(..)
+            | Self::Response(_) => false,
+        }
+    }
 }
 
 fn select<T: PartialEq>(view: &SelectView<T>) -> Item {
@@ -742,6 +820,33 @@ mod tests {
         assert_eq!(stepped(&select, 1), Some(2));
         assert_eq!(stepped(&select, -1), Some(1));
         assert_eq!(stepped(&select, 5), Some(3));
+    }
+
+    #[test]
+    fn a_long_body_scrolls_to_its_focused_item_only_once_it_falls_below() {
+        let field = |focused| {
+            Item::Text(TextFieldView {
+                label: String::new(),
+                text: String::new(),
+                placeholder: String::new(),
+                focused,
+            })
+        };
+        let items = [
+            field(false),
+            field(false),
+            field(false),
+            field(true),
+            field(false),
+        ];
+        let rows = [1, 1, 2, 1, 1];
+        assert_eq!(scroll_offset(&items, &rows, 5), 0, "it fits");
+        assert_eq!(
+            scroll_offset(&items, &rows, 4),
+            2,
+            "as far as the last row allows"
+        );
+        assert_eq!(scroll_offset(&items, &rows, 2), 4, "down to it");
     }
 
     #[test]

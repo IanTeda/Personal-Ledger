@@ -11,13 +11,19 @@
 //! Under the fields, with the Ledger's price feed, a Custom source's Symbol and Test with symbol,
 //! or a built-in's Test price source, then the last test's result and a Custom source's
 //! collapsible Response (#1393). The footer says a test writes nothing.
+//!
+//! A Custom source's History section sits under the price request (#1395): its optional request,
+//! a segmented Series control (a list of points or keyed by date) and the series, date and close
+//! paths. A test of a source with one adds its history line under the result, and the Response
+//! its history part. The body scrolls under a fixed header and footer, following the focused
+//! field, since a Custom source's form is taller than a Large window.
 
-use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, App, ScrollHandle, SharedString, div, prelude::*, px};
 use lib_shell::Hint;
 use lib_units::Updates;
 use lib_units::presenter::{
-    ApiKeyView, AuthChoice, PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter,
-    PriceSourceFormViewModel, TestState, TestView,
+    ApiKeyView, AuthChoice, HistoryFields, HistoryShape, PriceSourceField, PriceSourceFormEvent,
+    PriceSourceFormPresenter, PriceSourceFormViewModel, TestState, TestView,
 };
 use lib_viper::view::{Choice, SelectView, TextFieldView};
 
@@ -34,6 +40,17 @@ const CUSTOM_WIDTH: gpui::Pixels = px(620.0);
 /// `width:480px` (16z·edit).
 const BUILT_IN_WIDTH: gpui::Pixels = px(480.0);
 const MONOSPACE: &str = "monospace";
+/// The body's scroll cap, under which the header and footer stay put.
+const BODY_MAX_HEIGHT: gpui::Pixels = px(560.0);
+
+/// The body's scroll, and the field it last followed, so focus moving down the form scrolls that
+/// field's group into view and a click on one already shown doesn't jump.
+#[derive(Default)]
+pub struct PriceSourceWidgets {
+    scroll: ScrollHandle,
+    followed: Option<PriceSourceField>,
+    opened: bool,
+}
 
 /// The open form's clicks.
 type Clicks = ModuleDialogClicks<PriceSourceFormPresenter>;
@@ -41,7 +58,7 @@ type Clicks = ModuleDialogClicks<PriceSourceFormPresenter>;
 /// The `lib-units` price source form Presenter's [`DialogView`], hosted in a `ModuleDialog`
 /// (ADR-0056).
 impl DialogView for PriceSourceFormPresenter {
-    type Widgets = ();
+    type Widgets = PriceSourceWidgets;
 
     fn kind(view: &PriceSourceFormViewModel) -> &'static str {
         match (&view.endpoint, &view.usage) {
@@ -51,13 +68,24 @@ impl DialogView for PriceSourceFormPresenter {
         }
     }
 
+    /// Scrolls the focused field's group into view before drawing, once focus moves.
     fn render(
         view: &PriceSourceFormViewModel,
-        _widgets: &mut (),
+        widgets: &mut PriceSourceWidgets,
         clicks: &Clicks,
         cx: &App,
     ) -> AnyElement {
-        render(view, clicks, cx)
+        let field = focused(view);
+        // The form opens at its top; only a move of focus scrolls.
+        if widgets.opened
+            && field != widgets.followed
+            && let Some(group) = field.and_then(|field| group_of(view, field))
+        {
+            widgets.scroll.scroll_to_item(group);
+        }
+        widgets.opened = true;
+        widgets.followed = field;
+        render(view, &widgets.scroll, clicks, cx)
     }
 
     fn readback(view: &PriceSourceFormViewModel) -> Vec<(&'static str, String)> {
@@ -115,9 +143,54 @@ fn focused(view: &PriceSourceFormViewModel) -> Option<PriceSourceField> {
             endpoint.key_param.as_ref().is_some_and(text_focus),
             PriceSourceField::KeyParam,
         ),
+        (
+            text_focus(&endpoint.history.request),
+            PriceSourceField::HistoryRequest,
+        ),
+        (
+            endpoint.history.shape.focused,
+            PriceSourceField::SeriesShape,
+        ),
+        (
+            text_focus(&endpoint.history.series_path),
+            PriceSourceField::SeriesPath,
+        ),
+        (
+            text_focus(&endpoint.history.date_path),
+            PriceSourceField::DatePath,
+        ),
+        (
+            text_focus(&endpoint.history.price_path),
+            PriceSourceField::HistoryPricePath,
+        ),
     ]
     .into_iter()
     .find_map(|(is_focused, field)| is_focused.then_some(field))
+}
+
+/// Which of a Custom source's body groups, in [`render_custom`]'s order, draws `field`; `None`
+/// for a built-in's form, which is short enough not to scroll.
+fn group_of(view: &PriceSourceFormViewModel, field: PriceSourceField) -> Option<usize> {
+    view.endpoint.as_ref()?;
+    // Remove key and its note take a group of their own only while there is a key field.
+    let key_group = usize::from(view.api_key.is_some());
+    Some(match field {
+        PriceSourceField::Name | PriceSourceField::Updates => 0,
+        PriceSourceField::Address => 1,
+        PriceSourceField::Request => 2,
+        PriceSourceField::PricePath => 3,
+        PriceSourceField::Headers => 4,
+        PriceSourceField::Auth | PriceSourceField::KeyParam | PriceSourceField::ApiKey => 5,
+        PriceSourceField::RemoveKey => 5 + key_group,
+        PriceSourceField::HistoryRequest
+        | PriceSourceField::SeriesShape
+        | PriceSourceField::SeriesPath
+        | PriceSourceField::DatePath
+        | PriceSourceField::HistoryPricePath => 6 + key_group,
+        PriceSourceField::Symbol | PriceSourceField::Test | PriceSourceField::Response => {
+            7 + key_group
+        }
+    })
 }
 
 /// A segmented control over a select's choices, each click sending `event` of the choice.
@@ -195,14 +268,25 @@ fn text_box(
         .into_any_element()
 }
 
-fn render(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+fn render(
+    view: &PriceSourceFormViewModel,
+    scroll: &ScrollHandle,
+    actions: &Clicks,
+    cx: &App,
+) -> AnyElement {
     match &view.endpoint {
-        Some(_) => render_custom(view, actions, cx),
-        None => render_built_in(view, actions, cx),
+        Some(_) => render_custom(view, scroll, actions, cx),
+        None => render_built_in(view, scroll, actions, cx),
     }
 }
 
-fn render_custom(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+/// The groups of a Custom source's body, in the order [`group_of`] counts them.
+fn render_custom(
+    view: &PriceSourceFormViewModel,
+    scroll: &ScrollHandle,
+    actions: &Clicks,
+    cx: &App,
+) -> AnyElement {
     let prefix = if view.usage.is_some() {
         "edit-price-source"
     } else {
@@ -301,6 +385,7 @@ fn render_custom(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) ->
     if let Some(api_key) = &view.api_key {
         fields.push(key_remove_and_note(api_key, actions, cx));
     }
+    fields.push(history_section(&endpoint.history, actions, cx));
     fields.extend(
         view.test
             .as_ref()
@@ -313,10 +398,15 @@ fn render_custom(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) ->
             .into_any_element()
     }));
     fields.extend(refusal(view.refusal.clone(), cx));
-    frame(view, prefix, CUSTOM_WIDTH, fields, actions, cx)
+    frame(view, prefix, CUSTOM_WIDTH, fields, scroll, actions, cx)
 }
 
-fn render_built_in(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+fn render_built_in(
+    view: &PriceSourceFormViewModel,
+    scroll: &ScrollHandle,
+    actions: &Clicks,
+    cx: &App,
+) -> AnyElement {
     let mut fields = vec![
         div()
             .child(text_field(
@@ -360,9 +450,85 @@ fn render_built_in(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) 
         "edit-built-in-source",
         BUILT_IN_WIDTH,
         fields,
+        scroll,
         actions,
         cx,
     )
+}
+
+/// The History section: its heading over a hairline, the request, the Series control beside the
+/// series path, then the date and close paths side by side.
+fn history_section(history: &HistoryFields, actions: &Clicks, cx: &App) -> AnyElement {
+    let text = |id, field: &TextFieldView, which| text_box(id, field, which, true, actions, cx);
+    let half = |element: AnyElement| div().flex_1().min_w(px(0.0)).child(element);
+    div()
+        .debug_selector(|| "price-source-history".to_string())
+        .flex()
+        .flex_col()
+        .gap(px(12.0))
+        .pt(px(12.0))
+        .border_t(px(1.0))
+        .border_color(color::hairline(cx))
+        .child(
+            div()
+                .text_size(px(11.5))
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_color(color::muted(cx))
+                .child(history.heading.to_uppercase()),
+        )
+        .child(
+            div()
+                .child(text(
+                    "price-source-history-request",
+                    &history.request,
+                    PriceSourceField::HistoryRequest,
+                ))
+                .child(help(history.request_help.clone(), cx)),
+        )
+        .child(
+            div()
+                .flex()
+                .items_start()
+                .gap(px(12.0))
+                .child(segmented(
+                    "price-source-series-shape",
+                    &history.shape,
+                    actions,
+                    PriceSourceFormEvent::Shape as fn(HistoryShape) -> PriceSourceFormEvent,
+                    cx,
+                ))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .child(text(
+                            "price-source-series-path",
+                            &history.series_path,
+                            PriceSourceField::SeriesPath,
+                        ))
+                        .child(help(history.series_path_help.clone(), cx)),
+                ),
+        )
+        .child(
+            div()
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(12.0))
+                        .child(half(text(
+                            "price-source-date-path",
+                            &history.date_path,
+                            PriceSourceField::DatePath,
+                        )))
+                        .child(half(text(
+                            "price-source-history-price-path",
+                            &history.price_path,
+                            PriceSourceField::HistoryPricePath,
+                        ))),
+                )
+                .child(help(history.point_paths_help.clone(), cx)),
+        )
+        .into_any_element()
 }
 
 /// The API key field, masked, its placeholder saying a saved key is kept. Off, it takes no click and
@@ -506,23 +672,41 @@ fn test_section(test: &TestView, actions: &Clicks, cx: &App) -> AnyElement {
                         .child(format!("{caret} {}", response.label)),
                 )
                 .when(response.open, |this| {
-                    this.child(
+                    this.child(response_body(
+                        "price-source-response-body",
+                        &response.body,
+                        cx,
+                    ))
+                    .children(response.history.as_ref().map(|history| {
                         div()
-                            .debug_selector(|| "price-source-response-body".to_string())
-                            .p(px(8.0))
-                            .bg(color::chrome(cx))
-                            .font_family(MONOSPACE)
-                            .text_size(px(11.5))
                             .flex()
                             .flex_col()
-                            .children(
-                                response
-                                    .body
-                                    .lines()
-                                    .map(|line| div().child(line.to_string())),
-                            ),
-                    )
+                            .gap(px(4.0))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(color::muted(cx))
+                                    .child(history.label.clone()),
+                            )
+                            .child(response_body(
+                                "price-source-history-response-body",
+                                &history.body,
+                                cx,
+                            ))
+                    }))
                 })
+        });
+        let history = result.history.as_ref().map(|history| {
+            div()
+                .debug_selector(|| "price-source-test-history".to_string())
+                .mt(px(2.0))
+                .text_size(px(12.0))
+                .font_family(MONOSPACE)
+                .text_color(match history.state {
+                    TestState::Found | TestState::Testing => color::muted(cx),
+                    TestState::Failed => color::negative_text(cx),
+                })
+                .child(history.text.clone())
         });
         div()
             .debug_selector(|| "price-source-test-result".to_string())
@@ -556,6 +740,7 @@ fn test_section(test: &TestView, actions: &Clicks, cx: &App) -> AnyElement {
                         .child(result.detail.clone()),
                 )
             })
+            .children(history)
             .children(response)
     });
     div()
@@ -567,12 +752,26 @@ fn test_section(test: &TestView, actions: &Clicks, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
+/// A response body, one line per row, monospace on the chrome.
+fn response_body(id: &'static str, body: &str, cx: &App) -> impl IntoElement {
+    div()
+        .debug_selector(move || id.to_string())
+        .p(px(8.0))
+        .bg(color::chrome(cx))
+        .font_family(MONOSPACE)
+        .text_size(px(11.5))
+        .flex()
+        .flex_col()
+        .children(body.lines().map(|line| div().child(line.to_string())))
+}
+
 /// The card: title, the fields, Cancel and the submit.
 fn frame(
     view: &PriceSourceFormViewModel,
     prefix: &'static str,
     width: gpui::Pixels,
     fields: Vec<AnyElement>,
+    scroll: &ScrollHandle,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
@@ -582,6 +781,11 @@ fn frame(
         .child(dialog::header(view.frame.title.clone(), false, cx))
         .child(
             div()
+                .id("price-source-body")
+                .debug_selector(|| "price-source-body".to_string())
+                .max_h(BODY_MAX_HEIGHT)
+                .overflow_y_scroll()
+                .track_scroll(scroll)
                 .p(px(20.0))
                 .flex()
                 .flex_col()
@@ -686,6 +890,25 @@ fn readback(view: &PriceSourceFormViewModel) -> Vec<(&'static str, String)> {
             "key_param",
             text(endpoint.and_then(|e| e.key_param.as_ref())),
         ),
+        (
+            "history_request",
+            text(endpoint.map(|e| &e.history.request)),
+        ),
+        (
+            "series_shape",
+            endpoint
+                .and_then(|e| super::chosen_label(&e.history.shape))
+                .unwrap_or_default(),
+        ),
+        (
+            "series_path",
+            text(endpoint.map(|e| &e.history.series_path)),
+        ),
+        ("date_path", text(endpoint.map(|e| &e.history.date_path))),
+        (
+            "history_price_path",
+            text(endpoint.map(|e| &e.history.price_path)),
+        ),
         ("api_key", text(view.api_key.as_ref().map(|key| &key.field))),
         (
             "api_key_placeholder",
@@ -781,6 +1004,20 @@ fn test_readback(test: Option<&TestView>) -> Vec<(&'static str, String)> {
             "response_body",
             response
                 .map(|response| response.body.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "test_history",
+            result
+                .and_then(|result| result.history.as_ref())
+                .map(|history| history.text.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "history_response",
+            response
+                .and_then(|response| response.history.as_ref())
+                .map(|history| history.label.clone())
                 .unwrap_or_default(),
         ),
         ("test_note", test.note.clone()),

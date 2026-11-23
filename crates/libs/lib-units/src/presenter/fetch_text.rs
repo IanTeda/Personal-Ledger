@@ -201,11 +201,16 @@ pub(super) fn test_lines(result: &TestResult, quote: Option<&UnitRow>) -> (Strin
                 &format_time_minutes(result.at.with_timezone(&Local).time()),
             ),
         ),
-        TestOutcome::Failed(reason) => (
-            failure_name(*reason),
-            failure_detail(*reason, &result.asked.source_name, Some(test_asked(result))),
-        ),
+        TestOutcome::Failed(reason) => failure_lines(*reason, result),
     }
+}
+
+/// A test's failure `reason` as its name and detail, naming what the test asked.
+pub(super) fn failure_lines(reason: FetchFailure, result: &TestResult) -> (String, String) {
+    (
+        failure_name(reason),
+        failure_detail(reason, &result.asked.source_name, Some(test_asked(result))),
+    )
 }
 
 /// The one Toast `t` on a row answers with: Info on a price, Warning naming the reason.

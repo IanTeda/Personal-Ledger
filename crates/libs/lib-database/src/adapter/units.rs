@@ -14,9 +14,10 @@ use std::collections::HashMap;
 use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::{Money, PriceSourceId, UnitId, UnitKind, UnitRef};
 use lib_units::{
-    BaseUnitRepository, BuiltInOverride, CustomSource, Endpoint, KeyPlacement, PortsMut, Precision,
-    PriceLink, PriceSourceAuth, PriceSourceRecord, PriceSourceRepository, RequestHeader,
-    UnitRepository, UnitRow, UnitUsage, Updates, WeeklyPrice,
+    BaseUnitRepository, BuiltInOverride, CustomSource, Endpoint, HistoryEndpoint, HistoryRef,
+    KeyPlacement, PortsMut, Precision, PriceLink, PriceSourceAuth, PriceSourceRecord,
+    PriceSourceRepository, RequestHeader, SeriesShape, UnitRepository, UnitRow, UnitUsage, Updates,
+    WeeklyPrice,
 };
 use sqlx::SqliteConnection;
 
@@ -388,10 +389,22 @@ async fn upsert_price_source(
     let headers = row
         .endpoint
         .and_then(|endpoint| headers_column(&endpoint.headers));
+    let history = row
+        .endpoint
+        .and_then(|endpoint| endpoint.history.as_deref());
+    let history_request = history.map(|history| history.request.as_ref());
+    let history_series_path = history.map(|history| history.series_path.as_ref());
+    let history_date_path = history.map(|history| history.date_path.as_ref());
+    let history_price_path = history.map(|history| history.price_path.as_ref());
+    let history_shape = history
+        .map(|history| shape_str(&history.shape))
+        .transpose()?;
     sqlx::query!(
         "INSERT INTO price_sources (id, origin, name, updates, address, request, price_path,
-                                    key_placement, key_name, headers)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    key_placement, key_name, headers, history_request,
+                                    history_series_path, history_date_path, history_price_path,
+                                    history_shape)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
              origin = excluded.origin,
              name = excluded.name,
@@ -401,7 +414,12 @@ async fn upsert_price_source(
              price_path = excluded.price_path,
              key_placement = excluded.key_placement,
              key_name = excluded.key_name,
-             headers = excluded.headers",
+             headers = excluded.headers,
+             history_request = excluded.history_request,
+             history_series_path = excluded.history_series_path,
+             history_date_path = excluded.history_date_path,
+             history_price_path = excluded.history_price_path,
+             history_shape = excluded.history_shape",
         row.id,
         row.origin,
         row.name,
@@ -412,6 +430,11 @@ async fn upsert_price_source(
         key_placement,
         key_name,
         headers,
+        history_request,
+        history_series_path,
+        history_date_path,
+        history_price_path,
+        history_shape,
     )
     .execute(conn)
     .await?;
@@ -446,6 +469,47 @@ fn parse_headers(id: PriceSourceId, column: Option<&str>) -> Result<Vec<RequestH
             })
         })
         .collect()
+}
+
+/// How the `history_shape` column names a series' shape. Only a built-in, which is never stored,
+/// has columns, so a Custom source holding one refuses as a bug.
+fn shape_str(shape: &SeriesShape) -> Result<&'static str> {
+    match shape {
+        SeriesShape::Points => Ok("points"),
+        SeriesShape::Keyed => Ok("keyed"),
+        SeriesShape::Columns { .. } => Err(Error::Validation(
+            "only a built-in's history has columns".into(),
+        )),
+    }
+}
+
+/// Custom source `id`'s history request read back from its columns, `None` when it has none. The
+/// table's CHECKs keep them whole, so a missing one or an unknown shape refuses only a file
+/// edited by hand.
+fn history_endpoint(
+    id: PriceSourceId,
+    request: Option<String>,
+    series_path: Option<String>,
+    date_path: Option<String>,
+    price_path: Option<String>,
+    shape: Option<&str>,
+) -> Result<Option<HistoryEndpoint>> {
+    let Some(request) = request else {
+        return Ok(None);
+    };
+    let broken = || Error::UnitsBuilder(format!("price source {id} has a broken history request"));
+    let shape = match shape {
+        Some("points") => SeriesShape::Points,
+        Some("keyed") => SeriesShape::Keyed,
+        _ => return Err(broken()),
+    };
+    Ok(Some(HistoryEndpoint {
+        request: request.into(),
+        series_path: series_path.ok_or_else(broken)?.into(),
+        date_path: date_path.ok_or_else(broken)?.into(),
+        price_path: price_path.ok_or_else(broken)?.into(),
+        shape,
+    }))
 }
 
 /// Every row the adapter holds, as read.
@@ -533,7 +597,12 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
                price_path,
                key_placement,
                key_name,
-               headers
+               headers,
+               history_request,
+               history_series_path,
+               history_date_path,
+               history_price_path,
+               history_shape
            FROM price_sources"#
     )
     .fetch_all(&mut *conn)
@@ -569,7 +638,15 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
                 auth,
                 headers: parse_headers(row.id, row.headers.as_deref())?.into(),
                 batch: None,
-                history: None,
+                history: history_endpoint(
+                    row.id,
+                    row.history_request,
+                    row.history_series_path,
+                    row.history_date_path,
+                    row.history_price_path,
+                    row.history_shape.as_deref(),
+                )?
+                .map(HistoryRef::from),
             },
             updates,
         }))
@@ -988,6 +1065,11 @@ mod tests {
                 "key_placement",
                 "key_name",
                 "headers",
+                "history_request",
+                "history_series_path",
+                "history_date_path",
+                "history_price_path",
+                "history_shape",
                 "created_on",
                 "updated_on"
             ],

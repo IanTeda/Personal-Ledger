@@ -564,10 +564,18 @@ fn the_menus_test_entry_tests_the_source_and_its_edit_dialogs_button_tests_inlin
     ui.right_click(&row);
     ui.click("settings-units-menu-edit-source");
     assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+    scroll_form_down(&mut ui);
     ui.click("price-source-test");
     assert_eq!(transport.requests().len(), 2);
     transport.answer_last(200, r#"{"bitcoin":{"aud":92568}}"#);
     ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+    // The price passed, so the test asks CoinGecko's history too.
+    transport.answer_last(200, r#"{"prices":[[1781222400000,92000]]}"#);
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+    assert_eq!(
+        ui.dialog_value("test_history").as_deref(),
+        Some("History \u{b7} 1 point \u{b7} newest 2026-06-12 \u{b7} 92000")
+    );
     assert_eq!(
         ui.dialog_value("test_heading").as_deref(),
         Some("Price found \u{b7} 0 ms")
@@ -887,4 +895,41 @@ fn clicking_coingeckos_key_field_takes_a_demo_key_and_remove_key_clears_it(
         Some(""),
         "the key went on Save"
     );
+}
+
+#[gpui::test]
+fn the_history_sections_fields_and_series_take_clicks(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.click("settings-add-price-source");
+    scroll_form_down(&mut ui);
+    ui.click("price-source-history-request");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("HistoryRequest"));
+    ui.press("/ h");
+    assert_eq!(ui.dialog_value("history_request").as_deref(), Some("/h"));
+    ui.click("price-source-series-shape-1");
+    assert_eq!(
+        ui.dialog_value("series_shape").as_deref(),
+        Some("Keyed by date")
+    );
+    ui.click("price-source-series-path");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("SeriesPath"));
+    ui.click("price-source-date-path");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("DatePath"));
+    ui.click("price-source-history-price-path");
+    assert_eq!(
+        ui.dialog_value("field").as_deref(),
+        Some("HistoryPricePath")
+    );
+    ui.click("price-source-series-shape-0");
+    assert_eq!(
+        ui.dialog_value("series_shape").as_deref(),
+        Some("List of points")
+    );
+}
+
+/// Wheels the open price source form's body down past its price request, as a person reaches the
+/// fields under its fold.
+fn scroll_form_down(ui: &mut Harness<'_>) {
+    let body = ui.bounds("price-source-body").center();
+    ui.scroll_at(body, gpui::point(gpui::px(0.0), gpui::px(-400.0)));
 }

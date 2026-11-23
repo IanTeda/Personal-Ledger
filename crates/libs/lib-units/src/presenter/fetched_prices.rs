@@ -1168,6 +1168,126 @@ mod tests {
             assert_eq!(client.urls().len(), 2, "a relinked Unit asks again");
         }
 
+        /// Adds a Custom source with `history`, returning its id.
+        fn custom_source(
+            client: &Client,
+            history: Option<crate::HistoryEndpoint>,
+        ) -> lib_core::PriceSourceId {
+            crate::add_custom_source(
+                &mut client.ports.borrow_mut().price_sources.records,
+                "Rates".into(),
+                crate::Endpoint {
+                    address: "https://rates.example".to_string().into(),
+                    request: "/{symbol}".to_string().into(),
+                    price_path: "/price".to_string().into(),
+                    auth: crate::PriceSourceAuth::None,
+                    headers: Vec::new().into(),
+                    batch: None,
+                    history: history.map(crate::HistoryRef::from),
+                },
+                Updates::Daily,
+            )
+            .id
+        }
+
+        fn answered(body: &str) -> TransportOutcome {
+            TransportOutcome::Answered {
+                status: 200,
+                body: body.into(),
+                retry_after: None,
+            }
+        }
+
+        #[test]
+        fn a_custom_source_backfills_from_a_list_of_points_or_a_series_keyed_by_date() {
+            let mut client = client(Vec::new());
+            let points = custom_source(
+                &client,
+                Some(crate::HistoryEndpoint {
+                    request: "/points/{symbol}?from={from_unix}&to={to_unix}"
+                        .to_string()
+                        .into(),
+                    series_path: "/prices".to_string().into(),
+                    date_path: "/0".to_string().into(),
+                    price_path: "/1".to_string().into(),
+                    shape: crate::SeriesShape::Points,
+                }),
+            );
+            let keyed = custom_source(
+                &client,
+                Some(crate::HistoryEndpoint {
+                    request: "/keyed/{symbol}?from={from}&to={to}".to_string().into(),
+                    series_path: "/rates".to_string().into(),
+                    date_path: "".into(),
+                    price_path: "/{quote}".to_string().into(),
+                    shape: crate::SeriesShape::Keyed,
+                }),
+            );
+            client
+                .ports
+                .borrow_mut()
+                .units
+                .units
+                .extend([on(points, "EUR", "EUR"), on(keyed, "USD", "USD")]);
+            client.edit("EUR", |eur| eur.created_on = Some(day(2026, 10, 7)));
+            client.edit("USD", |usd| usd.created_on = Some(day(2026, 10, 7)));
+
+            client.presenter.backfill();
+            let urls = client.urls();
+            assert!(
+                urls.contains(
+                    &"https://rates.example/points/EUR?from=1791072000&to=1792368000".to_string()
+                ),
+                "{urls:?}"
+            );
+            assert!(
+                urls.contains(
+                    &"https://rates.example/keyed/USD?from=2026-10-05&to=2026-10-18".to_string()
+                ),
+                "{urls:?}"
+            );
+            for (id, request) in client.transport.requests() {
+                let body = if request.url.contains("/points/") {
+                    // 6 and 13 October 2026, in milliseconds.
+                    r#"{"prices":[[1791244800000,1.61],[1791849600000,1.62]]}"#
+                } else {
+                    r#"{"rates":{"2026-10-06":{"AUD":1.51},"2026-10-13T00:00:00Z":{"AUD":"1.52"}}}"#
+                };
+                let response = client.transport.answer(id, answered(body));
+                client.presenter.handle(response, &mut client.notices);
+            }
+
+            assert_eq!(client.weeks("EUR"), [day(2026, 10, 5), day(2026, 10, 12)]);
+            assert_eq!(client.weeks("USD"), [day(2026, 10, 5), day(2026, 10, 12)]);
+            assert_eq!(
+                client.unit("USD").prices[1].close,
+                "1.52".parse().expect("a decimal")
+            );
+        }
+
+        #[test]
+        fn a_custom_source_with_no_history_request_never_backfills() {
+            let mut client = client(Vec::new());
+            let plain = custom_source(&client, None);
+            client
+                .ports
+                .borrow_mut()
+                .units
+                .units
+                .push(on(plain, "EUR", "EUR"));
+            client.edit("EUR", |eur| eur.created_on = Some(day(2026, 9, 30)));
+
+            client.presenter.backfill();
+
+            assert!(client.urls().is_empty());
+            assert!(
+                !client
+                    .fetching
+                    .borrow()
+                    .history_fetching(client.unit("EUR").id)
+            );
+        }
+
         #[test]
         fn with_no_accounts_the_floor_is_the_units_creation_and_with_neither_nothing_is_asked() {
             let mut client = client(vec![currency("EUR"), currency("USD")]);

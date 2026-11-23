@@ -424,6 +424,9 @@ pub struct PriceFetching {
     test_results: HashMap<RequestId, TestResult>,
     /// Tests out whose form has closed, whose responses are dropped as they land.
     dropped: HashSet<RequestId>,
+    /// A form's test's history requests out, by request, each with the test it belongs to: the
+    /// test is out until its history lands too.
+    test_histories: HashMap<RequestId, (RequestId, TestHistory)>,
     /// Each source's one history request queued or out, by request (ADR-0043's backfill
     /// amendment): never part of a round, so it writes only its own Unit's weeks.
     history_out: HashMap<RequestId, HistoryCall>,
@@ -493,6 +496,39 @@ pub(crate) struct TestInFlight {
     pub toast: bool,
     /// Whether the form's fields differed from the stored source when it was sent.
     pub unsaved: bool,
+    /// The history request a form's test asks once its price passes; `None` for a source with
+    /// none, and for `t` on a row, which answers with one Toast.
+    pub history: Option<TestHistory>,
+}
+
+/// What a test asks of a source's history (ADR-0043's amendment "a Custom source's history
+/// request"): the last 14 days, through the endpoint the price came from.
+#[derive(Clone)]
+pub(crate) struct TestHistory {
+    pub endpoint: Endpoint,
+    pub history: HistoryEndpoint,
+    /// The days asked, both included.
+    pub range: (NaiveDate, NaiveDate),
+}
+
+/// How a test's history went: its points, an empty series being No price, or a reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HistoryTestOutcome {
+    Points {
+        count: usize,
+        newest: NaiveDate,
+        /// The newest point's close.
+        close: Money,
+    },
+    Failed(FetchFailure),
+}
+
+/// A test's landed history.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HistoryTestResult {
+    pub outcome: HistoryTestOutcome,
+    /// The status and body the provider answered, the key masked; `None` when nothing came back.
+    pub response: Option<(u16, String)>,
 }
 
 /// How a test went: a price, or one of the seven reasons.
@@ -511,6 +547,8 @@ pub(crate) struct TestResult {
     pub at: DateTime<Utc>,
     /// The status and body the provider answered, the key masked; `None` when nothing came back.
     pub response: Option<(u16, String)>,
+    /// The history the test asked once its price passed, once it has landed.
+    pub history: Option<HistoryTestResult>,
 }
 
 /// What stands in for a key echoed back in a response.
@@ -543,6 +581,7 @@ impl PriceFetching {
             tests: HashMap::new(),
             test_results: HashMap::new(),
             dropped: HashSet::new(),
+            test_histories: HashMap::new(),
             history_out: HashMap::new(),
             history_queue: HashMap::new(),
             history_failures: HashMap::new(),
@@ -707,6 +746,7 @@ impl PriceFetching {
     /// a round's.
     pub(crate) fn is_test(&self, response: &PriceResponse) -> bool {
         self.tests.contains_key(&response.request)
+            || self.test_histories.contains_key(&response.request)
     }
 
     /// Reads a test's `response` at `now`, holding it for its form unless it answers with a
@@ -716,6 +756,10 @@ impl PriceFetching {
         response: &PriceResponse,
         now: DateTime<Utc>,
     ) -> Option<TestResult> {
+        if self.test_histories.contains_key(&response.request) {
+            self.land_test_history(response);
+            return None;
+        }
         let asked = self.tests.remove(&response.request)?;
         if self.dropped.remove(&response.request) {
             return None;
@@ -735,17 +779,89 @@ impl PriceFetching {
             at: now,
             outcome,
             response: answered,
+            history: None,
             asked,
         };
         if !result.asked.toast {
             self.test_results.insert(response.request, result.clone());
+            if matches!(result.outcome, TestOutcome::Priced(_))
+                && let Some(history) = result.asked.history.clone()
+            {
+                self.send_test_history(response.request, &result.asked, history, now);
+            }
         }
         Some(result)
     }
 
+    /// Queues test `test`'s history request, once its price passed, as a call a person asked for.
+    fn send_test_history(
+        &mut self,
+        test: RequestId,
+        asked: &TestInFlight,
+        history: TestHistory,
+        now: DateTime<Utc>,
+    ) {
+        let request = crate::history::history_request(
+            &history.endpoint,
+            &history.history,
+            &asked.symbol,
+            &asked.quote_code,
+            history.range,
+            asked.key.clone(),
+        );
+        let id = self.next_request();
+        self.test_histories.insert(id, (test, history));
+        self.enqueue(id, asked.source, true, request);
+        self.release(now);
+    }
+
+    /// Reads a test's history `response` onto its test's result, unless its form has dropped it.
+    fn land_test_history(&mut self, response: &PriceResponse) {
+        let Some((test, history)) = self.test_histories.remove(&response.request) else {
+            return;
+        };
+        if self.dropped.remove(&response.request) {
+            return;
+        }
+        let Some(result) = self.test_results.get_mut(&test) else {
+            return;
+        };
+        let asked = &result.asked;
+        let outcome = match crate::history::read_history(
+            &response.outcome,
+            &history.history,
+            &asked.symbol,
+            &asked.quote_code,
+        ) {
+            crate::history::HistoryReading::Points(mut points) => {
+                // Stable, so the last of several points on one day is its close, as a week folds.
+                points.sort_by_key(|point| point.day);
+                match points.last() {
+                    Some(newest) => HistoryTestOutcome::Points {
+                        count: points.len(),
+                        newest: newest.day,
+                        close: newest.close.clone(),
+                    },
+                    None => HistoryTestOutcome::Failed(FetchFailure::NoPrice),
+                }
+            }
+            crate::history::HistoryReading::Failed(reason) => HistoryTestOutcome::Failed(reason),
+        };
+        let answered = match &response.outcome {
+            TransportOutcome::Answered { status, body, .. } => {
+                Some((*status, masked(body, asked.key.as_ref())))
+            }
+            TransportOutcome::Failed(_) => None,
+        };
+        result.history = Some(HistoryTestResult {
+            outcome,
+            response: answered,
+        });
+    }
+
     /// Whether test `id` is still out.
     pub(crate) fn testing(&self, id: RequestId) -> bool {
-        self.tests.contains_key(&id)
+        self.tests.contains_key(&id) || self.test_histories.values().any(|(test, _)| *test == id)
     }
 
     /// Whether a test of stored source `source` is out.
@@ -767,6 +883,11 @@ impl PriceFetching {
         // Kept among the tests, so its response is still known as a test's, never a round's.
         if self.tests.contains_key(&id) {
             self.dropped.insert(id);
+        }
+        for (history, (test, _)) in &self.test_histories {
+            if *test == id {
+                self.dropped.insert(*history);
+            }
         }
     }
 

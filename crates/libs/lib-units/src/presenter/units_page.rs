@@ -592,8 +592,11 @@ impl UnitsPagePresenter {
                     today: now.with_timezone(&Local).date_naive(),
                     out_of_date: out_of_date(unit),
                     fetch_failed: unit_failed(unit),
-                    backfill: fetching
-                        .and_then(|fetching| backfill_text(fetching, unit, source_of(unit)?, now)),
+                    backfill: source_of(unit).and_then(|source| {
+                        no_history_text(source, unit.id == base).or_else(|| {
+                            fetching.and_then(|fetching| backfill_text(fetching, unit, source, now))
+                        })
+                    }),
                 },
                 unit,
             )
@@ -1203,6 +1206,14 @@ impl UnitsPagePresenter {
         hints.push(Hint::new(chord(NEXT_TABLE), other));
         hints
     }
+}
+
+/// What PRICE HISTORY says of a Unit on `source` that never backfills because its source has no
+/// history request (ADR-0043's amendment "a Custom source's history request"); `None` for the
+/// base Unit, Manual entry, which never fetches, and a source with one.
+fn no_history_text(source: &PriceSource<'_>, is_base: bool) -> Option<String> {
+    let endpoint = source.endpoint()?;
+    (!is_base && endpoint.history.is_none()).then(|| msg::units_history_no_request(source.name))
 }
 
 /// What PRICE HISTORY says of `unit`'s backfill at `now`: *Fetching history…* while its history
@@ -3390,6 +3401,67 @@ mod tests {
 
         page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
         assert_eq!(history(&page).unit, UnitId::SEED_VAS);
+    }
+
+    #[test]
+    fn a_unit_on_a_custom_source_with_no_history_request_says_its_past_weeks_fill_only_by_hand() {
+        let mut page = Page::new();
+        let endpoint = crate::Endpoint {
+            address: "https://prices.example".to_string().into(),
+            request: "/{symbol}".to_string().into(),
+            price_path: "/price".to_string().into(),
+            auth: crate::PriceSourceAuth::None,
+            headers: Vec::new().into(),
+            batch: None,
+            history: None,
+        };
+        let source = {
+            let mut ports = page.ports.borrow_mut();
+            let source = crate::add_custom_source(
+                &mut ports.price_sources.records,
+                "Prices".into(),
+                endpoint,
+                crate::Updates::Daily,
+            );
+            let vas = ports
+                .units
+                .units
+                .iter_mut()
+                .find(|unit| unit.id == UnitId::SEED_VAS)
+                .expect("VAS is on the sample");
+            vas.link.source_id = source.id;
+            source
+        };
+
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+        assert_eq!(
+            history(&page).backfill.as_deref(),
+            Some("Prices has no history request, so past weeks fill only by hand")
+        );
+
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        assert_eq!(history(&page).backfill, None, "CoinGecko has one");
+
+        {
+            let mut ports = page.ports.borrow_mut();
+            let mut endpoint = source.endpoint.clone();
+            endpoint.history = Some(crate::HistoryRef::from(crate::HistoryEndpoint {
+                request: "/h/{symbol}".to_string().into(),
+                series_path: "".into(),
+                date_path: "/d".to_string().into(),
+                price_path: "/p".to_string().into(),
+                shape: crate::SeriesShape::Points,
+            }));
+            crate::edit_custom_source(
+                &mut ports.price_sources.records,
+                source.id,
+                "Prices".into(),
+                crate::Updates::Daily,
+                Some(endpoint),
+            );
+        }
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+        assert_eq!(history(&page).backfill, None, "once it has one");
     }
 
     #[test]

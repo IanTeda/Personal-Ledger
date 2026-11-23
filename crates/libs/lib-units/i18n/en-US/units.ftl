@@ -294,6 +294,7 @@ units-history-none = { $code } has no prices yet. A fetch or backfill will fill 
 
 units-history-backfilling = Fetching history…
 units-history-backfill-failed = History failed · { $reason } · { $retry }
+units-history-no-request = { $source } has no history request, so past weeks fill only by hand
 
 ## Refusals: an Interactor said no, shown in the open Dialog.
 
@@ -488,6 +489,27 @@ units-price-source-test-found-detail = { $symbol } · { $price } · tested { $ti
 units-price-source-test-unsaved = with unsaved changes
 units-price-source-test-response = Response · HTTP { $status }
 units-price-source-test-writes-nothing = A test writes nothing.
+units-price-source-history-heading = History
+units-price-source-field-history-request = History request
+units-price-source-field-series-shape = Series
+units-price-source-field-series-path = Series path
+units-price-source-field-date-path = Date path
+units-price-source-field-history-price-path = Close path
+units-price-source-history-request-placeholder = /history?symbol={ "{" }symbol{ "}" }&from={ "{" }from{ "}" }&to={ "{" }to{ "}" }
+units-price-source-series-path-placeholder = /prices
+units-price-source-date-path-placeholder = /date
+units-price-source-history-price-path-placeholder = /close
+units-price-source-history-help = Optional. Lets this source's units fill their past weeks. { "{" }from{ "}" } and { "{" }to{ "}" } are ISO dates, { "{" }from_unix{ "}" } and { "{" }to_unix{ "}" } Unix seconds, beside the request's placeholders.
+units-price-source-series-points = List of points
+units-price-source-series-keyed = Keyed by date
+units-price-source-series-path-help = A JSON pointer to the series in the response; blank for the whole response.
+units-price-source-point-paths-help = JSON pointers within each point. A date is an ISO date or datetime, or Unix seconds or milliseconds. Blank date path on a series keyed by date reads the key.
+units-price-source-test-history-found = History · { $count ->
+    [one] { $count } point
+   *[other] { $count } points
+} · newest { $date } · { $close }
+units-price-source-test-history-failed = History · { $reason } · { $detail }
+units-price-source-test-history-response = History response · HTTP { $status }
 units-toast-test-found = { $source } works: { $symbol } · { $price } · { $ms } ms
 units-toast-test-failed = { $source } test: { $reason } · { $detail }
 units-toast-already-testing = Already testing { $source }

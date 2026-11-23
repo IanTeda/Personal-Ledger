@@ -40,8 +40,9 @@ pub use delete_unit::{
 pub use fetched_prices::FetchedPricesPresenter;
 pub use price_history::{HISTORY_WEEKS, HistoryRow, PriceHistory, Trend};
 pub use price_source_form::{
-    ApiKeyView, AuthChoice, PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter,
-    PriceSourceFormViewModel, ResponseView, TestResultView, TestState, TestView,
+    ApiKeyView, AuthChoice, HistoryFields, HistoryResponseView, HistoryShape, PriceSourceField,
+    PriceSourceFormEvent, PriceSourceFormPresenter, PriceSourceFormViewModel, ResponseView,
+    TestHistoryView, TestResultView, TestState, TestView,
 };
 pub use set_base_unit::{SetBaseUnitEvent, SetBaseUnitPresenter, SetBaseUnitViewModel};
 pub use set_price::{SetPriceEvent, SetPriceField, SetPricePresenter, SetPriceViewModel};

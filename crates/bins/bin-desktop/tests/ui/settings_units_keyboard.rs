@@ -2279,7 +2279,8 @@ fn test_with_symbol_tests_an_unsaved_custom_source_and_opens_its_response_on_no_
         Some("A test writes nothing.")
     );
 
-    ui.press("tab tab tab");
+    // Past Headers, Authentication and the History section.
+    ui.press("tab tab tab tab tab tab tab tab");
     assert_eq!(ui.dialog_value("field").as_deref(), Some("Symbol"));
     type_word(&mut ui, "abc");
     assert_eq!(
@@ -2495,4 +2496,245 @@ fn a_failed_backfill_says_so_in_place_and_raises_no_toast(app: &mut TestAppConte
     assert!(visible_toasts(&mut ui).is_empty(), "never a Toast");
     let (_, eur) = unit_line(&mut ui, "EUR");
     assert_eq!(eur.fetch_failed_tag, None, "never fetch failed");
+}
+
+#[gpui::test]
+fn a_custom_sources_history_request_is_typed_and_tested_after_its_price(app: &mut TestAppContext) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_on_frankfurter);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    ui.press("tab n");
+    type_word(&mut ui, "broker");
+    ui.press("tab tab");
+    type_word(&mut ui, "https://b.example");
+    ui.press("tab");
+    type_word(&mut ui, "/q");
+    ui.press("tab");
+    type_word(&mut ui, "/last");
+    ui.press("tab tab tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("HistoryRequest"));
+    type_word(&mut ui, "/h?f={from}");
+    assert_eq!(
+        ui.dialog_value("test_help").as_deref(),
+        Some("Fill in Date path to test.")
+    );
+    assert!(ui.is_drawn("price-source-history"));
+    ui.press("tab right");
+    assert_eq!(
+        ui.dialog_value("series_shape").as_deref(),
+        Some("Keyed by date")
+    );
+    ui.press("left tab");
+    type_word(&mut ui, "/data");
+    ui.press("tab");
+    type_word(&mut ui, "/d");
+    ui.press("tab");
+    type_word(&mut ui, "/c");
+    ui.press("tab");
+    type_word(&mut ui, "abc");
+    ui.press("tab enter");
+    transport.answer_last(200, r#"{"last":12.5}"#);
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert_eq!(
+        transport.urls().last().map(String::as_str),
+        Some("https://b.example/h?f=2026-06-02"),
+        "the last 14 days, once the price passed"
+    );
+    assert_eq!(ui.dialog_value("test").as_deref(), Some("Testing\u{2026}"));
+    transport.answer_last(
+        200,
+        r#"{"data":[{"d":1780876800,"c":1.2},{"d":"2026-06-09T10:00:00Z","c":"1.2345"}]}"#,
+    );
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert_eq!(
+        ui.dialog_value("test_heading").as_deref(),
+        Some("Price found \u{b7} 0 ms")
+    );
+    assert_eq!(
+        ui.dialog_value("test_history").as_deref(),
+        Some("History \u{b7} 2 points \u{b7} newest 2026-06-09 \u{b7} 1.2345")
+    );
+    assert_eq!(
+        ui.dialog_value("history_response").as_deref(),
+        Some("History response \u{b7} HTTP 200")
+    );
+    assert!(ui.is_drawn("price-source-test-history"));
+    assert_eq!(ui.dialog_value("response_open").as_deref(), Some("false"));
+
+    // The test left focus on Symbol; back one is the Close path, where Enter saves.
+    ui.press("shift-tab");
+    assert_eq!(
+        ui.dialog_value("field").as_deref(),
+        Some("HistoryPricePath")
+    );
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None, "saved");
+    let names: Vec<String> = ui
+        .settings::<SettingsUnitsSnapshot>()
+        .price_sources
+        .into_iter()
+        .map(|source| source.name)
+        .collect();
+    assert!(names.contains(&"broker".to_string()));
+}
+
+#[gpui::test]
+fn an_empty_history_opens_the_test_response_by_itself(app: &mut TestAppContext) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_on_frankfurter);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    ui.press("tab n");
+    type_word(&mut ui, "broker");
+    ui.press("tab tab");
+    type_word(&mut ui, "https://b.example");
+    ui.press("tab");
+    type_word(&mut ui, "/q");
+    ui.press("tab");
+    type_word(&mut ui, "/last");
+    ui.press("tab tab tab");
+    type_word(&mut ui, "/h");
+    ui.press("tab right tab tab tab");
+    type_word(&mut ui, "/c");
+    ui.press("tab");
+    type_word(&mut ui, "abc");
+    ui.press("tab enter");
+    transport.answer_last(200, r#"{"last":12.5}"#);
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+    transport.answer_last(200, "{}");
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert_eq!(
+        ui.dialog_value("test_history").as_deref(),
+        Some("History \u{b7} No price \u{b7} broker gave no price for abc in AUD")
+    );
+    assert_eq!(ui.dialog_value("response_open").as_deref(), Some("true"));
+    assert!(ui.is_drawn("price-source-history-response-body"));
+}
+
+/// Adds AAA on a Custom source whose history is a list of `[seconds, close]` pairs, AAB on one
+/// keyed by date and AAC on one with no history request, each created three weeks before today.
+fn custom_units(fakes: &mut FakeStores) {
+    let mut source = |name: &str, history: Option<lib_units::HistoryEndpoint>| {
+        lib_units::add_custom_source(
+            &mut fakes.units.price_sources.records,
+            name.into(),
+            lib_units::Endpoint {
+                address: "https://rates.example".to_string().into(),
+                request: "/{symbol}".to_string().into(),
+                price_path: "/price".to_string().into(),
+                auth: lib_units::PriceSourceAuth::None,
+                headers: Vec::new().into(),
+                batch: None,
+                history: history.map(lib_units::HistoryRef::from),
+            },
+            lib_units::Updates::Daily,
+        )
+        .id
+    };
+    let points = source(
+        "Pairs",
+        Some(lib_units::HistoryEndpoint {
+            request: "/pairs/{symbol}?from={from_unix}&to={to_unix}"
+                .to_string()
+                .into(),
+            series_path: "/prices".to_string().into(),
+            date_path: "/0".to_string().into(),
+            price_path: "/1".to_string().into(),
+            shape: lib_units::SeriesShape::Points,
+        }),
+    );
+    let keyed = source(
+        "Keyed",
+        Some(lib_units::HistoryEndpoint {
+            request: "/keyed/{symbol}?from={from}&to={to}".to_string().into(),
+            series_path: "/rates".to_string().into(),
+            date_path: "".into(),
+            price_path: "/{quote}".to_string().into(),
+            shape: lib_units::SeriesShape::Keyed,
+        }),
+    );
+    let plain = source("Plain", None);
+    for (code, source_id) in [("AAA", points), ("AAB", keyed), ("AAC", plain)] {
+        let mut unit = lib_units::UnitRow::new(
+            code.into(),
+            code.into(),
+            lib_core::UnitKind::Custom,
+            lib_units::Precision::of_kind(lib_core::UnitKind::Custom),
+            lib_units::PriceLink {
+                source_id,
+                symbol: code.into(),
+                quote: UnitId::SEED_AUD,
+            },
+        );
+        unit.created_on = Some(common::today() - chrono::Duration::weeks(3));
+        fakes.units.units.units.push(unit);
+    }
+}
+
+/// The weeks Unit `code` has a Weekly Price for, as stored.
+fn weeks_of(ui: &Harness<'_>, code: &str) -> Vec<chrono::NaiveDate> {
+    ui.stores(|stores| {
+        stores
+            .units
+            .borrow()
+            .units()
+            .units()
+            .into_iter()
+            .find(|unit| unit.code == code)
+            .map(|unit| unit.prices.iter().map(|price| price.week).collect())
+            .unwrap_or_default()
+    })
+}
+
+#[gpui::test]
+fn a_custom_source_backfills_from_either_shape_and_one_without_a_history_request_says_so(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), custom_units);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    let urls = transport.urls();
+    assert!(
+        urls.contains(&"https://rates.example/keyed/AAB?from=2026-05-25&to=2026-06-14".to_string()),
+        "{urls:?}"
+    );
+    assert!(
+        !urls
+            .iter()
+            .any(|url| url.contains("AAC") && url != "https://rates.example/AAC"),
+        "no history request, no backfill: {urls:?}"
+    );
+    for (id, request) in transport.requests() {
+        let body = if request.url.contains("/pairs/AAA") {
+            // 8 June 2026, in Unix seconds.
+            r#"{"prices":[[1780876800,3.4567]]}"#
+        } else if request.url.contains("/keyed/AAB") {
+            r#"{"rates":{"2026-06-09":{"AUD":"5.6789"}}}"#
+        } else {
+            continue;
+        };
+        transport.answer(
+            id,
+            lib_units::TransportOutcome::Answered {
+                status: 200,
+                body: body.into(),
+                retry_after: None,
+            },
+        );
+    }
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert_eq!(weeks_of(&ui, "AAA"), [common::date(2026, 6, 8)]);
+    assert_eq!(weeks_of(&ui, "AAB"), [common::date(2026, 6, 8)]);
+    select_unit(&mut ui, "AAC");
+    assert_eq!(
+        history(&mut ui).backfill.as_deref(),
+        Some("Plain has no history request, so past weeks fill only by hand")
+    );
+    assert!(ui.is_drawn("units-history-backfill"));
 }

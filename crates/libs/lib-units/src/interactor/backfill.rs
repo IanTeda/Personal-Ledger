@@ -67,7 +67,7 @@ impl Backfill {
             let Some(endpoint) = source.endpoint() else {
                 continue;
             };
-            let Some(history) = endpoint.history else {
+            let Some(history) = endpoint.history.as_deref() else {
                 continue;
             };
             if source.updates == Updates::ManualOnly && !asked && !retrying {

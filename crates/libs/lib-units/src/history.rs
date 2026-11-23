@@ -301,7 +301,10 @@ mod tests {
 
     fn history(id: lib_core::PriceSourceId) -> (&'static Endpoint, &'static HistoryEndpoint) {
         let endpoint = &built_in(id).expect("a built-in").endpoint;
-        (endpoint, endpoint.history.expect("a history request"))
+        (
+            endpoint,
+            endpoint.history.as_deref().expect("a history request"),
+        )
     }
 
     fn answered(body: &str) -> TransportOutcome {
@@ -566,6 +569,110 @@ mod tests {
         assert_eq!(
             fold(points, at()),
             [week(day(2026, 10, 5), "1.62", "1.62", "1.61", "1.61")]
+        );
+    }
+
+    /// A Custom source's history, as a person types it on the form.
+    fn custom(
+        request: &str,
+        series: &str,
+        date: &str,
+        price: &str,
+        shape: SeriesShape,
+    ) -> HistoryEndpoint {
+        HistoryEndpoint {
+            request: request.to_string().into(),
+            series_path: series.to_string().into(),
+            date_path: date.to_string().into(),
+            price_path: price.to_string().into(),
+            shape,
+        }
+    }
+
+    #[test]
+    fn a_custom_history_request_fills_iso_dates_and_unix_seconds() {
+        let endpoint = Endpoint {
+            address: "https://prices.example".to_string().into(),
+            request: "/{symbol}".to_string().into(),
+            price_path: "/price".to_string().into(),
+            auth: crate::PriceSourceAuth::None,
+            headers: Vec::new().into(),
+            batch: None,
+            history: None,
+        };
+        let history = custom(
+            "/h/{symbol}?in={quote}&from={from}&to={to}&s={from_unix}&e={to_unix}",
+            "",
+            "/d",
+            "/p",
+            SeriesShape::Points,
+        );
+
+        let request = history_request(
+            &endpoint,
+            &history,
+            "ABC",
+            "AUD",
+            (day(2026, 9, 28), day(2026, 10, 18)),
+            None,
+        );
+
+        assert_eq!(
+            request.url,
+            "https://prices.example/h/ABC?in=AUD&from=2026-09-28&to=2026-10-18&s=1790467200&e=1792368000"
+        );
+    }
+
+    #[test]
+    fn a_custom_points_series_dates_each_point_by_iso_date_datetime_seconds_or_milliseconds() {
+        let history = custom("/h", "/data", "/t", "/close", SeriesShape::Points);
+        // 6, 7 and 8 October 2026 as an ISO datetime, Unix seconds and milliseconds.
+        let body = r#"{"data":[
+            {"t":"2026-10-05","close":1},
+            {"t":"2026-10-06T23:30:00+10:00","close":"2"},
+            {"t":1791331200,"close":3},
+            {"t":1791417600000,"close":4},
+            {"t":"not a date","close":9},
+            {"t":"2026-10-09","close":null}
+        ]}"#;
+
+        let HistoryReading::Points(points) = read_history(&answered(body), &history, "ABC", "AUD")
+        else {
+            panic!("the reply reads");
+        };
+        let days: Vec<_> = points.iter().map(|point| point.day).collect();
+
+        assert_eq!(
+            days,
+            [
+                day(2026, 10, 5),
+                day(2026, 10, 6),
+                day(2026, 10, 7),
+                day(2026, 10, 8)
+            ],
+            "an unreadable date or price drops only its point"
+        );
+        assert_eq!(
+            fold(points, at()),
+            [week(day(2026, 10, 5), "1", "4", "1", "4")],
+            "close only: the week's open, high and low fold from the closes"
+        );
+    }
+
+    #[test]
+    fn a_custom_coingecko_shaped_series_reads_pairs_at_slash_0_and_slash_1() {
+        let history = custom("/h", "/prices", "/0", "/1", SeriesShape::Points);
+        let body = r#"{"prices":[[1791158400000,10],[1791244800000,12],[1791244800000,11]]}"#;
+
+        let HistoryReading::Points(points) = read_history(&answered(body), &history, "x", "AUD")
+        else {
+            panic!("the reply reads");
+        };
+
+        assert_eq!(
+            fold(points, at()),
+            [week(day(2026, 10, 5), "10", "12", "10", "11")],
+            "two points on one day fold as a week does, the last the close"
         );
     }
 
