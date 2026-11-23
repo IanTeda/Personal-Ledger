@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n               id                    AS \"id!: UnitId\",\n               code,\n               name,\n               unit_kind             AS \"unit_kind!: UnitKind\",\n               precision             AS \"precision!: u8\",\n               price_source_id       AS \"price_source_id!: PriceSourceId\",\n               price_symbol,\n               quote_unit_id         AS \"quote_unit_id!: UnitId\",\n               is_active\n           FROM units",
+  "query": "SELECT\n               id                    AS \"id!: UnitId\",\n               code,\n               name,\n               unit_kind             AS \"unit_kind!: UnitKind\",\n               precision             AS \"precision!: u8\",\n               price_source_id       AS \"price_source_id!: PriceSourceId\",\n               price_symbol,\n               quote_unit_id         AS \"quote_unit_id!: UnitId\",\n               is_active,\n               created_on            AS \"created_on!: DateTime<Utc>\"\n           FROM units",
   "describe": {
     "columns": [
       {
@@ -47,6 +47,11 @@
         "name": "is_active",
         "ordinal": 8,
         "type_info": "Bool"
+      },
+      {
+        "name": "created_on!: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -61,8 +66,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "8b6e65ab1b5f425d6a4f2d2f4987acbee5cb77e5e08bd08cf9df6281a10b7e18"
+  "hash": "6cb96dd5d275ec1e4f720a5dfad6de4b22e792dbce6f0821775a5ebc80a0893a"
 }

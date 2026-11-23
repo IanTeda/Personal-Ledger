@@ -189,6 +189,15 @@ pub(crate) fn holdings(
         .collect()
 }
 
+/// The earliest Opened date of the `accounts` that count in `unit`, `None` for none.
+pub(crate) fn earliest_opened(accounts: &[Account], unit: UnitId) -> Option<NaiveDate> {
+    accounts
+        .iter()
+        .filter(|account| account.unit == unit)
+        .map(|account| account.opened_at)
+        .min()
+}
+
 /// How many of `accounts` count in `unit`.
 pub(crate) fn unit_accounts(accounts: &[Account], unit: UnitId) -> usize {
     accounts

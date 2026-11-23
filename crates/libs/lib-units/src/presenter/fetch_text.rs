@@ -69,7 +69,8 @@ fn round_phrase(reason: FetchFailure) -> String {
 }
 
 /// The status line while asked-for rounds are out, naming their sources in the order they list
-/// (`Fetching prices from CoinGecko, Yahoo Finance…`); `None` once everything has landed.
+/// (`Fetching prices from CoinGecko, Yahoo Finance…`), then while a fetch now's history is out
+/// (`Fetching price history for BTC from CoinGecko…`); `None` once everything has landed.
 fn fetching_status(ports: &dyn UnitsPorts, fetching: &PriceFetching) -> Option<String> {
     let out = fetching.named_sources();
     let names: Vec<String> = ports
@@ -79,7 +80,14 @@ fn fetching_status(ports: &dyn UnitsPorts, fetching: &PriceFetching) -> Option<S
         .filter(|source| out.contains(&source.id))
         .map(|source| source.name.to_string())
         .collect();
-    (!names.is_empty()).then(|| msg::units_status_fetching(&names.join(", ")))
+    if !names.is_empty() {
+        return Some(msg::units_status_fetching(&names.join(", ")));
+    }
+    // Once its rounds land, a fetch now names the first history it is still waiting on.
+    let (code, source) = fetching.asked_history().into_iter().next()?;
+    let catalogue = ports.source_catalogue();
+    let name = catalogue.source(source)?.name.to_string();
+    Some(msg::units_status_fetching_history(&code, &name))
 }
 
 /// `Waiting for CoinGecko, 40 s…` while a call a person asked for waits out a `Retry-After` at
@@ -230,7 +238,7 @@ pub(super) fn test_failed_toast(reason: FetchFailure, source: &str, asked: Asked
 }
 
 /// When a backed-off fetch is tried again: `tries again in 11 minutes`, rounded up.
-fn retry_text(retry_at: DateTime<Utc>, now: DateTime<Utc>) -> String {
+pub(super) fn retry_text(retry_at: DateTime<Utc>, now: DateTime<Utc>) -> String {
     let seconds = (retry_at - now).num_seconds();
     if seconds <= 0 {
         return msg::units_retry_next_check();

@@ -1628,6 +1628,7 @@ fn broker() -> lib_units::CustomSource {
             }]
             .into(),
             batch: None,
+            history: None,
         },
         updates: lib_units::Updates::Hourly,
     }
@@ -2361,4 +2362,137 @@ fn a_built_ins_edit_dialog_tests_the_first_unit_it_values(app: &mut TestAppConte
             .contains("Rate limited"),
         "a test holds no failure"
     );
+}
+
+/// As [`eur_on_frankfurter`], with an Account in EUR opened in June 2019, so every week since
+/// then wants a Weekly Price.
+#[expect(
+    clippy::expect_used,
+    reason = "eur was just added beside the sample's Accounts"
+)]
+fn eur_held_since_2019(fakes: &mut FakeStores) {
+    eur_on_frankfurter(fakes);
+    let eur = fakes.units.units.units.last().expect("eur was added").id;
+    let mut account = fakes
+        .accounts
+        .accounts
+        .accounts
+        .first()
+        .cloned()
+        .expect("the sample has Accounts");
+    account.id = lib_core::AccountId::new();
+    account.name = "Euro savings".into();
+    account.unit = eur;
+    account.opened_at = common::date(2019, 6, 5);
+    fakes.accounts.accounts.accounts.push(account);
+}
+
+/// The history requests sent, by URL.
+fn history_requests(
+    transport: &lib_units::fake::FakeTransport,
+) -> Vec<(lib_units::RequestId, String)> {
+    transport
+        .requests()
+        .into_iter()
+        .filter(|(_, request)| request.url.contains("/v2/rates?"))
+        .map(|(id, request)| (id, request.url))
+        .collect()
+}
+
+/// The weeks EUR has a Weekly Price for, as stored.
+fn eur_weeks(ui: &Harness<'_>) -> Vec<chrono::NaiveDate> {
+    ui.stores(|stores| {
+        stores
+            .units
+            .borrow()
+            .units()
+            .units()
+            .into_iter()
+            .find(|unit| unit.code == "EUR")
+            .map(|unit| unit.prices.iter().map(|price| price.week).collect())
+            .unwrap_or_default()
+    })
+}
+
+#[gpui::test]
+fn a_unit_with_accounts_opened_in_2019_fills_its_empty_weeks_back_to_then_on_open(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_held_since_2019);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    select_unit(&mut ui, "EUR");
+
+    let asked = history_requests(&transport);
+    assert_eq!(
+        asked
+            .iter()
+            .map(|(_, url)| url.as_str())
+            .collect::<Vec<_>>(),
+        ["https://api.frankfurter.dev/v2/rates?base=EUR&quotes=AUD&from=2019-06-03&to=2026-06-14"],
+        "the open asked for every week from June 2019 to last week"
+    );
+    assert_eq!(
+        history(&mut ui).backfill.as_deref(),
+        Some("Fetching history\u{2026}")
+    );
+    assert!(ui.is_drawn("units-history-backfill"));
+
+    let rates: Vec<String> = (1..=12)
+        .map(|day| {
+            format!(
+                r#"{{"date":"2026-06-{day:02}","base":"EUR","quote":"AUD","rate":1.6{day:02}}}"#
+            )
+        })
+        .collect();
+    transport.answer(
+        asked[0].0,
+        lib_units::TransportOutcome::Answered {
+            status: 200,
+            body: format!("[{}]", rates.join(",")),
+            retry_after: None,
+        },
+    );
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert_eq!(
+        eur_weeks(&ui),
+        [
+            common::date(2026, 6, 1),
+            common::date(2026, 6, 8),
+            common::date(2026, 6, 15)
+        ],
+        "the weeks the source had, beside this week's fetched price"
+    );
+    assert_eq!(history(&mut ui).backfill, None);
+    assert!(
+        visible_toasts(&mut ui).is_empty(),
+        "a backfill never toasts"
+    );
+}
+
+#[gpui::test]
+fn a_failed_backfill_says_so_in_place_and_raises_no_toast(app: &mut TestAppContext) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_held_since_2019);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    select_unit(&mut ui, "EUR");
+
+    let (id, _) = history_requests(&transport)[0].clone();
+    transport.answer(
+        id,
+        lib_units::TransportOutcome::Failed(lib_units::TransportError::Offline),
+    );
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert_eq!(
+        history(&mut ui).backfill.as_deref(),
+        Some("History failed \u{b7} Offline \u{b7} tries again in 10 minutes")
+    );
+    assert!(ui.is_drawn("units-history-backfill"));
+    assert!(visible_toasts(&mut ui).is_empty(), "never a Toast");
+    let (_, eur) = unit_line(&mut ui, "EUR");
+    assert_eq!(eur.fetch_failed_tag, None, "never fetch failed");
 }

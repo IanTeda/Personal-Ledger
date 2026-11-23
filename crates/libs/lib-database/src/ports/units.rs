@@ -1,13 +1,15 @@
 //! `lib-units`' ports answered over the stores: the Units, Price Sources and base Unit from the
 //! Units store, and what names each Unit and the Accounts held in it from the Accounts,
 //! Transactions, Bills, Budgets, Inventory and Institutions stores through [`StoredUnitReads`]
-//! (#993, #1084). The Price Source API keys are opened from their sealed rows with the device's
+//! (#993, #1084), which also answers when a Unit's Accounts were first opened, its history's
+//! floor (#1394). The Price Source API keys are opened from their sealed rows with the device's
 //! API key secret ([`StoredPriceSourceKeys`]).
 
 use lib_core::{PriceSourceId, UnitId};
 use lib_units::{
     BaseUnitRepository, KeyState, PortsMut, PriceSourceKeys, PriceSourceRecord,
-    PriceSourceRepository, UnitHoldings, UnitRepository, UnitRow, UnitUsage, UnitsPorts,
+    PriceSourceRepository, UnitHoldings, UnitOpenings, UnitRepository, UnitRow, UnitUsage,
+    UnitsPorts,
 };
 use secrecy::SecretString;
 
@@ -245,6 +247,10 @@ impl UnitsPorts for StoredUnitsPorts {
         &self.reads
     }
 
+    fn openings(&self) -> &dyn UnitOpenings {
+        &self.reads
+    }
+
     fn split_mut(&mut self) -> PortsMut<'_> {
         PortsMut {
             units: &mut self.units,
@@ -414,6 +420,7 @@ mod tests {
                         },
                         headers: Vec::new().into(),
                         batch: None,
+                        history: None,
                     },
                     updates: Updates::Daily,
                 }));
@@ -446,6 +453,20 @@ mod tests {
             assert!(ports.source_catalogue().source(id).is_none());
             assert_eq!(ports.keys().key_state(id), KeyState::NotSet);
         }
+    }
+
+    #[test]
+    fn a_units_history_floor_is_its_earliest_opened_account() {
+        let ledger = fakes();
+        let units = ledger.units.borrow();
+        let openings = units.openings();
+
+        assert_eq!(
+            openings.earliest_opened(UnitId::SEED_AUD),
+            chrono::NaiveDate::from_ymd_opt(2019, 3, 1),
+            "the earliest of the sample's aud Accounts"
+        );
+        assert_eq!(openings.earliest_opened(UnitId::new()), None, "no Account");
     }
 
     #[test]

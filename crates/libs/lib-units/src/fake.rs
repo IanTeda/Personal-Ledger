@@ -17,8 +17,8 @@ use crate::fetching::{PriceRequest, PriceResponse, PriceTransport, RequestId, Tr
 use crate::protocols::{PortsMut, SharedPorts, UnitsDialog, UnitsOutcome, UnitsPorts, UnitsRouter};
 use crate::{
     BaseUnitRepository, Error, Holding, KeyState, PriceSourceKeys, PriceSourceRecord,
-    PriceSourceRepository, Result, UnitHoldings, UnitRepository, UnitRow, UnitUsage, UnitUse,
-    sample_units,
+    PriceSourceRepository, Result, UnitHoldings, UnitOpenings, UnitRepository, UnitRow, UnitUsage,
+    UnitUse, sample_units,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -99,6 +99,18 @@ pub struct InMemoryHoldings {
 impl UnitHoldings for InMemoryHoldings {
     fn holdings(&self, id: UnitId) -> Vec<Holding> {
         self.by_unit.get(&id).cloned().unwrap_or_default()
+    }
+}
+
+/// The earliest Opened date a test sets per Unit; a Unit not listed is held by no Account.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InMemoryOpenings {
+    pub by_unit: HashMap<UnitId, chrono::NaiveDate>,
+}
+
+impl UnitOpenings for InMemoryOpenings {
+    fn earliest_opened(&self, id: UnitId) -> Option<chrono::NaiveDate> {
+        self.by_unit.get(&id).copied()
     }
 }
 
@@ -211,6 +223,7 @@ pub struct InMemoryPorts {
     pub base_unit: InMemoryBaseUnit,
     pub usage: InMemoryUnitUsage,
     pub holdings: InMemoryHoldings,
+    pub openings: InMemoryOpenings,
     pub keys: InMemoryKeys,
 }
 
@@ -227,6 +240,7 @@ impl InMemoryPorts {
             base_unit: InMemoryBaseUnit(UnitId::SEED_AUD),
             usage: InMemoryUnitUsage::default(),
             holdings: InMemoryHoldings::default(),
+            openings: InMemoryOpenings::default(),
             keys: InMemoryKeys::default(),
         }
     }
@@ -260,6 +274,10 @@ impl UnitsPorts for InMemoryPorts {
 
     fn holdings(&self) -> &dyn UnitHoldings {
         &self.holdings
+    }
+
+    fn openings(&self) -> &dyn UnitOpenings {
+        &self.openings
     }
 
     fn keys(&self) -> &dyn PriceSourceKeys {

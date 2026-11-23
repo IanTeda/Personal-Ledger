@@ -11,12 +11,13 @@ use lib_core::UnitId;
 use crate::fake::{InMemoryHoldings, InMemoryPorts, InMemoryUnitUsage};
 use crate::interactor::{
     AddPriceSource, AddUnit, DeactivateUnit, DeletePriceSource, DeleteUnit, EditPriceSource,
-    EditUnit, SetBaseUnit, SetPrice,
+    EditUnit, RecordPriceHistory, SetBaseUnit, SetPrice,
 };
 use crate::protocols::PortsMut;
 use crate::{
-    COINGECKO, Endpoint, Error, Holding, KeyPlacement, MANUAL_ENTRY, Precision, PriceLink,
-    PriceSourceAuth, PriceSourceRecord, UnitKind, UnitRow, UnitUsage, UnitUse, UnitsPorts, Updates,
+    COINGECKO, Endpoint, Error, FRANKFURTER, Holding, KeyPlacement, MANUAL_ENTRY, Precision,
+    PriceLink, PriceSourceAuth, PriceSourceRecord, UnitKind, UnitRow, UnitUsage, UnitUse,
+    UnitsPorts, Updates, WeeklyPrice,
 };
 
 /// A stored set of the Units, Price Sources and base Unit ports, lent out together for one
@@ -248,6 +249,7 @@ fn custom_source(name: &str) -> AddPriceSource {
             }]
             .into(),
             batch: None,
+            history: None,
         },
         updates: Updates::Hourly,
     }
@@ -550,6 +552,98 @@ pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(fact
     );
 }
 
+/// Backfilled weeks land only in the weeks still empty, a hand-set week kept, and reload the same;
+/// a Unit relinked or deactivated since its history was asked for takes none.
+pub fn recording_price_history_fills_only_the_empty_weeks<F: PortsFactory>(factory: &mut F) {
+    let usage = InMemoryUnitUsage::default();
+    let mut ports = factory.create(InMemoryPorts::sample(Utc::now()));
+    let link = PriceLink {
+        source_id: FRANKFURTER,
+        symbol: "EUR".into(),
+        quote: UnitId::SEED_AUD,
+    };
+    let eur = add_unit(
+        ports.split_mut(&usage),
+        "EUR",
+        UnitKind::Currency,
+        PriceLink::manual(UnitId::SEED_AUD),
+    );
+    let day = |d: u32| NaiveDate::from_ymd_opt(2026, 10, d).expect("a real date");
+    let at = day(21).and_hms_opt(9, 0, 0).expect("a real time").and_utc();
+    SetPrice {
+        id: eur.id,
+        day: day(12),
+        close: "9.99".parse().expect("a decimal"),
+    }
+    .run(ports.split_mut(&usage).units, day(21), at)
+    .expect("EUR is on Manual entry");
+    let relink = |ports: &mut F::Ports, link: PriceLink| {
+        let split = ports.split_mut(&usage);
+        EditUnit {
+            id: eur.id,
+            code: "EUR".into(),
+            name: "EUR".into(),
+            kind: UnitKind::Currency,
+            precision: Precision::of_kind(UnitKind::Currency),
+            link,
+        }
+        .run(split.units, split.price_sources)
+        .expect("EUR is stored");
+    };
+    // Linked to a fetching source in the same quote, it keeps the week priced by hand.
+    relink(&mut ports, link.clone());
+    factory.commit(&mut ports);
+    let week = |monday: u32, close: &str| {
+        let close: crate::Money = close.parse().expect("a decimal");
+        WeeklyPrice {
+            week: day(monday),
+            open: Some(close.clone()),
+            high: Some(close.clone()),
+            low: Some(close.clone()),
+            close,
+            written_at: at,
+        }
+    };
+
+    let written = RecordPriceHistory {
+        unit: eur.id,
+        link: link.clone(),
+        weeks: vec![week(5, "1.61"), week(12, "1.60")],
+    }
+    .run(ports.split_mut(&usage).units);
+    factory.commit(&mut ports);
+    assert_eq!(written, 1);
+
+    let before = snapshot(&mut ports);
+    let mut ports = factory.reload(ports);
+    assert_eq!(snapshot(&mut ports), before);
+    let prices = unit(&mut ports, eur.id).prices;
+    assert_eq!(prices.len(), 2);
+    assert_eq!(prices[0], week(5, "1.61"));
+    assert_eq!(
+        prices[1].close,
+        "9.99".parse().expect("a decimal"),
+        "the hand-set week stays"
+    );
+
+    relink(
+        &mut ports,
+        PriceLink {
+            symbol: "EURO".into(),
+            ..link.clone()
+        },
+    );
+    let written = RecordPriceHistory {
+        unit: eur.id,
+        link,
+        weeks: vec![week(19, "1.62")],
+    }
+    .run(ports.split_mut(&usage).units);
+    assert_eq!(written, 0, "relinked since it was asked");
+    let mut ports = factory.reload(ports);
+    assert_eq!(unit(&mut ports, eur.id).prices.len(), 2);
+}
+
 fn unit(ports: &mut impl StoredPorts, id: UnitId) -> UnitRow {
     let usage = InMemoryUnitUsage::default();
     ports
@@ -612,6 +706,11 @@ mod tests {
     #[test]
     fn in_memory_weekly_prices_reload_and_a_quote_change_clears_them() {
         weekly_prices_reload_and_a_quote_change_clears_them(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_recording_price_history_fills_only_the_empty_weeks() {
+        recording_price_history_fills_only_the_empty_weeks(&mut InMemoryFactory::default());
     }
 
     #[test]

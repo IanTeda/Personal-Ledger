@@ -46,12 +46,13 @@ const LABEL_WIDTH: u16 = 18;
 const FOOTER_SEPARATOR: &str = " \u{b7} ";
 
 /// The open Units Dialog: its Presenter, and for the Price Source form the API key typed so far.
+/// The Price Source form's Presenter, the largest by far, is boxed so every Dialog isn't its size.
 pub enum Dialog {
     UnitForm(UnitFormPresenter),
     DeleteUnit(DeleteUnitPresenter),
     SetBaseUnit(SetBaseUnitPresenter),
     SetPrice(SetPricePresenter),
-    PriceSourceForm(PriceSourceFormPresenter, SecretString),
+    PriceSourceForm(Box<PriceSourceFormPresenter>, SecretString),
     DeletePriceSource(DeletePriceSourcePresenter),
 }
 
@@ -103,11 +104,11 @@ impl Dialog {
                 Self::SetPrice(SetPricePresenter::new(ports, now.clone(), id, keys)?)
             }
             Which::AddPriceSource => Self::PriceSourceForm(
-                testing(PriceSourceFormPresenter::add(ports, keys)),
+                Box::new(testing(PriceSourceFormPresenter::add(ports, keys))),
                 SecretString::from(String::new()),
             ),
             Which::EditPriceSource(id) => Self::PriceSourceForm(
-                testing(PriceSourceFormPresenter::edit(ports, id, keys)?),
+                Box::new(testing(PriceSourceFormPresenter::edit(ports, id, keys)?)),
                 SecretString::from(String::new()),
             ),
             Which::DeletePriceSource(id) => {

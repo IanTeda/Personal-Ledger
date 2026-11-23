@@ -92,6 +92,49 @@ pub struct Endpoint {
     /// uses, so one Unit is a batch of one. Only a built-in declares one (ADR-0043's batching
     /// amendment), so a Custom source's is `None`.
     pub batch: Option<BatchRequest>,
+    /// How to ask for a symbol's past prices, which a Unit backfills its empty weeks from; `None`
+    /// for a source that has none, whose Units never backfill (ADR-0043's backfill amendment).
+    /// Only a built-in declares one, so it is borrowed from the `const` table, keeping a stored
+    /// Custom source's record small.
+    pub history: Option<&'static HistoryEndpoint>,
+}
+
+/// A source's request for a symbol's daily prices over a range (ADR-0043's amendment "a Custom
+/// source's history request"): `request` takes the link's placeholders and `{from}` and `{to}`,
+/// filled as ISO dates, or `{from_unix}` and `{to_unix}`, as Unix seconds. Every request asks for
+/// daily points, which `lib-units` folds into Weekly Prices.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryEndpoint {
+    /// The path and query appended to the source's address.
+    pub request: Cow<'static, str>,
+    /// A JSON pointer to the series in the reply; empty for the whole reply.
+    pub series_path: Cow<'static, str>,
+    /// A JSON pointer, relative to each point, to its date; empty, in a [`SeriesShape::Keyed`]
+    /// series, for the key. A date is an ISO date or datetime (its date part), or a number of
+    /// Unix seconds, or milliseconds above 10¹¹.
+    pub date_path: Cow<'static, str>,
+    /// A JSON pointer, relative to each point, to its close.
+    pub price_path: Cow<'static, str>,
+    pub shape: SeriesShape,
+}
+
+/// How a history reply lays out its points.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SeriesShape {
+    /// An array of points, each read at the date and price paths.
+    Points,
+    /// An object keyed by date, each value read at the price path.
+    Keyed,
+    /// Parallel arrays in one object, as Yahoo Finance's chart answers: the date path and price
+    /// path point at the timestamps and the closes, and these at the opens, highs and lows and
+    /// the exchange's offset from UTC in seconds, which dates each point by its trading day. Only
+    /// the built-in table uses it; a person never types one.
+    Columns {
+        open_path: Cow<'static, str>,
+        high_path: Cow<'static, str>,
+        low_path: Cow<'static, str>,
+        offset_path: Cow<'static, str>,
+    },
 }
 
 /// A built-in's request for several Units at once: `request` takes the list placeholders
@@ -120,6 +163,9 @@ pub struct BuiltInSource {
     pub updates: Updates,
     /// The Unit Kinds it can price.
     pub kinds: &'static [UnitKind],
+    /// How many days back its history request reaches, where its provider stops (CoinGecko's
+    /// free tiers at 365), so no request is sent that is bound to be refused; `None` for no limit.
+    pub history_depth: Option<u32>,
 }
 
 /// The built-in sources, always listed.
@@ -145,9 +191,20 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
                 ),
                 max_symbols: 250,
             }),
+            // `[ms, price]` pairs at 00:00 UTC, the day crypto trades by.
+            history: Some(&HistoryEndpoint {
+                request: Cow::Borrowed(
+                    "/coins/{symbol_lower}/market_chart/range?vs_currency={quote_lower}&from={from}&to={to}&interval=daily",
+                ),
+                series_path: Cow::Borrowed("/prices"),
+                date_path: Cow::Borrowed("/0"),
+                price_path: Cow::Borrowed("/1"),
+                shape: SeriesShape::Points,
+            }),
         },
         updates: Updates::Every15Minutes,
         kinds: &[UnitKind::Crypto],
+        history_depth: Some(365),
     },
     BuiltInSource {
         id: YAHOO_FINANCE,
@@ -164,9 +221,25 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
             }]),
             // Its batch endpoint is undocumented, so one chart call per Unit.
             batch: None,
+            // Daily bars, since its weekly ones don't start on Monday for every market (ADR-0043).
+            history: Some(&HistoryEndpoint {
+                request: Cow::Borrowed(
+                    "/v8/finance/chart/{symbol}?period1={from_unix}&period2={to_unix}&interval=1d",
+                ),
+                series_path: Cow::Borrowed("/chart/result/0"),
+                date_path: Cow::Borrowed("/timestamp"),
+                price_path: Cow::Borrowed("/indicators/quote/0/close"),
+                shape: SeriesShape::Columns {
+                    open_path: Cow::Borrowed("/indicators/quote/0/open"),
+                    high_path: Cow::Borrowed("/indicators/quote/0/high"),
+                    low_path: Cow::Borrowed("/indicators/quote/0/low"),
+                    offset_path: Cow::Borrowed("/meta/gmtoffset"),
+                },
+            }),
         },
         updates: Updates::Hourly,
         kinds: &[UnitKind::Equity, UnitKind::FixedIncome, UnitKind::Commodity],
+        history_depth: None,
     },
     BuiltInSource {
         id: FRANKFURTER,
@@ -179,10 +252,21 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
             headers: Cow::Borrowed(&[]),
             // v2 batches only as an unordered array a price path can't read (ADR-0043).
             batch: None,
+            // An array of `{"date", "base", "quote", "rate"}`, one a day.
+            history: Some(&HistoryEndpoint {
+                request: Cow::Borrowed(
+                    "/v2/rates?base={symbol}&quotes={quote}&from={from}&to={to}",
+                ),
+                series_path: Cow::Borrowed(""),
+                date_path: Cow::Borrowed("/date"),
+                price_path: Cow::Borrowed("/rate"),
+                shape: SeriesShape::Points,
+            }),
         },
         // v2 blends its rates from several central banks, same day (ADR-0043).
         updates: Updates::Daily,
         kinds: &[UnitKind::Currency],
+        history_depth: None,
     },
 ];
 
@@ -249,6 +333,14 @@ impl PriceSource<'_> {
         match self.origin {
             SourceOrigin::BuiltIn(source) => source.kinds.contains(&kind),
             SourceOrigin::ManualEntry | SourceOrigin::Custom(_) => true,
+        }
+    }
+
+    /// How many days back its history reaches: a built-in's depth, `None` for no limit.
+    pub fn history_depth(&self) -> Option<u32> {
+        match self.origin {
+            SourceOrigin::BuiltIn(source) => source.history_depth,
+            SourceOrigin::ManualEntry | SourceOrigin::Custom(_) => None,
         }
     }
 
@@ -443,6 +535,7 @@ mod tests {
             },
             headers: Vec::new().into(),
             batch: None,
+            history: None,
         }
     }
 

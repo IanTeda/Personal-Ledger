@@ -10,16 +10,17 @@ use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 pub use precision::Precision;
 pub use price_source::{
     BUILT_IN_SOURCES, BatchRequest, BuiltInOverride, BuiltInSource, COINGECKO, CustomSource,
-    Endpoint, FRANKFURTER, KeyPlacement, MANUAL_ENTRY, PriceSource, PriceSourceAuth,
-    PriceSourceRecord, RequestHeader, SourceOrigin, Updates, YAHOO_FINANCE, add_custom_source,
-    built_in, edit_custom_source, last_fetched, move_units_to_manual, override_built_in,
-    price_source, price_source_exists, price_sources, remove_custom_source, sources_for_kind,
+    Endpoint, FRANKFURTER, HistoryEndpoint, KeyPlacement, MANUAL_ENTRY, PriceSource,
+    PriceSourceAuth, PriceSourceRecord, RequestHeader, SeriesShape, SourceOrigin, Updates,
+    YAHOO_FINANCE, add_custom_source, built_in, edit_custom_source, last_fetched,
+    move_units_to_manual, override_built_in, price_source, price_source_exists, price_sources,
+    remove_custom_source, sources_for_kind,
 };
 
 /// One Unit. Owned `String` fields, since the Add unit dialog stores what a person typed. `kind` is
 /// the [`UnitKind`] enum, never a display label: the label is read through `lib_locale::Label` at
 /// render time, so a Locale switch can't change what an Edit then saves back.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct UnitRow {
     /// Addresses the row across edits; `code` can change, so nothing else holds it as a key.
     pub id: UnitId,
@@ -39,7 +40,38 @@ pub struct UnitRow {
     /// A deactivated Unit stays on the Ledger and on whatever uses it, but is no longer offered to
     /// pick (the lifecycle Category, Payee and Account follow).
     pub is_active: bool,
+    /// The day the Ledger first stored it, its history's floor when no Account counts in it
+    /// (ADR-0043's backfill amendment); `None` until the Ledger has stored it.
+    pub created_on: Option<NaiveDate>,
 }
+
+/// Equal when every field but `created_on` is: that is the Ledger's stamp of when it first stored
+/// the row, not part of the Unit, so a row built in memory equals the same row read back.
+impl PartialEq for UnitRow {
+    fn eq(&self, other: &Self) -> bool {
+        let Self {
+            id,
+            code,
+            name,
+            kind,
+            precision,
+            link,
+            prices,
+            is_active,
+            created_on: _,
+        } = self;
+        *id == other.id
+            && *code == other.code
+            && *name == other.name
+            && *kind == other.kind
+            && *precision == other.precision
+            && *link == other.link
+            && *prices == other.prices
+            && *is_active == other.is_active
+    }
+}
+
+impl Eq for UnitRow {}
 
 impl UnitRow {
     /// A new Unit from the Add unit dialog: active, with no price yet. Which Unit is the base is
@@ -60,6 +92,7 @@ impl UnitRow {
             link,
             prices: Vec::new(),
             is_active: true,
+            created_on: None,
         }
     }
 
@@ -270,6 +303,7 @@ pub fn sample_units(now: DateTime<Utc>) -> Vec<UnitRow> {
             link: PriceLink::manual(UnitId::SEED_AUD),
             prices: Vec::new(),
             is_active: true,
+            created_on: None,
         },
         UnitRow {
             id: UnitId::SEED_BTC,
@@ -284,6 +318,7 @@ pub fn sample_units(now: DateTime<Utc>) -> Vec<UnitRow> {
             },
             prices: seed_weekly_prices(14_821_240, seed_written_at(now, Duration::minutes(5)), 2),
             is_active: true,
+            created_on: None,
         },
         UnitRow {
             id: UnitId::SEED_VAS,
@@ -294,6 +329,7 @@ pub fn sample_units(now: DateTime<Utc>) -> Vec<UnitRow> {
             link: PriceLink::manual(UnitId::SEED_AUD),
             prices: Vec::new(),
             is_active: true,
+            created_on: None,
         },
     ]
 }

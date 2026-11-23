@@ -736,7 +736,8 @@ fn render_price_history(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewM
 }
 
 /// The weekly prices region: the page's PRICE HISTORY (#1386), the selected Unit's newest weeks
-/// under a heading naming the Unit and its source, with the provisional flag at its right. OPEN,
+/// under a heading naming the Unit and its source, with the provisional flag at its right, and a
+/// backfill's line under it while one is out or after one failed. OPEN,
 /// HIGH and LOW give way to WEEK · CLOSE · CHANGE where the column is too narrow for all six.
 fn render_weekly_prices(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewModel, c: &Colours) {
     let [heading, rule, body] = Layout::vertical([
@@ -780,6 +781,15 @@ fn render_weekly_prices(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewM
         flag_area,
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rule);
+    // The backfill in place (`Fetching history…`), dim, on the line under the rule.
+    let [backfill, body] = Layout::vertical([
+        Constraint::Length(u16::from(history.backfill.is_some())),
+        Constraint::Min(0),
+    ])
+    .areas(body);
+    if let Some(text) = &history.backfill {
+        frame.render_widget(Paragraph::new(Span::styled(text.as_str(), dim)), backfill);
+    }
 
     if let Some(empty) = &history.empty {
         frame.render_widget(

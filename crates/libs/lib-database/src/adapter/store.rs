@@ -90,8 +90,8 @@ use lib_transactions::{
 };
 use lib_units::fake::InMemoryPorts;
 use lib_units::{
-    BaseUnitRepository, Holding, PortsMut, PriceSourceRepository, UnitHoldings, UnitRepository,
-    UnitUsage, UnitUse, UnitsPorts,
+    BaseUnitRepository, Holding, PortsMut, PriceSourceRepository, UnitHoldings, UnitOpenings,
+    UnitRepository, UnitUsage, UnitUse, UnitsPorts,
 };
 
 use crate::adapter::ordered::{Ordered, place_by};
@@ -2445,7 +2445,7 @@ impl DeletionReads for StoredAccountReads {
     }
 }
 
-/// `lib-units`' `UnitUsage` and `UnitHoldings` answered by the shared stores of the domains that
+/// `lib-units`' `UnitUsage`, `UnitHoldings` and `UnitOpenings` answered by the shared stores of the domains that
 /// name a Unit, each borrowed for the one read (#993): the Accounts (with their Transactions
 /// counted by the Transactions store), Bill Plans, Budgets, Locations and Institutions.
 #[derive(Clone)]
@@ -2487,6 +2487,13 @@ impl UnitHoldings for StoredUnitReads {
         accounts::holdings(&rows, id, |account| {
             counts.get(&account).copied().unwrap_or_default()
         })
+    }
+}
+
+impl UnitOpenings for StoredUnitReads {
+    /// Every Account in the Unit counts, a deactivated one too: its history still matters.
+    fn earliest_opened(&self, id: UnitId) -> Option<NaiveDate> {
+        accounts::earliest_opened(&self.accounts.borrow().accounts().accounts(), id)
     }
 }
 

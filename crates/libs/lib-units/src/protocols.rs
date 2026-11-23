@@ -8,6 +8,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use chrono::NaiveDate;
 use lib_core::{AccountType, Money, PriceSourceId, UnitId};
 use lib_toast::Notify;
 use secrecy::SecretString;
@@ -102,6 +103,14 @@ pub trait UnitHoldings {
     fn holdings(&self, id: UnitId) -> Vec<Holding>;
 }
 
+/// When the Accounts held in a Unit were opened: how far back its history backfills (ADR-0043's
+/// backfill amendment). A read port, so `lib-units` needn't depend on the Accounts crate.
+pub trait UnitOpenings {
+    /// The earliest Opened date of the Accounts whose Unit is `id`, deactivated ones included;
+    /// `None` when no Account counts in it.
+    fn earliest_opened(&self, id: UnitId) -> Option<NaiveDate>;
+}
+
 /// One Account held in a Unit, as the Units page shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Holding {
@@ -149,6 +158,8 @@ pub trait UnitsPorts {
     fn usage(&self) -> &dyn UnitUsage;
 
     fn holdings(&self) -> &dyn UnitHoldings;
+
+    fn openings(&self) -> &dyn UnitOpenings;
 
     fn keys(&self) -> &dyn PriceSourceKeys;
 
@@ -219,10 +230,7 @@ pub enum UnitsOutcome {
     /// What a Dialog did to the Unit `code`.
     Unit { change: UnitChange, code: String },
     /// A price was set by hand for the Unit `code`, in the week starting `week`.
-    PriceSet {
-        code: String,
-        week: chrono::NaiveDate,
-    },
+    PriceSet { code: String, week: NaiveDate },
     SourceSaved {
         name: String,
         /// The source, when the save stored a key for it: its Key missing and Key rejected

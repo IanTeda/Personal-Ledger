@@ -4,6 +4,11 @@
 //! calls out from the same poll. It draws nothing; a Fetch now that wrote a price says so in a
 //! Success Toast, one that failed in a Warning Toast, and a scheduled round says nothing at all,
 //! whether it landed or failed.
+//!
+//! It also backfills (ADR-0043's backfill amendment): on Ledger open, after a person's fetch now
+//! and again for a failed history request on the minute check, it asks each Unit's source for the
+//! past weeks it has no Weekly Price for, and writes each Unit's weeks as that response's one
+//! commit. A backfill never toasts; only a fetch now's names itself on the status line.
 
 use chrono::Local;
 use lib_toast::{Notice, Notify, ToastKind};
@@ -15,7 +20,10 @@ use super::fetch_text::{
 };
 use super::units_pane::amount;
 use crate::fetching::{PriceResponse, SharedFetching};
-use crate::interactor::{FetchDue, RecordFetchedPrices, RoundOutcome};
+use crate::history::{HistoryReading, fold, read_history};
+use crate::interactor::{
+    Backfill, BackfillUnits, FetchDue, RecordFetchedPrices, RecordPriceHistory, RoundOutcome,
+};
 use crate::msg;
 use crate::protocols::SharedPorts;
 
@@ -62,10 +70,30 @@ impl FetchedPricesPresenter {
     }
 
     /// The scheduled check, on Ledger open and every minute after: starts a silent round on each
-    /// source with a Unit due, leaving a source with a round in flight alone.
+    /// source with a Unit due, leaving a source with a round in flight alone, and tries a failed
+    /// history request again once its wait is over. It never starts a backfill of its own.
     pub fn fetch_due(&mut self) {
         let now = (self.clock)();
-        FetchDue {
+        let today = now.with_timezone(&Local).date_naive();
+        FetchDue { today, now }.run(&*self.ports.borrow(), &mut self.fetching.borrow_mut());
+        let retries = self.fetching.borrow().history_retries(now);
+        if !retries.is_empty() {
+            Backfill {
+                units: BackfillUnits::Retrying(retries),
+                today,
+                now,
+            }
+            .run(&*self.ports.borrow(), &mut self.fetching.borrow_mut());
+        }
+    }
+
+    /// The backfill on Ledger open (app start, `:open`, `:new`): asks every Unit's source for the
+    /// past weeks it has no Weekly Price for, silently. The sync effort calls it too, once a sync
+    /// completes.
+    pub fn backfill(&mut self) {
+        let now = (self.clock)();
+        Backfill {
+            units: BackfillUnits::Every,
             today: now.with_timezone(&Local).date_naive(),
             now,
         }
@@ -92,6 +120,10 @@ impl FetchedPricesPresenter {
             return;
         }
         let now = (self.clock)();
+        if self.fetching.borrow().is_history(&response) {
+            self.record_history(&response, router);
+            return;
+        }
         let Some(landed) = self.fetching.borrow_mut().land(response, now) else {
             return;
         };
@@ -106,12 +138,79 @@ impl FetchedPricesPresenter {
                 now,
             )
         };
+        let mut backfilling = false;
         if asked {
             self.tell(&outcome, router);
+            // A fetch now goes on to fill the past weeks of each Unit it priced.
+            let priced: Vec<_> = outcome.written.iter().map(|price| price.unit).collect();
+            if !priced.is_empty() {
+                backfilling = Backfill {
+                    units: BackfillUnits::Asked(priced),
+                    today: now.with_timezone(&Local).date_naive(),
+                    now,
+                }
+                .run(&*self.ports.borrow(), &mut self.fetching.borrow_mut())
+                    > 0;
+            }
         }
-        if named {
+        if named || backfilling {
             // The status names what is still out and clears, with an empty message, once the last
             // asked-for round has landed.
+            let status = {
+                let ports = self.ports.borrow();
+                fetch_status(&*ports, &self.fetching.borrow(), now)
+            };
+            router.notify(Notice::Status(status.unwrap_or_default()));
+        }
+    }
+
+    /// Writes the weeks a history `response` brings into its Unit's empty weeks, noting the weeks
+    /// it had nothing for, or its failure, then sends the source's next history request. Never a
+    /// Toast; a fetch now's status line says what is still out, or clears.
+    fn record_history(&mut self, response: &PriceResponse, router: &mut dyn Notify) {
+        let now = (self.clock)();
+        let Some(call) = self.fetching.borrow_mut().land_history(response, now) else {
+            return;
+        };
+        let reading = read_history(
+            &response.outcome,
+            &call.history,
+            &call.link.symbol,
+            &call.quote,
+        );
+        match reading {
+            HistoryReading::Points(points) => {
+                let weeks: Vec<_> = fold(points, now)
+                    .into_iter()
+                    .filter(|week| call.weeks.contains(&week.week))
+                    .collect();
+                let missing: Vec<_> = call
+                    .weeks
+                    .iter()
+                    .filter(|asked| !weeks.iter().any(|week| week.week == **asked))
+                    .copied()
+                    .collect();
+                if !missing.is_empty() {
+                    tracing::info!(unit_id = %call.unit, weeks = missing.len(), "A price source had no history for some weeks");
+                }
+                self.fetching.borrow_mut().history_empty(&call, missing);
+                let mut ports = self.ports.borrow_mut();
+                RecordPriceHistory {
+                    unit: call.unit,
+                    link: call.link.clone(),
+                    weeks,
+                }
+                .run(ports.split_mut().units);
+            }
+            HistoryReading::Failed(reason) => {
+                tracing::warn!(unit_id = %call.unit, price_source_id = %call.source, ?reason, "A Unit's history request failed");
+                self.fetching
+                    .borrow_mut()
+                    .history_failed(&call, reason, now);
+            }
+        }
+        self.fetching.borrow_mut().start_history(call.source, now);
+        if call.asked {
             let status = {
                 let ports = self.ports.borrow();
                 fetch_status(&*ports, &self.fetching.borrow(), now)
@@ -609,6 +708,7 @@ mod tests {
                         },
                         headers: Vec::new().into(),
                         batch: None,
+                        history: None,
                     },
                     updates: Updates::Hourly,
                 }));
@@ -660,6 +760,7 @@ mod tests {
                 },
                 headers: Vec::new().into(),
                 batch: None,
+                history: None,
             };
             let mut ports = client.ports.borrow_mut();
             ports
@@ -896,6 +997,451 @@ mod tests {
                         "Couldn't fetch EUR: Frankfurter has no EUR in AUD".into()
                     ),
                 ]
+            );
+        }
+    }
+
+    mod backfill {
+        use std::cell::Cell;
+
+        use chrono::{Duration, NaiveDate};
+
+        use super::*;
+        use crate::fake::InMemoryPorts;
+        use crate::protocols::UnitsPorts;
+        use crate::{
+            BuiltInOverride, COINGECKO, FetchFailure, PriceSourceRecord, TransportError,
+            TransportOutcome, Updates, YAHOO_FINANCE,
+        };
+
+        const FRANKFURTER_RATES: &str =
+            include_str!("../../fixtures/history/frankfurter_rates.json");
+
+        fn day(y: i32, m: u32, d: u32) -> NaiveDate {
+            NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
+        }
+
+        /// The sample with `units` added, a clock a test moves, and the fetching beside it.
+        struct Client {
+            ports: Rc<RefCell<InMemoryPorts>>,
+            transport: FakeTransport,
+            fetching: SharedFetching,
+            at: Rc<Cell<DateTime<Utc>>>,
+            presenter: FetchedPricesPresenter,
+            notices: Vec<Notice>,
+        }
+
+        fn client(units: Vec<UnitRow>) -> Client {
+            crate::presenter::test_support::locale();
+            let mut sample = InMemoryPorts::sample(now());
+            sample.units.units.extend(units);
+            let (ports, shared) = sample.shared();
+            let transport = FakeTransport::default();
+            let fetching = PriceFetching::shared(Rc::new(transport.clone()));
+            let at = Rc::new(Cell::new(now()));
+            let clock = {
+                let at = at.clone();
+                Rc::new(move || at.get())
+            };
+            Client {
+                presenter: FetchedPricesPresenter::new(shared, fetching.clone(), clock),
+                ports,
+                transport,
+                fetching,
+                at,
+                notices: Vec::new(),
+            }
+        }
+
+        impl Client {
+            fn later(&mut self, by: Duration) {
+                self.at.set(self.at.get() + by);
+            }
+
+            /// Accounts in the Unit `code`, the earliest opened on `on`.
+            fn opened(&mut self, code: &str, on: NaiveDate) {
+                let id = self.unit(code).id;
+                self.ports.borrow_mut().openings.by_unit.insert(id, on);
+            }
+
+            fn unit(&self, code: &str) -> UnitRow {
+                self.ports
+                    .borrow()
+                    .units
+                    .units
+                    .iter()
+                    .find(|unit| unit.code == code)
+                    .cloned()
+                    .expect("listed")
+            }
+
+            fn edit(&mut self, code: &str, edit: impl FnOnce(&mut UnitRow)) {
+                edit(
+                    self.ports
+                        .borrow_mut()
+                        .units
+                        .units
+                        .iter_mut()
+                        .find(|unit| unit.code == code)
+                        .expect("listed"),
+                );
+            }
+
+            fn urls(&self) -> Vec<String> {
+                self.transport.urls()
+            }
+
+            /// Answers the newest request with `outcome`.
+            fn answer(&mut self, outcome: TransportOutcome) {
+                let (id, _) = self.transport.requests().pop().expect("a request out");
+                let response = self.transport.answer(id, outcome);
+                self.presenter.handle(response, &mut self.notices);
+            }
+
+            fn weeks(&self, code: &str) -> Vec<NaiveDate> {
+                self.unit(code)
+                    .prices
+                    .iter()
+                    .map(|price| price.week)
+                    .collect()
+            }
+
+            fn history_failure(&self, code: &str) -> Option<(FetchFailure, DateTime<Utc>)> {
+                let unit = self.unit(code);
+                let ports = self.ports.borrow();
+                let catalogue = ports.source_catalogue();
+                let source = catalogue.source(unit.link.source_id)?;
+                self.fetching.borrow().history_failure(&unit, &source)
+            }
+        }
+
+        fn rates() -> TransportOutcome {
+            TransportOutcome::Answered {
+                status: 200,
+                body: FRANKFURTER_RATES.into(),
+                retry_after: None,
+            }
+        }
+
+        fn on(source: lib_core::PriceSourceId, code: &str, symbol: &str) -> UnitRow {
+            let mut unit = currency(code);
+            unit.link.source_id = source;
+            unit.link.symbol = symbol.into();
+            unit
+        }
+
+        #[test]
+        fn a_unit_with_accounts_opened_in_2019_asks_back_to_then_and_fills_what_comes() {
+            let mut client = client(vec![currency("EUR")]);
+            client.opened("EUR", day(2019, 6, 5));
+
+            client.presenter.backfill();
+
+            assert_eq!(
+                client.urls(),
+                [
+                    "https://api.frankfurter.dev/v2/rates?base=EUR&quotes=AUD&from=2019-06-03&to=2026-10-18"
+                ],
+                "from the week of the first Opened date to the end of last week"
+            );
+            client.answer(rates());
+
+            assert_eq!(
+                client.weeks("EUR"),
+                [day(2026, 9, 28), day(2026, 10, 5), day(2026, 10, 12)]
+            );
+            assert!(client.notices.is_empty(), "an open's backfill says nothing");
+            assert_eq!(
+                client.unit("EUR").prices[1].close,
+                "1.6092".parse().expect("a decimal"),
+                "each week closes on its last day's rate"
+            );
+
+            client.presenter.backfill();
+            assert_eq!(
+                client.urls().len(),
+                1,
+                "the weeks that came back empty aren't asked again until the link changes"
+            );
+            client.edit("EUR", |eur| eur.link.symbol = "eur".into());
+            client.presenter.backfill();
+            assert_eq!(client.urls().len(), 2, "a relinked Unit asks again");
+        }
+
+        #[test]
+        fn with_no_accounts_the_floor_is_the_units_creation_and_with_neither_nothing_is_asked() {
+            let mut client = client(vec![currency("EUR"), currency("USD")]);
+            client.edit("EUR", |eur| eur.created_on = Some(day(2026, 9, 30)));
+
+            client.presenter.backfill();
+
+            assert_eq!(
+                client.urls(),
+                [
+                    "https://api.frankfurter.dev/v2/rates?base=EUR&quotes=AUD&from=2026-09-28&to=2026-10-18"
+                ],
+                "usd has no Accounts and no creation date"
+            );
+        }
+
+        #[test]
+        fn a_hand_set_week_and_one_synced_meanwhile_are_never_overwritten() {
+            let mut client = client(vec![currency("EUR")]);
+            client.opened("EUR", day(2026, 9, 28));
+            let hand_set = WeeklyPrice {
+                week: day(2026, 9, 28),
+                close: "9.99".parse().expect("a decimal"),
+                open: None,
+                high: None,
+                low: None,
+                written_at: now() - Duration::days(20),
+            };
+            client.edit("EUR", |eur| eur.prices.push(hand_set.clone()));
+
+            client.presenter.backfill();
+            assert_eq!(
+                client.urls(),
+                [
+                    "https://api.frankfurter.dev/v2/rates?base=EUR&quotes=AUD&from=2026-10-05&to=2026-10-18"
+                ],
+                "only the empty weeks are asked for"
+            );
+            let synced = WeeklyPrice {
+                week: day(2026, 10, 12),
+                close: "8.88".parse().expect("a decimal"),
+                ..hand_set.clone()
+            };
+            client.edit("EUR", |eur| eur.prices.push(synced.clone()));
+            client.answer(rates());
+
+            let eur = client.unit("EUR");
+            assert_eq!(eur.prices.len(), 3);
+            assert!(eur.prices.contains(&hand_set), "the hand-set week stays");
+            assert!(
+                eur.prices.contains(&synced),
+                "the week synced meanwhile wins"
+            );
+        }
+
+        #[test]
+        fn coingecko_asks_only_as_far_back_as_its_history_depth() {
+            let mut btc = on(COINGECKO, "ETH", "ethereum");
+            btc.kind = UnitKind::Crypto;
+            let mut client = client(vec![btc]);
+            client.opened("ETH", day(2019, 6, 5));
+
+            client.presenter.backfill();
+
+            let urls = client.urls();
+            let eth: Vec<_> = urls.iter().filter(|url| url.contains("ethereum")).collect();
+            assert_eq!(
+                eth,
+                [
+                    "https://api.coingecko.com/api/v3/coins/ethereum/market_chart/range?vs_currency=aud&from=2025-10-27&to=2026-10-18&interval=daily"
+                ]
+            );
+        }
+
+        #[test]
+        fn manual_entry_deactivated_base_and_manual_only_units_never_backfill_on_open() {
+            let mut gone = currency("GBP");
+            gone.is_active = false;
+            let mut manual = currency("NZD");
+            manual.link = PriceLink::manual(UnitId::SEED_AUD);
+            let mut client = client(vec![gone, manual, on(YAHOO_FINANCE, "BHP", "BHP.AX")]);
+            for code in ["GBP", "NZD", "AUD", "BHP"] {
+                client.opened(code, day(2026, 9, 28));
+            }
+            client
+                .ports
+                .borrow_mut()
+                .price_sources
+                .records
+                .push(PriceSourceRecord::BuiltIn(BuiltInOverride {
+                    id: YAHOO_FINANCE,
+                    name: "Yahoo Finance".into(),
+                    updates: Updates::ManualOnly,
+                }));
+
+            client.presenter.backfill();
+            assert_eq!(client.urls(), Vec::<String>::new());
+
+            crate::interactor::FetchNow {
+                id: client.unit("BHP").id,
+            }
+            .run(
+                &*client.ports.borrow(),
+                &mut client.fetching.borrow_mut(),
+                client.at.get(),
+            )
+            .expect("sent");
+            client.answer(TransportOutcome::Answered {
+                status: 200,
+                body: include_str!("../../fixtures/prices/yahoo_chart.json").into(),
+                retry_after: None,
+            });
+            assert!(
+                client
+                    .urls()
+                    .last()
+                    .is_some_and(|url| url.contains("period1=")),
+                "a Manual only source backfills through fetch now"
+            );
+        }
+
+        #[test]
+        fn one_history_request_per_source_at_a_time_oldest_gap_first() {
+            let mut client = client(vec![
+                currency("EUR"),
+                currency("USD"),
+                on(COINGECKO, "ETH", "ethereum"),
+            ]);
+            client.opened("EUR", day(2026, 9, 28));
+            client.opened("USD", day(2026, 9, 14));
+            client.opened("ETH", day(2026, 9, 28));
+
+            client.presenter.backfill();
+
+            let urls = client.urls();
+            assert_eq!(urls.len(), 2, "one to Frankfurter, one to CoinGecko");
+            assert!(urls[0].contains("base=USD"), "usd's gap is the oldest");
+            assert!(urls[1].contains("ethereum"), "sources run side by side");
+            assert!(
+                client
+                    .fetching
+                    .borrow()
+                    .history_fetching(client.unit("USD").id)
+            );
+
+            let (usd, _) = client.transport.requests()[0].clone();
+            let response = client.transport.answer(usd, rates());
+            client.presenter.handle(response, &mut client.notices);
+            assert!(client.urls()[2].contains("base=EUR"), "then eur's");
+        }
+
+        #[test]
+        fn a_failure_retries_every_ten_minutes_until_last_week_has_a_price() {
+            let mut client = client(vec![currency("EUR")]);
+            client.opened("EUR", day(2026, 9, 28));
+            client.presenter.backfill();
+            client.answer(TransportOutcome::Failed(TransportError::Offline));
+
+            assert_eq!(
+                client.history_failure("EUR"),
+                Some((FetchFailure::Offline, now() + Duration::minutes(10)))
+            );
+            assert!(client.notices.is_empty(), "never a Toast");
+            let catalogue_failure = {
+                let unit = client.unit("EUR");
+                let ports = client.ports.borrow();
+                let catalogue = ports.source_catalogue();
+                let source = catalogue.source(FRANKFURTER).expect("frankfurter");
+                client.fetching.borrow().unit_fetch(&unit, &source).copied()
+            };
+            assert_eq!(catalogue_failure, None, "never fetch failed or Last fetch");
+
+            client.later(Duration::minutes(9));
+            client.presenter.fetch_due();
+            let history = |client: &Client| {
+                client
+                    .urls()
+                    .iter()
+                    .filter(|url| url.contains("/v2/rates?"))
+                    .count()
+            };
+            assert_eq!(
+                history(&client),
+                1,
+                "offline backs Frankfurter off for its rounds too"
+            );
+
+            client.later(Duration::minutes(1));
+            client.presenter.fetch_due();
+            assert_eq!(history(&client), 2, "ten minutes on, it asks again");
+            client.answer(rates());
+            assert_eq!(client.history_failure("EUR"), None);
+        }
+
+        #[test]
+        fn a_rate_limited_history_waits_the_longer_of_ten_minutes_and_its_retry_after() {
+            let mut client = client(vec![currency("EUR")]);
+            client.opened("EUR", day(2026, 9, 28));
+            client.presenter.backfill();
+            client.answer(TransportOutcome::Answered {
+                status: 429,
+                body: String::new(),
+                retry_after: Some("1800".into()),
+            });
+
+            assert_eq!(
+                client.history_failure("EUR"),
+                Some((FetchFailure::RateLimited, now() + Duration::minutes(30)))
+            );
+        }
+
+        #[test]
+        fn a_retry_stops_once_last_week_has_a_price() {
+            let mut client = client(vec![currency("EUR")]);
+            client.opened("EUR", day(2026, 9, 28));
+            client.presenter.backfill();
+            client.answer(TransportOutcome::Failed(TransportError::Timeout));
+            let synced = WeeklyPrice {
+                week: day(2026, 10, 12),
+                close: "1.6".parse().expect("a decimal"),
+                open: None,
+                high: None,
+                low: None,
+                written_at: now(),
+            };
+            client.edit("EUR", |eur| eur.prices.push(synced));
+
+            client.later(Duration::minutes(10));
+            client.presenter.fetch_due();
+
+            assert_eq!(
+                client
+                    .urls()
+                    .iter()
+                    .filter(|url| url.contains("/v2/rates?"))
+                    .count(),
+                1,
+                "older gaps wait for the next open"
+            );
+            assert_eq!(client.history_failure("EUR"), None);
+        }
+
+        #[test]
+        fn a_fetch_now_names_its_backfill_on_the_status_line_until_it_lands() {
+            let mut client = client(vec![currency("EUR")]);
+            client.opened("EUR", day(2026, 9, 28));
+            crate::interactor::FetchNow {
+                id: client.unit("EUR").id,
+            }
+            .run(
+                &*client.ports.borrow(),
+                &mut client.fetching.borrow_mut(),
+                client.at.get(),
+            )
+            .expect("sent");
+
+            client.answer(TransportOutcome::Answered {
+                status: 200,
+                body: r#"{"rate":1.6}"#.into(),
+                retry_after: None,
+            });
+            assert_eq!(
+                client.notices.last(),
+                Some(&Notice::Status(
+                    "Fetching price history for EUR from Frankfurter\u{2026}".into()
+                ))
+            );
+
+            client.answer(rates());
+            assert_eq!(client.notices.last(), Some(&Notice::Status(String::new())));
+            assert_eq!(
+                client.weeks("EUR").len(),
+                4,
+                "three past weeks and this one"
             );
         }
     }

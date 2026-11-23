@@ -89,6 +89,7 @@ mod tests {
                 auth: PriceSourceAuth::None,
                 headers: Vec::new().into(),
                 batch: None,
+                history: None,
             },
             updates: Updates::Daily,
         }

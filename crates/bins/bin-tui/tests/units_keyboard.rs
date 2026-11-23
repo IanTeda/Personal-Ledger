@@ -452,6 +452,7 @@ fn abc_on_a_broker_and_bhp_on_yahoo(fakes: &mut lib_database::FakeStores) {
             }]
             .into(),
             batch: None,
+            history: None,
         },
         updates: lib_units::Updates::Hourly,
     };
@@ -857,4 +858,108 @@ fn test_with_symbol_on_an_unsaved_custom_source_shows_no_price_and_its_response_
     assert!(frame.contains("Response · HTTP 200"), "{frame}");
     assert!(frame.contains(r#"    "price": 12.5"#), "indented:\n{frame}");
     assert!(frame.contains("Add price source"), "the form stays open");
+}
+
+/// Adds AED, quoted in aud, on Frankfurter, with an Account in it opened in June 2019, so every
+/// week since then wants a Weekly Price. Its code sorts first, so `g u` selects it.
+#[expect(
+    clippy::expect_used,
+    reason = "test helper: the sample has Accounts and the date is a literal"
+)]
+fn aed_held_since_2019(fakes: &mut lib_database::FakeStores) {
+    let aed = lib_units::UnitRow::new(
+        "AED".into(),
+        "UAE Dirham".into(),
+        lib_core::UnitKind::Currency,
+        lib_units::Precision::of_kind(lib_core::UnitKind::Currency),
+        lib_units::PriceLink {
+            source_id: lib_units::FRANKFURTER,
+            symbol: "AED".into(),
+            quote: lib_core::UnitId::SEED_AUD,
+        },
+    );
+    let mut account = fakes
+        .accounts
+        .accounts
+        .accounts
+        .first()
+        .cloned()
+        .expect("the sample has Accounts");
+    account.id = lib_core::AccountId::new();
+    account.name = "Dirham savings".into();
+    account.unit = aed.id;
+    account.opened_at = chrono::NaiveDate::from_ymd_opt(2019, 6, 5).expect("a real date");
+    fakes.accounts.accounts.accounts.push(account);
+    fakes.units.units.units.push(aed);
+}
+
+/// The history request sent for AED.
+#[expect(
+    clippy::expect_used,
+    reason = "test helper: no history request for AED should fail the test"
+)]
+fn aed_history(transport: &lib_units::fake::FakeTransport) -> (lib_units::RequestId, String) {
+    transport
+        .requests()
+        .into_iter()
+        .map(|(id, request)| (id, request.url))
+        .find(|(_, url)| url.contains("/v2/rates?base=AED"))
+        .expect("opening the Ledger asked AED's history")
+}
+
+#[test]
+fn a_unit_with_accounts_opened_in_2019_fills_its_empty_weeks_back_to_then_on_open() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell_with(transport.clone(), responses, aed_held_since_2019);
+    press(&mut shell, "g u");
+    let (id, url) = aed_history(&transport);
+    assert!(url.contains("&from=2019-06-03&"), "{url}");
+    let frame = common::screen_sized(&mut shell, 220, 60);
+    assert!(frame.contains("Fetching history\u{2026}"), "{frame}");
+
+    // The TUI reads the real day, so the source answers for last week, whenever that is.
+    let last_week = lib_units::WeeklyPrice::week_of(chrono::Local::now().date_naive())
+        - chrono::Duration::weeks(1);
+    transport.answer(
+        id,
+        lib_units::TransportOutcome::Answered {
+            status: 200,
+            body: format!(r#"[{{"date":"{last_week}","base":"AED","quote":"AUD","rate":2.3456}}]"#),
+            retry_after: None,
+        },
+    );
+    shell.handle_event(Event::Tick);
+
+    let frame = common::screen_sized(&mut shell, 220, 60);
+    assert!(
+        frame.contains("2.35"),
+        "last week's backfilled close:\n{frame}"
+    );
+    assert!(!frame.contains("Fetching history"), "{frame}");
+    assert!(
+        !frame.contains("Fetched AED"),
+        "a backfill never toasts:\n{frame}"
+    );
+}
+
+#[test]
+fn a_failed_backfill_says_so_in_place_and_raises_no_toast() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell_with(transport.clone(), responses, aed_held_since_2019);
+    press(&mut shell, "g u");
+    let (id, _) = aed_history(&transport);
+
+    transport.answer(
+        id,
+        lib_units::TransportOutcome::Failed(lib_units::TransportError::Offline),
+    );
+    shell.handle_event(Event::Tick);
+
+    let frame = common::screen_sized(&mut shell, 220, 60);
+    assert!(
+        frame.contains("History failed \u{b7} Offline \u{b7} tries again in"),
+        "{frame}"
+    );
+    assert!(!frame.contains("Couldn't fetch"), "never a Toast:\n{frame}");
+    assert!(!frame.contains("fetch failed"), "{frame}");
 }

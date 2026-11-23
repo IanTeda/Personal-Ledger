@@ -813,6 +813,7 @@ impl PriceSourceFormPresenter {
             // Saving checks they parse first.
             headers: parse_headers(&self.headers).unwrap_or_default().into(),
             batch: None,
+            history: None,
         }
     }
 

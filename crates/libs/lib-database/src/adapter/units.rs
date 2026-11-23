@@ -190,10 +190,18 @@ impl UnitRepository for StoredUnits {
         self.rows.len()
     }
 
-    fn upsert_unit(&mut self, unit: UnitRow) {
+    /// A new Unit is stamped with today's UTC date as it is first stored, the `created_on` the
+    /// file gives it, so memory matches the file without a reload; a stored one keeps its own.
+    fn upsert_unit(&mut self, mut unit: UnitRow) {
         match self.rows.iter_mut().find(|row| row.id == unit.id) {
-            Some(row) => *row = unit.clone(),
-            None => self.rows.push(unit.clone()),
+            Some(row) => {
+                unit.created_on = unit.created_on.or(row.created_on);
+                *row = unit.clone();
+            }
+            None => {
+                unit.created_on = unit.created_on.or_else(|| Some(Utc::now().date_naive()));
+                self.rows.push(unit.clone());
+            }
         }
         self.pending.push(UnitsChange::UpsertUnit(unit));
     }
@@ -282,13 +290,19 @@ async fn save(conn: &mut SqliteConnection, change: &UnitsChange) -> Result<()> {
 }
 
 /// Writes the Unit and its Weekly Prices, which are written afresh: a quote change clears them all
-/// and a price rewrites the current week, so the row's whole list is what lands.
+/// and a price rewrites the current week, so the row's whole list is what lands. `created_on` is
+/// written only as the row is inserted, the column's default when the Unit has none yet, and never
+/// changes after.
 async fn upsert_unit(conn: &mut SqliteConnection, unit: &UnitRow) -> Result<()> {
     let precision = unit.precision.get();
+    let created_on = unit
+        .created_on
+        .map(|day| day.and_time(chrono::NaiveTime::MIN).and_utc());
     sqlx::query!(
         "INSERT INTO units (id, code, name, unit_kind, precision, price_source_id, price_symbol,
-                            quote_unit_id, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            quote_unit_id, is_active, created_on)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                 COALESCE(?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
          ON CONFLICT (id) DO UPDATE SET
              code = excluded.code,
              name = excluded.name,
@@ -307,6 +321,7 @@ async fn upsert_unit(conn: &mut SqliteConnection, unit: &UnitRow) -> Result<()> 
         unit.link.symbol,
         unit.link.quote,
         unit.is_active,
+        created_on,
     )
     .execute(&mut *conn)
     .await?;
@@ -477,7 +492,8 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
                price_source_id       AS "price_source_id!: PriceSourceId",
                price_symbol,
                quote_unit_id         AS "quote_unit_id!: UnitId",
-               is_active
+               is_active,
+               created_on            AS "created_on!: DateTime<Utc>"
            FROM units"#
     )
     .fetch_all(&mut *conn)
@@ -501,6 +517,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
             },
             prices: prices.remove(&row.id).unwrap_or_default(),
             is_active: row.is_active,
+            created_on: Some(row.created_on.date_naive()),
         })
     })
     .collect::<Result<Vec<_>>>()?;
@@ -552,6 +569,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
                 auth,
                 headers: parse_headers(row.id, row.headers.as_deref())?.into(),
                 batch: None,
+                history: None,
             },
             updates,
         }))
@@ -812,6 +830,60 @@ mod tests {
         contract::weekly_prices_reload_and_a_quote_change_clears_them(&mut AdapterFactory::new(
             options,
         ));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn recording_price_history_fills_only_the_empty_weeks(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::recording_price_history_fills_only_the_empty_weeks(&mut AdapterFactory::new(
+            options,
+        ));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn a_unit_keeps_the_day_it_was_first_stored(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let mut ports = factory.create(InMemoryPorts::sample(Utc::now()));
+        let today = Utc::now().date_naive();
+        let loaded = ports
+            .units()
+            .unit(UnitId::SEED_BTC)
+            .expect("the sample's BTC");
+        assert_eq!(
+            loaded.created_on,
+            Some(today),
+            "seeded today, by the column's default"
+        );
+
+        let mut btc = loaded.clone();
+        btc.created_on = None;
+        btc.name = "Bitcoin core".into();
+        ports.units.upsert_unit(btc);
+        let mut old = loaded;
+        old.id = UnitId::new();
+        old.code = "OLD".into();
+        old.created_on = Some(NaiveDate::from_ymd_opt(2019, 6, 5).expect("a real date"));
+        ports.units.upsert_unit(old.clone());
+        let ports = factory.reload(ports);
+
+        assert_eq!(
+            ports
+                .units()
+                .unit(UnitId::SEED_BTC)
+                .and_then(|unit| unit.created_on),
+            Some(today),
+            "an edit keeps it"
+        );
+        assert_eq!(
+            ports.units().unit(old.id).and_then(|unit| unit.created_on),
+            old.created_on,
+            "a Unit stored with one keeps it"
+        );
     }
 
     #[sqlx::test(migrations = "migrations/client")]

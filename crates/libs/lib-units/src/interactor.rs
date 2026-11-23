@@ -5,6 +5,7 @@
 
 mod add_price_source;
 mod add_unit;
+mod backfill;
 mod deactivate_unit;
 mod delete_price_source;
 mod delete_unit;
@@ -16,6 +17,7 @@ mod fetch_now;
 mod fetch_source;
 mod reactivate_unit;
 mod record_fetched_prices;
+mod record_price_history;
 mod save_price_source_key;
 mod set_base_unit;
 mod set_price;
@@ -23,6 +25,7 @@ mod test_price_source;
 
 pub use add_price_source::AddPriceSource;
 pub use add_unit::AddUnit;
+pub use backfill::{Backfill, BackfillUnits};
 pub use deactivate_unit::DeactivateUnit;
 pub use delete_price_source::{DeletePriceSource, PriceSourceDeleted};
 pub use delete_unit::{CheckedDelete, DeleteUnit};
@@ -34,6 +37,7 @@ pub use fetch_now::FetchNow;
 pub use fetch_source::FetchSource;
 pub use reactivate_unit::ReactivateUnit;
 pub use record_fetched_prices::{FetchedPrice, RecordFetchedPrices, RoundOutcome};
+pub use record_price_history::RecordPriceHistory;
 pub use save_price_source_key::{KeyChange, SavePriceSourceKey};
 pub use set_base_unit::SetBaseUnit;
 pub use set_price::SetPrice;

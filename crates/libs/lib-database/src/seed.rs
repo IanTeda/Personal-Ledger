@@ -543,6 +543,7 @@ pub fn fake_units(count: u32, now: DateTime<Utc>) -> Vec<UnitRow> {
                     seed_weekly_prices(cents, written_at, number)
                 }),
                 is_active: Faker.fake_with_rng(&mut rng),
+                created_on: None,
             }
         })
         .collect()

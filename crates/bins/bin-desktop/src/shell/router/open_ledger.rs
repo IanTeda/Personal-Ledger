@@ -167,9 +167,12 @@ impl OpenLedger {
                 ),
             ))
         });
-        // Fetch every due Unit as the Ledger opens, then every minute while it stays open.
+        // Fetch every due Unit as the Ledger opens, then every minute while it stays open, and
+        // fill each Unit's empty past weeks from its source's history, once, as it opens.
         if let Some(presenter) = &price_responses {
-            presenter.borrow_mut().fetch_due();
+            let mut presenter = presenter.borrow_mut();
+            presenter.fetch_due();
+            presenter.backfill();
         }
         let price_checks = price_responses
             .as_ref()

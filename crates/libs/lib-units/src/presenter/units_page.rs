@@ -2,7 +2,7 @@
 //! across both, the row menu, and where a confirmed Dialog's outcome lands (a Toast, or ACTIVITY
 //! while the detail pane is docked).
 
-use chrono::Local;
+use chrono::{DateTime, Local, Utc};
 use lib_core::{PriceSourceId, UnitId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Label as _;
@@ -15,13 +15,14 @@ use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
 use super::fetch_text::{
-    Asked, failure_name, fetch_status, round_failed_toast, test_failed_toast, waiting_status,
+    Asked, failure_name, fetch_status, retry_text, round_failed_toast, test_failed_toast,
+    waiting_status,
 };
 use super::price_history::{HistoryInput, PriceHistory, price_history};
 use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
-use crate::fetching::{FetchFailure, SharedFetching, is_out_of_date};
+use crate::fetching::{FetchFailure, PriceFetching, SharedFetching, is_out_of_date};
 use crate::interactor::{FetchAll, FetchNow, FetchSource, ReactivateUnit, TestPriceSource};
 use crate::keymap::{FETCH_NOW, NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE, unit_prices_keymap};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
@@ -591,6 +592,8 @@ impl UnitsPagePresenter {
                     today: now.with_timezone(&Local).date_naive(),
                     out_of_date: out_of_date(unit),
                     fetch_failed: unit_failed(unit),
+                    backfill: fetching
+                        .and_then(|fetching| backfill_text(fetching, unit, source_of(unit)?, now)),
                 },
                 unit,
             )
@@ -1200,6 +1203,25 @@ impl UnitsPagePresenter {
         hints.push(Hint::new(chord(NEXT_TABLE), other));
         hints
     }
+}
+
+/// What PRICE HISTORY says of `unit`'s backfill at `now`: *Fetching history…* while its history
+/// request is out, *History failed · Offline · tries again in 8 minutes* after one failed, else
+/// nothing.
+fn backfill_text(
+    fetching: &PriceFetching,
+    unit: &UnitRow,
+    source: &PriceSource<'_>,
+    now: DateTime<Utc>,
+) -> Option<String> {
+    if fetching.history_fetching(unit.id) {
+        return Some(msg::units_history_backfilling());
+    }
+    let (reason, retry_at) = fetching.history_failure(unit, source)?;
+    Some(msg::units_history_backfill_failed(
+        &failure_name(reason),
+        &retry_text(retry_at, now),
+    ))
 }
 
 #[cfg(test)]
@@ -2667,6 +2689,7 @@ mod tests {
                     }]
                     .into(),
                     batch: None,
+                    history: None,
                 },
                 updates: crate::Updates::Hourly,
             }
@@ -2957,6 +2980,50 @@ mod tests {
         }
 
         #[test]
+        fn price_history_shows_a_fetch_nows_backfill_in_place_then_its_failure() {
+            let mut on = fetching();
+            let today = test_support::now().date_naive();
+            on.page
+                .ports
+                .borrow_mut()
+                .units
+                .units
+                .iter_mut()
+                .find(|unit| unit.id == on.eur)
+                .expect("eur")
+                .created_on = Some(today - chrono::Duration::weeks(3));
+            let backfill = |page: &Page| page.view().history.expect("eur's history").backfill;
+
+            let notices = fetch_eur(&mut on, 200, BODY);
+            assert_eq!(
+                backfill(&on.page).as_deref(),
+                Some("Fetching history\u{2026}")
+            );
+            assert!(
+                notices.iter().all(
+                    |notice| !matches!(notice, Notice::Toast(_, text) if text.contains("history"))
+                ),
+                "a backfill never toasts"
+            );
+
+            let mut responses =
+                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
+            let mut notices: Vec<Notice> = Vec::new();
+            responses.handle(on.transport.answer_last(503, ""), &mut notices);
+
+            assert_eq!(
+                backfill(&on.page).as_deref(),
+                Some("History failed \u{b7} Source error \u{b7} tries again in 10 minutes")
+            );
+            assert_eq!(notices, [Notice::Status(String::new())], "no Toast");
+            assert_eq!(
+                eur_line(&on.page).fetch_failed_tag,
+                None,
+                "a history failure never flags the fetch"
+            );
+        }
+
+        #[test]
         fn a_unit_failure_flags_the_row_the_history_and_the_panes_last_fetch() {
             let mut on = fetching();
             on.page.send(UnitsPageEvent::SetDocked(true));
@@ -3082,6 +3149,7 @@ mod tests {
                         },
                         headers: Vec::new().into(),
                         batch: None,
+                        history: None,
                     },
                     updates: crate::Updates::Hourly,
                 }),

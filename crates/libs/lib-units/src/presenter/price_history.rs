@@ -41,6 +41,9 @@ pub struct PriceHistory {
     pub sparkline: Vec<f64>,
     /// What shows in place of the table: the base Unit's, or a Unit's with no prices yet.
     pub empty: Option<String>,
+    /// The Unit's backfill, under the heading: `Fetching history…`, or `History failed · Offline
+    /// · tries again in 8 minutes`; `None` with neither.
+    pub backfill: Option<String>,
 }
 
 /// Which way a week's close moved from the week before's, which the Clients colour.
@@ -82,6 +85,8 @@ pub(super) struct HistoryInput<'a> {
     pub out_of_date: bool,
     /// Whether this Client's last fetch of the Unit failed.
     pub fetch_failed: bool,
+    /// The Unit's backfill line.
+    pub backfill: Option<String>,
 }
 
 pub(super) fn price_history(input: &HistoryInput<'_>, unit: &UnitRow) -> PriceHistory {
@@ -173,6 +178,7 @@ pub(super) fn price_history(input: &HistoryInput<'_>, unit: &UnitRow) -> PriceHi
                 msg::units_history_none(&unit.code)
             }
         }),
+        backfill: input.backfill.clone(),
         rows,
     }
 }

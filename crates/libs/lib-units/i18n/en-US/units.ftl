@@ -289,6 +289,12 @@ units-history-pane-hint = { $chord } opens all { $weeks ->
 units-history-base = { $code } is the base unit: everything is valued in it, so it has no price.
 units-history-none = { $code } has no prices yet. A fetch or backfill will fill this.
 
+## A backfill in place under PRICE HISTORY's heading. `$reason` is a fetch failure's name and `$retry`
+## when it tries again, `tries again in 8 minutes`.
+
+units-history-backfilling = Fetching history…
+units-history-backfill-failed = History failed · { $reason } · { $retry }
+
 ## Refusals: an Interactor said no, shown in the open Dialog.
 
 units-refusal-unit-gone = This unit was removed while the dialog was open.
@@ -453,6 +459,7 @@ units-fetching = Fetching…
 units-toast-fetching = Fetching prices from { $source }…
 units-toast-already-fetching = Already fetching prices from { $source }
 units-status-fetching = Fetching prices from { $sources }…
+units-status-fetching-history = Fetching price history for { $code } from { $source }…
 units-status-fetch-no-units = No active Unit uses { $source }
 # A call a person asked for waiting out the source's `Retry-After`, counting `$seconds` down.
 units-status-fetch-waiting = Waiting for { $source }, { $seconds } s…

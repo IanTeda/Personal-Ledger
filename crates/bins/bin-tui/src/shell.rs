@@ -420,8 +420,10 @@ impl Shell {
                 fetching,
                 Rc::new(chrono::Utc::now),
             );
-            // Fetch every due Unit as the Ledger opens, then every minute while it stays open.
+            // Fetch every due Unit as the Ledger opens, then every minute while it stays open, and
+            // fill each Unit's empty past weeks from its source's history, once, as it opens.
             presenter.fetch_due();
+            presenter.backfill();
             (presenter, feed.responses)
         });
         OpenLedger {
@@ -470,12 +472,9 @@ impl Shell {
             return;
         };
         let mut notices: Vec<Notice> = Vec::new();
-        let mut got = false;
+        // Each response is its own input, so a Unit's backfilled weeks are one commit.
         while let Ok(response) = responses.try_recv() {
             presenter.handle(response, &mut notices);
-            got = true;
-        }
-        if got {
             ledger.units.commit();
         }
         presenter.pump(&mut notices);

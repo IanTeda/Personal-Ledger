@@ -88,6 +88,7 @@ pub(super) fn section(history: &PriceHistory, window_size: WindowSize, cx: &App)
         .flex()
         .flex_col()
         .child(heading)
+        .children(history.backfill.clone().map(|text| backfill(text, cx)))
         .child(body)
         .children(history.count.clone().map(|count| hint(count, cx)))
         .into_any_element()
@@ -96,16 +97,28 @@ pub(super) fn section(history: &PriceHistory, window_size: WindowSize, cx: &App)
 /// The pane's PRICE HISTORY body, at X-Large: the sparkline, then WEEK · CLOSE · CHANGE.
 pub(super) fn pane_body(history: &PriceHistory, cx: &App) -> AnyElement {
     let body = pane_table(history, cx);
-    match history.warning.clone() {
-        Some(text) => div()
-            .flex()
-            .flex_col()
-            .gap(px(6.0))
-            .child(warning(text, cx))
-            .child(body)
-            .into_any_element(),
-        None => body,
+    if history.warning.is_none() && history.backfill.is_none() {
+        return body;
     }
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(6.0))
+        .children(history.warning.clone().map(|text| warning(text, cx)))
+        .children(history.backfill.clone().map(|text| backfill(text, cx)))
+        .child(body)
+        .into_any_element()
+}
+
+/// The backfill in place: `Fetching history…`, or `History failed · Offline · tries again in 8
+/// minutes`, muted, since it never needs the person to act.
+fn backfill(text: String, cx: &App) -> impl IntoElement {
+    div()
+        .debug_selector(|| "units-history-backfill".to_string())
+        .mb(px(6.0))
+        .text_size(px(11.5))
+        .text_color(color::muted(cx))
+        .child(text)
 }
 
 /// `⚠ Out of date · fetch failed`, in the warning colour.
