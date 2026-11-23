@@ -14,8 +14,8 @@ use crate::units_by_code;
 ///
 /// Never fetches a Unit on Manual entry or on a Manual only source, a deactivated Unit or the base
 /// Unit, and leaves a source with a round already in flight alone, as it does a source or Unit
-/// still backing off a failure. A Unit this Client fetched on another link is due at once. A
-/// source needing a key this Client doesn't have fails its round Key missing without sending. A
+/// still backing off a failure and a source the Unit prices view is asking for finer prices. A
+/// Unit this Client fetched on another link is due at once. A source needing a key this Client doesn't have fails its round Key missing without sending. A
 /// source with a batch request asks for its due Units in batches; every call waits its turn
 /// behind the calls a person asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,6 +93,7 @@ impl FetchDue {
             };
             if source.endpoint().is_none()
                 || fetching.source_in_flight(source.id)
+                || fetching.fine_in_flight(source.id)
                 || fetching.source_backing_off(&source, self.now)
                 || fetching.unit_backing_off(unit, &source, self.now)
                 || !(fetching.relinked(unit) || is_due(unit, source.updates, self.today, self.now))

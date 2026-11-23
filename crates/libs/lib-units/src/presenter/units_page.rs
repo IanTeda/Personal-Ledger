@@ -430,12 +430,15 @@ impl UnitsPagePresenter {
 
     /// Shows `unit`'s prices view in place of the tables, the selection kept for the way back.
     fn open_prices(&mut self, unit: UnitId) {
-        self.prices = Some(UnitPricesPresenter::new(
-            self.ports.clone(),
-            self.clock.clone(),
-            self.prices_keymap.clone(),
-            unit,
-        ));
+        self.prices = Some(
+            UnitPricesPresenter::new(
+                self.ports.clone(),
+                self.clock.clone(),
+                self.prices_keymap.clone(),
+                unit,
+            )
+            .with_fetching(self.fetching.clone()),
+        );
     }
 }
 

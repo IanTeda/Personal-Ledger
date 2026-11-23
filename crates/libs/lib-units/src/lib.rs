@@ -17,6 +17,7 @@ mod entity;
 mod error;
 pub mod fake;
 pub mod fetching;
+mod fine;
 mod history;
 pub mod interactor;
 pub mod keymap;
@@ -40,6 +41,7 @@ pub use fetching::{
     PriceRequest, PriceResponse, PriceTransport, RETRY_AFTER_DEFAULT, RequestId, RequestKey,
     SharedFetching, TransportError, TransportOutcome,
 };
+pub use fine::{FINE_FRESH, Grain};
 pub use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 pub use protocols::{
     BaseUnitRepository, Holding, KeyState, PortsMut, PriceSourceKeys, PriceSourceRepository,

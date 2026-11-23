@@ -17,6 +17,8 @@ use chrono::{DateTime, Duration, NaiveDate, Utc};
 use lib_core::{Money, PriceSourceId, UnitId};
 use secrecy::{ExposeSecret as _, SecretString};
 
+use crate::fine::{FINE_FRESH, FineKey, FinePrice, fine_prices};
+use crate::history::{HistoryReading, read_history};
 use crate::{
     Endpoint, HistoryEndpoint, KeyPlacement, PriceLink, PriceSource, PriceSourceAuth, UnitRow,
     Updates, WeeklyPrice,
@@ -440,6 +442,57 @@ pub struct PriceFetching {
     /// Sources a history request found offline or rate limited, backed off for everyone until
     /// then without touching their Last fetch.
     quiet_back_off: HashMap<PriceSourceId, (SourceSettings, DateTime<Utc>)>,
+    /// The Unit prices view's Daily and Hourly Price requests queued or out, by request.
+    fine_out: HashMap<RequestId, FineCall>,
+    /// Daily and Hourly Price requests waiting for their source's round to land, oldest first.
+    fine_parked: Vec<FineCall>,
+    /// The Daily and Hourly Prices fetched this session, never written to the Ledger.
+    fine_cache: HashMap<FineKey, FineEntry>,
+    /// Why a series' last request failed, until it is asked again: shown in place and nowhere
+    /// else, so never a Unit's or source's Last fetch.
+    fine_failed: HashMap<FineKey, (PriceLink, FetchFailure)>,
+}
+
+/// One request for a Unit's Daily or Hourly Prices in one window, as the Unit prices view asked.
+#[derive(Debug, Clone)]
+pub(crate) struct FineCall {
+    pub key: FineKey,
+    pub last: NaiveDate,
+    pub link: PriceLink,
+    pub settings: SourceSettings,
+    pub history: HistoryEndpoint,
+    /// The quote Unit's code, filling the series' paths.
+    pub quote: String,
+    /// The request, until it joins the call queue.
+    pub request: Option<PriceRequest>,
+}
+
+impl FineCall {
+    fn source(&self) -> PriceSourceId {
+        self.link.source_id
+    }
+}
+
+/// A series fetched this session, with the link it was for and whether its window held today.
+#[derive(Debug, Clone)]
+struct FineEntry {
+    link: PriceLink,
+    fetched_at: DateTime<Utc>,
+    current: bool,
+    prices: Vec<FinePrice>,
+}
+
+/// What the Unit prices view has of a series.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FineState<'a> {
+    /// Asked and not yet back: waiting out a `Retry-After` for so many whole seconds, else 0.
+    Fetching {
+        waiting: i64,
+    },
+    Shown(&'a [FinePrice]),
+    Failed(FetchFailure),
+    /// Never asked on this link.
+    Unasked,
 }
 
 /// How long a failed history request waits before it is tried again, or longer when a
@@ -587,6 +640,10 @@ impl PriceFetching {
             history_failures: HashMap::new(),
             empty_weeks: HashMap::new(),
             quiet_back_off: HashMap::new(),
+            fine_out: HashMap::new(),
+            fine_parked: Vec::new(),
+            fine_cache: HashMap::new(),
+            fine_failed: HashMap::new(),
         }
     }
 
@@ -827,13 +884,13 @@ impl PriceFetching {
             return;
         };
         let asked = &result.asked;
-        let outcome = match crate::history::read_history(
+        let outcome = match read_history(
             &response.outcome,
             &history.history,
             &asked.symbol,
             &asked.quote_code,
         ) {
-            crate::history::HistoryReading::Points(mut points) => {
+            HistoryReading::Points(mut points) => {
                 // Stable, so the last of several points on one day is its close, as a week folds.
                 points.sort_by_key(|point| point.day);
                 match points.last() {
@@ -845,7 +902,7 @@ impl PriceFetching {
                     None => HistoryTestOutcome::Failed(FetchFailure::NoPrice),
                 }
             }
-            crate::history::HistoryReading::Failed(reason) => HistoryTestOutcome::Failed(reason),
+            HistoryReading::Failed(reason) => HistoryTestOutcome::Failed(reason),
         };
         let answered = match &response.outcome {
             TransportOutcome::Answered { status, body, .. } => {
@@ -1005,6 +1062,7 @@ impl PriceFetching {
             return None;
         }
         let round = self.rounds.remove(&id)?;
+        self.release_parked(round.source, now);
         Some(Landed {
             source: Some((round.source, round.settings)),
             asked: round.asked,
@@ -1054,6 +1112,175 @@ impl PriceFetching {
         }
         self.units
             .retain(|_, record| record.link.source_id != source || !keyed(&record.last));
+    }
+
+    /// Asks for a series as the Unit prices view wants it, at `now`: a person's call, so it skips
+    /// the source's back-off but waits out a `Retry-After`, and waits behind a round on its source
+    /// already in flight rather than being refused. Forgets the series' last failure and any series
+    /// the Unit fetched on another link. Asks nothing while the same series is already asked.
+    pub(crate) fn ask_fine(&mut self, call: FineCall, now: DateTime<Utc>) {
+        let key = call.key;
+        self.fine_failed.remove(&key);
+        self.fine_cache
+            .retain(|cached, entry| cached.unit != key.unit || entry.link == call.link);
+        if self.fine_asked(key) {
+            return;
+        }
+        if self.source_in_flight(call.source()) {
+            tracing::debug!(price_source_id = %call.source(), "A finer prices request waits for its source's round");
+            self.fine_parked.push(call);
+            return;
+        }
+        self.send_fine(call, now);
+    }
+
+    fn send_fine(&mut self, mut call: FineCall, now: DateTime<Utc>) {
+        let Some(request) = call.request.take() else {
+            return;
+        };
+        let id = self.next_request();
+        let source = call.source();
+        tracing::info!(price_source_id = %source, unit_id = %call.key.unit, grain = ?call.key.grain, "Asking a price source for finer prices");
+        self.fine_out.insert(id, call);
+        self.enqueue(id, Some(source), true, request);
+        self.release(now);
+    }
+
+    /// Sends the finer prices requests that waited for `source`'s round, now it has landed.
+    fn release_parked(&mut self, source: PriceSourceId, now: DateTime<Utc>) {
+        let (going, staying) = std::mem::take(&mut self.fine_parked)
+            .into_iter()
+            .partition(|call| call.source() == source);
+        self.fine_parked = staying;
+        for call in going {
+            self.send_fine(call, now);
+        }
+    }
+
+    /// Notes that a series couldn't be asked for `reason` without sending, as a key this Client
+    /// doesn't have.
+    pub(crate) fn fine_refused(&mut self, key: FineKey, link: PriceLink, reason: FetchFailure) {
+        self.fine_failed.insert(key, (link, reason));
+    }
+
+    /// Whether the series `key` is queued, out or waiting for a round.
+    pub(crate) fn fine_asked(&self, key: FineKey) -> bool {
+        self.fine_out.values().any(|call| call.key == key)
+            || self.fine_parked.iter().any(|call| call.key == key)
+    }
+
+    /// Whether `source` has a finer prices request waiting or out, which a scheduled check counts
+    /// as in flight.
+    pub(crate) fn fine_in_flight(&self, source: PriceSourceId) -> bool {
+        self.fine_out.values().any(|call| call.source() == source)
+            || self.fine_parked.iter().any(|call| call.source() == source)
+    }
+
+    /// Whether `response` answers a finer prices request.
+    pub(crate) fn is_fine(&self, response: &PriceResponse) -> bool {
+        self.fine_out.contains_key(&response.request)
+    }
+
+    /// Reads a finer prices `response` at `now` into the cache, its days dated by the provider and
+    /// its hours in `zone`, or notes its failure for the view alone. A 429 holds its source until
+    /// its `Retry-After`; Offline and Rate limited back the source off, as a history request's do.
+    pub(crate) fn land_fine<Tz: chrono::TimeZone>(
+        &mut self,
+        response: &PriceResponse,
+        now: DateTime<Utc>,
+        today: NaiveDate,
+        zone: &Tz,
+    ) {
+        let Some(call) = self.fine_out.remove(&response.request) else {
+            return;
+        };
+        let hold = match &response.outcome {
+            TransportOutcome::Answered {
+                status: 429,
+                retry_after,
+                ..
+            } => {
+                let until = now + retry_after_wait(retry_after.as_deref(), now);
+                self.holds.insert(Some(call.source()), until);
+                Some(until)
+            }
+            _ => None,
+        };
+        match read_history(
+            &response.outcome,
+            &call.history,
+            &call.link.symbol,
+            &call.quote,
+        ) {
+            HistoryReading::Points(points) => {
+                let prices = fine_prices(points, call.key.grain, (call.key.first, call.last), zone);
+                self.fine_cache.insert(
+                    call.key,
+                    FineEntry {
+                        link: call.link,
+                        fetched_at: now,
+                        current: call.last >= today,
+                        prices,
+                    },
+                );
+            }
+            HistoryReading::Failed(reason) => {
+                tracing::warn!(unit_id = %call.key.unit, price_source_id = %call.source(), ?reason, "A finer prices request failed");
+                if matches!(reason, FetchFailure::Offline | FetchFailure::RateLimited) {
+                    let backed = now + back_off(call.settings.updates);
+                    let until = hold.map_or(backed, |until| until.max(backed));
+                    self.quiet_back_off
+                        .insert(call.source(), (call.settings.clone(), until));
+                }
+                self.fine_failed.insert(call.key, (call.link, reason));
+            }
+        }
+    }
+
+    /// Whether the series `key` is cached on `link` and still fresh at `now`: a past window for the
+    /// session, one holding today for [`FINE_FRESH`].
+    pub(crate) fn fine_fresh(&self, key: FineKey, link: &PriceLink, now: DateTime<Utc>) -> bool {
+        self.fine_cache.get(&key).is_some_and(|entry| {
+            entry.link == *link && (!entry.current || now - entry.fetched_at < FINE_FRESH)
+        })
+    }
+
+    /// What the view has of the series `key` on `link` at `now`.
+    pub(crate) fn fine_state(
+        &self,
+        key: FineKey,
+        link: &PriceLink,
+        now: DateTime<Utc>,
+    ) -> FineState<'_> {
+        if self.fine_asked(key) {
+            let waiting = self
+                .fine_out
+                .iter()
+                .find(|(_, call)| call.key == key)
+                .and_then(|(id, call)| {
+                    self.queue
+                        .iter()
+                        .any(|queued| queued.id == *id)
+                        .then_some(call)
+                })
+                .and_then(|call| self.holds.get(&Some(call.source())))
+                .map_or(0, |until| {
+                    let left = (*until - now).num_milliseconds();
+                    if left > 0 { (left + 999) / 1000 } else { 0 }
+                });
+            return FineState::Fetching { waiting };
+        }
+        if let Some(entry) = self
+            .fine_cache
+            .get(&key)
+            .filter(|entry| entry.link == *link)
+        {
+            return FineState::Shown(&entry.prices);
+        }
+        match self.fine_failed.get(&key) {
+            Some((failed_on, reason)) if failed_on == link => FineState::Failed(*reason),
+            _ => FineState::Unasked,
+        }
     }
 
     /// Whether `source` failed a round, or a history request found it offline or rate limited,

@@ -12,6 +12,7 @@ use chrono::{DateTime, Utc};
 use lib_core::{PriceSourceId, UnitKind};
 
 use crate::UnitRow;
+use crate::fine::Grain;
 
 /// Manual entry's id. These ids are fixed for good, not sample seeds: a Ledger refers to Manual
 /// entry and the built-ins by them.
@@ -200,6 +201,11 @@ pub struct BuiltInSource {
     /// How many days back its history request reaches, where its provider stops (CoinGecko's
     /// free tiers at 365), so no request is sent that is bound to be refused; `None` for no limit.
     pub history_depth: Option<u32>,
+    /// How to ask for a symbol's Hourly Prices over a range, which the Unit prices view shows and
+    /// never stores; `None` for a source that offers none.
+    pub hourly: Option<&'static HistoryEndpoint>,
+    /// How many days back its hourly request reaches; `None` for no limit.
+    pub hourly_depth: Option<u32>,
 }
 
 /// The built-in sources, always listed.
@@ -239,6 +245,17 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
         updates: Updates::Every15Minutes,
         kinds: &[UnitKind::Crypto],
         history_depth: Some(365),
+        // With no interval, a range of 2 to 90 days answers hourly points.
+        hourly: Some(&HistoryEndpoint {
+            request: Cow::Borrowed(
+                "/coins/{symbol_lower}/market_chart/range?vs_currency={quote_lower}&from={from_unix}&to={to_unix}",
+            ),
+            series_path: Cow::Borrowed("/prices"),
+            date_path: Cow::Borrowed("/0"),
+            price_path: Cow::Borrowed("/1"),
+            shape: SeriesShape::Points,
+        }),
+        hourly_depth: Some(90),
     },
     BuiltInSource {
         id: YAHOO_FINANCE,
@@ -274,6 +291,22 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
         updates: Updates::Hourly,
         kinds: &[UnitKind::Equity, UnitKind::FixedIncome, UnitKind::Commodity],
         history_depth: None,
+        hourly: Some(&HistoryEndpoint {
+            request: Cow::Borrowed(
+                "/v8/finance/chart/{symbol}?period1={from_unix}&period2={to_unix}&interval=1h",
+            ),
+            series_path: Cow::Borrowed("/chart/result/0"),
+            date_path: Cow::Borrowed("/timestamp"),
+            price_path: Cow::Borrowed("/indicators/quote/0/close"),
+            shape: SeriesShape::Columns {
+                open_path: Cow::Borrowed("/indicators/quote/0/open"),
+                high_path: Cow::Borrowed("/indicators/quote/0/high"),
+                low_path: Cow::Borrowed("/indicators/quote/0/low"),
+                offset_path: Cow::Borrowed("/meta/gmtoffset"),
+            },
+        }),
+        // Yahoo keeps hourly bars for about the last 730 days.
+        hourly_depth: Some(730),
     },
     BuiltInSource {
         id: FRANKFURTER,
@@ -301,6 +334,8 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
         updates: Updates::Daily,
         kinds: &[UnitKind::Currency],
         history_depth: None,
+        hourly: None,
+        hourly_depth: None,
     },
 ];
 
@@ -375,6 +410,35 @@ impl PriceSource<'_> {
         match self.origin {
             SourceOrigin::BuiltIn(source) => source.history_depth,
             SourceOrigin::ManualEntry | SourceOrigin::Custom(_) => None,
+        }
+    }
+
+    /// The grains the Unit prices view can show its Units at: Week always, Day for a source with a
+    /// history request, and Hour for a built-in with an hourly one. Manual entry offers Week only.
+    pub fn grains(&self) -> Vec<Grain> {
+        [Grain::Week, Grain::Day, Grain::Hour]
+            .into_iter()
+            .filter(|grain| *grain == Grain::Week || self.fine_history(*grain).is_some())
+            .collect()
+    }
+
+    /// The request for its Daily or Hourly Prices; `None` for Week, which reads the Ledger, and for
+    /// a grain it doesn't offer.
+    pub(crate) fn fine_history(&self, grain: Grain) -> Option<&HistoryEndpoint> {
+        match (grain, self.origin) {
+            (Grain::Week, _) | (_, SourceOrigin::ManualEntry) => None,
+            (Grain::Day, _) => self.endpoint()?.history.as_deref(),
+            (Grain::Hour, SourceOrigin::BuiltIn(source)) => source.hourly,
+            (Grain::Hour, SourceOrigin::Custom(_)) => None,
+        }
+    }
+
+    /// How many days back its `grain` reaches; `None` for no limit.
+    pub fn reach(&self, grain: Grain) -> Option<u32> {
+        match (grain, self.origin) {
+            (Grain::Hour, SourceOrigin::BuiltIn(source)) => source.hourly_depth,
+            (Grain::Day, _) => self.history_depth(),
+            (Grain::Week | Grain::Hour, _) => None,
         }
     }
 

@@ -1,7 +1,8 @@
 //! Draws the Unit prices view from `lib-units`' [`UnitPricesViewModel`] in place of the Units
-//! page's tables: the title and its 12-month window over the PRICE figures, the WEEKLY CLOSE chart
-//! (`gpui-component`'s candlestick chart, a close-only week drawn as a flat tick), then the WEEKLY
-//! PRICES table, newest week first. A row click selects its week.
+//! page's tables: the title and its window over the PRICE figures, the chart named for its grain
+//! (`gpui-component`'s candlestick chart, a close-only point drawn as a flat tick) under the
+//! clickable *Week · Day · Hour* switch, then the prices table, newest first. A row click selects
+//! its row, a click on the switch its grain.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use gpui_component::chart::CandlestickChart;
@@ -14,8 +15,9 @@ use crate::{shell::view::page_clicks::PageClicks, theme::color};
 const CHART_HEIGHT: gpui::Pixels = px(220.0);
 /// Every price column's width; WEEK takes the rest.
 const PRICE_WIDTH: gpui::Pixels = px(120.0);
-/// Label every fourth week on the axis, so a year's labels don't overlap.
-const AXIS_EVERY: usize = 4;
+/// About how many labels the axis holds, so a window's labels don't overlap: a year of weeks is
+/// labelled every fourth week.
+const AXIS_LABELS: usize = 13;
 
 pub(super) fn prices_view(
     view: UnitPricesViewModel,
@@ -25,6 +27,7 @@ pub(super) fn prices_view(
     let UnitPricesViewModel {
         title,
         facts,
+        grains,
         chart_heading,
         table_heading,
         window,
@@ -79,13 +82,49 @@ pub(super) fn prices_view(
                         .child(fact.value),
                 )
         }));
+    let switch = div()
+        .debug_selector(|| "unit-prices-grains".to_string())
+        .flex()
+        .gap(px(4.0))
+        .text_size(px(11.5))
+        .children(grains.into_iter().map(|choice| {
+            let id =
+                SharedString::from(format!("unit-prices-grain-{:?}", choice.grain).to_lowercase());
+            div()
+                .debug_selector({
+                    let id = id.clone();
+                    move || id.to_string()
+                })
+                .id(id)
+                .cursor_pointer()
+                .px(px(8.0))
+                .py(px(2.0))
+                .when(choice.active, |this| {
+                    this.bg(color::foreground(cx))
+                        .text_color(color::selection_text(cx))
+                })
+                .when(!choice.active, |this| this.text_color(color::muted(cx)))
+                .on_click(
+                    clicks.send(UnitsPageEvent::Prices(UnitPricesEvent::SetGrain(
+                        choice.grain,
+                    ))),
+                )
+                .child(choice.label)
+        }));
     let mut page = div()
         .debug_selector(|| "unit-prices".to_string())
         .flex()
         .flex_col()
         .child(header)
         .child(figures)
-        .child(heading(&chart_heading));
+        .child(
+            div()
+                .flex()
+                .items_end()
+                .justify_between()
+                .child(heading(&chart_heading))
+                .child(switch),
+        );
     if let Some(empty) = empty {
         return page
             .child(
@@ -96,6 +135,7 @@ pub(super) fn prices_view(
             )
             .into_any_element();
     }
+    let axis_every = chart.len().div_ceil(AXIS_LABELS).max(1);
     page = page.child(
         div()
             .debug_selector(|| "unit-prices-chart".to_string())
@@ -107,7 +147,7 @@ pub(super) fn prices_view(
                     .high(|week| week.high)
                     .low(|week| week.low)
                     .close(|week| week.close)
-                    .tick_margin(AXIS_EVERY),
+                    .tick_margin(axis_every),
             ),
     );
     let last = rows.len().saturating_sub(1);
@@ -181,7 +221,7 @@ fn price_row(
     let id = SharedString::from(format!("unit-prices-row-{index}"));
     let selected = row.selected;
     let falling = row.falling;
-    let week = row.week;
+    let at = row.at;
     // A fall is marked by its sign as well as the colour, so it never rests on colour alone.
     let change = (falling && !selected).then(|| color::accent_text(cx));
     let cells = row_cells(
@@ -207,6 +247,6 @@ fn price_row(
             this.bg(color::foreground(cx))
                 .text_color(color::selection_text(cx))
         })
-        .on_click(clicks.send(UnitsPageEvent::Prices(UnitPricesEvent::Select(week))))
+        .on_click(clicks.send(UnitsPageEvent::Prices(UnitPricesEvent::Select(at))))
         .child(cells)
 }

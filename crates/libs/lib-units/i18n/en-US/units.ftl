@@ -268,6 +268,24 @@ units-prices-hint-week = week
 units-prices-hint-earlier = earlier
 units-prices-hint-later = later
 units-prices-hint-back = back
+units-prices-hint-grain = grain
+units-prices-chart-heading-day = Daily close
+units-prices-chart-heading-hour = Hourly close
+units-prices-table-heading-day = Daily prices
+units-prices-table-heading-hour = Hourly prices
+units-prices-column-day = Day
+units-prices-column-hour = Hour
+units-prices-grain-week = Week
+units-prices-grain-day = Day
+units-prices-grain-hour = Hour
+units-prices-hour-label = { $day } { $time }
+units-prices-fetching-day = Fetching daily prices from { $source }…
+units-prices-fetching-hour = Fetching hourly prices from { $source }…
+units-prices-failed = Couldn't fetch: { $detail }. Press { $key } to go back to weekly.
+units-prices-no-older-day = No older daily prices from { $source }.
+units-prices-no-older-hour = No older hourly prices from { $source }.
+units-prices-window-empty-day = No daily prices in this window.
+units-prices-window-empty-hour = No hourly prices in this window.
 
 ## PRICE HISTORY: the selected Unit's newest weekly prices on the Units page, under PRICE SOURCES
 ## or in the docked pane. `$chord` is the key that opens the prices view; `$shown` and `$weeks`

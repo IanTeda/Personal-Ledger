@@ -1150,3 +1150,55 @@ fn a_custom_source_backfills_from_either_shape_and_one_without_a_history_request
     );
     assert!(!frame.contains("Fetching history"), "{frame}");
 }
+
+#[test]
+fn z_in_btcs_prices_view_steps_to_daily_prices_naming_the_grain_and_back_to_weekly() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u j Enter");
+    assert!(large(&mut shell).contains("WEEKLY CLOSE"));
+
+    press(&mut shell, "z");
+    let fetching = large(&mut shell);
+    assert!(fetching.contains("DAILY CLOSE"), "{fetching}");
+    assert!(
+        fetching.contains("Fetching daily prices from CoinGecko…"),
+        "{fetching}"
+    );
+    let url = transport.urls().last().cloned().unwrap_or_default();
+    assert!(
+        url.starts_with("https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range"),
+        "{url}"
+    );
+
+    let yesterday = chrono::Local::now().date_naive() - chrono::Duration::days(1);
+    let ms = yesterday
+        .and_time(chrono::NaiveTime::MIN)
+        .and_utc()
+        .timestamp_millis();
+    transport.answer_last(200, &format!(r#"{{"prices":[[{ms},91234.5]]}}"#));
+    shell.handle_event(Event::Tick);
+    let daily = large(&mut shell);
+    assert!(daily.contains("DAILY PRICES"), "{daily}");
+    assert!(daily.contains("91,234.50"), "{daily}");
+    assert!(!daily.contains("Fetched"), "no Toast:\n{daily}");
+
+    press(&mut shell, "z z");
+    assert!(large(&mut shell).contains("WEEKLY CLOSE"));
+}
+
+#[test]
+fn a_failed_daily_request_says_why_in_place_without_a_toast() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u j Enter z");
+    transport.answer_last(404, "{}");
+    shell.handle_event(Event::Tick);
+
+    let frame = large(&mut shell);
+    assert!(
+        frame.contains("Couldn't fetch: CoinGecko has no bitcoin in AUD. Press z to go back"),
+        "{frame}"
+    );
+    assert!(!frame.contains("Couldn't fetch BTC"), "no Toast:\n{frame}");
+}

@@ -22,6 +22,7 @@ pub const FETCH_ALL: &str = "units.fetch_all";
 pub const OPEN: &str = "units.open";
 pub const EARLIER: &str = "units.earlier";
 pub const LATER: &str = "units.later";
+pub const GRAIN: &str = "units.grain";
 
 /// The Units page's commands, with today's keys. The arrow, Home/End and Page keys move as `j`/`k`,
 /// `g g`/`G` and `ctrl+d`/`ctrl+u` do, each under its own name so an override can move it. `units.set_base` is new: setting the base Unit
@@ -161,6 +162,7 @@ pub const UNIT_PRICES_BINDINGS: &[Binding<UnitPricesEvent>] = &[
     Binding::hidden(PAGE_UP, "pageup", UnitPricesEvent::Move(Step::HalfPageUp)),
     Binding::hidden(EARLIER, "[", UnitPricesEvent::Earlier),
     Binding::hidden(LATER, "]", UnitPricesEvent::Later),
+    Binding::hidden(GRAIN, "z", UnitPricesEvent::CycleGrain),
     Binding::hidden(SET_PRICE, "p", UnitPricesEvent::SetPrice),
 ];
 
@@ -197,6 +199,7 @@ mod tests {
         let keymap = unit_prices_keymap(&KeyBindingConfig::default());
         assert_eq!(keymap.event("["), Some(UnitPricesEvent::Earlier));
         assert_eq!(keymap.event("]"), Some(UnitPricesEvent::Later));
+        assert_eq!(keymap.event("z"), Some(UnitPricesEvent::CycleGrain));
         assert_eq!(keymap.event("j"), Some(UnitPricesEvent::Move(Step::Next)));
 
         let config = KeyBindingConfig::overriding("units.set_price", "P");

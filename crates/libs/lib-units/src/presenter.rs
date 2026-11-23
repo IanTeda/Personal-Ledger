@@ -48,7 +48,8 @@ pub use set_base_unit::{SetBaseUnitEvent, SetBaseUnitPresenter, SetBaseUnitViewM
 pub use set_price::{SetPriceEvent, SetPriceField, SetPricePresenter, SetPriceViewModel};
 pub use unit_form::{UnitField, UnitFormEvent, UnitFormPresenter, UnitFormViewModel};
 pub use unit_prices::{
-    ChartWeek, PriceColumns, PriceRow, UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel,
+    ChartWeek, GrainChoice, PriceColumns, PriceRow, UnitPricesEvent, UnitPricesPresenter,
+    UnitPricesViewModel,
 };
 pub use units_page::{
     ActivityLine, MenuAction, MenuEntry, RowMenu, SourceColumns, SourceKind, SourceLine,

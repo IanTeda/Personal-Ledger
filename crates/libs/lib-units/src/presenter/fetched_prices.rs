@@ -120,6 +120,14 @@ impl FetchedPricesPresenter {
             return;
         }
         let now = (self.clock)();
+        if self.fetching.borrow().is_fine(&response) {
+            // Shown in place by the Unit prices view and never written, so nothing to tell.
+            let today = now.with_timezone(&Local).date_naive();
+            self.fetching
+                .borrow_mut()
+                .land_fine(&response, now, today, &Local);
+            return;
+        }
         if self.fetching.borrow().is_history(&response) {
             self.record_history(&response, router);
             return;

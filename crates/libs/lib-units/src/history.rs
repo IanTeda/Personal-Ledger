@@ -18,6 +18,9 @@ use crate::{Endpoint, HistoryEndpoint, SeriesShape, UnitRow, WeeklyPrice};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Point {
     pub day: NaiveDate,
+    /// The instant it is stamped with, when its date is a timestamp or a datetime rather than a
+    /// bare date: what an Hourly Price is bucketed by.
+    pub at: Option<DateTime<Utc>>,
     pub close: Money,
     pub open: Option<Money>,
     pub high: Option<Money>,
@@ -136,8 +139,10 @@ pub(crate) fn read_history(
             points
                 .iter()
                 .filter_map(|point| {
+                    let stamp = point.pointer(&date)?;
                     Some(Point {
-                        day: day_of(point.pointer(&date)?, 0)?,
+                        day: day_of(stamp, 0)?,
+                        at: instant_of(stamp),
                         close: money(point.pointer(&price)?)?,
                         open: None,
                         high: None,
@@ -154,13 +159,15 @@ pub(crate) fn read_history(
             points
                 .iter()
                 .filter_map(|(key, point)| {
-                    let day = if date.is_empty() {
-                        day_of(&Value::String(key.clone()), 0)?
+                    let key = Value::String(key.clone());
+                    let stamp = if date.is_empty() {
+                        &key
                     } else {
-                        day_of(point.pointer(&date)?, 0)?
+                        point.pointer(&date)?
                     };
                     Some(Point {
-                        day,
+                        day: day_of(stamp, 0)?,
+                        at: instant_of(stamp),
                         close: money(point.pointer(&price)?)?,
                         open: None,
                         high: None,
@@ -197,6 +204,7 @@ pub(crate) fn read_history(
                 .filter_map(|(index, date)| {
                     Some(Point {
                         day: day_of(date, offset)?,
+                        at: instant_of(date),
                         close: at(&closes, index)?,
                         open: at(&opens, index),
                         high: at(&highs, index),
@@ -223,6 +231,26 @@ fn day_of(value: &Value, offset: i64) -> Option<NaiveDate> {
             let seconds = if raw > 1e11 { raw / 1000.0 } else { raw } as i64;
             DateTime::<Utc>::from_timestamp(seconds.checked_add(offset)?, 0)
                 .map(|at| at.date_naive())
+        }
+        _ => None,
+    }
+}
+
+/// A point's instant: a number of Unix seconds, or milliseconds above 10¹¹, or an RFC 3339
+/// datetime. `None` for a bare date, which names a day but no hour.
+fn instant_of(value: &Value) -> Option<DateTime<Utc>> {
+    match value {
+        Value::String(text) => DateTime::parse_from_rfc3339(text.trim())
+            .ok()
+            .map(|at| at.with_timezone(&Utc)),
+        Value::Number(number) => {
+            let raw = number.as_f64()?;
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "a timestamp's fraction of a second never moves its hour"
+            )]
+            let seconds = if raw > 1e11 { raw / 1000.0 } else { raw } as i64;
+            DateTime::<Utc>::from_timestamp(seconds, 0)
         }
         _ => None,
     }
@@ -483,6 +511,7 @@ mod tests {
     fn a_week_with_no_points_gets_no_weekly_price() {
         let point = |on: NaiveDate, close: &str| Point {
             day: on,
+            at: None,
             close: money(close),
             open: None,
             high: None,

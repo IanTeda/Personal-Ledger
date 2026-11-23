@@ -1,5 +1,6 @@
 //! The Unit prices view on Settings › Units driven by clicks, on in-memory Units ports. Wiring
-//! only: the Prices menu entry and pane button open it, and a click on a week's row selects it.
+//! only: the Prices menu entry and pane button open it, a click on a week's row selects it and a
+//! click on the *Week · Day · Hour* switch shows that grain.
 
 use super::common;
 use bin_desktop::shell::router::UnitPricesSnapshot;
@@ -57,5 +58,29 @@ fn a_click_on_a_weeks_row_selects_it(app: &mut TestAppContext) {
             .expect("open")
             .rows[2]
             .selected
+    );
+}
+
+#[gpui::test]
+fn a_click_on_the_grain_switch_shows_that_grain(app: &mut TestAppContext) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), |_| {});
+    ui.resize_to(WindowSize::Large);
+    ui.press("g s");
+    ui.click("settings-index-Units");
+    ui.right_click("unit-row-1");
+    ui.click("settings-units-menu-prices");
+
+    ui.click("unit-prices-grain-hour");
+    let prices = ui.settings::<Option<UnitPricesSnapshot>>().expect("open");
+    assert_eq!(prices.grain, lib_units::Grain::Hour);
+    assert_eq!(prices.chart_heading, "Hourly close");
+
+    ui.click("unit-prices-grain-week");
+    assert_eq!(
+        ui.settings::<Option<UnitPricesSnapshot>>()
+            .expect("open")
+            .grain,
+        lib_units::Grain::Week
     );
 }
