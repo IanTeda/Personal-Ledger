@@ -52,7 +52,7 @@ Invariants and gaps:
 
 ## Price Sources
 
-Saved to SQLite by both Clients (see Persistence); fetching is not built. `lib-units` (`price_source.rs`) holds the model, following [ADR-0043](../adr/0043-built-in-price-sources-are-code-referenced-by-id-and-api-keys-never-sync.md):
+Saved to SQLite by both Clients (see Persistence); fetching is not built. `lib-units` (`price_source.rs`) holds the model, following [ADR-0043](../adr/0043-built-in-price-sources-are-code-referenced-by-id-and-api-keys-sync-encrypted.md):
 
 - `BUILT_IN_SOURCES` is a `const` table of `BuiltInSource`s, each with an `Endpoint` (address, request template with `{symbol}` and `{quote}`, a JSON-pointer price path, and `PriceSourceAuth`, which names an API key's parameter or header but never holds the key), default `Updates` and the Unit Kinds it prices.
 - The Ledger stores `PriceSourceRecord`s: a `BuiltInOverride` (a built-in's id with the person's name and `Updates`) or a whole `CustomSource`. Manual entry is never stored.
@@ -91,6 +91,6 @@ Omitted: [units.md](../units.md) is a design document and carries no requirement
 
 ## Open questions and known gaps
 
-- **Price Sources never fetch.** Where fetching runs and where a Client keeps API keys are open (ADR-0043). The Desktop's Test price source and Test with symbol still say "not yet built".
+- **Price Sources never fetch: decided, not built.** Every decision is locked on the [CORE: Units price themselves from their Price Sources](https://github.com/IanTeda/Personal-Ledger/issues/1367) map: ADR-0043's amendments (where and when fetching runs, the built-ins, backfill, API keys encrypted in the Ledger, a Custom source's history request, batching and throttling), [ADR-0062](../adr/0062-price-fetching-lives-in-lib-units-behind-a-transport-port-and-adapter-crates-hold-the-io.md) (`lib-units` behind a transport port, `lib-price-feed`, `ADAPTER_CRATES`) and ADR-0052's amendment; the map's closed tickets hold the UI decisions (fetch now, failures and Out of date, Test, Daily and Hourly Prices, the PRICE HISTORY table). Until it is built, the Desktop's Test price source and Test with symbol still say "not yet built".
 - **The Bill Plan form's Unit picker offers only Units an Account is in**, since a Bill Plan's Unit follows its Account, so a Unit just added appears there only once an Account holds it.
 - **No Change Set emission**, so Unit writes do not sync.

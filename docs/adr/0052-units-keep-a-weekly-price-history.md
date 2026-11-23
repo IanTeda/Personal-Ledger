@@ -16,3 +16,12 @@ The Units page wants a weekly close chart, a weekly prices table, the week's cha
 
 - `last_price` on `UnitRow` gives way to Weekly Prices, persisted in a new `unit_prices` table in `migrations/client/`.
 - How a fetched Weekly Price syncs stays with Price Source fetching, as ADR-0043 left it.
+
+## Amendment: how fetching writes Weekly Prices
+
+Decided across the [CORE: Units price themselves from their Price Sources](https://github.com/IanTeda/Personal-Ledger/issues/1367) map, recorded by [CORE: amend ADR-0043 and ADR-0052 for Units that price themselves](https://github.com/IanTeda/Personal-Ledger/issues/1381). Weeks stay the only stored grain.
+
+- **Sync:** a fetched Weekly Price is an ordinary Unit write and syncs whenever Unit writes do, closing the open Consequence above. Which Client fetches when several are open belongs to the sync effort.
+- **Fetching:** a fetch, however often, writes the week of the Clock's day through `record_price`: it overwrites the provisional close and widens the high and low ([ADR-0043](0043-built-in-price-sources-are-code-referenced-by-id-and-api-keys-sync-encrypted.md)'s "where and when fetching runs").
+- **Backfill:** a Unit on a fetching source fills only its empty past weeks, back to its Accounts' earliest Opened date, each folded from daily points; it never overwrites a week that has a price, and Weekly Prices gain no provenance column (ADR-0043's "backfilling a Unit's history").
+- **Finer prices are never stored:** Daily and Hourly Prices are fetched for the Unit prices view to show and cached in memory only, which keeps "Every fetched price" rejected.

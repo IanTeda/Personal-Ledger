@@ -103,6 +103,14 @@ Intended features for Units. Ticked means built in at least one app; the tag say
 - [x] UNT-005 (TUI, desktop): Deactivate a unit without deleting it if it has transactions
 - [ ] UNT-006: Bulk import units from standard currency/commodity/crypto lists
 - [ ] UNT-007: Market pricing integration and valuation calculations
+- [ ] UNT-012: A unit on a fetching Price Source prices itself while a ledger is open, on open and every minute it is due
+- [ ] UNT-013: Fetch a unit's, a source's or every price now
+- [ ] UNT-014: Backfill a unit's missing past weeks from its source's history, back to its accounts' earliest opened date
+- [ ] UNT-015: See fetch failures in place and which prices are out of date
+- [ ] UNT-016: Test a Price Source, or one symbol on it, from its form before saving
+- [ ] UNT-017: Enter and remove a Price Source's API key, stored encrypted in the ledger and synced
+- [ ] UNT-018: Step a unit's prices view between weekly, daily and hourly prices
+- [ ] UNT-019: See the selected unit's price history on the Units page
 - [ ] UNT-008: Cross-unit aggregate reporting and portfolio valuation
 - [x] UNT-009 (TUI, desktop): Set a Manual entry unit's price for the current or an earlier week
 - [x] UNT-010 (TUI, desktop): View a unit's weekly prices as a chart and a table, a year at a time, stepped back and forward by a month
