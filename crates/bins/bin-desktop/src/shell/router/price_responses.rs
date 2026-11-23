@@ -1,6 +1,7 @@
-//! The price-response concern of `Root`: polling the Open Ledger's price feed and sending each
-//! response as one input, so the price it writes is that input's one commit and the Units repaint
-//! on its `LedgerChanged` (ADR-0062). An `impl Root` block.
+//! The price-fetching concern of `Root`: the minute timer that reaches the Units' scheduled check,
+//! and polling the Open Ledger's price feed and sending each response as one input, so the round it
+//! completes is that input's one commit and the Units repaint on its `LedgerChanged` (ADR-0062).
+//! An `impl Root` block.
 
 use std::sync::mpsc;
 use std::time::Duration;
@@ -15,6 +16,12 @@ use super::Root;
 /// exactly this.
 #[doc(hidden)]
 pub const PRICE_RESPONSE_POLL: Duration = Duration::from_millis(250);
+
+/// How often the Open Ledger checks for Units due a price, after the check it makes on opening
+/// (ADR-0043's "where and when fetching runs"). Public so the headless tests advance past exactly
+/// this.
+#[doc(hidden)]
+pub const PRICE_CHECK: Duration = Duration::from_secs(60);
 
 impl Root {
     /// Polls `responses` for as long as the returned task is held, sending each as an input. Stops
@@ -42,6 +49,35 @@ impl Root {
                 }
             }
         })
+    }
+
+    /// Runs the scheduled price check every [`PRICE_CHECK`] for as long as the returned task is
+    /// held, whatever View is showing. Stops once the window has gone with the Shell, or the Open
+    /// Ledger holding the task.
+    pub(super) fn check_prices_every_minute(cx: &mut Context<'_, Self>) -> Task<()> {
+        cx.spawn(async move |this, cx| {
+            loop {
+                // The executor's timer, not `Timer::after`, so headless tests can advance it.
+                cx.background_executor().timer(PRICE_CHECK).await;
+                if this.update(cx, |shell, _| shell.check_prices()).is_err() {
+                    return;
+                }
+            }
+        })
+    }
+
+    /// The Units' scheduled check. It only sends requests, writing nothing, so it needs no input:
+    /// each round's prices are written when its last response comes back through
+    /// [`Self::receive_price`].
+    fn check_prices(&mut self) {
+        let Some(presenter) = self
+            .open
+            .as_ref()
+            .and_then(|open| open.price_responses.clone())
+        else {
+            return;
+        };
+        presenter.borrow_mut().fetch_due();
     }
 
     /// Hands `response` to the Units' Presenter as one input. A fetched price is never undoable

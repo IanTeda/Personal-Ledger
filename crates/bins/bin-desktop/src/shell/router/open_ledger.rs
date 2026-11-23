@@ -114,6 +114,8 @@ pub struct OpenLedger {
     /// Polls the price feed's response channel; dropped with the Ledger, which stops it and drops
     /// the responses still to come.
     _price_responses: Option<Task<()>>,
+    /// The minute timer reaching the Units' scheduled price check; dropped with the Ledger.
+    _price_checks: Option<Task<()>>,
 }
 
 impl OpenLedger {
@@ -160,6 +162,13 @@ impl OpenLedger {
                 ),
             ))
         });
+        // Fetch every due Unit as the Ledger opens, then every minute while it stays open.
+        if let Some(presenter) = &price_responses {
+            presenter.borrow_mut().fetch_due();
+        }
+        let price_checks = price_responses
+            .as_ref()
+            .map(|_| Root::check_prices_every_minute(cx));
         let units = crate::units::UnitsSetup::new(
             ports.units(),
             fetching,
@@ -339,6 +348,7 @@ impl OpenLedger {
             failures,
             price_responses,
             _price_responses: feed.map(|feed| Root::listen_for_price_responses(feed.responses, cx)),
+            _price_checks: price_checks,
         }
     }
 

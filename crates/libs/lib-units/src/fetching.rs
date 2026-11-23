@@ -7,12 +7,13 @@
 //! rules are tested with no network.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use lib_core::{Money, UnitId};
+use chrono::{DateTime, NaiveDate, Utc};
+use lib_core::{Money, PriceSourceId, UnitId};
 
-use crate::{Endpoint, PriceLink};
+use crate::{Endpoint, PriceLink, UnitRow, Updates, WeeklyPrice};
 
 /// Names one request sent, so its response can be matched to what asked for it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -75,12 +76,36 @@ pub(crate) struct InFlight {
     pub price_path: String,
 }
 
+/// Names one round: the requests sent to one source together, written in one commit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct RoundId(u64);
+
+/// One source's round in flight: the requests still out and the responses held until the last
+/// lands, so the round writes once.
+struct Round {
+    source: PriceSourceId,
+    /// Whether a person asked for it (fetch now), so its outcome is told; a scheduled round is
+    /// silent.
+    asked: bool,
+    pending: HashSet<RequestId>,
+    landed: Vec<PriceResponse>,
+}
+
+/// A round whose every response has come back, ready to be written in one commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Landed {
+    pub asked: bool,
+    pub responses: Vec<PriceResponse>,
+}
+
 /// The fetching state one Client keeps per open Ledger, beside its ports, and drops when the
-/// Ledger closes: never persisted (ADR-0062). For now, only the requests in flight.
+/// Ledger closes: never persisted (ADR-0062). For now, the requests and rounds in flight.
 pub struct PriceFetching {
     transport: Rc<dyn PriceTransport>,
     next: u64,
     in_flight: HashMap<RequestId, InFlight>,
+    next_round: u64,
+    rounds: HashMap<RoundId, Round>,
 }
 
 /// [`PriceFetching`] as the Presenters share it, single-threaded as both Clients' UI threads are.
@@ -92,6 +117,8 @@ impl PriceFetching {
             transport,
             next: 0,
             in_flight: HashMap::new(),
+            next_round: 0,
+            rounds: HashMap::new(),
         }
     }
 
@@ -109,19 +136,95 @@ impl PriceFetching {
         self.in_flight.values().any(|sent| sent.unit == unit)
     }
 
-    /// Sends `request` for `sent`, remembering it until its response comes back.
-    pub(crate) fn send(&mut self, request: PriceRequest, sent: InFlight) -> RequestId {
+    /// Whether `source` has a round out, which a scheduled check leaves alone.
+    pub(crate) fn source_in_flight(&self, source: PriceSourceId) -> bool {
+        self.rounds.values().any(|round| round.source == source)
+    }
+
+    /// Starts a round on `source`, `asked` when a person asked for it. Every request sent into it
+    /// is held until the last lands; a round sent nothing never lands, so open one only to send.
+    pub(crate) fn open_round(&mut self, source: PriceSourceId, asked: bool) -> RoundId {
+        let id = RoundId(self.next_round);
+        self.next_round += 1;
+        self.rounds.insert(
+            id,
+            Round {
+                source,
+                asked,
+                pending: HashSet::new(),
+                landed: Vec::new(),
+            },
+        );
+        id
+    }
+
+    /// Sends `request` for `sent` in `round`, remembering it until its response comes back.
+    pub(crate) fn send(
+        &mut self,
+        round: RoundId,
+        request: PriceRequest,
+        sent: InFlight,
+    ) -> RequestId {
         let id = RequestId(self.next);
         self.next += 1;
         self.in_flight.insert(id, sent);
+        if let Some(round) = self.rounds.get_mut(&round) {
+            round.pending.insert(id);
+        }
         self.transport.send(id, request);
         id
+    }
+
+    /// Holds `response` in its round, handing back the whole round once its last response lands.
+    /// A response for no round in flight lands alone, for the writer to drop.
+    pub(crate) fn land(&mut self, response: PriceResponse) -> Option<Landed> {
+        let Some((&id, round)) = self
+            .rounds
+            .iter_mut()
+            .find(|(_, round)| round.pending.contains(&response.request))
+        else {
+            return Some(Landed {
+                asked: false,
+                responses: vec![response],
+            });
+        };
+        round.pending.remove(&response.request);
+        round.landed.push(response);
+        if !round.pending.is_empty() {
+            return None;
+        }
+        let round = self.rounds.remove(&id)?;
+        Some(Landed {
+            asked: round.asked,
+            responses: round.landed,
+        })
     }
 
     /// What request `id` was for, forgetting it: `None` for one this Ledger never sent.
     pub(crate) fn take(&mut self, id: RequestId) -> Option<InFlight> {
         self.in_flight.remove(&id)
     }
+}
+
+/// Whether `unit`, on a source that updates every `updates`, is due a scheduled fetch on `today`
+/// at `now`: it has no Weekly Price for the current week, or that price was written at least the
+/// interval ago. The current week's price, not the newest written, decides, since a backfilled
+/// past week carries a recent `written_at` but no current price. The Ledger alone decides, so a
+/// price another device fetched and synced counts as fresh. Manual only is never due.
+pub(crate) fn is_due(
+    unit: &UnitRow,
+    updates: Updates,
+    today: NaiveDate,
+    now: DateTime<Utc>,
+) -> bool {
+    let Some(interval) = updates.interval() else {
+        return false;
+    };
+    let week = WeeklyPrice::week_of(today);
+    unit.prices
+        .iter()
+        .find(|price| price.week == week)
+        .is_none_or(|current| now - current.written_at >= interval)
 }
 
 /// `text` with `{symbol}` and `{quote}` filled from a link.
@@ -201,5 +304,77 @@ mod tests {
         assert_eq!(parse_price(r#"{"rate":true}"#, "/rate"), None);
         assert_eq!(parse_price(r#"{"rate":"n/a"}"#, "/rate"), None);
         assert_eq!(parse_price("<html>", "/rate"), None);
+    }
+
+    mod due {
+        use chrono::Duration;
+
+        use super::*;
+        use crate::{Precision, UnitKind};
+
+        fn today() -> NaiveDate {
+            NaiveDate::from_ymd_opt(2026, 10, 21).expect("a real date")
+        }
+
+        fn now() -> DateTime<Utc> {
+            today().and_hms_opt(9, 0, 0).expect("a real time").and_utc()
+        }
+
+        fn eur() -> UnitRow {
+            UnitRow::new(
+                "EUR".into(),
+                "Euro".into(),
+                UnitKind::Currency,
+                Precision::of_kind(UnitKind::Currency),
+                PriceLink {
+                    source_id: FRANKFURTER,
+                    symbol: "EUR".into(),
+                    quote: UnitId::SEED_AUD,
+                },
+            )
+        }
+
+        fn priced(today: NaiveDate, written_at: DateTime<Utc>) -> UnitRow {
+            let mut unit = eur();
+            unit.record_price("1.65".parse().expect("a decimal"), today, written_at);
+            unit
+        }
+
+        #[test]
+        fn a_price_is_due_once_its_sources_interval_has_passed_and_not_a_second_before() {
+            for (updates, interval) in [
+                (Updates::Every15Minutes, Duration::minutes(15)),
+                (Updates::Hourly, Duration::hours(1)),
+                (Updates::Daily, Duration::hours(24)),
+            ] {
+                let fresh = priced(today(), now() - interval + Duration::seconds(1));
+                let stale = priced(today(), now() - interval);
+
+                assert!(!is_due(&fresh, updates, today(), now()), "{updates:?}");
+                assert!(is_due(&stale, updates, today(), now()), "{updates:?}");
+            }
+        }
+
+        #[test]
+        fn a_unit_with_no_price_for_the_current_week_is_due_even_with_a_fresh_one_last_week() {
+            let last_week = today() - Duration::weeks(1);
+            let backfilled = priced(last_week, now() - Duration::minutes(1));
+
+            assert!(is_due(&eur(), Updates::Daily, today(), now()));
+            assert!(is_due(&backfilled, Updates::Daily, today(), now()));
+        }
+
+        #[test]
+        fn a_price_another_device_wrote_and_synced_counts_as_fresh() {
+            // Written an hour ago by another device: no fetch of this Client's own is behind it.
+            let synced = priced(today(), now() - Duration::hours(1));
+
+            assert!(!is_due(&synced, Updates::Daily, today(), now()));
+        }
+
+        #[test]
+        fn manual_only_is_never_due() {
+            assert!(!is_due(&eur(), Updates::ManualOnly, today(), now()));
+        }
     }
 }

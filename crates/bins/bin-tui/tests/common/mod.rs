@@ -174,7 +174,9 @@ pub fn screen_at(shell: &mut Shell, width: u16) -> String {
 
 /// A `Shell` whose Open Ledger holds EUR (quoted in AUD) on Frankfurter and fetches through
 /// `transport`, whose answers arrive on `responses` as the price feed's do. The one Ledger the
-/// Shell opens takes the channel.
+/// Shell opens takes the channel. Every fetching Unit is priced just now, so the check on open
+/// asks for nothing and the requests a test sees are its own.
+#[expect(clippy::expect_used, reason = "a literal decimal always parses")]
 pub fn fetching_shell(
     transport: lib_units::fake::FakeTransport,
     responses: mpsc::Receiver<lib_units::PriceResponse>,
@@ -192,6 +194,12 @@ pub fn fetching_shell(
             quote: lib_core::UnitId::SEED_AUD,
         },
     ));
+    let now = chrono::Utc::now();
+    for unit in &mut fakes.units.units.units {
+        if unit.link.source_id != lib_units::MANUAL_ENTRY {
+            unit.record_price("1.6".parse().expect("a decimal"), today, now);
+        }
+    }
     let (stores, _) = Stores::fake(fakes);
     let responses = std::cell::RefCell::new(Some(responses));
     cold_shell(None)

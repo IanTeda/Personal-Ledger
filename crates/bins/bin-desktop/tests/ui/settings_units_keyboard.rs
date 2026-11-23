@@ -1340,8 +1340,21 @@ fn u_restores_a_deleted_unit_to_its_place_by_code(app: &mut TestAppContext) {
     assert_eq!(ui.unit_codes(), before);
 }
 
-/// Adds EUR, quoted in aud, on Frankfurter. For [`Harness::fetching`].
+/// Adds EUR, quoted in aud, on Frankfurter, priced as the Ledger opens, so the check on open
+/// leaves it alone. For [`Harness::fetching`].
+#[expect(
+    clippy::expect_used,
+    reason = "eur was just added and its price is a literal decimal"
+)]
 fn eur_on_frankfurter(fakes: &mut FakeStores) {
+    eur_unpriced(fakes);
+    let opened = lib_core::Clock::fixed(common::today()).now();
+    let eur = fakes.units.units.units.last_mut().expect("eur was added");
+    eur.record_price("1.6".parse().expect("a decimal"), common::today(), opened);
+}
+
+/// Adds EUR, quoted in aud, on Frankfurter, with no price, so it is due as the Ledger opens.
+fn eur_unpriced(fakes: &mut FakeStores) {
     fakes.units.units.units.push(lib_units::UnitRow::new(
         "EUR".into(),
         "Euro".into(),
@@ -1412,4 +1425,55 @@ fn f_on_a_manual_entry_unit_sends_nothing(app: &mut TestAppContext) {
     ui.press("f");
 
     assert!(transport.requests().is_empty());
+}
+
+#[gpui::test]
+fn opening_the_ledger_fetches_a_due_unit_silently_and_the_minute_check_fetches_what_falls_due(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_unpriced);
+    ui.resize_to(WindowSize::Large);
+    assert_eq!(
+        transport.urls(),
+        ["https://api.frankfurter.dev/v2/rate/EUR/AUD"],
+        "the check on open asked for eur, with no price this week; btc was priced minutes ago"
+    );
+    to_units(&mut ui);
+    let status = ui.status();
+
+    ui.advance_clock(bin_desktop::shell::router::PRICE_CHECK);
+    assert_eq!(
+        transport.requests().len(),
+        1,
+        "Frankfurter's round is still in flight, so the minute check skips it"
+    );
+
+    transport.answer_last(200, r#"{"base":"EUR","quote":"AUD","rate":1.6512}"#);
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+    let eur = ui
+        .settings::<SettingsUnitsSnapshot>()
+        .units
+        .into_iter()
+        .find(|unit| unit.code == "EUR")
+        .expect("EUR is listed");
+    assert_eq!(eur.last_price, "1.65 AUD");
+    assert!(
+        visible_toasts(&mut ui).is_empty(),
+        "a scheduled round raises no Toast"
+    );
+    assert_eq!(ui.status(), status, "nor a status-line message");
+
+    // A day on, eur's Daily price and btc's 15-minute one have both aged past their intervals.
+    ui.turn_date_to(common::date(2026, 6, 16));
+    ui.advance_clock(bin_desktop::shell::router::PRICE_CHECK);
+
+    assert_eq!(
+        transport.urls()[1..],
+        [
+            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=AUD",
+            "https://api.frankfurter.dev/v2/rate/EUR/AUD",
+        ],
+        "the minute check reached the Presenter, one round per source"
+    );
 }

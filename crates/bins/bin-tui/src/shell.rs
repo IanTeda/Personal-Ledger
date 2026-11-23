@@ -82,6 +82,10 @@ use crate::{
 /// How often an [`Action::Tick`] fires in the absence of input.
 const TICK_RATE: Duration = Duration::from_millis(250);
 
+/// How often the Open Ledger checks for Units due a price, after the check it makes on opening
+/// (ADR-0043's "where and when fetching runs"), counted in ticks.
+const PRICE_CHECK: Duration = Duration::from_secs(60);
+
 /// The command names the Ledger file messages point to. Command syntax the user types, so passed
 /// into the Messages rather than translated (`popup::command::commands::ledger`).
 pub(crate) const OPEN_COMMAND: &str = ":open";
@@ -224,6 +228,8 @@ struct OpenLedger {
         lib_units::presenter::FetchedPricesPresenter,
         std::sync::mpsc::Receiver<lib_units::PriceResponse>,
     )>,
+    /// What is left until the next scheduled price check, counted down a tick at a time.
+    price_check_in: Duration,
 }
 
 impl OpenLedger {
@@ -397,11 +403,13 @@ impl Shell {
         let prices = feed.map(|feed| {
             let fetching = lib_units::PriceFetching::shared(feed.transport);
             units.fetching = Some(fetching.clone());
-            let presenter = lib_units::presenter::FetchedPricesPresenter::new(
+            let mut presenter = lib_units::presenter::FetchedPricesPresenter::new(
                 units.ports.clone(),
                 fetching,
                 Rc::new(chrono::Utc::now),
             );
+            // Fetch every due Unit as the Ledger opens, then every minute while it stays open.
+            presenter.fetch_due();
             (presenter, feed.responses)
         });
         OpenLedger {
@@ -410,6 +418,7 @@ impl Shell {
             failures: Some(failures),
             writer,
             prices,
+            price_check_in: PRICE_CHECK,
         }
     }
 
@@ -417,6 +426,24 @@ impl Shell {
     pub fn with_price_feeds(mut self, feeds: crate::price_feed::Feeds) -> Self {
         self.price_feeds = Some(feeds);
         self
+    }
+
+    /// Counts a tick off the minute to the next scheduled price check, and runs it when the minute
+    /// is up, whatever View is showing. It only sends requests, so there is nothing to commit:
+    /// each round is written as its last response arrives through [`Self::receive_prices`].
+    fn check_prices(&mut self) {
+        let Some(ledger) = &mut self.ledger else {
+            return;
+        };
+        let Some((presenter, _)) = &mut ledger.prices else {
+            return;
+        };
+        ledger.price_check_in = ledger.price_check_in.saturating_sub(TICK_RATE);
+        if !ledger.price_check_in.is_zero() {
+            return;
+        }
+        ledger.price_check_in = PRICE_CHECK;
+        presenter.fetch_due();
     }
 
     /// Hands each price response that has arrived to the Open Ledger's Presenter as one input,
@@ -1611,6 +1638,7 @@ impl Shell {
                 }
                 self.toasts.advance(TICK_RATE);
                 self.receive_prices();
+                self.check_prices();
                 self.roll_back_failed_writes();
                 self.view.update(&action);
             }
@@ -9198,6 +9226,104 @@ mod tests {
                 action,
                 Action::CommandPopupSetNotYetBuilt(name),
                 "{filter} needs a typed argument the command popup can't resolve yet"
+            );
+        }
+    }
+
+    mod scheduled_prices {
+        use super::*;
+
+        fn on_frankfurter(code: &str) -> lib_units::UnitRow {
+            lib_units::UnitRow::new(
+                code.into(),
+                code.into(),
+                lib_core::UnitKind::Currency,
+                lib_units::Precision::of_kind(lib_core::UnitKind::Currency),
+                lib_units::PriceLink {
+                    source_id: lib_units::FRANKFURTER,
+                    symbol: code.into(),
+                    quote: lib_core::UnitId::SEED_AUD,
+                },
+            )
+        }
+
+        /// The sample with btc priced just now, so only what a test adds is due, and EUR with no
+        /// price, open on a fake feed.
+        fn fetching() -> (Shell, lib_units::fake::FakeTransport) {
+            let (transport, responses) = lib_units::fake::FakeTransport::channel();
+            let mut fakes = lib_database::FakeStores::sample(Local::now().date_naive());
+            for unit in &mut fakes.units.units.units {
+                if let Some(newest) = unit.prices.last_mut() {
+                    newest.written_at = chrono::Utc::now();
+                }
+            }
+            fakes.units.units.units.push(on_frankfurter("EUR"));
+            let (stores, _) = Stores::fake(fakes);
+            let responses = RefCell::new(Some(responses));
+            let feed = transport.clone();
+            let shell = Shell::new()
+                .with_price_feeds(Rc::new(move || {
+                    Some(crate::price_feed::Feed {
+                        transport: Rc::new(feed.clone()),
+                        responses: responses.borrow_mut().take()?,
+                    })
+                }))
+                .with_open_ledger("test.pldb", stores);
+            (shell, transport)
+        }
+
+        fn tick(shell: &mut Shell, times: u32) {
+            for _ in 0..times {
+                shell.update(Action::Tick);
+            }
+        }
+
+        #[test]
+        fn opening_fetches_a_due_unit_silently_and_each_minute_the_check_reaches_the_presenter() {
+            let (mut shell, transport) = fetching();
+            assert_eq!(
+                transport.urls(),
+                ["https://api.frankfurter.dev/v2/rate/EUR/AUD"],
+                "the check on open asked for eur, with no price this week"
+            );
+
+            transport.answer_last(200, r#"{"base":"EUR","quote":"AUD","rate":1.6512}"#);
+            tick(&mut shell, 1);
+            let ledger = shell.ledger.as_ref().expect("a Ledger is open");
+            let eur = ledger
+                .units
+                .ports
+                .borrow()
+                .units()
+                .units()
+                .into_iter()
+                .find(|unit| unit.code == "EUR")
+                .expect("eur");
+            assert_eq!(eur.prices.len(), 1, "the round wrote eur's price");
+            assert!(
+                shell.toasts.history().is_empty(),
+                "a scheduled round raises no Toast"
+            );
+            assert_eq!(shell.status_message, None, "nor a status-line message");
+
+            // A Unit that falls due between checks, as one added on another device would.
+            ledger
+                .units
+                .ports
+                .borrow_mut()
+                .split_mut()
+                .units
+                .upsert_unit(on_frankfurter("USD"));
+            let minute = u32::try_from(PRICE_CHECK.as_millis() / TICK_RATE.as_millis())
+                .expect("a minute is a few hundred ticks");
+            tick(&mut shell, minute - 2);
+            assert_eq!(transport.requests().len(), 1, "not until the minute is up");
+
+            tick(&mut shell, 1);
+            assert_eq!(
+                transport.urls()[1..],
+                ["https://api.frankfurter.dev/v2/rate/USD/AUD"],
+                "eur is fresh; usd is due"
             );
         }
     }

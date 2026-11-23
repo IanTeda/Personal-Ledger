@@ -29,6 +29,19 @@ pub enum Updates {
     ManualOnly,
 }
 
+impl Updates {
+    /// How long a fetched price stays fresh before the source is asked again; `None` for Manual
+    /// only, which is never asked on schedule. Daily is 24 hours elapsed, not a calendar day.
+    pub(crate) fn interval(self) -> Option<chrono::Duration> {
+        match self {
+            Self::Every15Minutes => Some(chrono::Duration::minutes(15)),
+            Self::Hourly => Some(chrono::Duration::hours(1)),
+            Self::Daily => Some(chrono::Duration::hours(24)),
+            Self::ManualOnly => None,
+        }
+    }
+}
+
 /// Where a source's API key goes in the request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyPlacement {

@@ -43,7 +43,10 @@ impl FetchNow {
             .unit(unit.link.quote)
             .ok_or(Error::QuoteGone)?;
         let (request, price_path) = price_request(endpoint, &unit.link.symbol, &quote.code);
+        // A round of one, asked for, so its outcome is told.
+        let round = fetching.open_round(unit.link.source_id, true);
         Ok(fetching.send(
+            round,
             request,
             InFlight {
                 unit: unit.id,
