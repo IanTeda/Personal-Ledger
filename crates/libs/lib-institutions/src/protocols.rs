@@ -20,6 +20,12 @@ pub trait InstitutionRepository {
     /// Every Institution, in the order they were added.
     fn institutions(&self) -> Vec<Institution>;
 
+    /// How many Institutions there are. A store answers it from its row count; the default clones every
+    /// row to count them, so a store that holds the rows overrides it.
+    fn institution_count(&self) -> usize {
+        self.institutions().len()
+    }
+
     fn institution(&self, id: InstitutionId) -> Option<Institution> {
         self.institutions()
             .into_iter()

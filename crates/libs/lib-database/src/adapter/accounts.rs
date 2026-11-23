@@ -140,6 +140,10 @@ impl AccountRepository for StoredAccounts {
         self.rows.clone()
     }
 
+    fn account_count(&self) -> usize {
+        self.rows.len()
+    }
+
     fn upsert_account(&mut self, account: Account) {
         match self.rows.iter_mut().find(|row| row.id == account.id) {
             Some(row) => *row = account.clone(),
@@ -973,5 +977,32 @@ mod tests {
         let (writer, _failures) = Writer::spawn(options).expect("the test database opens");
         let adapter = AccountsAdapter::load(PendingWrites::new(writer)).expect("it loads");
         assert!(adapter.accounts().accounts().is_empty());
+    }
+
+    /// The count is the rows' length after an upsert and a delete (#1365).
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn the_account_count_follows_the_rows(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let mut ports = factory.create(sample_accounts());
+        let held = ports.adapter.accounts().accounts().len();
+        assert_eq!(ports.adapter.accounts().account_count(), held);
+        let mut account = sample_accounts().remove(0);
+        account.id = AccountId::new();
+        let id = account.id;
+        ports.accounts().upsert_account(account);
+        assert_eq!(ports.adapter.accounts().account_count(), held + 1);
+        assert_eq!(
+            ports.adapter.accounts().account_count(),
+            ports.adapter.accounts().accounts().len()
+        );
+        ports.accounts().delete_account(id);
+        assert_eq!(ports.adapter.accounts().account_count(), held);
+        assert_eq!(
+            ports.adapter.accounts().account_count(),
+            ports.adapter.accounts().accounts().len()
+        );
     }
 }

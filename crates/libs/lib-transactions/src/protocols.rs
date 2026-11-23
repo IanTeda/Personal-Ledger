@@ -26,6 +26,12 @@ pub trait TransactionRepository {
     /// Every Transaction, in no particular order.
     fn transactions(&self) -> Vec<Transaction>;
 
+    /// How many Transactions there are. A store answers it from its row count; the default clones every
+    /// row to count them, so a store that holds the rows overrides it.
+    fn transaction_count(&self) -> usize {
+        self.transactions().len()
+    }
+
     fn transaction(&self, id: TransactionId) -> Option<Transaction> {
         self.transactions()
             .into_iter()

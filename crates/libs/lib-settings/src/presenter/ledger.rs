@@ -600,7 +600,7 @@ impl Presenter for LedgerPresenter {
             },
             summary_title: msg::settings_ledger_summary_title(),
             summary: {
-                let counts = self.summaries.counts();
+                let counts = self.summaries.figures();
                 vec![
                     (
                         msg::settings_ledger_summary_accounts(),
@@ -1218,5 +1218,40 @@ mod tests {
                 pair("esc", "close")
             ]
         );
+    }
+
+    #[test]
+    fn the_view_reads_the_figures_and_never_the_counts() {
+        lib_locale::init_with_layers("en-US", &[msg::LAYER]);
+        struct FiguresOnly;
+        impl LedgerSummaries for FiguresOnly {
+            fn counts(&self) -> LedgerCounts {
+                panic!("the Ledger page read the full counts");
+            }
+
+            fn figures(&self) -> crate::LedgerFigures {
+                crate::LedgerFigures {
+                    accounts: 1,
+                    transactions: 2,
+                    units: 3,
+                    institutions: 4,
+                }
+            }
+        }
+        let presenter = LedgerPresenter::new(
+            LedgerSetup {
+                ledger: Rc::new(InMemoryLedgerUnits::sample()),
+                summaries: Rc::new(FiguresOnly),
+                preferences: Rc::new(InMemoryLedgerUnits::sample()),
+            },
+            &KeyBindingConfig::default(),
+        );
+        let values: Vec<_> = presenter
+            .view_model()
+            .summary
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect();
+        assert_eq!(values, ["1", "2", "3", "4"]);
     }
 }

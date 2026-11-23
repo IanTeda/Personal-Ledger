@@ -20,6 +20,12 @@ pub trait AccountRepository {
     /// Every Account, in the order they were added.
     fn accounts(&self) -> Vec<Account>;
 
+    /// How many Accounts there are. A store answers it from its row count; the default clones every
+    /// row to count them, so a store that holds the rows overrides it.
+    fn account_count(&self) -> usize {
+        self.accounts().len()
+    }
+
     fn account(&self, id: AccountId) -> Option<Account> {
         self.accounts().into_iter().find(|account| account.id == id)
     }

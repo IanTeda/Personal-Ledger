@@ -18,6 +18,12 @@ pub trait UnitRepository {
     /// Every Unit, in no particular order.
     fn units(&self) -> Vec<UnitRow>;
 
+    /// How many Units there are. A store answers it from its row count; the default clones every
+    /// row to count them, so a store that holds the rows overrides it.
+    fn unit_count(&self) -> usize {
+        self.units().len()
+    }
+
     fn unit(&self, id: UnitId) -> Option<UnitRow> {
         self.units().into_iter().find(|unit| unit.id == id)
     }

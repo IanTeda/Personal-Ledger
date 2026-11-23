@@ -36,6 +36,10 @@ impl UnitRepository for Units {
         self.0.store.borrow().units().units()
     }
 
+    fn unit_count(&self) -> usize {
+        self.0.store.borrow().units().unit_count()
+    }
+
     fn upsert_unit(&mut self, unit: UnitRow) {
         self.0.write(|ports| ports.units.upsert_unit(unit));
     }

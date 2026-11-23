@@ -18,6 +18,10 @@ impl InstitutionRepository for Institutions {
         self.0.borrow().institutions().institutions()
     }
 
+    fn institution_count(&self) -> usize {
+        self.0.borrow().institutions().institution_count()
+    }
+
     fn upsert_institution(&mut self, institution: Institution) {
         self.0
             .borrow_mut()

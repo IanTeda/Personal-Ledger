@@ -312,6 +312,27 @@ pub struct LedgerCounts {
 /// builds a domain's Presenter. Read only for the pane's page, and not at all with no Ledger open.
 pub trait LedgerSummaries {
     fn counts(&self) -> LedgerCounts;
+
+    /// The four counts THIS LEDGER shows, read on every draw, so an adapter answers them without
+    /// the work `counts` does. The default takes them from `counts`.
+    fn figures(&self) -> LedgerFigures {
+        let counts = self.counts();
+        LedgerFigures {
+            accounts: counts.accounts,
+            transactions: counts.transactions,
+            units: counts.units,
+            institutions: counts.institutions,
+        }
+    }
+}
+
+/// THIS LEDGER's four counts (#1365), cheap enough to read on every draw.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LedgerFigures {
+    pub accounts: usize,
+    pub transactions: usize,
+    pub units: usize,
+    pub institutions: usize,
 }
 
 #[cfg(test)]

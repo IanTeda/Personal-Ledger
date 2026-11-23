@@ -136,6 +136,11 @@ impl LedgerSummaries for CachedCounts {
             .get_or_insert_with(|| self.source.counts())
             .clone()
     }
+
+    /// Not cached: four row counts cost less than keeping them in step with every write.
+    fn figures(&self) -> lib_settings::LedgerFigures {
+        self.source.figures()
+    }
 }
 
 impl LedgerPages {

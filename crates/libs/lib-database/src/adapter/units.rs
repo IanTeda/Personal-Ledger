@@ -186,6 +186,10 @@ impl UnitRepository for StoredUnits {
         self.rows.clone()
     }
 
+    fn unit_count(&self) -> usize {
+        self.rows.len()
+    }
+
     fn upsert_unit(&mut self, unit: UnitRow) {
         match self.rows.iter_mut().find(|row| row.id == unit.id) {
             Some(row) => *row = unit.clone(),
@@ -876,5 +880,24 @@ mod tests {
             ],
             "only where a key goes and what it is called"
         );
+    }
+
+    /// The count is the rows' length after an upsert and a delete (#1365).
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn the_unit_count_follows_the_rows(_: SqlitePoolOptions, options: SqliteConnectOptions) {
+        let mut factory = AdapterFactory::new(options);
+        let mut adapter = factory.create(InMemoryPorts::sample(Utc::now()));
+        let usage = lib_units::fake::InMemoryUnitUsage::default();
+        let held = adapter.units().units().len();
+        assert_eq!(adapter.units().unit_count(), held);
+        let mut unit = adapter.units().units()[0].clone();
+        unit.id = UnitId::new();
+        let id = unit.id;
+        adapter.split_mut(&usage).units.upsert_unit(unit);
+        assert_eq!(adapter.units().unit_count(), held + 1);
+        assert_eq!(adapter.units().unit_count(), adapter.units().units().len());
+        adapter.split_mut(&usage).units.delete_unit(id);
+        assert_eq!(adapter.units().unit_count(), held);
+        assert_eq!(adapter.units().unit_count(), adapter.units().units().len());
     }
 }

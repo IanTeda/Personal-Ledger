@@ -234,6 +234,10 @@ impl<S: InstitutionsStore + ?Sized> InstitutionRepository for Journaled<S> {
         self.store.institutions().institutions()
     }
 
+    fn institution_count(&self) -> usize {
+        self.store.institutions().institution_count()
+    }
+
     fn upsert_institution(&mut self, institution: lib_institutions::Institution) {
         let before = self.store.institutions().institution(institution.id);
         self.written
@@ -264,6 +268,10 @@ impl<S: InstitutionsStore + ?Sized> InstitutionRepository for Journaled<S> {
 impl<S: TransactionsStore + ?Sized> TransactionRepository for Journaled<S> {
     fn transactions(&self) -> Vec<Transaction> {
         self.store.transactions().transactions()
+    }
+
+    fn transaction_count(&self) -> usize {
+        self.store.transactions().transaction_count()
     }
 
     fn transaction(&self, id: TransactionId) -> Option<Transaction> {
@@ -344,6 +352,10 @@ impl<S: BudgetsStore + ?Sized> BudgetRepository for Journaled<S> {
 impl<S: AccountsStore + ?Sized> AccountRepository for Journaled<S> {
     fn accounts(&self) -> Vec<lib_accounts::Account> {
         self.store.accounts().accounts()
+    }
+
+    fn account_count(&self) -> usize {
+        self.store.accounts().account_count()
     }
 
     fn account(&self, id: AccountId) -> Option<lib_accounts::Account> {
@@ -495,6 +507,10 @@ struct RecordingUnits<'a> {
 impl UnitRepository for RecordingUnits<'_> {
     fn units(&self) -> Vec<lib_units::UnitRow> {
         self.units.units()
+    }
+
+    fn unit_count(&self) -> usize {
+        self.units.unit_count()
     }
 
     fn upsert_unit(&mut self, unit: lib_units::UnitRow) {

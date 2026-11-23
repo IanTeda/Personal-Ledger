@@ -6,7 +6,8 @@
 
 use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId, UnitRef};
 use lib_settings::{
-    BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerReads, LedgerSummaries,
+    BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerFigures, LedgerPreferences, LedgerReads,
+    LedgerSummaries,
 };
 use lib_units::interactor::SetBaseUnit;
 use lib_units::{UnitUse, units_by_code};
@@ -54,7 +55,25 @@ impl StoredSettingsReads {
 }
 
 impl LedgerSummaries for StoredSettingsReads {
+    fn figures(&self) -> LedgerFigures {
+        LedgerFigures {
+            accounts: self.accounts.borrow().accounts().account_count(),
+            transactions: self
+                .transactions
+                .borrow()
+                .transactions()
+                .transaction_count(),
+            units: self.units.borrow().units().unit_count(),
+            institutions: self
+                .institutions
+                .borrow()
+                .institutions()
+                .institution_count(),
+        }
+    }
+
     fn counts(&self) -> LedgerCounts {
+        let figures = self.figures();
         let (units, base_id) = {
             let store = self.units.borrow();
             (store.units().units(), store.base_unit().base_unit())
@@ -82,21 +101,11 @@ impl LedgerSummaries for StoredSettingsReads {
         let types = self.documents.borrow().documents().document_types();
         let inventory = self.inventory.borrow().inventory().inventory();
         LedgerCounts {
-            units: units.len(),
+            units: figures.units,
             base_unit: base.map(|unit| unit.code.clone()),
-            institutions: self
-                .institutions
-                .borrow()
-                .institutions()
-                .institutions()
-                .len(),
-            accounts: accounts.len(),
-            transactions: self
-                .transactions
-                .borrow()
-                .transactions()
-                .transactions()
-                .len(),
+            institutions: figures.institutions,
+            accounts: figures.accounts,
+            transactions: figures.transactions,
             net_worth,
             categories: categories.len(),
             category_levels: lib_categories::levels_deep(&categories),
@@ -403,5 +412,17 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         contract::a_unit_that_is_gone_or_inactive_is_refused(&mut AdapterFactory::new(options));
+    }
+
+    #[test]
+    fn the_figures_are_the_four_matching_counts() {
+        let (stores, _) = crate::Stores::fake(crate::FakeStores::sample(today()));
+        let reads = StoredSettingsReads::over(&stores.share().stores);
+        let (figures, counts) = (reads.figures(), reads.counts());
+        assert!(figures.transactions > 0);
+        assert_eq!(figures.accounts, counts.accounts);
+        assert_eq!(figures.transactions, counts.transactions);
+        assert_eq!(figures.units, counts.units);
+        assert_eq!(figures.institutions, counts.institutions);
     }
 }

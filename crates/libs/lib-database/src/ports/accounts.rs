@@ -18,6 +18,10 @@ impl AccountRepository for Accounts {
         self.0.borrow().accounts().accounts()
     }
 
+    fn account_count(&self) -> usize {
+        self.0.borrow().accounts().account_count()
+    }
+
     fn upsert_account(&mut self, account: Account) {
         self.0.borrow_mut().accounts_mut().upsert_account(account);
     }

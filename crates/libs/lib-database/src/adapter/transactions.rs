@@ -114,6 +114,10 @@ impl TransactionRepository for TransactionsAdapter {
         self.rows.clone()
     }
 
+    fn transaction_count(&self) -> usize {
+        self.rows.len()
+    }
+
     fn upsert_transaction(&mut self, transaction: Transaction) {
         match self.rows.iter_mut().find(|row| row.id == transaction.id) {
             Some(row) => *row = transaction.clone(),
@@ -668,5 +672,24 @@ mod tests {
         let (writer, _failures) = Writer::spawn(options).expect("the test database opens");
         let adapter = TransactionsAdapter::load(PendingWrites::new(writer)).expect("it loads");
         assert!(adapter.transactions().is_empty());
+    }
+
+    /// The count is the rows' length after an upsert and a delete (#1365).
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn the_transaction_count_follows_the_rows(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let mut adapter = factory.create(InMemoryTransactions::default());
+        assert_eq!(adapter.transaction_count(), 0);
+        let transaction = sample_transactions().remove(0);
+        let id = transaction.id;
+        adapter.upsert_transaction(transaction);
+        assert_eq!(adapter.transaction_count(), 1);
+        assert_eq!(adapter.transaction_count(), adapter.transactions().len());
+        adapter.delete_transaction(id);
+        assert_eq!(adapter.transaction_count(), 0);
+        assert_eq!(adapter.transaction_count(), adapter.transactions().len());
     }
 }

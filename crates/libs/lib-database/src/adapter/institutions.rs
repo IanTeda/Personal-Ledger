@@ -129,6 +129,10 @@ impl InstitutionRepository for InstitutionsAdapter {
         self.rows.clone()
     }
 
+    fn institution_count(&self) -> usize {
+        self.rows.len()
+    }
+
     fn upsert_institution(&mut self, institution: Institution) {
         match self.rows.iter_mut().find(|row| row.id == institution.id) {
             Some(row) => *row = institution.clone(),
@@ -444,5 +448,29 @@ mod tests {
         assert_eq!(failures[0].domains, [Domain::Institutions]);
         institutions.reload().expect("the rows load");
         assert_eq!(institutions.institutions(), stored);
+    }
+
+    /// The count is the rows' length after an upsert and a delete (#1365).
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn the_institution_count_follows_the_rows(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let mut adapter = factory.create(sample_institutions());
+        let held = adapter.institutions().len();
+        assert_eq!(adapter.institution_count(), held);
+        let id = InstitutionId::new();
+        adapter.upsert_institution(Institution {
+            id,
+            name: "Counted".into(),
+            products: "savings".into(),
+            usual_unit: None,
+        });
+        assert_eq!(adapter.institution_count(), held + 1);
+        assert_eq!(adapter.institution_count(), adapter.institutions().len());
+        adapter.delete_institution(id);
+        assert_eq!(adapter.institution_count(), held);
+        assert_eq!(adapter.institution_count(), adapter.institutions().len());
     }
 }

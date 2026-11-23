@@ -9,7 +9,7 @@
 //! on each draw. Committing a new one opens the base unit guard (TUI-021,
 //! `popup::settings::guard`), which sets it through `lib-units`' Set base unit Presenter.
 //!
-//! THIS LEDGER's counts are `lib-settings`' `LedgerSummaries::counts()`, read on each draw.
+//! THIS LEDGER's counts are `lib-settings`' `LedgerSummaries::figures()`, read on each draw.
 
 use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -307,7 +307,7 @@ fn sub_rows(editor: &FieldEditor, context: &Context<'_>) -> Vec<(String, String)
 
 /// THIS LEDGER: a 4-cell box of counts, each read on this draw.
 fn render_this_ledger(frame: &mut Frame<'_>, area: Rect, units: &UnitsSetup, c: &Colours) {
-    let counts = units.settings.summaries.counts();
+    let counts = units.settings.summaries.figures();
     let cells = [
         (msg::tui_settings_ledger_accounts(), counts.accounts),
         (msg::tui_settings_ledger_transactions(), counts.transactions),
