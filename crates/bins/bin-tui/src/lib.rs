@@ -13,6 +13,7 @@ pub mod link;
 pub mod locale;
 mod payee;
 mod popup;
+pub mod price_feed;
 pub mod shell;
 mod start_view;
 pub mod state;

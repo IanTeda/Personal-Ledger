@@ -196,6 +196,8 @@ pub struct Shell {
     ledger: Option<OpenLedger>,
     /// The configured `file`, which a bare `:open` opens. `None` for a `Shell` built without one.
     ledger_file: Option<PathBuf>,
+    /// How each Open Ledger builds its price feed; `None` fetches nothing (ADR-0062).
+    price_feeds: Option<crate::price_feed::Feeds>,
     /// The Open Ledger's file as the Shell quit, which `main` remembers for On start (ADR-0051).
     /// `None` until then, and when no Ledger was open.
     quit_ledger: Option<PathBuf>,
@@ -216,6 +218,12 @@ struct OpenLedger {
     /// Flushed as the Ledger closes, so its last writes land. `None` for Stores opened without a
     /// writer, a test's in-memory ones.
     writer: Option<Writer>,
+    /// Where the Ledger's price responses land and the channel they arrive on, polled on each
+    /// tick. Dropped with the Ledger, so in-flight work is dropped without writing (ADR-0062).
+    prices: Option<(
+        lib_units::presenter::FetchedPricesPresenter,
+        std::sync::mpsc::Receiver<lib_units::PriceResponse>,
+    )>,
 }
 
 impl OpenLedger {
@@ -268,6 +276,7 @@ impl Shell {
             folder_picker: None,
             ledger: None,
             ledger_file: None,
+            price_feeds: None,
             quit_ledger: None,
             quit_view: None,
             keybindings,
@@ -378,16 +387,63 @@ impl Shell {
     /// The Open Ledger on `LedgerPorts` over `stores`, its Units under the key bindings already
     /// set.
     fn open_ledger_on(&self, path: PathBuf, stores: Stores, writer: Option<Writer>) -> OpenLedger {
-        let (units, failures) = UnitsSetup::on(
+        let (mut units, failures) = UnitsSetup::on(
             stores,
             lib_core::Clock::new(|| Local::now().date_naive()),
             &self.keybindings,
         );
+        // The Units' price fetching, on a feed of this Ledger's own, dropped with it (ADR-0062).
+        let feed = self.price_feeds.as_ref().and_then(|feeds| feeds());
+        let prices = feed.map(|feed| {
+            let fetching = lib_units::PriceFetching::shared(feed.transport);
+            units.fetching = Some(fetching.clone());
+            let presenter = lib_units::presenter::FetchedPricesPresenter::new(
+                units.ports.clone(),
+                fetching,
+                Rc::new(chrono::Utc::now),
+            );
+            (presenter, feed.responses)
+        });
         OpenLedger {
             path,
             units,
             failures: Some(failures),
             writer,
+            prices,
+        }
+    }
+
+    /// Builds every Ledger opened from now on a price feed from `feeds`.
+    pub fn with_price_feeds(mut self, feeds: crate::price_feed::Feeds) -> Self {
+        self.price_feeds = Some(feeds);
+        self
+    }
+
+    /// Hands each price response that has arrived to the Open Ledger's Presenter as one input,
+    /// committing what it wrote and raising its Toasts. A fetched price is never undoable, and the
+    /// TUI keeps no History.
+    fn receive_prices(&mut self) {
+        let Some(ledger) = &mut self.ledger else {
+            return;
+        };
+        let Some((presenter, responses)) = &mut ledger.prices else {
+            return;
+        };
+        let mut notices: Vec<Notice> = Vec::new();
+        let mut got = false;
+        while let Ok(response) = responses.try_recv() {
+            presenter.handle(response, &mut notices);
+            got = true;
+        }
+        if got {
+            ledger.units.commit();
+        }
+        for notice in notices {
+            match notice {
+                Notice::Toast(kind, text) => self.raise_toast(kind, text),
+                Notice::Status(text) => self.raise_toast(ToastKind::Info, text),
+                Notice::Changed(_) => {}
+            }
         }
     }
 
@@ -1554,6 +1610,7 @@ impl Shell {
                     self.toasts.resume();
                 }
                 self.toasts.advance(TICK_RATE);
+                self.receive_prices();
                 self.roll_back_failed_writes();
                 self.view.update(&action);
             }

@@ -116,8 +116,13 @@ impl UnitsView {
     /// age is the same on every run.
     pub fn with_now(setup: &UnitsSetup, now: lib_units::presenter::Clock) -> Self {
         let shared: SharedPorts = setup.ports.clone();
+        let presenter = UnitsPagePresenter::new(shared, now.clone(), &setup.config);
+        let presenter = match &setup.fetching {
+            Some(fetching) => presenter.with_fetching(fetching.clone()),
+            None => presenter,
+        };
         Self {
-            presenter: UnitsPagePresenter::new(shared, now.clone(), &setup.config),
+            presenter,
             now,
             ports: setup.ports.clone(),
             setup: setup.clone(),

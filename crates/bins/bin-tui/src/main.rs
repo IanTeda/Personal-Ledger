@@ -68,7 +68,8 @@ async fn main() -> Result<()> {
         config.general_config().file(),
     )
     .with_configuration(&config, config.writer().clone())
-    .with_log_buffer(logs);
+    .with_log_buffer(logs)
+    .with_price_feeds(bin_tui::price_feed::http(tokio::runtime::Handle::current()));
     shell.open_on_start(kept.last_ledger.as_deref());
     shell.land_on_start(kept.last_view.as_deref());
     let ran = shell.run().await;

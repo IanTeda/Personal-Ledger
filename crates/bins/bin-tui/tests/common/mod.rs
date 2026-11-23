@@ -171,3 +171,35 @@ pub fn screen_at(shell: &mut Shell, width: u16) -> String {
     }
     text
 }
+
+/// A `Shell` whose Open Ledger holds EUR (quoted in AUD) on Frankfurter and fetches through
+/// `transport`, whose answers arrive on `responses` as the price feed's do. The one Ledger the
+/// Shell opens takes the channel.
+pub fn fetching_shell(
+    transport: lib_units::fake::FakeTransport,
+    responses: mpsc::Receiver<lib_units::PriceResponse>,
+) -> Shell {
+    let today = chrono::Local::now().date_naive();
+    let mut fakes = FakeStores::sample(today);
+    fakes.units.units.units.push(lib_units::UnitRow::new(
+        "EUR".into(),
+        "Euro".into(),
+        lib_core::UnitKind::Currency,
+        lib_units::Precision::of_kind(lib_core::UnitKind::Currency),
+        lib_units::PriceLink {
+            source_id: lib_units::FRANKFURTER,
+            symbol: "EUR".into(),
+            quote: lib_core::UnitId::SEED_AUD,
+        },
+    ));
+    let (stores, _) = Stores::fake(fakes);
+    let responses = std::cell::RefCell::new(Some(responses));
+    cold_shell(None)
+        .with_price_feeds(Rc::new(move || {
+            Some(bin_tui::price_feed::Feed {
+                transport: Rc::new(transport.clone()),
+                responses: responses.borrow_mut().take()?,
+            })
+        }))
+        .with_open_ledger("test.pldb", stores)
+}

@@ -363,3 +363,37 @@ fn a_unit_only_the_sample_uses_can_be_deleted_from_the_opened_file() {
 
     assert!(frame.contains("Deleted unit BTC"), "{frame}");
 }
+
+#[test]
+fn f_on_a_frankfurter_unit_writes_this_weeks_price_and_shows_a_success_toast() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u j j");
+    assert!(screen(&mut shell).contains("Frankfurter"));
+
+    press(&mut shell, "f");
+    assert_eq!(
+        transport.urls(),
+        ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
+    );
+    transport.answer_last(200, r#"{"base":"EUR","quote":"AUD","rate":1.6512}"#);
+    shell.handle_event(Event::Tick);
+
+    let frame = screen(&mut shell);
+    assert!(frame.contains("Fetched EUR at 1.65 AUD"), "{frame}");
+}
+
+#[test]
+fn closing_the_ledger_drops_in_flight_fetches_without_writing() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u j j f");
+    assert_eq!(transport.requests().len(), 1);
+
+    common::run_command(&mut shell, "close");
+    transport.answer_last(200, r#"{"base":"EUR","quote":"AUD","rate":1.6512}"#);
+    shell.handle_event(Event::Tick);
+
+    let frame = screen(&mut shell);
+    assert!(!frame.contains("Fetched EUR"), "{frame}");
+}

@@ -809,6 +809,7 @@ dependencies = [
  "lib_locale",
  "lib_locale_build",
  "lib_payees",
+ "lib_price_feed",
  "lib_settings",
  "lib_shell",
  "lib_toast",

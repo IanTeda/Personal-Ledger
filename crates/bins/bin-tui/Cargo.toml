@@ -33,6 +33,7 @@ lib_settings = { path = "../../libs/lib-settings" }
 lib_toast = { path = "../../libs/lib-toast" }
 lib_tracing = { path = "../../libs/lib-tracing" }
 lib_units = { path = "../../libs/lib-units" }
+lib_price_feed = { path = "../../libs/lib-price-feed" }
 lib_viper = { path = "../../libs/lib-viper" }
 
 ## -- Workspace Dependencies --

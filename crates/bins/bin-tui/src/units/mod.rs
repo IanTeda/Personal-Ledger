@@ -40,6 +40,8 @@ pub struct UnitsSetup {
     /// The `[keybindings]` the page Presenter builds its keys from.
     pub config: KeyBindingConfig,
     pub dialog_keymap: Keymap<DialogCommand>,
+    /// The Open Ledger's price fetching, `None` with no price feed (ADR-0062).
+    pub fetching: Option<lib_units::SharedFetching>,
 }
 
 impl UnitsSetup {
@@ -61,6 +63,7 @@ impl UnitsSetup {
             commit: ledger.commit(),
             config: config.clone(),
             dialog_keymap: lib_shell::dialog_keymap(config),
+            fetching: None,
         };
         (setup, failures)
     }
