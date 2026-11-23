@@ -261,6 +261,26 @@ units-prices-hint-earlier = earlier
 units-prices-hint-later = later
 units-prices-hint-back = back
 
+## PRICE HISTORY: the selected Unit's newest weekly prices on the Units page, under PRICE SOURCES
+## or in the docked pane. `$chord` is the key that opens the prices view; `$shown` and `$weeks`
+## count weeks.
+
+units-history-heading = Price history
+units-history-subtitle = { $code } · { $source }
+units-history-flag-provisional = this week · provisional
+units-history-provisional = provisional
+units-history-hint-open = { $chord } all prices
+units-history-count = Newest week first · { $shown } of { $weeks ->
+    [one] { $weeks } week
+   *[other] { $weeks } weeks
+}
+units-history-pane-hint = { $chord } opens all { $weeks ->
+    [one] { $weeks } week
+   *[other] { $weeks } weeks
+}
+units-history-base = { $code } is the base unit: everything is valued in it, so it has no price.
+units-history-none = { $code } has no prices yet. A fetch or backfill will fill this.
+
 ## Refusals: an Interactor said no, shown in the open Dialog.
 
 units-refusal-unit-gone = This unit was removed while the dialog was open.

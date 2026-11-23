@@ -565,7 +565,10 @@ fn at_x_large_seeded_btc_docks_unit_with_its_precision_then_price_source_price_a
         .groups;
 
     let slugs: Vec<_> = groups.iter().map(PaneGroup::slug).collect();
-    assert_eq!(slugs, ["unit", "source", "price", "accounts", "activity"]);
+    assert_eq!(
+        slugs,
+        ["unit", "history", "source", "price", "accounts", "activity"]
+    );
     let PaneGroup::Unit(unit) = &groups[0] else {
         panic!("UNIT first")
     };
@@ -576,8 +579,8 @@ fn at_x_large_seeded_btc_docks_unit_with_its_precision_then_price_source_price_a
         "{:?}",
         unit.facts
     );
-    let PaneGroup::Price(price) = &groups[2] else {
-        panic!("PRICE third")
+    let PaneGroup::Price(price) = &groups[3] else {
+        panic!("PRICE fourth")
     };
     let labels: Vec<_> = price.facts.iter().map(|fact| fact.label.as_str()).collect();
     assert_eq!(labels, ["Last price", "Week change", "52w range"]);
@@ -1475,5 +1478,124 @@ fn opening_the_ledger_fetches_a_due_unit_silently_and_the_minute_check_fetches_w
             "https://api.frankfurter.dev/v2/rate/EUR/AUD",
         ],
         "the minute check reached the Presenter, one round per source"
+    );
+}
+
+/// The PRICE HISTORY the page shows.
+#[expect(
+    clippy::panic,
+    reason = "test helper: a page with no PRICE HISTORY should fail the test loudly"
+)]
+fn history(ui: &mut Harness<'_>) -> lib_units::presenter::PriceHistory {
+    let Some(history) = ui.settings::<SettingsUnitsSnapshot>().history else {
+        panic!("the page shows no PRICE HISTORY")
+    };
+    history
+}
+
+/// The PRICE HISTORY the page shows, by its Unit's code.
+fn history_unit(ui: &mut Harness<'_>) -> String {
+    let history = history(ui);
+    ui.settings::<SettingsUnitsSnapshot>()
+        .units
+        .iter()
+        .find(|unit| unit.id == history.unit)
+        .map(|unit| unit.code.clone())
+        .unwrap_or_default()
+}
+
+#[gpui::test]
+fn at_large_price_history_draws_the_selected_units_weeks_scrolling_within_four_rows(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+    ui.press("j");
+    assert_eq!(history_unit(&mut ui), "BTC");
+
+    let history = history(&mut ui);
+    assert_eq!(history.subtitle, "BTC · CoinGecko");
+    assert_eq!(history.rows.len(), 12);
+    assert!(ui.is_drawn("units-history"));
+    assert!(ui.is_drawn("units-history-table"));
+    assert!(ui.is_drawn("units-history-flag"));
+    assert!(ui.is_drawn("units-history-provisional"));
+    let viewport = ui.bounds("units-history-rows").size.height;
+    let row = ui.bounds("units-history-row-0").size.height;
+    assert_eq!(
+        viewport,
+        row * 4.0,
+        "Large shows 4 rows and scrolls the rest"
+    );
+    assert!(!ui.is_drawn("units-history-empty"));
+}
+
+#[gpui::test]
+fn at_medium_price_history_shows_ten_rows(app: &mut TestAppContext) {
+    let mut ui = on_units_at(app, WindowSize::Medium);
+    ui.press("j");
+
+    let viewport = ui.bounds("units-history-rows").size.height;
+    let row = ui.bounds("units-history-row-0").size.height;
+    assert_eq!(viewport, row * 10.0);
+}
+
+#[gpui::test]
+fn price_history_follows_the_units_and_keeps_the_last_while_a_price_source_is_selected(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+    assert_eq!(history_unit(&mut ui), "AUD");
+    ui.press("j");
+    assert_eq!(history_unit(&mut ui), "BTC");
+
+    // `tab` and `j/k` move between the tables' rows, never into the history.
+    ui.press("tab");
+    assert_eq!(selected(&mut ui), "CoinGecko");
+    assert_eq!(history_unit(&mut ui), "BTC");
+    ui.press("j");
+    assert_eq!(history_unit(&mut ui), "BTC");
+
+    ui.press("tab enter");
+    assert_eq!(selected(&mut ui), "BTC");
+    assert!(
+        ui.settings::<Option<bin_desktop::shell::router::UnitPricesSnapshot>>()
+            .is_some(),
+        "enter on a Unit still opens its prices view"
+    );
+}
+
+#[gpui::test]
+fn price_history_says_why_the_base_and_an_unpriced_unit_have_none(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let base = history(&mut ui);
+    assert_eq!(
+        base.empty.as_deref(),
+        Some("AUD is the base unit: everything is valued in it, so it has no price.")
+    );
+    assert!(ui.is_drawn("units-history-empty"));
+    assert!(!ui.is_drawn("units-history-table"));
+
+    ui.press("j j");
+    let vas = history(&mut ui);
+    assert_eq!(
+        vas.empty.as_deref(),
+        Some("VAS has no prices yet. A fetch or backfill will fill this.")
+    );
+    assert!(ui.is_drawn("units-history-empty"));
+}
+
+#[gpui::test]
+fn at_x_large_price_history_moves_into_the_pane_with_a_sparkline(app: &mut TestAppContext) {
+    let mut ui = on_units_at(app, WindowSize::XLarge);
+    ui.press("j");
+
+    assert!(!ui.is_drawn("units-history"), "no section on the page");
+    assert!(ui.is_drawn("units-pane-history"));
+    assert!(ui.is_drawn("units-history-sparkline"));
+    assert!(ui.is_drawn("units-history-pane-row-0"));
+    let history = history(&mut ui);
+    assert_eq!(
+        history.pane_hint.as_deref(),
+        Some("enter opens all 52 weeks")
     );
 }

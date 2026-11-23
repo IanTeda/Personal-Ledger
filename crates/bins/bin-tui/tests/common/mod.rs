@@ -155,8 +155,13 @@ pub fn screen(shell: &mut Shell) -> String {
 
 /// [`screen`] at `width` columns.
 pub fn screen_at(shell: &mut Shell, width: u16) -> String {
+    screen_sized(shell, width, HEIGHT)
+}
+
+/// [`screen`] at `width` columns and `height` rows.
+pub fn screen_sized(shell: &mut Shell, width: u16, height: u16) -> String {
     let mut terminal =
-        Terminal::new(TestBackend::new(width, HEIGHT)).expect("test backend should initialise");
+        Terminal::new(TestBackend::new(width, height)).expect("test backend should initialise");
     terminal
         .draw(|frame| shell.draw(frame))
         .expect("drawing the shell should not error");

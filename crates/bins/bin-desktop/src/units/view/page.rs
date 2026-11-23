@@ -9,6 +9,7 @@
 //! the tables with their selection as it was, before an open row menu, before Settings would step
 //! back to the index.
 
+mod history;
 mod pane;
 mod prices;
 mod render;
@@ -27,7 +28,7 @@ use crate::shell::view::module_page::{PageCue, PageDraw, PageView, SettingsPageV
 use crate::shell::view::page_clicks::PageClicks;
 use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::{PageStatus, StatusRight};
-use crate::shell::view::window_size::WindowSize;
+use crate::shell::view::window_size::{WindowSize, WindowSizeExt as _};
 use crate::units::{UnitsPage, UnitsSetup};
 
 pub use pane::detail_pane;
@@ -62,13 +63,13 @@ impl PageView for UnitsPagePresenter {
     fn render(
         view: &UnitsPageViewModel,
         page: PageDraw<'_, Self>,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<'_, UnitsPage>,
     ) -> AnyElement {
         if let Some(prices) = &view.prices {
             return prices::prices_view(prices.clone(), page.clicks, cx);
         }
-        render::page(view, page.clicks, *page.widgets, cx)
+        render::page(view, page.clicks, *page.widgets, WindowSize::of(window), cx)
     }
 
     /// The Presenter's legend, rebound keys included; while the prices view shows, its legend and

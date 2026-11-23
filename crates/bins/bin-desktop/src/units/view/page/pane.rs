@@ -33,6 +33,12 @@ pub fn detail_pane(pane: &DetailPane, clicks: &PageClicks<UnitsPage>, cx: &App) 
         .border_color(color::structural_rule(cx))
         .children(pane.groups.iter().map(|group| match group {
             PaneGroup::Unit(unit) => unit_group(unit, clicks, cx),
+            PaneGroup::History(history) => pane_group(
+                &history.heading,
+                super::history::pane_body(history, cx),
+                "history",
+                cx,
+            ),
             PaneGroup::Source(source) => source_group(source, clicks, cx),
             PaneGroup::Price(price) => price_group(price, cx),
             PaneGroup::Accounts(accounts) => accounts_group(accounts, cx),

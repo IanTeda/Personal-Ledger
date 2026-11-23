@@ -397,3 +397,98 @@ fn closing_the_ledger_drops_in_flight_fetches_without_writing() {
     let frame = screen(&mut shell);
     assert!(!frame.contains("Fetched EUR"), "{frame}");
 }
+
+/// A Large terminal, tall enough for the weekly prices region to list every week it holds.
+fn large(shell: &mut bin_tui::shell::Shell) -> String {
+    common::screen_sized(shell, 160, 48)
+}
+
+#[test]
+fn the_weekly_prices_region_draws_the_selected_units_price_history() {
+    let mut shell = shell();
+    press(&mut shell, "g u j");
+    let frame = large(&mut shell);
+
+    assert!(frame.contains("WEEKLY PRICES  BTC · CoinGecko"), "{frame}");
+    assert!(frame.contains("this week · provisional"), "{frame}");
+    for column in ["WEEK", "OPEN", "HIGH", "LOW", "CLOSE", "CHANGE"] {
+        assert!(frame.contains(column), "{column} missing:\n{frame}");
+    }
+    let provisional = frame
+        .lines()
+        .filter(|line| line.contains(" provisional ") && !line.contains("this week"))
+        .count();
+    assert_eq!(provisional, 1, "only this week's row is tagged:\n{frame}");
+    assert!(
+        frame.contains("Newest week first · 12 of 52 weeks  ·  enter all prices"),
+        "{frame}"
+    );
+}
+
+#[test]
+fn the_weekly_prices_region_keeps_the_last_unit_while_a_price_source_is_selected() {
+    let mut shell = shell();
+    press(&mut shell, "g u j Tab");
+    let frame = large(&mut shell);
+
+    assert!(frame.contains("WEEKLY PRICES  BTC · CoinGecko"), "{frame}");
+}
+
+#[test]
+fn the_weekly_prices_region_says_why_the_base_and_an_unpriced_unit_have_no_prices() {
+    let mut shell = shell();
+    press(&mut shell, "g u");
+    let base = large(&mut shell);
+    assert!(
+        base.contains("AUD is the base unit: everything is valued in it, so it has no price."),
+        "{base}"
+    );
+
+    press(&mut shell, "j j");
+    let vas = large(&mut shell);
+    assert!(vas.contains("WEEKLY PRICES  VAS · Manual entry"), "{vas}");
+    assert!(
+        vas.contains("VAS has no prices yet. A fetch or backfill will fill this."),
+        "{vas}"
+    );
+}
+
+#[test]
+fn a_manual_entry_units_week_shows_its_close_with_no_open_high_or_low() {
+    let mut shell = shell();
+    press(&mut shell, "g u j j p");
+    type_text(&mut shell, "42");
+    press(&mut shell, "Enter");
+    let frame = large(&mut shell);
+
+    let row = frame
+        .lines()
+        .find(|line| line.contains("42.00") && line.contains("provisional"))
+        .unwrap_or_else(|| panic!("no week of 42.00:\n{frame}"));
+    assert_eq!(
+        row.matches('—').count(),
+        4,
+        "OPEN, HIGH, LOW and CHANGE: {row}"
+    );
+    assert!(frame.contains("Newest week first · 1 of 1 week"), "{frame}");
+}
+
+#[test]
+fn a_medium_terminal_shows_week_close_and_change_only() {
+    let mut shell = shell();
+    press(&mut shell, "g u j");
+    let frame = common::screen_sized(&mut shell, 96, 48);
+
+    assert!(
+        frame.contains("CLOSE") && frame.contains("CHANGE"),
+        "{frame}"
+    );
+    assert!(!frame.contains("OPEN"), "{frame}");
+    assert!(frame.contains("148,212.40"), "{frame}");
+    assert!(
+        frame
+            .lines()
+            .any(|line| line.contains("WEEKLY PRICES  BTC · CoinGecko")),
+        "the heading names the Unit before the flag, which gives way:\n{frame}"
+    );
+}

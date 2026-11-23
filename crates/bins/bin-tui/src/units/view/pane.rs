@@ -42,12 +42,18 @@ pub fn render(
     c: &Colours,
 ) {
     let mut rows = Vec::new();
-    for (index, group) in pane.groups.iter().enumerate() {
+    // The View's weekly prices region already draws PRICE HISTORY beside the pane.
+    let groups = pane
+        .groups
+        .iter()
+        .filter(|group| !matches!(group, PaneGroup::History(_)));
+    for (index, group) in groups.enumerate() {
         if index > 0 {
             rows.push(Row::Blank);
         }
         match group {
             PaneGroup::Unit(group) => unit_rows(&mut rows, group, keys, c),
+            PaneGroup::History(_) => {}
             PaneGroup::Source(group) => source_rows(&mut rows, group, keys, c),
             PaneGroup::Price(group) => price_rows(&mut rows, group, c),
             PaneGroup::Accounts(group) => accounts_rows(&mut rows, group, c),

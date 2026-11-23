@@ -261,6 +261,15 @@ impl Colours {
         }
     }
 
+    /// Positive values, a price's rise: the `positive` text shade, or green in terminal colours.
+    pub fn positive(&self) -> Style {
+        if self.terminal() {
+            Style::default().fg(Color::Green)
+        } else {
+            Style::default().fg(self.colour(self.resolved.text_shades.positive))
+        }
+    }
+
     /// [`negative`](Self::negative) on the [`selection`](Self::selection) fill, whose own
     /// text shade keeps the contrast rule there.
     pub fn negative_on_selection(&self) -> Style {

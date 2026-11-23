@@ -390,13 +390,13 @@ pub(super) fn price_figures(
 }
 
 /// A price's style: the quote Unit's Precision, or the price's own places when the quote is gone.
-fn quoted(quote: Option<&UnitRow>) -> AmountStyle {
+pub(super) fn quoted(quote: Option<&UnitRow>) -> AmountStyle {
     quote.map_or(AmountStyle::own(), |quote| {
         AmountStyle::fixed(quote.precision.places())
     })
 }
 
-fn manual(unit: &UnitRow) -> bool {
+pub(super) fn manual(unit: &UnitRow) -> bool {
     unit.link.source_id == MANUAL_ENTRY
 }
 
@@ -408,7 +408,7 @@ fn previous<'a>(unit: &'a UnitRow, price: &WeeklyPrice) -> Option<&'a WeeklyPric
 
 /// `price`'s close against the week before's, as a percentage; `None` without a week before, or
 /// one that closed at zero.
-fn change(unit: &UnitRow, price: &WeeklyPrice) -> Option<Money> {
+pub(super) fn change(unit: &UnitRow, price: &WeeklyPrice) -> Option<Money> {
     let before = &previous(unit, price)?.close.0;
     if before.is_zero() {
         return None;
@@ -419,11 +419,11 @@ fn change(unit: &UnitRow, price: &WeeklyPrice) -> Option<Money> {
 }
 
 /// A percentage to two places, signed: `+1.25`, `−0.40`.
-fn percent(change: &Money) -> String {
+pub(super) fn percent(change: &Money) -> String {
     format_amount(change, AmountStyle::fixed(2).with_plus()).text
 }
 
-fn number(money: &Money) -> f64 {
+pub(super) fn number(money: &Money) -> f64 {
     money.0.to_f64().unwrap_or_default()
 }
 

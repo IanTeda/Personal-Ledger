@@ -1,6 +1,6 @@
 //! The detail pane the Units page docks at X-Large (DESKTOP-125, DESKTOP-140): a selected Unit's
-//! UNIT, PRICE SOURCE, PRICE and ACCOUNTS groups, or a selected Price Source's PRICE SOURCE and VALUES,
-//! then ACTIVITY. Built only while docked, as part of the page's view model.
+//! UNIT, PRICE HISTORY, PRICE SOURCE, PRICE and ACCOUNTS groups, or a selected Price Source's
+//! PRICE SOURCE and VALUES, then ACTIVITY. Built only while docked, as part of the page's view model.
 
 use chrono::{DateTime, Utc};
 use lib_core::{Money, UnitId};
@@ -8,6 +8,7 @@ use lib_locale::Label as _;
 use lib_locale::format::{AmountStyle, format_amount};
 use lib_viper::view::count;
 
+use super::price_history::PriceHistory;
 use super::unit_prices::price_figures;
 use super::units_page::{ActivityLine, MenuAction, Row, SourceKind, UnitsPageEvent, UnitsRow};
 use super::{ago, joined, updates_label};
@@ -18,15 +19,17 @@ use crate::{MANUAL_ENTRY, PriceSource, PriceSourceAuth, SourceOrigin, UnitRow, l
 /// Clients draw it from here.
 pub const NOT_FETCHED_GLYPH: &str = "\u{2717}";
 
-/// The pane's groups in drawn order.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The pane's groups in drawn order. Not `Eq`: PRICE HISTORY's sparkline is plain numbers.
+#[derive(Debug, Clone, PartialEq)]
 pub struct DetailPane {
     pub groups: Vec<PaneGroup>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PaneGroup {
     Unit(UnitGroup),
+    /// PRICE HISTORY, between UNIT and PRICE SOURCE (#1386).
+    History(Box<PriceHistory>),
     Source(SourceGroup),
     Price(PriceGroup),
     Accounts(AccountsGroup),
@@ -39,6 +42,7 @@ impl PaneGroup {
     pub fn slug(&self) -> &'static str {
         match self {
             Self::Unit(_) => "unit",
+            Self::History(_) => "history",
             Self::Source(_) => "source",
             Self::Price(_) => "price",
             Self::Accounts(_) => "accounts",
@@ -180,17 +184,25 @@ pub(super) struct PaneInput<'a> {
     pub selection: Option<UnitsRow>,
     pub activity: &'a [ActivityLine],
     pub now: DateTime<Utc>,
+    /// The selected Unit's PRICE HISTORY, which the page builds for its own section too.
+    pub history: Option<&'a PriceHistory>,
 }
 
 pub(super) fn detail_pane(input: &PaneInput<'_>) -> DetailPane {
     let mut groups = match input.selection {
         Some(UnitsRow::Unit(id)) => match input.units.iter().find(|unit| unit.id == id) {
-            Some(unit) => vec![
-                PaneGroup::Unit(unit_group(input, unit)),
-                PaneGroup::Source(linked_source(input, unit)),
-                PaneGroup::Price(price_group(input, unit)),
-                PaneGroup::Accounts(accounts_group(input, unit)),
-            ],
+            Some(unit) => std::iter::once(PaneGroup::Unit(unit_group(input, unit)))
+                .chain(
+                    input
+                        .history
+                        .map(|history| PaneGroup::History(Box::new(history.clone()))),
+                )
+                .chain([
+                    PaneGroup::Source(linked_source(input, unit)),
+                    PaneGroup::Price(price_group(input, unit)),
+                    PaneGroup::Accounts(accounts_group(input, unit)),
+                ])
+                .collect(),
             None => Vec::new(),
         },
         Some(UnitsRow::Source(id)) => match input.sources.iter().find(|source| source.id == id) {

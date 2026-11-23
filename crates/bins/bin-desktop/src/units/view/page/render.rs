@@ -1,7 +1,7 @@
 //! Draws the Units page (`docs/ux/desktop-mockups/16-settings/README.md`'s 16g) from its view
 //! model: a UNITS title with a square **+** over ◆ (the base unit) · CODE · NAME · TYPE · PRICE
 //! SOURCE, the `◆ base unit` legend, then PRICE SOURCES with its own **+** over NAME · SOURCE ·
-//! LAST UPDATED.
+//! LAST UPDATED, then PRICE HISTORY below X-Large, where the docked pane holds it (`history.rs`).
 //!
 //! Rows carry no buttons: a click selects, a double-click edits and a right-click opens the row's
 //! menu at the pointer. Every click is an event to the Presenter, sent through [`PageClicks`].
@@ -15,6 +15,7 @@ use lib_units::presenter::{
     UnitLine, UnitsPageEvent, UnitsPageViewModel, UnitsRow,
 };
 
+use crate::shell::view::window_size::WindowSize;
 use crate::units::UnitsPage;
 use crate::{settings::SettingsPage, shell::view::page_clicks::PageClicks, theme::color};
 
@@ -41,6 +42,7 @@ pub(super) fn page(
     view: &UnitsPageViewModel,
     clicks: &PageClicks<UnitsPage>,
     menu_at: Point<Pixels>,
+    window_size: WindowSize,
     cx: &App,
 ) -> AnyElement {
     let UnitsPageViewModel {
@@ -51,6 +53,8 @@ pub(super) fn page(
         price_sources,
         base_legend,
         menu,
+        docked,
+        history,
         ..
     } = view;
     div()
@@ -76,6 +80,13 @@ pub(super) fn page(
                     cx,
                 ))
                 .child(sources_table(source_columns, price_sources, clicks, cx)),
+        )
+        // X-Large draws PRICE HISTORY in the docked pane instead.
+        .children(
+            history
+                .as_ref()
+                .filter(|_| !docked)
+                .map(|history| super::history::section(history, window_size, cx)),
         )
         .children(menu.clone().map(|menu| row_menu(menu, menu_at, clicks, cx)))
         .into_any_element()

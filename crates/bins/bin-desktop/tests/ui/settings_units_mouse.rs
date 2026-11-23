@@ -651,3 +651,44 @@ fn the_headers_undo_takes_back_a_unit_deleted_by_mouse(app: &mut TestAppContext)
     after.sort();
     assert_eq!(after, before, "BTC back");
 }
+
+#[gpui::test]
+fn clicking_a_unit_shows_its_price_history_and_a_price_source_keeps_it(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let unit = |ui: &mut Harness<'_>| {
+        ui.settings::<SettingsUnitsSnapshot>()
+            .history
+            .expect("a PRICE HISTORY")
+            .unit
+    };
+    ui.click("unit-row-1");
+    assert_eq!(unit(&mut ui), UnitId::SEED_BTC);
+    assert!(ui.is_drawn("units-history-row-0"));
+
+    ui.click("price-source-row-0");
+    assert_eq!(unit(&mut ui), UnitId::SEED_BTC);
+
+    ui.click("unit-row-2");
+    assert_eq!(unit(&mut ui), UnitId::SEED_VAS);
+    assert!(ui.is_drawn("units-history-empty"));
+}
+
+#[gpui::test]
+fn a_click_on_price_history_selects_nothing(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.click("unit-row-1");
+    ui.click("units-history-row-0");
+
+    let page = ui.settings::<SettingsUnitsSnapshot>();
+    let selected: Vec<_> = page
+        .units
+        .iter()
+        .filter(|unit| unit.selected)
+        .map(|unit| unit.code.as_str())
+        .collect();
+    assert_eq!(selected, ["BTC"]);
+    assert!(
+        ui.settings::<Option<bin_desktop::shell::router::UnitPricesSnapshot>>()
+            .is_none()
+    );
+}

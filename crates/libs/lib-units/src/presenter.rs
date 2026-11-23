@@ -11,6 +11,7 @@
 mod delete_price_source;
 mod delete_unit;
 mod fetched_prices;
+mod price_history;
 mod price_source_form;
 mod set_base_unit;
 mod set_price;
@@ -36,6 +37,7 @@ pub use delete_unit::{
     active_unit_choices, confirms_delete, delete_refusal,
 };
 pub use fetched_prices::FetchedPricesPresenter;
+pub use price_history::{HISTORY_WEEKS, HistoryRow, PriceHistory, Trend};
 pub use price_source_form::{
     AuthChoice, PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter,
     PriceSourceFormViewModel,

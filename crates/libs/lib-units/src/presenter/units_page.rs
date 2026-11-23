@@ -14,6 +14,7 @@ use lib_viper::keymap::{
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
+use super::price_history::{HistoryInput, PriceHistory, price_history};
 use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
@@ -225,6 +226,9 @@ pub struct UnitsPageViewModel {
     pub open_dialog: Option<UnitsDialog>,
     /// The Unit prices view, while it shows in place of the tables and the detail pane.
     pub prices: Option<UnitPricesViewModel>,
+    /// PRICE HISTORY: the selected Unit's, or while a Price Source row is selected the last Unit
+    /// selected; `None` with no Units.
+    pub history: Option<PriceHistory>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -527,6 +531,18 @@ impl UnitsPagePresenter {
         let by_code = units_by_code(&units);
         let selection = resolve(Self::rows_of(&by_code, &sources), self.selected);
         let now = (self.clock)();
+        let history = self.history_unit(&by_code, selection).map(|unit| {
+            price_history(
+                &HistoryInput {
+                    units: &units,
+                    sources: &sources,
+                    base,
+                    open_chord: self.keymap.hint_chord(OPEN),
+                    today: now.with_timezone(&Local).date_naive(),
+                },
+                unit,
+            )
+        });
 
         let unit_lines = by_code
             .iter()
@@ -649,10 +665,12 @@ impl UnitsPagePresenter {
                     selection,
                     activity: &self.activity,
                     now,
+                    history: history.as_ref(),
                 })
             }),
             open_dialog: self.open_dialog,
             prices: self.prices.as_ref().map(UnitPricesPresenter::view_model),
+            history,
         }
     }
 }
@@ -702,6 +720,21 @@ impl UnitsPagePresenter {
             .map(|unit| UnitsRow::Unit(unit.id))
             .chain(sources.iter().map(|source| UnitsRow::Source(source.id)))
             .collect()
+    }
+
+    /// The Unit PRICE HISTORY shows: the selected one, or while a Price Source row is selected the
+    /// last Unit selected, or the first, so the history doesn't jump as the selection leaves the
+    /// Units.
+    fn history_unit<'a>(
+        &self,
+        by_code: &[&'a UnitRow],
+        selection: Option<UnitsRow>,
+    ) -> Option<&'a UnitRow> {
+        let id = match selection {
+            Some(UnitsRow::Unit(id)) => Some(id),
+            _ => resolve(by_code.iter().map(|unit| unit.id), self.last_unit),
+        }?;
+        by_code.iter().copied().find(|unit| unit.id == id)
     }
 
     /// Every row of both tables in drawn order: the Units, then the Price Sources.
@@ -945,7 +978,8 @@ mod tests {
     use super::super::test_support::{self, clock, sample};
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, RouterCall};
-    use crate::presenter::{PaneButton, PaneGroup, PriceGroup, SourceGroup};
+    use crate::presenter::{PaneButton, PaneGroup, PriceGroup, SourceGroup, Trend};
+    use crate::protocols::UnitRepository as _;
     use crate::{COINGECKO, FRANKFURTER, YAHOO_FINANCE};
 
     struct Page {
@@ -1759,7 +1793,7 @@ mod tests {
 
         assert_eq!(
             slugs(&groups),
-            ["unit", "source", "price", "accounts", "activity"]
+            ["unit", "history", "source", "price", "accounts", "activity"]
         );
         let PaneGroup::Unit(unit) = &groups[0] else {
             panic!("UNIT first")
@@ -1845,7 +1879,7 @@ mod tests {
 
         assert_eq!(
             slugs(&groups),
-            ["unit", "source", "price", "accounts", "activity"]
+            ["unit", "history", "source", "price", "accounts", "activity"]
         );
         let price = price_group(&groups);
         assert_eq!(price.heading, "Price");
@@ -1928,7 +1962,7 @@ mod tests {
             panic!("UNIT first")
         };
         assert_eq!(unit.facts[1].value, "1 account · 9 transactions");
-        let PaneGroup::Accounts(accounts) = &groups[3] else {
+        let PaneGroup::Accounts(accounts) = &groups[4] else {
             panic!("ACCOUNTS fourth")
         };
         let row = &accounts.rows[0];
@@ -1975,7 +2009,7 @@ mod tests {
 
         let source = source_group(&groups);
         assert_eq!(source.facts[3].value, "148,212 AUD", "AUD's 0 places");
-        let PaneGroup::Accounts(accounts) = &groups[3] else {
+        let PaneGroup::Accounts(accounts) = &groups[4] else {
             panic!("ACCOUNTS fourth")
         };
         // 0.4125 × 148,212.40 = 61,137.615: rounded for display, never as stored.
@@ -2283,5 +2317,178 @@ mod tests {
 
             assert!(!offers_fetch(&page));
         }
+    }
+
+    fn history(page: &Page) -> PriceHistory {
+        page.view().history.expect("a PRICE HISTORY")
+    }
+
+    #[test]
+    fn price_history_shows_the_selected_units_newest_twelve_weeks_with_this_week_provisional() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        let history = history(&page);
+
+        assert_eq!(history.unit, UnitId::SEED_BTC);
+        assert_eq!(history.heading, "Price history");
+        assert_eq!(history.subtitle, "BTC · CoinGecko");
+        assert_eq!(history.flag.as_deref(), Some("this week · provisional"));
+        assert_eq!(history.open_hint, "enter all prices");
+        let columns = &history.columns;
+        assert_eq!(
+            [
+                &columns.week,
+                &columns.open,
+                &columns.high,
+                &columns.low,
+                &columns.close,
+                &columns.change
+            ],
+            ["Week", "Open", "High", "Low", "Close", "Change"]
+        );
+        assert_eq!(history.rows.len(), 12);
+        // The tests' clock reads Wednesday 21 Oct 2026, in the week of Monday 19 Oct.
+        let newest = &history.rows[0];
+        assert_eq!(newest.label, "Oct 19, 2026");
+        assert_eq!(newest.close, "148,212.40");
+        assert_eq!(newest.provisional.as_deref(), Some("provisional"));
+        assert!(
+            newest.open.contains('.') && newest.change.ends_with('%'),
+            "{newest:?}"
+        );
+        assert_eq!(history.rows[1].provisional, None);
+        assert_eq!(history.rows[11].label, "Aug 3, 2026");
+        for row in &history.rows {
+            let expected = if row.change.starts_with('-') || row.change.starts_with('\u{2212}') {
+                Trend::Falling
+            } else {
+                Trend::Rising
+            };
+            assert_eq!(row.trend, expected, "{row:?}");
+        }
+        assert_eq!(
+            history.count.as_deref(),
+            Some("Newest week first · 12 of 52 weeks")
+        );
+        assert_eq!(
+            history.pane_hint.as_deref(),
+            Some("enter opens all 52 weeks")
+        );
+        assert_eq!(history.sparkline.len(), 52);
+        assert_eq!(history.sparkline.last(), Some(&148_212.40));
+        assert_eq!(history.empty, None);
+    }
+
+    #[test]
+    fn price_history_keeps_the_last_unit_while_a_price_source_is_selected() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        page.send(UnitsPageEvent::NextTable);
+        assert!(
+            page.view()
+                .price_sources
+                .iter()
+                .any(|source| source.selected)
+        );
+        assert_eq!(history(&page).unit, UnitId::SEED_BTC);
+
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+        assert_eq!(history(&page).unit, UnitId::SEED_VAS);
+    }
+
+    #[test]
+    fn price_history_says_why_the_base_and_an_unpriced_unit_have_none() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_AUD)));
+        let base = history(&page);
+        assert_eq!(base.subtitle, "AUD");
+        assert_eq!(
+            base.empty.as_deref(),
+            Some("AUD is the base unit: everything is valued in it, so it has no price.")
+        );
+        assert!(base.rows.is_empty() && base.count.is_none() && base.flag.is_none());
+
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+        let vas = history(&page);
+        assert_eq!(vas.subtitle, "VAS · Manual entry");
+        assert_eq!(
+            vas.empty.as_deref(),
+            Some("VAS has no prices yet. A fetch or backfill will fill this.")
+        );
+        assert!(vas.pane_hint.is_none() && vas.sparkline.is_empty());
+    }
+
+    #[test]
+    fn a_manual_entry_units_history_shows_only_its_priced_weeks_with_no_open_high_or_low() {
+        let mut page = Page::new();
+        let mut vas = page
+            .ports
+            .borrow()
+            .units
+            .unit(UnitId::SEED_VAS)
+            .expect("VAS");
+        let at = test_support::now();
+        let day = |d| chrono::NaiveDate::from_ymd_opt(2026, 10, d).expect("a valid date");
+        vas.set_price(
+            lib_core::Money(bigdecimal::BigDecimal::from(42)),
+            day(5),
+            day(21),
+            at,
+        );
+        vas.set_price(
+            lib_core::Money(bigdecimal::BigDecimal::from(40)),
+            day(21),
+            day(21),
+            at,
+        );
+        vas.set_price(
+            lib_core::Money(bigdecimal::BigDecimal::from(41)),
+            day(21),
+            day(21),
+            at,
+        );
+        page.ports.borrow_mut().units.upsert_unit(vas);
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+        let history = history(&page);
+
+        let weeks: Vec<_> = history.rows.iter().map(|row| row.label.as_str()).collect();
+        assert_eq!(weeks, ["Oct 19, 2026", "Oct 5, 2026"]);
+        let newest = &history.rows[0];
+        assert_eq!(newest.close, "41.00");
+        assert_eq!(
+            (
+                newest.open.as_str(),
+                newest.high.as_str(),
+                newest.low.as_str()
+            ),
+            ("—", "—", "—")
+        );
+        assert_eq!(newest.change, "—", "no week before it to compare");
+        assert_eq!(newest.trend, Trend::Flat);
+        assert_eq!(
+            history.count.as_deref(),
+            Some("Newest week first · 2 of 2 weeks")
+        );
+    }
+
+    #[test]
+    fn docked_the_pane_carries_price_history_after_unit_and_rebinding_open_renames_its_hints() {
+        let mut page = Page::with(KeyBindingConfig::overriding("units.open", "o"));
+        page.send(UnitsPageEvent::SetDocked(true));
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        let groups = pane(&page);
+
+        let PaneGroup::History(group) = &groups[1] else {
+            panic!("PRICE HISTORY after UNIT: {:?}", slugs(&groups))
+        };
+        assert_eq!(Some(&**group), page.view().history.as_ref());
+        assert_eq!(group.open_hint, "o all prices");
+        assert_eq!(group.pane_hint.as_deref(), Some("o opens all 52 weeks"));
+
+        page.send(UnitsPageEvent::NextTable);
+        assert!(
+            !slugs(&pane(&page)).contains(&"history"),
+            "a Price Source's pane has none"
+        );
     }
 }

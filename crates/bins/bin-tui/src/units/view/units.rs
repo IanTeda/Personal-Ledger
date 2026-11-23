@@ -2,7 +2,8 @@
 //! §4a layout of `docs/ux/tui-mockups/07-units/README.md`. The left column holds the Units and
 //! Price Sources tables above the selected row's summary; the right holds the weekly close and
 //! weekly prices regions above the keys box. Every row, label and hint comes from the page view
-//! model; the two price regions point at the selected Unit's prices view.
+//! model; the weekly close region points at the selected Unit's prices view, and the weekly prices
+//! region draws the page's PRICE HISTORY.
 //!
 //! `enter` on a Unit (the `units.open` command) opens its Unit prices view (`prices.rs`) in place
 //! of both columns, a state of the page Presenter; the Shell's back key closes it, through
@@ -25,8 +26,8 @@ use lib_shell::{DialogCommand, WindowSize};
 use lib_toast::ToastKind;
 use lib_units::SharedPorts;
 use lib_units::presenter::{
-    SourceLine, UnitLine, UnitPricesEvent, UnitPricesViewModel, UnitsPageEvent, UnitsPagePresenter,
-    UnitsPageViewModel, UnitsRow,
+    HistoryRow, SourceLine, Trend, UnitLine, UnitPricesEvent, UnitPricesViewModel, UnitsPageEvent,
+    UnitsPagePresenter, UnitsPageViewModel, UnitsRow,
 };
 use lib_viper::keymap::Keymap;
 use lib_viper::presenter::{PagePresenter as _, Presenter as _};
@@ -82,6 +83,17 @@ const SUMMARY_LABEL_WIDTH: usize = 16;
 
 /// Height of the weekly close region: heading, rule and the room its chart will take.
 const WEEKLY_CLOSE_HEIGHT: u16 = 12;
+
+/// Width of a weekly prices column, a price such as `148,212.40` or a change such as `+12.34%`.
+const HISTORY_PRICE_WIDTH: u16 = 12;
+
+/// The narrow region's CLOSE, `148,212.40`, and CHANGE, `+12.34%`.
+const HISTORY_CLOSE_WIDTH: u16 = 11;
+const HISTORY_CHANGE_WIDTH: u16 = 7;
+
+/// The narrowest the weekly prices region shows all six columns at: WEEK with its `provisional`
+/// tag, then five prices.
+const HISTORY_FULL_WIDTH: u16 = 24 + 5 * (HISTORY_PRICE_WIDTH + 1);
 
 /// Height of the keys box: heading, rule, two rows the hints wrap over, then one row per command
 /// hint.
@@ -698,8 +710,171 @@ fn render_price_history(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewM
         .split(area);
 
     render_price_region(frame, rows[0], &msg::tui_units_weekly_close_heading(), c);
-    render_price_region(frame, rows[2], &msg::tui_units_weekly_prices_heading(), c);
+    render_weekly_prices(frame, rows[2], view, c);
     render_keybind_hints(frame, rows[4], view, c);
+}
+
+/// The weekly prices region: the page's PRICE HISTORY (#1386), the selected Unit's newest weeks
+/// under a heading naming the Unit and its source, with the provisional flag at its right. OPEN,
+/// HIGH and LOW give way to WEEK · CLOSE · CHANGE where the column is too narrow for all six.
+fn render_weekly_prices(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewModel, c: &Colours) {
+    let [heading, rule, body] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .areas(area);
+    let dim = c.muted();
+    let heading_text = msg::tui_units_weekly_prices_heading();
+    let Some(history) = &view.history else {
+        render_heading(frame, heading, &heading_text, "", c);
+        frame.render_widget(Block::new().borders(Borders::BOTTOM), rule);
+        return;
+    };
+    let title_width = heading_text.chars().count() + 2 + history.subtitle.chars().count() + 2;
+    // The flag gives way first in a narrow column: the heading names the Unit.
+    let flag = history
+        .flag
+        .clone()
+        .filter(|flag| title_width + flag.chars().count() <= usize::from(heading.width))
+        .unwrap_or_default();
+    let [title, flag_area] = Layout::horizontal([
+        Constraint::Min(0),
+        Constraint::Length(u16::try_from(flag.chars().count()).unwrap_or(0)),
+    ])
+    .areas(heading);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(heading_text, dim),
+            Span::raw("  "),
+            Span::raw(history.subtitle.as_str()),
+        ])),
+        title,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(flag, dim)).alignment(Alignment::Right),
+        flag_area,
+    );
+    frame.render_widget(Block::new().borders(Borders::BOTTOM), rule);
+
+    if let Some(empty) = &history.empty {
+        frame.render_widget(
+            Paragraph::new(Span::styled(empty.as_str(), dim)).wrap(Wrap { trim: true }),
+            body,
+        );
+        return;
+    }
+    let [header, rows_area, footer] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(0),
+        Constraint::Length(1),
+    ])
+    .areas(body);
+    let full = body.width >= HISTORY_FULL_WIDTH;
+    let columns = &history.columns;
+    let labels: Vec<&String> = if full {
+        vec![
+            &columns.week,
+            &columns.open,
+            &columns.high,
+            &columns.low,
+            &columns.close,
+            &columns.change,
+        ]
+    } else {
+        vec![&columns.week, &columns.close, &columns.change]
+    };
+    for (index, (label, cell)) in labels
+        .into_iter()
+        .zip(history_cells(header, full))
+        .enumerate()
+    {
+        let alignment = if index == 0 {
+            Alignment::Left
+        } else {
+            Alignment::Right
+        };
+        frame.render_widget(
+            Paragraph::new(Span::styled(upper(label), dim)).alignment(alignment),
+            cell,
+        );
+    }
+    for (index, row) in history
+        .rows
+        .iter()
+        .take(usize::from(rows_area.height))
+        .enumerate()
+    {
+        let area = Rect {
+            y: rows_area.y + u16::try_from(index).unwrap_or(0),
+            height: 1,
+            ..rows_area
+        };
+        render_history_row(frame, area, row, full, c);
+    }
+    let hint = history
+        .count
+        .iter()
+        .chain([&history.open_hint])
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(HINT_SEPARATOR);
+    frame.render_widget(Paragraph::new(Span::styled(hint, dim)), footer);
+}
+
+/// One week: its Monday and the current week's `provisional` tag, then the prices, CLOSE bold and
+/// CHANGE coloured by its direction, which its sign also says.
+fn render_history_row(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    row: &HistoryRow,
+    full: bool,
+    c: &Colours,
+) {
+    let dim = c.muted();
+    let mut week = vec![Span::raw(row.label.as_str())];
+    if let Some(tag) = &row.provisional {
+        week.extend([Span::raw(" "), Span::styled(tag.as_str(), dim)]);
+    }
+    let change = match row.trend {
+        Trend::Rising => c.positive(),
+        Trend::Falling => c.negative(),
+        Trend::Flat => Style::default(),
+    };
+    let mut prices = Vec::new();
+    if full {
+        prices
+            .extend([&row.open, &row.high, &row.low].map(|text| Span::styled(text.as_str(), dim)));
+    }
+    prices.extend([
+        Span::styled(
+            row.close.as_str(),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(row.change.as_str(), change),
+    ]);
+    let cells = history_cells(area, full);
+    frame.render_widget(Paragraph::new(Line::from(week)), cells[0]);
+    for (span, cell) in prices.into_iter().zip(&cells[1..]) {
+        frame.render_widget(Paragraph::new(span).alignment(Alignment::Right), *cell);
+    }
+}
+
+/// WEEK, taking what the prices leave, then OPEN, HIGH, LOW, CLOSE and CHANGE when `full`, else
+/// CLOSE and the narrower CHANGE, so WEEK keeps room for its Monday in Medium's column.
+fn history_cells(area: Rect, full: bool) -> Vec<Rect> {
+    let constraints = if full {
+        vec![Constraint::Length(HISTORY_PRICE_WIDTH); 5]
+    } else {
+        vec![
+            Constraint::Length(HISTORY_CLOSE_WIDTH),
+            Constraint::Length(HISTORY_CHANGE_WIDTH),
+        ]
+    };
+    Layout::horizontal(std::iter::once(Constraint::Min(0)).chain(constraints))
+        .spacing(1)
+        .split(area)
+        .to_vec()
 }
 
 /// A price history region: its heading, its rule and a dim note that `enter` opens the selected
