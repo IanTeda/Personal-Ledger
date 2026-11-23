@@ -1,15 +1,18 @@
 //! `lib-units`' ports answered over the stores: the Units, Price Sources and base Unit from the
 //! Units store, and what names each Unit and the Accounts held in it from the Accounts,
 //! Transactions, Bills, Budgets, Inventory and Institutions stores through [`StoredUnitReads`]
-//! (#993, #1084).
+//! (#993, #1084). The Price Source API keys are opened from their sealed rows with the device's
+//! API key secret ([`StoredPriceSourceKeys`]).
 
 use lib_core::{PriceSourceId, UnitId};
 use lib_units::{
-    BaseUnitRepository, PortsMut, PriceSourceRecord, PriceSourceRepository, UnitHoldings,
-    UnitRepository, UnitRow, UnitUsage, UnitsPorts,
+    BaseUnitRepository, KeyState, PortsMut, PriceSourceKeys, PriceSourceRecord,
+    PriceSourceRepository, UnitHoldings, UnitRepository, UnitRow, UnitUsage, UnitsPorts,
 };
+use secrecy::SecretString;
 
-use crate::adapter::store::{SharedUnitsStore, StoredUnitReads};
+use crate::ApiKeySecret;
+use crate::adapter::store::{SharedPriceSourceKeysStore, SharedUnitsStore, StoredUnitReads};
 
 /// The shared Units store with the usage its writes are lent beside, borrowed for each call: the
 /// store's guard can't be lent out of its `RefCell`, so each of the three repositories borrows it
@@ -81,6 +84,91 @@ impl BaseUnitRepository for BaseUnit {
     }
 }
 
+/// `lib-units`' API keys over the sealed rows, opened with the device's secret. One secret seals
+/// every row of a Ledger: a device writes only while its secret's fingerprint matches the rows', or
+/// there are none, and generates a secret for the first key if it has none (ADR-0043).
+pub(crate) struct StoredPriceSourceKeys {
+    rows: SharedPriceSourceKeysStore,
+    secret: ApiKeySecret,
+}
+
+impl StoredPriceSourceKeys {
+    pub(crate) fn new(rows: SharedPriceSourceKeysStore, secret: ApiKeySecret) -> Self {
+        Self { rows, secret }
+    }
+
+    /// Whether this device's secret sealed every row: true too with no rows.
+    fn sealed_here(&self) -> Option<bool> {
+        let rows = self.rows.borrow().sealed();
+        if rows.is_empty() {
+            return Some(true);
+        }
+        let sealer = self.secret.sealer()?;
+        Some(rows.iter().all(|row| row.key_check == sealer.check()))
+    }
+}
+
+impl PriceSourceKeys for StoredPriceSourceKeys {
+    fn key(&self, source: PriceSourceId) -> Option<SecretString> {
+        let row = self
+            .rows
+            .borrow()
+            .sealed()
+            .into_iter()
+            .find(|row| row.source == source)?;
+        self.secret.sealer()?.open(&row)
+    }
+
+    fn key_state(&self, source: PriceSourceId) -> KeyState {
+        let saved = self
+            .rows
+            .borrow()
+            .sealed()
+            .iter()
+            .any(|row| row.source == source);
+        match (saved, self.key(source).is_some()) {
+            (false, _) => KeyState::NotSet,
+            (true, true) => KeyState::Saved,
+            (true, false) => KeyState::Unreadable,
+        }
+    }
+
+    fn can_write(&self) -> bool {
+        self.sealed_here().unwrap_or(false)
+    }
+
+    fn store_key(&mut self, source: PriceSourceId, key: SecretString) -> lib_units::Result<()> {
+        if !self.sealed_here().unwrap_or(false) {
+            return Err(lib_units::Error::KeysLocked);
+        }
+        let sealer = match self.secret.sealer() {
+            Some(sealer) => sealer,
+            None => self.secret.generate().map_err(|error| {
+                tracing::error!(%error, "This device's API key secret couldn't be kept");
+                lib_units::Error::KeyNotSaved
+            })?,
+        };
+        let sealed = sealer.seal(source, &key).map_err(|error| {
+            tracing::error!(%error, price_source_id = %source, "An API key couldn't be sealed");
+            lib_units::Error::KeyNotSaved
+        })?;
+        self.rows.borrow_mut().seal(sealed);
+        Ok(())
+    }
+
+    fn remove_key(&mut self, source: PriceSourceId) {
+        let saved = self
+            .rows
+            .borrow()
+            .sealed()
+            .iter()
+            .any(|row| row.source == source);
+        if saved {
+            self.rows.borrow_mut().delete(source);
+        }
+    }
+}
+
 /// [`lib_units::UnitsPorts`] over the shared Units store, and the usage and holdings read from the
 /// stores of the domains that name a Unit. A write is lent the same reads as its usage, so no write
 /// passes a stand-in usage to reach the store.
@@ -89,10 +177,16 @@ pub(crate) struct StoredUnitsPorts {
     price_sources: PriceSources,
     base_unit: BaseUnit,
     reads: StoredUnitReads,
+    keys: StoredPriceSourceKeys,
 }
 
 impl StoredUnitsPorts {
-    pub fn new(units: SharedUnitsStore, reads: StoredUnitReads) -> Self {
+    pub fn new(
+        units: SharedUnitsStore,
+        reads: StoredUnitReads,
+        keys: SharedPriceSourceKeysStore,
+        secret: ApiKeySecret,
+    ) -> Self {
         let rows = Rows {
             store: units,
             usage: reads.clone(),
@@ -102,6 +196,7 @@ impl StoredUnitsPorts {
             price_sources: PriceSources(rows.clone()),
             base_unit: BaseUnit(rows),
             reads,
+            keys: StoredPriceSourceKeys::new(keys, secret),
         }
     }
 }
@@ -134,6 +229,14 @@ impl UnitsPorts for StoredUnitsPorts {
             base_unit: &mut self.base_unit,
             usage: &self.reads,
         }
+    }
+
+    fn keys(&self) -> &dyn PriceSourceKeys {
+        &self.keys
+    }
+
+    fn keys_mut(&mut self) -> &mut dyn PriceSourceKeys {
+        &mut self.keys
     }
 }
 
@@ -177,6 +280,8 @@ mod tests {
                     inventory: stores.inventory.clone(),
                     institutions: stores.institutions.clone(),
                 },
+                stores.price_source_keys.clone(),
+                crate::ports::test_support::secret(),
             );
             self.ledger = Some(ledger);
             ports
@@ -253,6 +358,69 @@ mod tests {
                 .base_unit
                 .set_base_unit(UnitId::SEED_BTC);
             assert_eq!(commit.commit().wrote, [Domain::Units], "the base Unit");
+        }
+    }
+
+    #[test]
+    fn deleting_a_custom_source_deletes_its_key_in_the_same_commit_on_either() {
+        use lib_units::interactor::{DeletePriceSource, KeyChange, SavePriceSourceKey};
+        use lib_units::{
+            CustomSource, Endpoint, KeyPlacement, KeyState, PriceSourceAuth, PriceSourceRecord,
+            Updates,
+        };
+
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for ledger in [fakes(), file(dir.path())] {
+            let id = lib_core::PriceSourceId::new();
+            let units = ledger.units();
+            units
+                .borrow_mut()
+                .split_mut()
+                .price_sources
+                .upsert_price_source(PriceSourceRecord::Custom(CustomSource {
+                    id,
+                    name: "Rates".into(),
+                    endpoint: Endpoint {
+                        address: "https://rates.example".into(),
+                        request: "/{symbol}".into(),
+                        price_path: "/price".into(),
+                        auth: PriceSourceAuth::ApiKey {
+                            placement: KeyPlacement::Param,
+                            name: "apikey".into(),
+                            optional: false,
+                        },
+                        headers: Vec::new().into(),
+                    },
+                    updates: Updates::Daily,
+                }));
+            units
+                .borrow_mut()
+                .keys_mut()
+                .store_key(id, "k3y".into())
+                .expect("the key is sealed");
+            let _ = ledger.commit().commit();
+            ledger.reload(Domain::Units).expect("the Units reload");
+            assert_eq!(units.borrow().keys().key_state(id), KeyState::Saved);
+
+            {
+                let mut ports = units.borrow_mut();
+                let split = ports.split_mut();
+                DeletePriceSource(id)
+                    .run(split.price_sources, split.units)
+                    .expect("a Custom source deletes");
+                SavePriceSourceKey {
+                    source: id,
+                    change: KeyChange::Remove,
+                }
+                .run(ports.keys_mut())
+                .expect("a removal is never refused");
+            }
+            assert_eq!(ledger.commit().commit().wrote, [Domain::Units]);
+            ledger.reload(Domain::Units).expect("the Units reload");
+
+            let ports = units.borrow();
+            assert!(ports.source_catalogue().source(id).is_none());
+            assert_eq!(ports.keys().key_state(id), KeyState::NotSet);
         }
     }
 

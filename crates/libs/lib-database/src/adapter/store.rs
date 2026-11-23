@@ -96,6 +96,7 @@ use lib_units::{
 
 use crate::adapter::ordered::{Ordered, place_by};
 use crate::adapter::payees::payee_refs;
+use crate::adapter::price_source_keys::{InMemorySealedKeys, PriceSourceKeysStore, SealedKey};
 use crate::adapter::{
     accounts, bills, categories, institutions, inventory, tags, transactions, units,
 };
@@ -822,6 +823,9 @@ pub type SharedUnitsStore = Rc<RefCell<dyn UnitsStore>>;
 /// An Institutions store shared by the Institutions module and the Unit Deletion adapter (#902).
 pub type SharedInstitutionsStore = Rc<RefCell<dyn InstitutionsStore>>;
 
+/// The sealed Price Source API keys, shared so a reload of the Units reaches them.
+pub type SharedPriceSourceKeysStore = Rc<RefCell<dyn PriceSourceKeysStore>>;
+
 /// The Ledger store, shared so a reload by [`Domain::Ledger`] reaches it.
 pub type SharedLedgerStore = Rc<RefCell<dyn LedgerStore>>;
 
@@ -930,6 +934,8 @@ impl<S: LedgerStore + ?Sized> Recorded<S> {
 #[derive(Clone)]
 pub struct SharedStores {
     pub units: SharedUnitsStore,
+    /// The Units' sealed API keys, reloaded with them and never journalled, so never undone.
+    pub price_source_keys: SharedPriceSourceKeysStore,
     pub institutions: SharedInstitutionsStore,
     pub accounts: SharedAccountsStore,
     pub categories: SharedCategoriesStore,
@@ -951,7 +957,10 @@ impl SharedStores {
     /// Returns the error reading the rows back; memory is left as it was.
     pub fn reload(&self, domain: Domain) -> Result<()> {
         match StoreKey::of(domain) {
-            StoreKey::Units => self.units.borrow_mut().reload(),
+            StoreKey::Units => {
+                self.units.borrow_mut().reload()?;
+                self.price_source_keys.borrow_mut().reload()
+            }
             StoreKey::Institutions => self.institutions.borrow_mut().reload(),
             StoreKey::Accounts => self.accounts.borrow_mut().reload(),
             StoreKey::Categories => self.categories.borrow_mut().reload(),
@@ -1073,6 +1082,28 @@ impl Domain {
     /// Here beside [`StoreKey`], which it reads; the enum itself is in `writer.rs`.
     pub fn reloaded_with(self) -> &'static [Domain] {
         StoreKey::of(self).domains()
+    }
+}
+
+/// The keys, noting the Units written on each write but recording no image: a key is never undone
+/// (ADR-0043), so Undo and Redo of a Price Source leave its key as it is.
+impl<S: PriceSourceKeysStore + ?Sized> PriceSourceKeysStore for Recorded<S> {
+    fn sealed(&self) -> Vec<SealedKey> {
+        self.store.store.sealed()
+    }
+
+    fn seal(&mut self, key: SealedKey) {
+        self.store.written.note(self.domain);
+        self.store.store.seal(key);
+    }
+
+    fn delete(&mut self, source: lib_core::PriceSourceId) {
+        self.store.written.note(self.domain);
+        self.store.store.delete(source);
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        self.store.store.reload()
     }
 }
 
@@ -2756,6 +2787,8 @@ impl Commit for CountingCommit {
 /// The in-memory stores [`Stores::fake`] bundles, one per persisted domain.
 pub struct FakeStores {
     pub units: InMemoryPorts,
+    /// The sealed API keys: none in the Sample Ledger.
+    pub price_source_keys: InMemorySealedKeys,
     pub institutions: InMemoryInstitutions,
     pub accounts: lib_accounts::fake::InMemoryPorts,
     pub categories: InMemoryCategories,
@@ -2811,6 +2844,7 @@ impl FakeStores {
             .collect();
         Self {
             units,
+            price_source_keys: InMemorySealedKeys::default(),
             institutions: InMemoryInstitutions { institutions },
             accounts,
             categories: InMemoryCategories { categories },
@@ -2848,6 +2882,7 @@ impl From<FakeStores> for crate::StoreParts {
         let fails = &fakes.fails;
         Self {
             units: Box::new(fails.switch(Domain::Units, fakes.units)),
+            price_source_keys: Box::new(fakes.price_source_keys),
             institutions: Box::new(fails.switch(Domain::Institutions, fakes.institutions)),
             accounts: Box::new(fails.switch(Domain::Accounts, fakes.accounts)),
             categories: Box::new(fails.switch(Domain::Categories, fakes.categories)),
@@ -2956,6 +2991,7 @@ mod tests {
     fn the_fake_counts_every_commit_including_one_with_nothing_written() {
         let (stores, count) = Stores::fake(FakeStores {
             units: InMemoryPorts::sample(chrono::Utc::now()),
+            price_source_keys: InMemorySealedKeys::default(),
             institutions: InMemoryInstitutions::sample(),
             accounts: lib_accounts::fake::InMemoryPorts::sample(),
             categories: InMemoryCategories::sample(),

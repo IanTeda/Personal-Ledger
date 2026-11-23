@@ -1,6 +1,7 @@
 //! Writes Configuration back to `personal-ledger.conf` (#904), for the Settings rows that edit it:
 //! a device's settings (ADR-0053), each in its Settings page's section (ADR-0057), the TUI's own
-//! Display keys among them. Only `[General]`, `[Display]` and `[Logs]` are ever written.
+//! Display keys among them. Only `[General]`, `[Display]` and `[Logs]` are written by Settings,
+//! and `[Secrets]`' API key secret once, when a Client generates it (ADR-0043).
 //!
 //! A write goes to the user's file (`~/.config/personal-ledger/personal-ledger.conf` on Linux),
 //! created with its directory when it doesn't exist. It is the one file that is the person's own
@@ -16,6 +17,8 @@
 //! added for a new key, or one line removed.
 
 use std::path::{Path, PathBuf};
+
+use secrecy::{ExposeSecret as _, SecretString};
 
 use crate::overrides::Overrides;
 use crate::{ConfigKey, ConfigValue};
@@ -126,6 +129,25 @@ impl ConfigWriter {
         }
     }
 
+    /// Writes the API key secret a Client generated into `[Secrets]`, keeping the rest of the file.
+    /// A Client generates one only while it has none, so this never replaces one a person set
+    /// (ADR-0043).
+    ///
+    /// # Errors
+    /// As [`Self::set`], less the Locale's check.
+    pub fn set_api_key_secret(&self, secret: &SecretString) -> crate::Result<()> {
+        let value = format!("\"{}\"", secret.expose_secret());
+        edit(self.target_file()?, |text| {
+            Some(set_entry(
+                text,
+                SECRETS,
+                SECRETS_HEADER,
+                API_KEY_SECRET,
+                &value,
+            ))
+        })
+    }
+
     /// The file a write goes to, or why there is none.
     fn target_file(&self) -> crate::Result<&Path> {
         self.target.as_deref().ok_or_else(|| {
@@ -158,13 +180,29 @@ fn edit(path: &Path, change: impl FnOnce(&str) -> Option<String>) -> crate::Resu
     std::fs::rename(&partial, path).map_err(io)
 }
 
+/// `[Secrets]` as `normalise_ini` reads it and as it is written, and its one key.
+const SECRETS: &str = "secrets";
+const SECRETS_HEADER: &str = "Secrets";
+const API_KEY_SECRET: &str = "api_key_secret";
+
 /// `text` with `key = value` in the key's section: every line setting the key rewritten in place,
 /// else one line added after the section's last entry, else the section appended. Every other line
 /// is kept as it was.
 fn set_key(text: &str, key: ConfigKey, value: &str) -> String {
     let section = key.section();
+    set_entry(
+        text,
+        crate::keys::normalised(section),
+        section.header(),
+        key.name(),
+        value,
+    )
+}
+
+/// [`set_key`] for `name` in the section normalised as `section`, headed `header` when appended.
+fn set_entry(text: &str, section: &str, header: &str, name: &str, value: &str) -> String {
     let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
-    let entry = format!("{} = {value}", key.name());
+    let entry = format!("{name} = {value}");
 
     let mut in_section = false;
     let mut found = false;
@@ -172,8 +210,8 @@ fn set_key(text: &str, key: ConfigKey, value: &str) -> String {
     // trailing comment, which more likely heads the next section.
     let mut insert_at = None;
     for (index, line) in lines.iter_mut().enumerate() {
-        if let Some(name) = section_name(line) {
-            in_section = name == crate::keys::normalised(section);
+        if let Some(header) = section_name(line) {
+            in_section = header == section;
             if in_section {
                 insert_at = Some(index + 1);
             }
@@ -182,10 +220,10 @@ fn set_key(text: &str, key: ConfigKey, value: &str) -> String {
         if !in_section {
             continue;
         }
-        let Some(name) = line_key(line) else {
+        let Some(key) = line_key(line) else {
             continue;
         };
-        if name.eq_ignore_ascii_case(key.name()) {
+        if key.eq_ignore_ascii_case(name) {
             let indent = &line[..line.len() - line.trim_start().len()];
             *line = format!("{indent}{entry}");
             found = true;
@@ -200,7 +238,7 @@ fn set_key(text: &str, key: ConfigKey, value: &str) -> String {
                 if lines.last().is_some_and(|line| !line.trim().is_empty()) {
                     lines.push(String::new());
                 }
-                lines.push(format!("[{}]", section.header()));
+                lines.push(format!("[{header}]"));
                 lines.push(entry);
             }
         }
@@ -333,6 +371,32 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use tempfile::TempDir;
+
+    #[test]
+    fn a_generated_api_key_secret_is_written_under_secrets_and_parses_back() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        std::fs::write(&path, "# mine\n[General]\ntoasts = false\n").unwrap();
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
+
+        writer
+            .set_api_key_secret(&SecretString::from("Zm9v-YmFy_YmF6"))
+            .unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            text,
+            "# mine\n[General]\ntoasts = false\n\n[Secrets]\napi_key_secret = \"Zm9v-YmFy_YmF6\"\n"
+        );
+        let parsed = crate::ledger::parsed_for_test(&text, &[]);
+        assert_eq!(
+            parsed
+                .secrets
+                .api_key_secret()
+                .map(|secret| secret.expose_secret().to_string()),
+            Some("Zm9v-YmFy_YmF6".into())
+        );
+    }
 
     /// The value `writer`'s target file stores for `key`, from [`ConfigWriter::stored_all`].
     fn stored_value(writer: &ConfigWriter, key: ConfigKey) -> Option<ConfigValue> {

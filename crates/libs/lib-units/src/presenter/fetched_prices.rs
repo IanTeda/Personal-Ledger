@@ -244,6 +244,7 @@ mod tests {
             PriceSourceAuth, PriceSourceId, PriceSourceRecord, TransportError, TransportOutcome,
             Updates,
         };
+        use secrecy::ExposeSecret as _;
 
         /// The sample with `units` added, a clock a test moves, and the fetching beside it.
         struct Client {
@@ -533,10 +534,74 @@ mod tests {
             assert_eq!(client.source_failure(id), Some(FetchFailure::KeyMissing));
             assert_eq!(client.unit_failure("EUR"), Some(FetchFailure::KeyMissing));
 
+            client
+                .ports
+                .borrow_mut()
+                .keys
+                .keys
+                .insert(id, crate::fake::InMemoryKey::Saved("k3y".into()));
             client.fetching.borrow_mut().key_stored(id);
 
             assert_eq!(client.source_failure(id), None);
             assert_eq!(client.unit_failure("EUR"), None);
+            client.presenter.fetch_due();
+            let (_, sent) = client
+                .transport
+                .requests()
+                .into_iter()
+                .find(|(_, request)| request.url.contains("rates.example"))
+                .expect("the stored key lets it send");
+            let key = sent.key.expect("the key goes with it");
+            assert_eq!(
+                (key.name.as_str(), key.value.expose_secret()),
+                ("x-key", "k3y")
+            );
+        }
+
+        #[test]
+        fn a_key_that_wont_decrypt_here_reads_as_key_missing_and_coingecko_asks_keyless() {
+            let id = PriceSourceId::new();
+            let mut eur = currency("EUR");
+            eur.link.source_id = id;
+            let mut btc = currency("BTC");
+            btc.link.source_id = crate::COINGECKO;
+            let mut client = client(vec![eur, btc]);
+            let keyed = Endpoint {
+                address: "https://rates.example".into(),
+                request: "/{symbol}".into(),
+                price_path: "/rate".into(),
+                auth: PriceSourceAuth::ApiKey {
+                    placement: KeyPlacement::Param,
+                    name: "apikey".into(),
+                    optional: false,
+                },
+                headers: Vec::new().into(),
+            };
+            let mut ports = client.ports.borrow_mut();
+            ports
+                .price_sources
+                .records
+                .push(PriceSourceRecord::Custom(CustomSource {
+                    id,
+                    name: "Rates".into(),
+                    endpoint: keyed,
+                    updates: Updates::Hourly,
+                }));
+            for source in [id, crate::COINGECKO] {
+                ports
+                    .keys
+                    .keys
+                    .insert(source, crate::fake::InMemoryKey::Unreadable);
+            }
+            drop(ports);
+
+            client.presenter.fetch_due();
+
+            assert_eq!(client.source_failure(id), Some(FetchFailure::KeyMissing));
+            let requests = client.transport.requests();
+            assert_eq!(requests.len(), 1, "only CoinGecko is asked");
+            assert!(requests[0].1.url.contains("coingecko"));
+            assert_eq!(requests[0].1.key, None, "keyless");
         }
 
         #[test]

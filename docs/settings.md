@@ -77,6 +77,7 @@ Configuration sections group related settings together. The application currentl
 * [General]: the keys Settings › General shows: on_start, start_view, toasts, locale, data and file.
 * [Display]: the keys Settings › Display shows: colour_theme, colour_appearance, date_style, row_density, status_glyphs, start_sidebar_minimised, hint_bar and terminal_colours.
 * [Logs]: the keys Settings › Logs shows: log and log_file_path. Read by all three binaries, the Sync Server included.
+* [Secrets]: the API key secret, api_key_secret, which the Clients encrypt a ledger's Price Source API keys with. No Settings page shows it.
 * [Keybindings]: Navigation and action keybindings.
 * [Theme]: Colour Role overrides laid over the chosen Colour Theme, with [Theme.Light] and [Theme.Dark] for one Colour Variant. Read by bin-tui and bin-desktop.
 * [Sync-Server]: Sync Server-specific settings (bind address). This is the Sync Server binary's own section, not Settings › Sync server, which is kept in the Ledger. Only bin-sync-server uses the configuration settings. Both bin-tui and bin-desktop Sync Server settings are dynamic and thus use settings pulled from the database.
@@ -325,6 +326,25 @@ Example:
 [Logs]
 log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 ```
+
+### Secrets Section
+
+The [Secrets] section holds this device's **API key secret**, which bin-tui and bin-desktop encrypt and read a ledger's Price Source API keys with ([Units](units.md)). The keys sync with the ledger; the secret never does, so every device that should read them needs the same secret in its own file. No Settings page shows or changes it, and the app never prints it, in a log or anywhere else.
+
+__api_key_secret:__
+
+* Type: String (Optional)
+* Default: unset. The first time an API key is saved on a ledger with none, a Client with no secret makes one, 256 random bits written as 43 base64url characters, and writes it here.
+* Environment Variable: PERSONAL_LEDGER_SECRETS__API_KEY_SECRET
+
+Example:
+
+```ini
+[Secrets]
+api_key_secret = "copy-the-same-secret-onto-each-device"
+```
+
+Keep it as you would a password: anyone with it and a copy of the ledger can read its API keys. Changing it on a device that saved keys leaves those keys unreadable there, until they are saved again with the new one.
 
 ## The Settings screen in the Desktop app
 

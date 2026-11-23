@@ -65,7 +65,8 @@ impl FetchSource {
         if wanted.is_empty() {
             return Ok(0);
         }
-        if key_missing(endpoint) {
+        let key = ports.keys().key(self.id);
+        if key_missing(endpoint, key.as_ref()) {
             let failure = Some(FetchFailure::KeyMissing);
             fetching.record_source(self.id, &settings, now, failure);
             for unit in wanted {
@@ -79,7 +80,8 @@ impl FetchSource {
                 tracing::warn!(unit_id = %unit.id, "Skipped a Unit whose quote Unit is gone");
                 continue;
             };
-            let (request, price_path) = price_request(endpoint, &unit.link.symbol, &quote.code);
+            let (request, price_path) =
+                price_request(endpoint, &unit.link.symbol, &quote.code, key.clone());
             let sent = InFlight {
                 unit: unit.id,
                 link: unit.link.clone(),

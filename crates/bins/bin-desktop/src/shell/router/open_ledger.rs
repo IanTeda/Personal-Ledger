@@ -119,12 +119,13 @@ pub struct OpenLedger {
 }
 
 impl OpenLedger {
-    /// Builds everything on `stores` under `keybindings`, dated by `clock`, and installs the stores'
-    /// commit as the one every input ends in. Wires the shared ports first, then the module Setups,
+    /// Builds everything on `stores` under `keybindings`, dated by `clock`, its Price Source keys
+    /// read with `api_key_secret`, and installs the stores' commit as the one every input ends in. Wires the shared ports first, then the module Setups,
     /// the Announcer and the Views, and gives `settings` its This Ledger pages.
     pub fn build(
         file: LedgerFile,
         keybindings: &lib_config::KeyBindingConfig,
+        api_key_secret: &lib_database::ApiKeySecret,
         clock: &lib_core::Clock,
         settings: &Entity<SettingsView>,
         cx: &mut Context<'_, Root>,
@@ -135,8 +136,12 @@ impl OpenLedger {
             writer,
         } = file;
         let (ports, failures) = match stores {
-            LedgerStores::Unshared(stores) => lib_database::LedgerPorts::new(stores, clock.clone()),
-            LedgerStores::Shared(shared) => lib_database::LedgerPorts::over(shared, clock.clone()),
+            LedgerStores::Unshared(stores) => {
+                lib_database::LedgerPorts::new(stores, clock.clone(), api_key_secret.clone())
+            }
+            LedgerStores::Shared(shared) => {
+                lib_database::LedgerPorts::over(shared, clock.clone(), api_key_secret.clone())
+            }
         };
         // The stores are the truth: the input door announces what each input wrote through the
         // Announcer, which holds no rows (#1028, #1057, #1081).

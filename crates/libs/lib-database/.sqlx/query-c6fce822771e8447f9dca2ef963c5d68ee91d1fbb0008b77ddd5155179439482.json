@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT price_source_id AS \"price_source_id!: PriceSourceId\", nonce, ciphertext, key_check\n           FROM price_source_keys\n           ORDER BY price_source_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "price_source_id!: PriceSourceId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "nonce",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "ciphertext",
+        "ordinal": 2,
+        "type_info": "Blob"
+      },
+      {
+        "name": "key_check",
+        "ordinal": 3,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c6fce822771e8447f9dca2ef963c5d68ee91d1fbb0008b77ddd5155179439482"
+}

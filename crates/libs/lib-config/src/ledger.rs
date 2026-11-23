@@ -36,6 +36,10 @@
 //! log = "debug"
 //! log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 //!
+//! # The API key secret, set by hand or generated on the first API key saved.
+//! [Secrets]
+//! api_key_secret = "…"
+//!
 //! # Only read by bin-sync-server, via `LedgerConfig::parse_for_sync_server`.
 //! [sync-server]
 //! bind_address = "0.0.0.0:50051"
@@ -81,6 +85,11 @@ pub struct LedgerConfig {
     /// Settings › Logs' keys, from the `[Logs]` section, which all three binaries read.
     #[serde(default)]
     pub logs: crate::LogsConfig,
+
+    /// `[Secrets]`: the API key secret the Clients encrypt the Ledger's Price Source API keys with
+    /// (ADR-0043). Redacted in `Debug` and when serialised.
+    #[serde(default)]
+    pub secrets: crate::SecretsConfig,
 
     /// Keyboard shortcut configuration, read by the TUI/Desktop Clients. Populated from the
     /// `[keybindings]` section; the Sync Server merges its defaults in but never reads them.
@@ -1390,6 +1399,7 @@ mod tests {
                         | "display"
                         | "logs"
                         | "keybindings"
+                        | "secrets"
                         | "sync_server"
                         | "theme"
                         | "theme.light"

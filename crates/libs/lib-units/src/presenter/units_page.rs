@@ -530,6 +530,14 @@ impl UnitsPagePresenter {
             UnitsPageEvent::DialogClosed(outcome) => {
                 let dialog = self.open_dialog.take();
                 if let Some(outcome) = outcome {
+                    if let UnitsOutcome::SourceSaved {
+                        key_stored: Some(source),
+                        ..
+                    } = &outcome
+                        && let Some(fetching) = &self.fetching
+                    {
+                        fetching.borrow_mut().key_stored(*source);
+                    }
                     router.notify(Notice::Changed(outcome.changed(dialog)));
                     self.land(outcome, router);
                 }
@@ -2202,6 +2210,7 @@ mod tests {
                     "/simple/price?ids={symbol_lower}&vs_currencies={quote_lower}"
                 ),
                 ("Price path", "/{symbol_lower}/{quote_lower}"),
+                ("API key", "Not set"),
                 ("Updates", "Every 15 min"),
                 ("Last updated", "5 minutes ago"),
             ]
@@ -2316,6 +2325,43 @@ mod tests {
         assert_eq!(
             button_slugs(&source.buttons),
             ["test-source", "edit-source", "delete-source"]
+        );
+    }
+
+    #[test]
+    fn a_keyed_sources_api_key_fact_says_saved_not_set_or_unreadable_here() {
+        use crate::fake::InMemoryKey;
+        let mut page = docked();
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(COINGECKO)));
+        let api_key = |page: &Page| {
+            source_group(&pane(page))
+                .facts
+                .iter()
+                .find(|fact| fact.label == "API key")
+                .map(|fact| fact.value.clone())
+        };
+        assert_eq!(api_key(&page).as_deref(), Some("Not set"));
+
+        let saved = InMemoryKey::Saved("CG-1".into());
+        page.ports.borrow_mut().keys.keys.insert(COINGECKO, saved);
+        assert_eq!(api_key(&page).as_deref(), Some("Saved"));
+
+        let unreadable = InMemoryKey::Unreadable;
+        page.ports
+            .borrow_mut()
+            .keys
+            .keys
+            .insert(COINGECKO, unreadable);
+        assert_eq!(
+            api_key(&page).as_deref(),
+            Some("Saved, but can't be read on this device")
+        );
+
+        page.send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
+        assert_eq!(
+            api_key(&page),
+            None,
+            "a source that takes no key has no fact"
         );
     }
 

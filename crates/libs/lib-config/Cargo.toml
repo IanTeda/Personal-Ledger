@@ -24,6 +24,7 @@ lib_tracing = { path = "../../../crates/libs/lib-tracing" }
 ## -- Workspace Shared Dependencies --
 chrono = { workspace = true }
 clap = { workspace = true }
+secrecy = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

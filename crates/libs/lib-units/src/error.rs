@@ -64,6 +64,13 @@ pub enum Error {
     /// The Price Source has a round in flight, so asking again sends nothing.
     #[error("the price source already has a round in flight")]
     AlreadyFetching,
+    /// The Ledger's API keys were saved with another device's API key secret, so this device
+    /// writes none until it has the same secret (ADR-0043).
+    #[error("the ledger's api keys were saved with another device's secret")]
+    KeysLocked,
+    /// No API key secret could be made and kept in the configuration, so the key wasn't stored.
+    #[error("no api key secret could be kept for the key")]
+    KeyNotSaved,
     /// A week that hasn't started has no price yet.
     #[error("a future week can't be priced")]
     FutureWeek,

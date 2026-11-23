@@ -45,17 +45,18 @@ pub struct UnitsSetup {
 }
 
 impl UnitsSetup {
-    /// The Units of the Ledger `stores` hold, dated by `clock`, under `config`'s key bindings,
-    /// with the writer's failed writes. The stores are shared out here so a clone of them stays
+    /// The Units of the Ledger `stores` hold, dated by `clock`, under `config`'s key bindings, their
+    /// Price Source keys read with `api_key_secret`, with the writer's failed writes. The stores are shared out here so a clone of them stays
     /// beside the ports, which `LedgerPorts` keeps to itself (#1212).
     pub fn on(
         stores: Stores,
         clock: lib_core::Clock,
         config: &KeyBindingConfig,
+        api_key_secret: lib_database::ApiKeySecret,
     ) -> (Self, mpsc::Receiver<WriteFailure>) {
         let shared = stores.share();
         let stores = shared.stores.clone();
-        let (ledger, failures) = LedgerPorts::over(shared, clock);
+        let (ledger, failures) = LedgerPorts::over(shared, clock, api_key_secret);
         let setup = Self {
             ports: ledger.units(),
             stores,
@@ -72,7 +73,13 @@ impl UnitsSetup {
     pub fn sample(config: &KeyBindingConfig) -> Self {
         let today = chrono::Local::now().date_naive();
         let (stores, _) = Stores::fake(FakeStores::sample(today));
-        Self::on(stores, lib_core::Clock::fixed(today), config).0
+        Self::on(
+            stores,
+            lib_core::Clock::fixed(today),
+            config,
+            lib_database::ApiKeySecret::in_memory(None),
+        )
+        .0
     }
 
     /// Ends the input just handled, if it wrote anything, as one transaction.

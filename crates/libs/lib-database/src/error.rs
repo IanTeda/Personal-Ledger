@@ -144,6 +144,13 @@ pub enum Error {
     #[error("The Ledger file couldn't be created: {0}")]
     LedgerCreation(#[from] lib_ledger_creation::Error),
 
+    /// Configuration error
+    ///
+    /// The configuration file couldn't be written: the API key secret a Client generated as a
+    /// Ledger saved its first API key (ADR-0043).
+    #[error("Configuration error: {0}")]
+    Config(#[from] lib_config::Error),
+
     /// File system or thread error
     ///
     /// Occurs when the Ledger file's directory can't be made, or the writer's thread or runtime

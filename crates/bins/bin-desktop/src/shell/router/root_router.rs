@@ -54,6 +54,8 @@ pub(super) struct RootRouter<'a, 'b> {
     /// once after the input rather than after every one.
     ledger_swapped: &'a mut bool,
     keybindings: &'a lib_config::KeyBindingConfig,
+    /// The device's API key secret, which a Ledger opened now reads its Price Source keys with.
+    api_key_secret: &'a lib_database::ApiKeySecret,
     /// The creation port the Create ledger Dialog writes through, and the folder reads the file
     /// explorer makes, both handed in at the composition root.
     creation: &'a SharedLedgerCreation,
@@ -442,6 +444,7 @@ impl RootRouter<'_, '_> {
         let opened = OpenLedger::build(
             ledger,
             self.keybindings,
+            self.api_key_secret,
             &self.clock,
             self.settings,
             self.cx,
@@ -704,6 +707,7 @@ impl Root {
             documents_state,
             last_ledger_forgotten,
             keybindings,
+            api_key_secret,
             creation,
             folders,
             ..
@@ -717,6 +721,7 @@ impl Root {
             last_ledger_forgotten,
             ledger_swapped: &mut ledger_swapped,
             keybindings,
+            api_key_secret,
             creation,
             folders,
             clock: presenter.clock().clone(),

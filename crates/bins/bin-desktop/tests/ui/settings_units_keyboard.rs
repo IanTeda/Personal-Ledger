@@ -470,6 +470,215 @@ fn a_custom_price_source_is_added_by_typing_tab_and_left_right(app: &mut TestApp
     assert!(names.contains(&"broker".to_string()));
 }
 
+/// The X-Large pane's PRICE SOURCE facts for the selected row, as `(label, value)`.
+#[expect(
+    clippy::expect_used,
+    reason = "test helper: a pane missing at X-Large should fail the test loudly"
+)]
+fn source_facts(ui: &mut Harness<'_>) -> Vec<(String, String)> {
+    use lib_units::presenter::PaneGroup;
+    ui.settings::<SettingsUnitsSnapshot>()
+        .pane
+        .expect("docked")
+        .groups
+        .into_iter()
+        .find_map(|group| match group {
+            PaneGroup::Source(source) => Some(source.facts),
+            _ => None,
+        })
+        .expect("a PRICE SOURCE group")
+        .into_iter()
+        .map(|fact| (fact.label, fact.value))
+        .collect()
+}
+
+fn api_key_fact(ui: &mut Harness<'_>) -> Option<String> {
+    source_facts(ui)
+        .into_iter()
+        .find_map(|(label, value)| (label == "API key").then_some(value))
+}
+
+/// Adds a Custom source named `name` taking an API key in a parameter, its key `key`, and selects
+/// it.
+fn add_keyed_source(ui: &mut Harness<'_>, name: &str, key: &str) {
+    ui.press("tab n");
+    type_word(ui, name);
+    ui.press("tab tab");
+    type_word(ui, "https://b.example");
+    ui.press("tab");
+    type_word(ui, "/p");
+    ui.press("tab");
+    type_word(ui, "/v");
+    ui.press("tab tab right tab");
+    type_word(ui, "apikey");
+    ui.press("tab");
+    type_word(ui, key);
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    ui.press("G");
+    for _ in 0..5 {
+        if selected(ui) == name {
+            break;
+        }
+        ui.press("k");
+    }
+    assert_eq!(selected(ui), name);
+}
+
+#[gpui::test]
+fn a_saved_key_shows_only_as_the_placeholder_and_remove_key_clears_it_on_save(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units_at(app, WindowSize::XLarge);
+    add_keyed_source(&mut ui, "broker", "s3cret");
+    assert_eq!(api_key_fact(&mut ui).as_deref(), Some("Saved"));
+    assert!(
+        ui.conf().contains("[Secrets]\napi_key_secret = "),
+        "the first key generates this device's secret: {}",
+        ui.conf()
+    );
+    assert!(!ui.conf().contains("s3cret"));
+
+    ui.press("e");
+    assert_eq!(ui.dialog(), Some("EditPriceSource"));
+    assert_eq!(
+        ui.dialog_value("api_key").as_deref(),
+        Some(""),
+        "never shown"
+    );
+    assert_eq!(
+        ui.dialog_value("api_key_placeholder").as_deref(),
+        Some("Key saved · leave blank to keep it")
+    );
+    assert_eq!(ui.dialog_value("remove_key").as_deref(), Some("Remove key"));
+    ui.press("tab tab tab tab tab tab tab tab tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("RemoveKey"));
+    ui.press("enter");
+    assert_eq!(
+        ui.dialog(),
+        Some("EditPriceSource"),
+        "Remove key waits for Save"
+    );
+    assert_eq!(ui.dialog_value("remove_key").as_deref(), Some(""));
+    assert_eq!(ui.dialog_value("api_key_placeholder").as_deref(), Some(""));
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("ApiKey"));
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(api_key_fact(&mut ui).as_deref(), Some("Not set"));
+}
+
+#[gpui::test]
+fn blank_keeps_a_saved_key_and_typed_text_replaces_it_masked(app: &mut TestAppContext) {
+    let mut ui = on_units_at(app, WindowSize::XLarge);
+    add_keyed_source(&mut ui, "broker", "s3cret");
+    let secret = ui.conf();
+
+    ui.press("e enter");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        api_key_fact(&mut ui).as_deref(),
+        Some("Saved"),
+        "blank keeps it"
+    );
+
+    ui.press("e tab tab tab tab tab tab tab tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("ApiKey"));
+    type_word(&mut ui, "n3w");
+    assert_eq!(
+        ui.dialog_value("api_key").as_deref(),
+        Some("\u{2022}\u{2022}\u{2022}")
+    );
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(api_key_fact(&mut ui).as_deref(), Some("Saved"));
+    assert_eq!(ui.conf(), secret, "the secret is generated once");
+}
+
+#[gpui::test]
+fn coingeckos_edit_dialog_takes_its_optional_demo_key(app: &mut TestAppContext) {
+    let mut ui = on_units_at(app, WindowSize::XLarge);
+    ui.press("tab");
+    for _ in 0..5 {
+        if selected(&mut ui) == "CoinGecko" {
+            break;
+        }
+        ui.press("j");
+    }
+    assert_eq!(selected(&mut ui), "CoinGecko");
+    assert_eq!(api_key_fact(&mut ui).as_deref(), Some("Not set"));
+
+    ui.press("e");
+    assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+    assert_eq!(
+        ui.dialog_value("key_note").as_deref(),
+        Some("Optional. Without a key CoinGecko is asked keyless, at a lower call limit.")
+    );
+    ui.press("tab tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("ApiKey"));
+    type_word(&mut ui, "CG-demo");
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(api_key_fact(&mut ui).as_deref(), Some("Saved"));
+}
+
+#[gpui::test]
+fn a_key_another_devices_secret_saved_reads_unreadable_and_its_field_is_off(
+    app: &mut TestAppContext,
+) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let path = dir.path().join("ledger.pldb");
+    lib_database::seed::sample_ledger(&path, common::today()).expect("the Ledger is created");
+    let storage = lib_database::open_storage(&path).expect("the Ledger opens");
+    let writer = storage.writer.clone();
+    let (elsewhere, _) = lib_database::LedgerPorts::new(
+        lib_database::Stores::from(storage),
+        lib_core::Clock::fixed(common::today()),
+        lib_database::ApiKeySecret::in_memory(Some("another device's secret".into())),
+    );
+    elsewhere
+        .units()
+        .borrow_mut()
+        .keys_mut()
+        .store_key(lib_units::COINGECKO, "CG-demo".into())
+        .expect("the key is sealed");
+    let _ = elsewhere.commit().commit();
+    writer.flush().expect("the writer is running");
+    drop(elsewhere);
+
+    let storage = lib_database::open_storage(&path).expect("the Ledger opens again");
+    let mut ui = to_units_at(Harness::with_storage(app, storage), WindowSize::XLarge);
+    ui.press("tab");
+    for _ in 0..5 {
+        if selected(&mut ui) == "CoinGecko" {
+            break;
+        }
+        ui.press("j");
+    }
+    assert_eq!(
+        api_key_fact(&mut ui).as_deref(),
+        Some("Saved, but can't be read on this device")
+    );
+
+    ui.press("e");
+    assert_eq!(ui.dialog_value("api_key_enabled").as_deref(), Some("false"));
+    assert_eq!(ui.dialog_value("remove_key").as_deref(), Some(""));
+    assert_eq!(
+        ui.dialog_value("key_note").as_deref(),
+        Some(
+            "This Ledger's API keys were saved with another device's API key secret. Copy that \
+             secret into this device's settings to change keys here."
+        )
+    );
+    ui.press("tab tab");
+    assert_ne!(
+        ui.dialog_value("field").as_deref(),
+        Some("ApiKey"),
+        "it takes no focus"
+    );
+}
+
 #[gpui::test]
 fn a_custom_source_is_deleted_once_its_name_is_typed_back(app: &mut TestAppContext) {
     let mut ui = on_units(app);

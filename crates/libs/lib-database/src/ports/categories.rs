@@ -263,9 +263,13 @@ mod tests {
                 .flush()
                 .expect("the writer is running");
             let storage = open_storage(&self.path).expect("the Ledger reopens");
-            LedgerPorts::new(Stores::from(storage), Clock::fixed(today()))
-                .0
-                .category_save
+            LedgerPorts::new(
+                Stores::from(storage),
+                Clock::fixed(today()),
+                crate::ports::test_support::secret(),
+            )
+            .0
+            .category_save
         }
     }
 
@@ -275,7 +279,11 @@ mod tests {
         fn create(&mut self) -> FileSavePorts {
             let storage = open_storage(&self.path).expect("the Ledger opens");
             self.writer = Some(storage.writer.clone());
-            let (ledger, _) = LedgerPorts::new(Stores::from(storage), Clock::fixed(today()));
+            let (ledger, _) = LedgerPorts::new(
+                Stores::from(storage),
+                Clock::fixed(today()),
+                crate::ports::test_support::secret(),
+            );
             self.commit = Some(ledger.commit());
             self.transactions = Some(ledger.stores.transactions.clone());
             FileSavePorts {
@@ -497,8 +505,11 @@ mod tests {
     #[test]
     fn a_save_after_the_month_turns_starts_in_the_new_month() {
         let (clock, day) = Clock::settable(today());
-        let (ledger, _) =
-            LedgerPorts::new(Stores::fake(crate::FakeStores::sample(today())).0, clock);
+        let (ledger, _) = LedgerPorts::new(
+            Stores::fake(crate::FakeStores::sample(today())).0,
+            clock,
+            crate::ports::test_support::secret(),
+        );
         let mut ports = ledger.category_save.clone();
         let months = || -> Vec<(i32, u32)> {
             ledger

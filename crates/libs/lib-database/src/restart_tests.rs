@@ -53,6 +53,7 @@ fn on_storage_with_bills(storage: crate::Storage) -> OnStorage {
     let (built, _) = LedgerPorts::over(
         shared,
         lib_core::Clock::fixed(crate::ports::test_support::today()),
+        crate::ports::test_support::secret(),
     );
     let bills = built.bills();
     let payments = built.bill_payments();

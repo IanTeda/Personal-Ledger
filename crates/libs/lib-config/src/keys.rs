@@ -37,6 +37,7 @@ pub(crate) fn keys() -> Vec<(&'static str, Vec<&'static str>)> {
 /// The keys of the sections Settings never writes, edited only by hand.
 const HAND_WRITTEN: &[(&str, &[&str])] = &[
     ("keybindings", &["super_key"]),
+    ("secrets", &["api_key_secret"]),
     ("sync_server", &["bind_address", "database_uri"]),
     ("theme", THEME_ROLES),
     ("theme.light", THEME_ROLES),

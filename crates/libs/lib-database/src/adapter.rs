@@ -18,6 +18,7 @@ pub mod ledger;
 pub mod ledger_creation;
 pub mod ordered;
 pub mod payees;
+pub mod price_source_keys;
 pub mod settings;
 pub mod tag_removal;
 pub mod tags;

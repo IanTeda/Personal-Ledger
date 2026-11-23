@@ -7,7 +7,7 @@ use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 
 use super::{UnitsOutcome, linked_codes};
-use crate::interactor::DeletePriceSource;
+use crate::interactor::{DeletePriceSource, KeyChange, SavePriceSourceKey};
 use crate::protocols::SharedPorts;
 use crate::{Error, msg};
 
@@ -142,8 +142,18 @@ impl DeletePriceSourcePresenter {
         }
         let deleted = {
             let mut ports = self.ports.borrow_mut();
-            let ports = ports.split_mut();
-            DeletePriceSource(self.id).run(ports.price_sources, ports.units)
+            let split = ports.split_mut();
+            let deleted = DeletePriceSource(self.id).run(split.price_sources, split.units);
+            if deleted.is_ok() {
+                // Its key goes in the same commit, so no orphan key is left (ADR-0043). A removal
+                // is never refused.
+                let _ = SavePriceSourceKey {
+                    source: self.id,
+                    change: KeyChange::Remove,
+                }
+                .run(ports.keys_mut());
+            }
+            deleted
         };
         self.refusal = match deleted {
             Ok(deleted) => {
@@ -200,6 +210,11 @@ mod tests {
         }
         .run(&mut ports.borrow_mut().price_sources);
         ports.borrow_mut().units.units[1].link.source_id = source.id;
+        ports
+            .borrow_mut()
+            .keys
+            .keys
+            .insert(source.id, crate::fake::InMemoryKey::Saved("k3y".into()));
         let mut dialog =
             DeletePriceSourcePresenter::new(shared, source.id, DialogKeys::default()).unwrap();
         let view = dialog.view_model();
@@ -225,6 +240,7 @@ mod tests {
             }))]
         );
         assert_eq!(ports.borrow().units.units[1].link.source_id, MANUAL_ENTRY);
+        assert!(ports.borrow().keys.keys.is_empty(), "its key goes with it");
     }
 
     #[test]

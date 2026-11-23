@@ -3,14 +3,16 @@
 //! or a built-in's endpoint as read-only facts. Updates and Authentication are segmented controls
 //! that `Left`/`Right` step while focused. The Presenter reads every key.
 //!
-//! The typed API key is the Presenter's, held as a secret, and the form draws it masked. It is
-//! never stored (ADR-0043).
+//! The typed API key is the Presenter's, held as a secret, and the form draws it masked, with no
+//! way to reveal it: a Custom source's under Authentication, and CoinGecko's optional Demo key on
+//! its Edit Dialog. A saved key shows only as the field's placeholder, and Remove key clears it on
+//! Save. The Ledger keeps it encrypted (ADR-0043).
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_shell::Hint;
 use lib_units::Updates;
 use lib_units::presenter::{
-    AuthChoice, PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter,
+    ApiKeyView, AuthChoice, PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter,
     PriceSourceFormViewModel,
 };
 use lib_viper::view::{Choice, SelectView, TextFieldView};
@@ -72,6 +74,14 @@ fn focused(view: &PriceSourceFormViewModel) -> Option<PriceSourceField> {
     if view.updates.focused {
         return Some(PriceSourceField::Updates);
     }
+    if let Some(api_key) = &view.api_key {
+        if api_key.field.focused {
+            return Some(PriceSourceField::ApiKey);
+        }
+        if api_key.remove_focused {
+            return Some(PriceSourceField::RemoveKey);
+        }
+    }
     let endpoint = view.endpoint.as_ref()?;
     [
         (text_focus(&endpoint.address), PriceSourceField::Address),
@@ -85,10 +95,6 @@ fn focused(view: &PriceSourceFormViewModel) -> Option<PriceSourceField> {
         (
             endpoint.key_param.as_ref().is_some_and(text_focus),
             PriceSourceField::KeyParam,
-        ),
-        (
-            endpoint.api_key.as_ref().is_some_and(text_focus),
-            PriceSourceField::ApiKey,
         ),
     ]
     .into_iter()
@@ -265,13 +271,11 @@ fn render_custom(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) ->
                     true,
                 ))
             }))
-            .children(endpoint.api_key.as_ref().map(|api_key| {
-                div().flex_1().min_w(px(0.0)).child(text(
-                    "price-source-api-key",
-                    api_key,
-                    PriceSourceField::ApiKey,
-                    true,
-                ))
+            .children(view.api_key.as_ref().map(|api_key| {
+                div()
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .child(key_box(api_key, actions, cx))
             }))
             .into_any_element(),
         test_not_built(
@@ -281,15 +285,8 @@ fn render_custom(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) ->
             cx,
         ),
     ];
-    if let Some(note) = &endpoint.key_note {
-        fields.push(
-            div()
-                .debug_selector(|| "price-source-key-note".to_string())
-                .text_size(px(11.5))
-                .text_color(color::faint_text(cx))
-                .child(note.clone())
-                .into_any_element(),
-        );
+    if let Some(api_key) = &view.api_key {
+        fields.push(key_remove_and_note(api_key, actions, cx));
     }
     fields.extend(view.usage.clone().map(|usage| {
         div()
@@ -324,6 +321,10 @@ fn render_built_in(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) 
             cx,
         ),
     ];
+    if let Some(api_key) = &view.api_key {
+        fields.push(key_box(api_key, actions, cx));
+        fields.push(key_remove_and_note(api_key, actions, cx));
+    }
     fields.extend(view.usage.clone().map(|usage| {
         div()
             .debug_selector(|| "edit-built-in-source-usage".to_string())
@@ -345,6 +346,65 @@ fn render_built_in(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) 
         actions,
         cx,
     )
+}
+
+/// The API key field, masked, its placeholder saying a saved key is kept. Off, it takes no click and
+/// draws faint, its note saying why.
+fn key_box(api_key: &ApiKeyView, actions: &Clicks, cx: &App) -> AnyElement {
+    let field = text_box(
+        "price-source-api-key",
+        &api_key.field,
+        PriceSourceField::ApiKey,
+        true,
+        actions,
+        cx,
+    );
+    if api_key.enabled {
+        return field;
+    }
+    div()
+        .debug_selector(|| "price-source-api-key-off".to_string())
+        .opacity(0.45)
+        .occlude()
+        .child(field)
+        .into_any_element()
+}
+
+/// Remove key, while there is a saved key, then where the key is kept or why the field is off.
+fn key_remove_and_note(api_key: &ApiKeyView, actions: &Clicks, cx: &App) -> AnyElement {
+    let remove = api_key.remove.clone().map(|label| {
+        let on_click = actions.send(PriceSourceFormEvent::RemoveKey);
+        div()
+            .id("price-source-remove-key")
+            .debug_selector(|| "price-source-remove-key".to_string())
+            .flex_none()
+            .cursor_pointer()
+            .py(px(5.0))
+            .px(px(10.0))
+            .border_1()
+            .border_color(if api_key.remove_focused {
+                color::accent(cx)
+            } else {
+                color::border(cx)
+            })
+            .text_size(px(12.0))
+            .font_weight(gpui::FontWeight::BOLD)
+            .on_click(move |_event, window, cx| on_click(window, cx))
+            .child(label)
+    });
+    div()
+        .flex()
+        .items_center()
+        .gap(px(10.0))
+        .children(remove)
+        .child(
+            div()
+                .debug_selector(|| "price-source-key-note".to_string())
+                .text_size(px(11.5))
+                .text_color(color::faint_text(cx))
+                .child(api_key.note.clone()),
+        )
+        .into_any_element()
 }
 
 /// The card: title, the fields, Cancel and the submit.
@@ -459,7 +519,35 @@ fn readback(view: &PriceSourceFormViewModel) -> Vec<(&'static str, String)> {
             "key_param",
             text(endpoint.and_then(|e| e.key_param.as_ref())),
         ),
-        ("api_key", text(endpoint.and_then(|e| e.api_key.as_ref()))),
+        ("api_key", text(view.api_key.as_ref().map(|key| &key.field))),
+        (
+            "api_key_placeholder",
+            view.api_key
+                .as_ref()
+                .map(|key| key.field.placeholder.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "api_key_enabled",
+            view.api_key
+                .as_ref()
+                .map(|key| key.enabled.to_string())
+                .unwrap_or_default(),
+        ),
+        (
+            "remove_key",
+            view.api_key
+                .as_ref()
+                .and_then(|key| key.remove.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "key_note",
+            view.api_key
+                .as_ref()
+                .map(|key| key.note.clone())
+                .unwrap_or_default(),
+        ),
         (
             "field",
             focused(view)

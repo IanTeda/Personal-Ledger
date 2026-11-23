@@ -10,8 +10,9 @@ use std::rc::Rc;
 
 use lib_core::{AccountType, Money, PriceSourceId, UnitId};
 use lib_toast::Notify;
+use secrecy::SecretString;
 
-use crate::{PriceSource, PriceSourceRecord, UnitRow, price_source, price_sources};
+use crate::{PriceSource, PriceSourceRecord, Result, UnitRow, price_source, price_sources};
 
 /// The Units on the Ledger.
 pub trait UnitRepository {
@@ -43,6 +44,42 @@ pub trait PriceSourceRepository {
     fn upsert_price_source(&mut self, record: PriceSourceRecord);
 
     fn delete_price_source(&mut self, id: PriceSourceId);
+}
+
+/// What the Ledger holds for a Price Source's API key, as this device reads it: the pane's API key
+/// fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyState {
+    NotSet,
+    Saved,
+    /// A key is saved but won't decrypt here: no API key secret, or another device's (ADR-0043).
+    Unreadable,
+}
+
+/// The API keys a Ledger keeps for its Price Sources, built-ins included. The adapter encrypts
+/// them with this device's API key secret (ADR-0043), so a key goes in and comes out only as a
+/// [`SecretString`], and a write is never undoable.
+pub trait PriceSourceKeys {
+    /// `source`'s key, or `None` when there is none or it won't decrypt here, which reads as Key
+    /// missing.
+    fn key(&self, source: PriceSourceId) -> Option<SecretString>;
+
+    fn key_state(&self, source: PriceSourceId) -> KeyState;
+
+    /// Whether this device may write keys on this Ledger: its secret matches the one the Ledger's
+    /// keys were saved with, or the Ledger has none. One secret per Ledger, so the key field is
+    /// off otherwise.
+    fn can_write(&self) -> bool;
+
+    /// Stores `key` for `source`, replacing any.
+    ///
+    /// # Errors
+    /// [`crate::Error::KeysLocked`] when [`Self::can_write`] is false, and
+    /// [`crate::Error::KeyNotSaved`] when no API key secret could be made for it.
+    fn store_key(&mut self, source: PriceSourceId, key: SecretString) -> Result<()>;
+
+    /// Removes `source`'s key, if it has one.
+    fn remove_key(&mut self, source: PriceSourceId);
 }
 
 /// Which Unit is the base: what new Accounts default to and what the net worth is figured in.
@@ -113,6 +150,12 @@ pub trait UnitsPorts {
 
     fn holdings(&self) -> &dyn UnitHoldings;
 
+    fn keys(&self) -> &dyn PriceSourceKeys;
+
+    /// The keys for one write, apart from [`Self::split_mut`]'s ports: a key write is never undone
+    /// with the rows it is saved beside.
+    fn keys_mut(&mut self) -> &mut dyn PriceSourceKeys;
+
     fn split_mut(&mut self) -> PortsMut<'_>;
 
     /// The Price Sources as the Presenters list them, read once from the stored records.
@@ -174,10 +217,7 @@ pub enum UnitChange {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnitsOutcome {
     /// What a Dialog did to the Unit `code`.
-    Unit {
-        change: UnitChange,
-        code: String,
-    },
+    Unit { change: UnitChange, code: String },
     /// A price was set by hand for the Unit `code`, in the week starting `week`.
     PriceSet {
         code: String,
@@ -185,12 +225,12 @@ pub enum UnitsOutcome {
     },
     SourceSaved {
         name: String,
+        /// The source, when the save stored a key for it: its Key missing and Key rejected
+        /// failures clear.
+        key_stored: Option<PriceSourceId>,
     },
     /// `moved` Units fell back to Manual entry.
-    SourceDeleted {
-        name: String,
-        moved: usize,
-    },
+    SourceDeleted { name: String, moved: usize },
 }
 
 /// A Units Dialog, as the page asks the Router to open it and as its view model names the one

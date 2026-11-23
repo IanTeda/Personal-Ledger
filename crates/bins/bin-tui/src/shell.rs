@@ -138,6 +138,10 @@ pub struct Shell {
     /// Writes Display's Configuration rows to the user's `personal-ledger.conf`. A `Shell` built
     /// without one has nowhere to write, so those rows stay read-only.
     config_writer: ConfigWriter,
+    /// `[Secrets] api_key_secret`, which each Ledger opened reads its Price Source API keys with,
+    /// and where one generated for a Ledger's first key is kept (ADR-0043). A `Shell` built
+    /// without Configuration keeps a generated one in memory only.
+    api_key_secret: lib_database::ApiKeySecret,
     /// The recent `tracing` events `main` captures, which Settings › Logs shows. A `Shell` built
     /// without one holds an empty buffer nothing feeds.
     logs: LogBuffer,
@@ -268,6 +272,7 @@ impl Shell {
             settings_page: Rc::default(),
             settings_values: Rc::default(),
             config_writer: ConfigWriter::default(),
+            api_key_secret: lib_database::ApiKeySecret::in_memory(None),
             logs: LogBuffer::new(LOG_CAPACITY),
             outside: Box::new(System),
             account_popup: None,
@@ -361,7 +366,9 @@ impl Shell {
 
     /// Applies `config`'s `[General]` and `[Display]` values, a device's settings among them (ADR-0053):
     /// Toasts, the Colour Theme and Appearance, the date style and On start. Settings › General
-    /// and Display show them and write their rows through `writer` (#904). Call it after
+    /// and Display show them and write their rows through `writer` (#904). It keeps `[Secrets]`'
+    /// API key secret for each Ledger opened after, generated into `writer`'s file if a Ledger's
+    /// first key needs one. Call it after
     /// [`Self::with_colours`], whose `Colours` it sets the colour keys on.
     pub fn with_configuration(mut self, config: &lib_config::Config, writer: ConfigWriter) -> Self {
         self.toasts.set_display(Display {
@@ -375,6 +382,10 @@ impl Shell {
         values.configuration = Configuration::from_config(config, &writer);
         values.ledger_folder = config.general.data().to_path_buf();
         drop(values);
+        self.api_key_secret = lib_database::ApiKeySecret::new(
+            config.secrets.api_key_secret().cloned(),
+            writer.clone(),
+        );
         self.config_writer = writer;
         self
     }
@@ -397,6 +408,7 @@ impl Shell {
             stores,
             lib_core::Clock::new(|| Local::now().date_naive()),
             &self.keybindings,
+            self.api_key_secret.clone(),
         );
         // The Units' price fetching, on a feed of this Ledger's own, dropped with it (ADR-0062).
         let feed = self.price_feeds.as_ref().and_then(|feeds| feeds());

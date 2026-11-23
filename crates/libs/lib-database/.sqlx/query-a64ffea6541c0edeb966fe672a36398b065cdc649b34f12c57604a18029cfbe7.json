@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO price_source_keys (price_source_id, nonce, ciphertext, key_check)\n                         VALUES (?, ?, ?, ?)\n                         ON CONFLICT(price_source_id) DO UPDATE SET\n                             nonce = excluded.nonce,\n                             ciphertext = excluded.ciphertext,\n                             key_check = excluded.key_check",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "a64ffea6541c0edeb966fe672a36398b065cdc649b34f12c57604a18029cfbe7"
+}

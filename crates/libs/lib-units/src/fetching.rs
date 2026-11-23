@@ -13,8 +13,11 @@ use std::rc::Rc;
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use lib_core::{Money, PriceSourceId, UnitId};
+use secrecy::{ExposeSecret as _, SecretString};
 
-use crate::{Endpoint, PriceLink, PriceSource, PriceSourceAuth, UnitRow, Updates, WeeklyPrice};
+use crate::{
+    Endpoint, KeyPlacement, PriceLink, PriceSource, PriceSourceAuth, UnitRow, Updates, WeeklyPrice,
+};
 
 /// The shortest a failing source or Unit is left alone, whatever its source's Updates.
 pub const MIN_BACK_OFF: Duration = Duration::minutes(15);
@@ -169,17 +172,18 @@ pub(crate) fn read(outcome: &TransportOutcome, price_path: &str) -> Reading {
     }
 }
 
-/// Whether `source` needs an API key this Client doesn't have. No key is stored on any device yet
-/// (#1391), so every source that needs one is missing it; one whose key is optional, as
+/// Whether `endpoint` needs an API key and `key`, the one this Client reads for its source, is
+/// none: a missing key or one that won't decrypt here. A source whose key is optional, as
 /// CoinGecko's is, is asked keyless instead.
-pub(crate) fn key_missing(endpoint: &Endpoint) -> bool {
-    matches!(
-        endpoint.auth,
-        PriceSourceAuth::ApiKey {
-            optional: false,
-            ..
-        }
-    )
+pub(crate) fn key_missing(endpoint: &Endpoint, key: Option<&SecretString>) -> bool {
+    key.is_none()
+        && matches!(
+            endpoint.auth,
+            PriceSourceAuth::ApiKey {
+                optional: false,
+                ..
+            }
+        )
 }
 
 /// Names one request sent, so its response can be matched to what asked for it.
@@ -196,10 +200,43 @@ pub enum Method {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PriceRequest {
     pub method: Method,
+    /// Never holds the key, so the request can be printed and traced.
     pub url: String,
     /// Header names and values, in the order sent.
     pub headers: Vec<(String, String)>,
+    /// The source's API key, which the transport puts where `placement` says as the request goes
+    /// out: the only place it is exposed (ADR-0043).
+    pub key: Option<RequestKey>,
 }
+
+/// An API key a request carries: a query parameter or a header named `name`.
+#[derive(Clone)]
+pub struct RequestKey {
+    pub placement: KeyPlacement,
+    pub name: String,
+    pub value: SecretString,
+}
+
+/// The key's name and placement, never the key.
+impl std::fmt::Debug for RequestKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RequestKey")
+            .field("placement", &self.placement)
+            .field("name", &self.name)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Equal when the same key goes in the same place: what a test asks of a request it recorded.
+impl PartialEq for RequestKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.placement == other.placement
+            && self.name == other.name
+            && self.value.expose_secret() == other.value.expose_secret()
+    }
+}
+
+impl Eq for RequestKey {}
 
 /// Sends a request without waiting: its response comes back later as a [`PriceResponse`], which
 /// the Client hands to [`crate::presenter::FetchedPricesPresenter`] through its input door.
@@ -585,13 +622,27 @@ fn fill(text: &str, symbol: &str, quote: &str) -> String {
 }
 
 /// The request asking `endpoint` for `symbol`'s price in `quote` (the quote Unit's code), carrying
-/// the endpoint's fixed headers, and the price path filled the same way. No key goes with it yet:
-/// none is stored (#1391), so a source whose key is optional is asked keyless.
+/// the endpoint's fixed headers and `key` where its authentication places it, and the price path
+/// filled the same way. With no key, a source whose key is optional is asked keyless.
 pub(crate) fn price_request(
     endpoint: &Endpoint,
     symbol: &str,
     quote: &str,
+    key: Option<SecretString>,
 ) -> (PriceRequest, String) {
+    let key = match (&endpoint.auth, key) {
+        (
+            PriceSourceAuth::ApiKey {
+                placement, name, ..
+            },
+            Some(value),
+        ) => Some(RequestKey {
+            placement: *placement,
+            name: name.to_string(),
+            value,
+        }),
+        (PriceSourceAuth::None, _) | (PriceSourceAuth::ApiKey { .. }, None) => None,
+    };
     let request = PriceRequest {
         method: Method::Get,
         url: format!(
@@ -604,6 +655,7 @@ pub(crate) fn price_request(
             .iter()
             .map(|header| (header.name.to_string(), header.value.to_string()))
             .collect(),
+        key,
     };
     (request, fill(&endpoint.price_path, symbol, quote))
 }
@@ -629,7 +681,7 @@ mod tests {
     fn frankfurters_request_is_v2_rate_for_the_symbol_in_the_quote() {
         let endpoint = &built_in(FRANKFURTER).expect("a built-in").endpoint;
 
-        let (request, path) = price_request(endpoint, "EUR", "AUD");
+        let (request, path) = price_request(endpoint, "EUR", "AUD", None);
 
         assert_eq!(
             request,
@@ -637,6 +689,7 @@ mod tests {
                 method: Method::Get,
                 url: "https://api.frankfurter.dev/v2/rate/EUR/AUD".into(),
                 headers: Vec::new(),
+                key: None,
             }
         );
         assert_eq!(path, "/rate");
@@ -646,7 +699,7 @@ mod tests {
     fn coingeckos_request_and_price_path_read_its_lower_case_keys_through_quote_lower() {
         let endpoint = &built_in(COINGECKO).expect("a built-in").endpoint;
 
-        let (request, path) = price_request(endpoint, "Bitcoin", "AUD");
+        let (request, path) = price_request(endpoint, "Bitcoin", "AUD", None);
 
         assert_eq!(
             request,
@@ -655,6 +708,7 @@ mod tests {
                 url: "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=aud"
                     .into(),
                 headers: Vec::new(),
+                key: None,
             },
             "keyless while no key is stored, so no key header"
         );
@@ -662,10 +716,61 @@ mod tests {
     }
 
     #[test]
+    fn coingecko_with_a_demo_key_sends_it_in_its_header() {
+        let endpoint = &built_in(COINGECKO).expect("a built-in").endpoint;
+
+        let (request, _) = price_request(endpoint, "bitcoin", "AUD", Some("CG-demo".into()));
+
+        assert_eq!(
+            request.key,
+            Some(RequestKey {
+                placement: KeyPlacement::Header,
+                name: "x-cg-demo-api-key".into(),
+                value: "CG-demo".into(),
+            })
+        );
+        assert!(!request.url.contains("CG-demo"));
+    }
+
+    #[test]
+    fn a_keyed_custom_sources_key_goes_in_its_parameter_but_never_in_the_url_or_debug() {
+        let endpoint = Endpoint {
+            address: "https://prices.example".to_string().into(),
+            request: "/q?s={symbol}".to_string().into(),
+            price_path: "/price".to_string().into(),
+            auth: PriceSourceAuth::ApiKey {
+                placement: KeyPlacement::Param,
+                name: "apikey".to_string().into(),
+                optional: false,
+            },
+            headers: Vec::new().into(),
+        };
+
+        let (request, _) = price_request(&endpoint, "ABC", "USD", Some("s3cr3t".into()));
+
+        let key = request.key.as_ref().expect("the key goes with it");
+        assert_eq!(
+            (key.placement, key.name.as_str(), key.value.expose_secret()),
+            (KeyPlacement::Param, "apikey", "s3cr3t")
+        );
+        assert_eq!(request.url, "https://prices.example/q?s=ABC");
+        assert!(!format!("{request:?}").contains("s3cr3t"));
+    }
+
+    #[test]
+    fn a_source_with_no_authentication_sends_no_key_even_if_one_is_saved() {
+        let endpoint = &built_in(FRANKFURTER).expect("a built-in").endpoint;
+
+        let (request, _) = price_request(endpoint, "EUR", "AUD", Some("stray".into()));
+
+        assert_eq!(request.key, None);
+    }
+
+    #[test]
     fn yahoos_request_carries_its_user_agent() {
         let endpoint = &built_in(YAHOO_FINANCE).expect("a built-in").endpoint;
 
-        let (request, path) = price_request(endpoint, "BHP.AX", "AUD");
+        let (request, path) = price_request(endpoint, "BHP.AX", "AUD", None);
 
         assert_eq!(
             request.url,
@@ -701,7 +806,7 @@ mod tests {
             .into(),
         };
 
-        let (request, path) = price_request(&endpoint, "ABC", "USD");
+        let (request, path) = price_request(&endpoint, "ABC", "USD", None);
 
         assert_eq!(request.url, "https://prices.example/q/ABC/usd");
         assert_eq!(
@@ -721,16 +826,19 @@ mod tests {
             request: "/{symbol}".to_string().into(),
             price_path: "/price".to_string().into(),
             auth: PriceSourceAuth::ApiKey {
-                placement: crate::KeyPlacement::Header,
+                placement: KeyPlacement::Header,
                 name: "x-api-key".to_string().into(),
                 optional,
             },
             headers: Vec::new().into(),
         };
-        assert!(key_missing(&keyed(false)));
-        assert!(!key_missing(&keyed(true)));
+        let key = SecretString::from("k3y");
+        assert!(key_missing(&keyed(false), None));
+        assert!(!key_missing(&keyed(false), Some(&key)));
+        assert!(!key_missing(&keyed(true), None));
         assert!(!key_missing(
-            &built_in(COINGECKO).expect("a built-in").endpoint
+            &built_in(COINGECKO).expect("a built-in").endpoint,
+            None
         ));
     }
 
@@ -740,7 +848,7 @@ mod tests {
 
         fn priced(source: PriceSourceId, symbol: &str, quote: &str, body: &str) -> Reading {
             let endpoint = &built_in(source).expect("a built-in").endpoint;
-            let (_, path) = price_request(endpoint, symbol, quote);
+            let (_, path) = price_request(endpoint, symbol, quote, None);
             read(
                 &TransportOutcome::Answered {
                     status: 200,
@@ -778,7 +886,7 @@ mod tests {
         fn yahoos_not_found_reply_is_not_found() {
             let body = include_str!("../fixtures/prices/yahoo_chart_not_found.json");
             let endpoint = &built_in(YAHOO_FINANCE).expect("a built-in").endpoint;
-            let (_, path) = price_request(endpoint, "NOPE.AX", "AUD");
+            let (_, path) = price_request(endpoint, "NOPE.AX", "AUD", None);
             assert_eq!(
                 read(
                     &TransportOutcome::Answered {

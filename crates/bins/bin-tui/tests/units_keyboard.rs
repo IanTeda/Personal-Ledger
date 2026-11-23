@@ -691,3 +691,43 @@ fn f_on_a_price_source_row_fetches_its_units_and_toasts_the_start_then_the_outco
     let frame = screen(&mut shell);
     assert!(frame.contains("Fetched EUR at 1.65 AUD"), "{frame}");
 }
+
+#[test]
+fn coingeckos_edit_dialog_takes_a_masked_demo_key_and_remove_key_clears_it() {
+    let mut shell = shell();
+    // The sources list by name, so CoinGecko is first.
+    press(&mut shell, "g u Tab");
+    let pane = common::screen_sized(&mut shell, 220, 60);
+    assert!(
+        pane.contains("API key") && pane.contains("Not set"),
+        "{pane}"
+    );
+
+    press(&mut shell, "e");
+    press(&mut shell, "Tab Tab");
+    type_text(&mut shell, "demo");
+    let typed = screen(&mut shell);
+    assert!(
+        typed.contains("\u{2022}\u{2022}\u{2022}\u{2022}"),
+        "{typed}"
+    );
+    assert!(!typed.contains("demo"), "never drawn:\n{typed}");
+    press(&mut shell, "Enter");
+    let saved = common::screen_sized(&mut shell, 220, 60);
+    assert!(saved.contains("Saved"), "{saved}");
+
+    press(&mut shell, "e");
+    let open = screen(&mut shell);
+    assert!(
+        open.contains("Key saved · leave blank to keep it"),
+        "{open}"
+    );
+    assert!(open.contains("[ Remove key ]"), "{open}");
+    press(&mut shell, "Tab Tab Tab Enter");
+    let removed = screen(&mut shell);
+    assert!(!removed.contains("[ Remove key ]"), "{removed}");
+    press(&mut shell, "Enter");
+
+    let cleared = common::screen_sized(&mut shell, 220, 60);
+    assert!(cleared.contains("Not set"), "{cleared}");
+}

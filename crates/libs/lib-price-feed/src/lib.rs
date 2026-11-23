@@ -4,6 +4,8 @@
 //! over a channel the bin polls and hands to `lib-units` through its input door.
 //!
 //! It knows nothing about providers: the URL, headers and how to read the answer are `lib-units`'.
+//! An API key comes as a `SecretString` and is exposed only here, as it goes into the request, so
+//! no URL or header it is handed and nothing it traces ever holds one (ADR-0043).
 
 mod error;
 
@@ -12,9 +14,10 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
 use lib_units::{
-    Method, PriceRequest, PriceResponse, PriceTransport, RequestId, TransportError,
-    TransportOutcome,
+    KeyPlacement, Method, PriceRequest, PriceResponse, PriceTransport, RequestId, RequestKey,
+    TransportError, TransportOutcome,
 };
+use secrecy::ExposeSecret as _;
 use tokio::runtime::Handle;
 
 pub use error::{Error, Result};
@@ -60,6 +63,17 @@ impl PriceTransport for PriceFeed {
         let mut builder = self.client.request(method, &request.url);
         for (name, value) in &request.headers {
             builder = builder.header(name, value);
+        }
+        if let Some(RequestKey {
+            placement,
+            name,
+            value,
+        }) = &request.key
+        {
+            builder = match placement {
+                KeyPlacement::Header => builder.header(name, value.expose_secret()),
+                KeyPlacement::Param => builder.query(&[(name, value.expose_secret())]),
+            };
         }
         let responses = self.responses.clone();
         self.runtime.spawn(async move {
@@ -133,6 +147,42 @@ mod tests {
             method: Method::Get,
             url,
             headers: vec![("user-agent".into(), "Personal-Ledger/test".into())],
+            key: None,
+        }
+    }
+
+    /// The first request a listener receives, lower-cased, answered with an empty 200.
+    async fn received(listener: TcpListener) -> String {
+        let (mut socket, _) = listener.accept().await.expect("a connection");
+        let mut request = [0_u8; 1024];
+        let read = socket.read(&mut request).await.expect("the request");
+        let reply = "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}";
+        socket.write_all(reply.as_bytes()).await.expect("the reply");
+        String::from_utf8_lossy(&request[..read]).to_lowercase()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_key_goes_in_its_header_or_its_query_parameter() {
+        for (placement, expected) in [
+            (KeyPlacement::Header, "x-cg-demo-api-key: k3y"),
+            (KeyPlacement::Param, "get /v2/rate/eur/aud?apikey=k3y "),
+        ] {
+            let (listener, address) = listener().await;
+            let server = tokio::spawn(received(listener));
+            let mut request = get(format!("{address}/v2/rate/EUR/AUD"));
+            request.key = Some(RequestKey {
+                placement,
+                name: match placement {
+                    KeyPlacement::Header => "x-cg-demo-api-key".into(),
+                    KeyPlacement::Param => "apikey".into(),
+                },
+                value: "k3y".into(),
+            });
+
+            fetch(request, TIMEOUT).await;
+
+            let text = server.await.expect("the server ran");
+            assert!(text.contains(expected), "{placement:?}: {text}");
         }
     }
 

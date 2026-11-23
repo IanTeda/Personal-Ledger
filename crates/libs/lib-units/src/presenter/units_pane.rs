@@ -14,7 +14,7 @@ use super::unit_prices::price_figures;
 use super::units_page::{ActivityLine, MenuAction, Row, SourceKind, UnitsPageEvent, UnitsRow};
 use super::{ago, joined, updates_label};
 use crate::fetching::PriceFetching;
-use crate::protocols::UnitsPorts;
+use crate::protocols::{KeyState, UnitsPorts};
 use crate::{
     COINGECKO, MANUAL_ENTRY, PriceSource, PriceSourceAuth, SourceOrigin, UnitRow, YAHOO_FINANCE,
     last_fetched, msg,
@@ -453,7 +453,7 @@ fn source_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> SourceGroup 
     ];
     let custom = kind == SourceKind::Custom;
     if custom {
-        // The key parameter's name, never the key: the key is never stored (ADR-0043).
+        // The key parameter's name, never the key, which shows only as the API key fact below.
         let (auth, key_param) = match &endpoint.auth {
             PriceSourceAuth::None => (msg::units_price_source_auth_none(), msg::units_none()),
             PriceSourceAuth::ApiKey { name, .. } => {
@@ -465,6 +465,14 @@ fn source_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> SourceGroup 
             msg::units_price_source_field_key_param(),
             key_param,
         ));
+    }
+    if matches!(endpoint.auth, PriceSourceAuth::ApiKey { .. }) {
+        let state = match input.ports.keys().key_state(source.id) {
+            KeyState::Saved => msg::units_pane_api_key_saved(),
+            KeyState::NotSet => msg::units_pane_api_key_not_set(),
+            KeyState::Unreadable => msg::units_pane_api_key_unreadable(),
+        };
+        facts.push(Fact::plain(msg::units_pane_api_key(), state));
     }
     facts.push(Fact::plain(
         msg::units_price_source_field_updates(),

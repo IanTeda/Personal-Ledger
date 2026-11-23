@@ -57,13 +57,14 @@ impl FetchNow {
             .unit(unit.link.quote)
             .ok_or(Error::QuoteGone)?;
         let settings = SourceSettings::of(&source);
-        if key_missing(endpoint) {
+        let key = ports.keys().key(source.id);
+        if key_missing(endpoint, key.as_ref()) {
             let failure = Some(FetchFailure::KeyMissing);
             fetching.record_source(source.id, &settings, now, failure);
             fetching.record_unit(unit.id, unit.link, &settings, now, failure);
             return Err(Error::KeyMissing);
         }
-        let (request, price_path) = price_request(endpoint, &unit.link.symbol, &quote.code);
+        let (request, price_path) = price_request(endpoint, &unit.link.symbol, &quote.code, key);
         // A round of one, asked for, so its outcome is told.
         let round = fetching.open_round(&source, true);
         Ok(fetching.send(

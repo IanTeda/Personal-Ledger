@@ -172,6 +172,7 @@ pub fn build(
         cx,
     );
     shell.configuration = configuration;
+    shell.api_key_secret = device.api_key_secret();
     if let Some(ledger) = ledger {
         shell.open_ledger(ledger, cx);
     }
@@ -229,6 +230,8 @@ pub struct Root {
     debug_toast_kind: usize,
     /// The `[keybindings]` in effect, which a Ledger opened at run time builds its keymaps from.
     keybindings: lib_config::KeyBindingConfig,
+    /// The device's API key secret, which each Ledger opened reads its Price Source keys with.
+    api_key_secret: lib_database::ApiKeySecret,
     /// The configuration file Settings writes, which a THIS DEVICE page names on the status line.
     configuration_file: Option<std::path::PathBuf>,
     /// Everything built on the Ledger file, `None` with no Ledger open: the one source of truth
@@ -307,6 +310,7 @@ impl Root {
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,
             keybindings: keybindings.clone(),
+            api_key_secret: lib_database::ApiKeySecret::in_memory(None),
             creation,
             folders,
             configuration_file: snapshot.file.clone(),

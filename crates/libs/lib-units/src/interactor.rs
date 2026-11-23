@@ -16,6 +16,7 @@ mod fetch_now;
 mod fetch_source;
 mod reactivate_unit;
 mod record_fetched_prices;
+mod save_price_source_key;
 mod set_base_unit;
 mod set_price;
 
@@ -32,5 +33,6 @@ pub use fetch_now::FetchNow;
 pub use fetch_source::FetchSource;
 pub use reactivate_unit::ReactivateUnit;
 pub use record_fetched_prices::{FetchedPrice, RecordFetchedPrices, RoundOutcome};
+pub use save_price_source_key::{KeyChange, SavePriceSourceKey};
 pub use set_base_unit::SetBaseUnit;
 pub use set_price::SetPrice;

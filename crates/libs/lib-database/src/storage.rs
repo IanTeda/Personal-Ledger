@@ -19,6 +19,7 @@ use crate::{
 /// each Interactor call, and the writer every adapter saves through, with its failure reports.
 pub struct Storage {
     pub units: UnitsAdapter,
+    pub price_source_keys: crate::PriceSourceKeysAdapter,
     pub institutions: InstitutionsAdapter,
     pub accounts: AccountsAdapter,
     pub categories: CategoriesAdapter,
@@ -47,6 +48,7 @@ pub struct Storage {
 /// commit returns names every domain the input wrote.
 pub struct Stores {
     pub units: store::Recorded<dyn store::UnitsStore>,
+    pub price_source_keys: store::Recorded<dyn crate::PriceSourceKeysStore>,
     pub institutions: store::Recorded<dyn store::InstitutionsStore>,
     pub accounts: store::Recorded<dyn store::AccountsStore>,
     pub categories: store::Recorded<dyn store::CategoriesStore>,
@@ -87,6 +89,7 @@ impl Stores {
             journal: self.units.journal().clone(),
             stores: store::SharedStores {
                 units: Rc::new(std::cell::RefCell::new(self.units)),
+                price_source_keys: Rc::new(std::cell::RefCell::new(self.price_source_keys)),
                 institutions: Rc::new(std::cell::RefCell::new(self.institutions)),
                 accounts: Rc::new(std::cell::RefCell::new(self.accounts)),
                 categories: Rc::new(std::cell::RefCell::new(self.categories)),
@@ -108,6 +111,7 @@ impl Stores {
 /// The stores [`Stores::new`] wraps, unrecorded: the adapters or the in-memory fakes.
 pub struct StoreParts {
     pub units: Box<dyn store::UnitsStore>,
+    pub price_source_keys: Box<dyn crate::PriceSourceKeysStore>,
     pub institutions: Box<dyn store::InstitutionsStore>,
     pub accounts: Box<dyn store::AccountsStore>,
     pub categories: Box<dyn store::CategoriesStore>,
@@ -133,6 +137,11 @@ impl Stores {
         use crate::Domain;
         Self {
             units: store::Recorded::new(Domain::Units, written.clone(), parts.units),
+            price_source_keys: store::Recorded::new(
+                Domain::Units,
+                written.clone(),
+                parts.price_source_keys,
+            ),
             institutions: store::Recorded::new(
                 Domain::Institutions,
                 written.clone(),
@@ -164,6 +173,7 @@ impl From<Storage> for Stores {
         Self::new(
             StoreParts {
                 units: Box::new(storage.units),
+                price_source_keys: Box::new(storage.price_source_keys),
                 institutions: Box::new(storage.institutions),
                 accounts: Box::new(storage.accounts),
                 categories: Box::new(storage.categories),
@@ -220,6 +230,7 @@ pub fn open_storage(path: &Path) -> Result<Storage> {
     if BudgetsAdapter::is_empty(&writer)? || DocumentsAdapter::has_no_types(&writer)? {
         return Err(Error::IncompleteLedger);
     }
+    let price_source_keys = crate::PriceSourceKeysAdapter::load(pending.clone())?;
     let institutions = InstitutionsAdapter::load(pending.clone())?;
     let accounts = AccountsAdapter::load(pending.clone())?;
     let categories = CategoriesAdapter::load(pending.clone())?;
@@ -232,6 +243,7 @@ pub fn open_storage(path: &Path) -> Result<Storage> {
     let documents = DocumentsAdapter::load(pending.clone())?;
     Ok(Storage {
         units,
+        price_source_keys,
         institutions,
         accounts,
         categories,
@@ -771,7 +783,11 @@ mod committed_tests {
         for stores in [fakes(), file(dir.path()).0] {
             let shared = stores.share();
             let tags = shared.stores.tags.borrow().tags().tags();
-            let (ledger, _) = crate::LedgerPorts::over(shared, lib_core::Clock::fixed(today()));
+            let (ledger, _) = crate::LedgerPorts::over(
+                shared,
+                lib_core::Clock::fixed(today()),
+                crate::ports::test_support::secret(),
+            );
             let ports = ledger.tag_removal();
             let mut removal = ports.removal.borrow_mut();
             let source = tags

@@ -11,12 +11,14 @@ use chrono::{DateTime, Utc};
 use lib_core::{PriceSourceId, UnitId};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
+use secrecy::{ExposeSecret as _, SecretString};
 
 use crate::fetching::{PriceRequest, PriceResponse, PriceTransport, RequestId, TransportOutcome};
 use crate::protocols::{PortsMut, SharedPorts, UnitsDialog, UnitsOutcome, UnitsPorts, UnitsRouter};
 use crate::{
-    BaseUnitRepository, Holding, PriceSourceRecord, PriceSourceRepository, UnitHoldings,
-    UnitRepository, UnitRow, UnitUsage, UnitUse, sample_units,
+    BaseUnitRepository, Error, Holding, KeyState, PriceSourceKeys, PriceSourceRecord,
+    PriceSourceRepository, Result, UnitHoldings, UnitRepository, UnitRow, UnitUsage, UnitUse,
+    sample_units,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -100,6 +102,107 @@ impl UnitHoldings for InMemoryHoldings {
     }
 }
 
+/// One key as [`InMemoryKeys`] holds it.
+#[derive(Clone)]
+pub enum InMemoryKey {
+    Saved(SecretString),
+    /// Saved with another secret, so it reads as no key.
+    Unreadable,
+}
+
+/// The Price Sources' API keys in plain memory: the adapter's encryption is `lib-database`'s, so
+/// a test sets what this device can read directly. `locked` stands for a Ledger whose keys another
+/// device's secret wrote, `unsaved` for a secret that couldn't be kept.
+#[derive(Clone, Default)]
+pub struct InMemoryKeys {
+    pub keys: HashMap<PriceSourceId, InMemoryKey>,
+    pub locked: bool,
+    pub unsaved: bool,
+}
+
+impl InMemoryKeys {
+    /// The keys this device can read, exposed for a test's assertions.
+    pub fn exposed(&self) -> HashMap<PriceSourceId, String> {
+        self.keys
+            .iter()
+            .filter_map(|(id, key)| match key {
+                InMemoryKey::Saved(key) => Some((*id, key.expose_secret().to_string())),
+                InMemoryKey::Unreadable => None,
+            })
+            .collect()
+    }
+}
+
+/// Only which sources hold a key, never a key.
+impl std::fmt::Debug for InMemoryKeys {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut sources: Vec<_> = self.keys.keys().collect();
+        sources.sort();
+        f.debug_struct("InMemoryKeys")
+            .field("sources", &sources)
+            .field("locked", &self.locked)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Equal when the same sources hold the same keys: a fake's, compared only by tests.
+impl PartialEq for InMemoryKeys {
+    fn eq(&self, other: &Self) -> bool {
+        let unreadable = |keys: &Self| {
+            let mut ids: Vec<_> = keys
+                .keys
+                .iter()
+                .filter(|(_, key)| matches!(key, InMemoryKey::Unreadable))
+                .map(|(id, _)| *id)
+                .collect();
+            ids.sort();
+            ids
+        };
+        self.locked == other.locked
+            && self.unsaved == other.unsaved
+            && self.exposed() == other.exposed()
+            && unreadable(self) == unreadable(other)
+    }
+}
+
+impl Eq for InMemoryKeys {}
+
+impl PriceSourceKeys for InMemoryKeys {
+    fn key(&self, source: PriceSourceId) -> Option<SecretString> {
+        match self.keys.get(&source)? {
+            InMemoryKey::Saved(key) => Some(key.clone()),
+            InMemoryKey::Unreadable => None,
+        }
+    }
+
+    fn key_state(&self, source: PriceSourceId) -> KeyState {
+        match self.keys.get(&source) {
+            None => KeyState::NotSet,
+            Some(InMemoryKey::Saved(_)) => KeyState::Saved,
+            Some(InMemoryKey::Unreadable) => KeyState::Unreadable,
+        }
+    }
+
+    fn can_write(&self) -> bool {
+        !self.locked
+    }
+
+    fn store_key(&mut self, source: PriceSourceId, key: SecretString) -> Result<()> {
+        if self.locked {
+            return Err(Error::KeysLocked);
+        }
+        if self.unsaved {
+            return Err(Error::KeyNotSaved);
+        }
+        self.keys.insert(source, InMemoryKey::Saved(key));
+        Ok(())
+    }
+
+    fn remove_key(&mut self, source: PriceSourceId) {
+        self.keys.remove(&source);
+    }
+}
+
 /// Every Units port in memory, together, so a test can hand an Interactor the ones it takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InMemoryPorts {
@@ -108,6 +211,7 @@ pub struct InMemoryPorts {
     pub base_unit: InMemoryBaseUnit,
     pub usage: InMemoryUnitUsage,
     pub holdings: InMemoryHoldings,
+    pub keys: InMemoryKeys,
 }
 
 impl InMemoryPorts {
@@ -123,6 +227,7 @@ impl InMemoryPorts {
             base_unit: InMemoryBaseUnit(UnitId::SEED_AUD),
             usage: InMemoryUnitUsage::default(),
             holdings: InMemoryHoldings::default(),
+            keys: InMemoryKeys::default(),
         }
     }
 }
@@ -155,6 +260,14 @@ impl UnitsPorts for InMemoryPorts {
 
     fn holdings(&self) -> &dyn UnitHoldings {
         &self.holdings
+    }
+
+    fn keys(&self) -> &dyn PriceSourceKeys {
+        &self.keys
+    }
+
+    fn keys_mut(&mut self) -> &mut dyn PriceSourceKeys {
+        &mut self.keys
     }
 
     fn split_mut(&mut self) -> PortsMut<'_> {

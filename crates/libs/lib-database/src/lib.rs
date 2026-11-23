@@ -73,14 +73,17 @@ pub use adapter::ledger::{LedgerAdapter, LedgerRow};
 // composition root builds it rather than taking it from `LedgerPorts` (#1212).
 pub use adapter::ledger_creation::{LedgerCreationAdapter, remove_ledger_files};
 pub use adapter::payees::PayeesAdapter;
+pub use adapter::price_source_keys::{
+    ApiKeySecret, InMemorySealedKeys, PriceSourceKeysAdapter, PriceSourceKeysStore, SealedKey,
+};
 pub(crate) use adapter::settings::{LedgerPreferencesAdapter, StoredSettingsReads};
 pub use adapter::store::{
     AccountsStore, BillsStore, BudgetsStore, CategoriesStore, CountingCommit, DocumentsStore,
     FakeStores, InstitutionsStore, InventoryStore, LedgerStore, PayeesStore, Recorded,
     SharedAccountsStore, SharedBillsStore, SharedBudgetsStore, SharedCategoriesStore,
     SharedDocumentsStore, SharedInstitutionsStore, SharedInventoryStore, SharedLedgerStore,
-    SharedPayeesStore, SharedStores, SharedTagsStore, SharedTransactionsStore, SharedUnitsStore,
-    TagsStore, TransactionsStore, UnitsStore,
+    SharedPayeesStore, SharedPriceSourceKeysStore, SharedStores, SharedTagsStore,
+    SharedTransactionsStore, SharedUnitsStore, TagsStore, TransactionsStore, UnitsStore,
 };
 pub(crate) use adapter::tag_removal::TagRemovalAdapter;
 pub use adapter::tags::TagsAdapter;

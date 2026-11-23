@@ -43,13 +43,22 @@ lib_category_deletion = { path = "../../../crates/libs/lib-category-deletion" }
 lib_transaction_import = { path = "../../../crates/libs/lib-transaction-import" }
 
 ## -- Workspace Shared Dependencies --
+## The API key secret's key derivation (ADR-0043).
+argon2 = { workspace = true }
+## A generated API key secret's spelling.
+base64 = { workspace = true }
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
 csv = { workspace = true }
 ## The dev seed (`seed::fake`) generates its rows, so this is not only for tests.
 fake = { workspace = true }
+## Nonces and a generated API key secret.
+rand = { workspace = true }
 regex = { workspace = true }
+secrecy = { workspace = true }
 serde = { workspace = true }
+## key_check's HMAC.
+sha2 = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
@@ -57,7 +66,10 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 
 ## -- Library Dependencies --
-
+## The Price Source API keys' cipher, XChaCha20-Poly1305 (ADR-0043).
+chacha20poly1305 = { version = "0.10.1" }
+## key_check, a keyed fingerprint of the derived key.
+hmac = { version = "0.12.1" }
 
 
 [dev-dependencies]

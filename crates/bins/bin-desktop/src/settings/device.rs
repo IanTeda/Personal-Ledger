@@ -93,20 +93,37 @@ pub struct ConfiguredDevice {
     ports: DevicePorts,
     /// What the running input changed in the file, shared with `Root`, whose `send` takes it.
     journal: ConfigJournal,
+    /// `[Secrets] api_key_secret`, which every Ledger this device opens reads its Price Source
+    /// API keys with, and where one generated for a Ledger's first key is kept (ADR-0043).
+    api_key_secret: lib_database::ApiKeySecret,
 }
 
 impl ConfiguredDevice {
     pub fn new(config: &lib_config::Config, writer: ConfigWriter) -> Self {
-        Self::over(DeviceConfigFile::new(config, writer))
+        let api_key_secret = lib_database::ApiKeySecret::new(
+            config.secrets.api_key_secret().cloned(),
+            writer.clone(),
+        );
+        Self {
+            api_key_secret,
+            ..Self::over(DeviceConfigFile::new(config, writer))
+        }
     }
 
-    /// `file` journalling into a journal of its own.
+    /// `file` journalling into a journal of its own, with no API key secret until a Ledger's first
+    /// key generates one, kept in memory only.
     pub fn over(file: DeviceConfigFile) -> Self {
         let journal = ConfigJournal::default();
         Self {
             ports: DevicePorts::new(Rc::new(file)).logging(Rc::new(journal.clone())),
             journal,
+            api_key_secret: lib_database::ApiKeySecret::in_memory(None),
         }
+    }
+
+    /// The device's API key secret, shared by every Ledger it opens.
+    pub(crate) fn api_key_secret(&self) -> lib_database::ApiKeySecret {
+        self.api_key_secret.clone()
     }
 
     /// The ports the This device pages' Presenters write through.

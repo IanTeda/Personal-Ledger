@@ -52,6 +52,8 @@ pub(crate) use inventory::StoredInventoryPorts;
 pub(crate) use payees::StoredPayeesPorts;
 pub(crate) use tags::StoredTagsPorts;
 pub(crate) use transactions::StoredTransactionsPorts;
+#[cfg(test)]
+pub(crate) use units::StoredPriceSourceKeys;
 pub(crate) use units::StoredUnitsPorts;
 
 use std::cell::RefCell;
@@ -156,17 +158,26 @@ pub struct LedgerPorts {
 
 impl LedgerPorts {
     /// Shares out each of `stores` once and builds every domain's ports and the cross-domain
-    /// adapters over them. `clock` is what the Categories ports read the day from on each call.
+    /// adapters over them. `clock` is what the Categories ports read the day from on each call,
+    /// and `secret` the device's API key secret the Price Source keys are opened with (ADR-0043).
     /// Returns them with the writer's failed writes, for the Client to reload and announce.
-    pub fn new(stores: Stores, clock: Clock) -> (Self, mpsc::Receiver<WriteFailure>) {
-        Self::over(stores.share(), clock)
+    pub fn new(
+        stores: Stores,
+        clock: Clock,
+        secret: crate::ApiKeySecret,
+    ) -> (Self, mpsc::Receiver<WriteFailure>) {
+        Self::over(stores.share(), clock, secret)
     }
 
     /// Builds every domain's ports and the cross-domain adapters over `shared`, the stores a
     /// caller shared out itself so it keeps a handle on them: a test reading rows back (#1117), or
     /// the TUI until #805. A Client opening a Ledger file builds with [`LedgerPorts::new`] instead.
     /// Returns them with the writer's failed writes, for the Client to reload and announce.
-    pub fn over(shared: SharedLedger, clock: Clock) -> (Self, mpsc::Receiver<WriteFailure>) {
+    pub fn over(
+        shared: SharedLedger,
+        clock: Clock,
+        secret: crate::ApiKeySecret,
+    ) -> (Self, mpsc::Receiver<WriteFailure>) {
         let SharedLedger {
             stores,
             journal,
@@ -242,6 +253,8 @@ impl LedgerPorts {
                     inventory: stores.inventory.clone(),
                     institutions: stores.institutions.clone(),
                 },
+                stores.price_source_keys.clone(),
+                secret,
             ))),
             unit_deletion: Rc::new(RefCell::new(UnitDeletionAdapter::new(
                 stores.units.clone(),
@@ -582,11 +595,17 @@ pub(crate) mod test_support {
         NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
     }
 
+    /// The API key secret a test Client holds: set, and kept in memory only.
+    pub(crate) fn secret() -> crate::ApiKeySecret {
+        crate::ApiKeySecret::in_memory(Some("a test device's api key secret".into()))
+    }
+
     /// The Sample Ledger in memory, as the UI tests build the Client on it.
     pub fn fakes() -> LedgerPorts {
         LedgerPorts::new(
             Stores::fake(FakeStores::sample(today())).0,
             Clock::fixed(today()),
+            secret(),
         )
         .0
     }
@@ -598,6 +617,7 @@ pub(crate) mod test_support {
         LedgerPorts::new(
             Stores::from(open_storage(&path).expect("the Ledger opens")),
             Clock::fixed(today()),
+            secret(),
         )
         .0
     }

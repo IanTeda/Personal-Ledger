@@ -13,6 +13,7 @@
 //!   Toasts, the Locale, the data dir and the Ledger file), ADR-0057
 //! - [`display`] - `[Display]` section: Settings › Display's keys
 //! - [`logs`] - `[Logs]` section: the log level and file, read by all three binaries
+//! - [`secrets`] - `[Secrets]` section: the device's API key secret, never printed
 //! - [`sync_server`] - Sync-Server-only configuration (bind address, database URI), not
 //!   read by Clients
 //! - [`theme`] - `[theme]`/`[theme.light]`/`[theme.dark]` Colour Role overrides, read by
@@ -44,6 +45,7 @@ mod keys;
 mod ledger;
 mod logs;
 mod overrides;
+mod secrets;
 mod sync_server;
 mod theme;
 mod writer;
@@ -79,6 +81,9 @@ pub use writer::ConfigWriter;
 /// Each key a source above the user's file sets, recorded as the parse and the flags apply
 /// precedence, and the source that does.
 pub use overrides::{Overrides, Shadow};
+
+/// `[Secrets]`: the device's API key secret, which encrypts the Ledger's Price Source API keys.
+pub use secrets::SecretsConfig;
 
 /// Sync-Server-only configuration (bind address and database URI).
 pub use sync_server::SyncServerConfig;

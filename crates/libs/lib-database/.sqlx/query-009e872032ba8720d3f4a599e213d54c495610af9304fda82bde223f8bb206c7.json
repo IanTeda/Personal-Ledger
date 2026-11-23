@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM price_source_keys WHERE price_source_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "009e872032ba8720d3f4a599e213d54c495610af9304fda82bde223f8bb206c7"
+}

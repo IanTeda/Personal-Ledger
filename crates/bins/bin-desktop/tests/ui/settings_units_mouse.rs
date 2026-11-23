@@ -813,3 +813,46 @@ fn fetch_price_now_is_in_the_unit_and_source_row_menus_and_the_pane_and_clicking
             .contains(&"Already fetching prices from CoinGecko".to_string())
     );
 }
+
+#[gpui::test]
+fn clicking_coingeckos_key_field_takes_a_demo_key_and_remove_key_clears_it(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+    let row = source_row(&mut ui, "CoinGecko");
+    ui.double_click(&row);
+    assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+    assert_eq!(
+        ui.dialog_value("remove_key").as_deref(),
+        Some(""),
+        "no key yet"
+    );
+
+    ui.click("price-source-api-key");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("ApiKey"));
+    ui.press("d e m o");
+    assert_eq!(
+        ui.dialog_value("api_key").as_deref(),
+        Some("\u{2022}\u{2022}\u{2022}\u{2022}")
+    );
+    ui.click("edit-built-in-source-confirm");
+    assert_eq!(ui.dialog(), None);
+
+    ui.double_click(&row);
+    assert_eq!(
+        ui.dialog_value("api_key_placeholder").as_deref(),
+        Some("Key saved · leave blank to keep it")
+    );
+    ui.click("price-source-remove-key");
+    assert_eq!(ui.dialog_value("remove_key").as_deref(), Some(""));
+    assert_eq!(ui.dialog_value("api_key_placeholder").as_deref(), Some(""));
+    ui.click("edit-built-in-source-confirm");
+    assert_eq!(ui.dialog(), None);
+
+    ui.double_click(&row);
+    assert_eq!(
+        ui.dialog_value("remove_key").as_deref(),
+        Some(""),
+        "the key went on Save"
+    );
+}

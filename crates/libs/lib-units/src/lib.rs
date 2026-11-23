@@ -35,10 +35,12 @@ pub use entity::{
 pub use error::{Error, Result};
 pub use fetching::{
     FetchFailure, FetchOutcome, LastFetch, MIN_BACK_OFF, Method, PriceFetching, PriceRequest,
-    PriceResponse, PriceTransport, RequestId, SharedFetching, TransportError, TransportOutcome,
+    PriceResponse, PriceTransport, RequestId, RequestKey, SharedFetching, TransportError,
+    TransportOutcome,
 };
 pub use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 pub use protocols::{
-    BaseUnitRepository, Holding, PortsMut, PriceSourceRepository, SharedPorts, UnitHoldings,
-    UnitRepository, UnitUsage, UnitUse, UnitsDialog, UnitsPorts, UnitsRouter,
+    BaseUnitRepository, Holding, KeyState, PortsMut, PriceSourceKeys, PriceSourceRepository,
+    SharedPorts, UnitHoldings, UnitRepository, UnitUsage, UnitUse, UnitsDialog, UnitsPorts,
+    UnitsRouter,
 };

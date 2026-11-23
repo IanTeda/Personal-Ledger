@@ -36,7 +36,11 @@ impl FetchDue {
                 continue;
             };
             let settings = SourceSettings::of(&listed);
-            if listed.endpoint().is_some_and(key_missing) {
+            let key = ports.keys().key(source);
+            if listed
+                .endpoint()
+                .is_some_and(|endpoint| key_missing(endpoint, key.as_ref()))
+            {
                 tracing::warn!(price_source_id = %source, "A price source needs an API key this Client doesn't have");
                 fetching.record_source(source, &settings, self.now, Some(FetchFailure::KeyMissing));
                 for (_, sent) in requests {
@@ -98,7 +102,9 @@ impl FetchDue {
                 tracing::warn!(unit_id = %unit.id, "Skipped a due Unit whose quote Unit is gone");
                 continue;
             };
-            let (request, price_path) = price_request(endpoint, &unit.link.symbol, &quote.code);
+            let key = ports.keys().key(source.id);
+            let (request, price_path) =
+                price_request(endpoint, &unit.link.symbol, &quote.code, key);
             let sent = InFlight {
                 unit: unit.id,
                 link: unit.link.clone(),

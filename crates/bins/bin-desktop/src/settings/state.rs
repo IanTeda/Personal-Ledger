@@ -841,6 +841,7 @@ mod tests {
         let (storage, _) = lib_database::LedgerPorts::new(
             lib_database::Stores::fake(lib_database::FakeStores::sample(today)).0,
             lib_core::Clock::fixed(today),
+            lib_database::ApiKeySecret::in_memory(None),
         );
         let clock = lib_core::Clock::fixed(today);
         let setup = SettingsSetup {

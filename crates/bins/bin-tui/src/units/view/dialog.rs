@@ -64,6 +64,11 @@ enum Item {
         focused: bool,
     },
     Heading(String),
+    /// A button in the form, as Remove key: Enter presses it while it has focus.
+    Button {
+        label: String,
+        focused: bool,
+    },
     Note(String),
     Fact(String, String),
     Refusal(String),
@@ -300,8 +305,6 @@ impl Dialog {
                     items.push(Item::Note(endpoint.headers_help));
                     items.push(select(&endpoint.auth));
                     items.extend(endpoint.key_param.map(Item::Text));
-                    items.extend(endpoint.api_key.map(Item::Text));
-                    items.extend(endpoint.key_note.map(Item::Note));
                 }
                 items.extend(
                     view.built_in_facts
@@ -309,6 +312,14 @@ impl Dialog {
                         .map(|(label, value)| Item::Fact(label, value)),
                 );
                 items.extend(view.built_in_help.map(Item::Note));
+                if let Some(api_key) = view.api_key {
+                    items.push(Item::Text(api_key.field));
+                    items.extend(api_key.remove.map(|label| Item::Button {
+                        label,
+                        focused: api_key.remove_focused,
+                    }));
+                    items.push(Item::Note(api_key.note));
+                }
                 items.extend(view.usage.map(Item::Note));
                 (view.frame, view.refusal)
             }
@@ -368,6 +379,14 @@ fn price_source_event(
     form: Option<FormKey>,
     key: KeyEvent,
 ) -> Option<PriceSourceFormEvent> {
+    let view = presenter.view_model();
+    let api_key_view = view.api_key.as_ref();
+    // Remove key empties the typed key too, so the mirror follows it.
+    if matches!(form, Some(FormKey::Confirm)) && api_key_view.is_some_and(|key| key.remove_focused)
+    {
+        *api_key = SecretString::from(String::new());
+        return Some(PriceSourceFormEvent::RemoveKey);
+    }
     // The selects (Updates, Authentication) step through the Presenter, which knows the focus.
     match form {
         Some(FormKey::Cancel) => return Some(PriceSourceFormEvent::Cancel),
@@ -382,17 +401,16 @@ fn price_source_event(
         KeyCode::Right => return Some(PriceSourceFormEvent::Step(1)),
         _ => {}
     }
-    let view = presenter.view_model();
     if view.name.focused {
         return edited(&view.name.text, key)
             .map(|text| PriceSourceFormEvent::Text(PriceSourceField::Name, text));
     }
-    let endpoint = view.endpoint?;
-    if endpoint.api_key.as_ref().is_some_and(|field| field.focused) {
+    if api_key_view.is_some_and(|key| key.field.focused && key.enabled) {
         let typed = edited(api_key.expose_secret(), key)?;
         *api_key = SecretString::from(typed);
         return Some(PriceSourceFormEvent::ApiKey(api_key.clone()));
     }
+    let endpoint = view.endpoint?;
     let fields = [
         (Some(endpoint.address), PriceSourceField::Address),
         (Some(endpoint.request), PriceSourceField::Request),
@@ -543,6 +561,14 @@ fn item_line<'a>(item: &'a Item, c: &Colours) -> Line<'a> {
                 Span::raw(value.as_str())
             };
             Line::from(vec![label(text, *focused), value])
+        }
+        Item::Button { label, focused } => {
+            let text = format!("[ {label} ]");
+            Line::from(if *focused {
+                Span::styled(text, c.selection())
+            } else {
+                Span::raw(text)
+            })
         }
         Item::Heading(text) => Line::from(Span::styled(text.as_str(), c.muted())),
         Item::Note(text) => Line::from(Span::styled(text.as_str(), c.muted())),
