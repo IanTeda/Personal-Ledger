@@ -159,21 +159,6 @@ tui-settings-ledger-owner-none = none
 tui-settings-ledger-changed = { $field } changed to { $value }
 tui-settings-ledger-owner-cleared = owner cleared
 
-## The financial year's start months.
-
-tui-settings-month-january = january
-tui-settings-month-february = february
-tui-settings-month-march = march
-tui-settings-month-april = april
-tui-settings-month-may = may
-tui-settings-month-june = june
-tui-settings-month-july = july
-tui-settings-month-august = august
-tui-settings-month-september = september
-tui-settings-month-october = october
-tui-settings-month-november = november
-tui-settings-month-december = december
-
 ## Settings › Ledger's THIS LEDGER box and its note.
 
 tui-settings-ledger-this-ledger = this ledger

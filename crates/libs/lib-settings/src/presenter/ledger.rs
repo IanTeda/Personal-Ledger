@@ -371,7 +371,7 @@ impl LedgerPresenter {
         self.preferences.set_financial_year_start(start);
         router.notify(Notice::Changed(changed(
             &msg::settings_ledger_financial_year(),
-            &lib_locale::format::format_month(start.month()),
+            &lib_locale::format::format_month_name(start.month()),
         )));
     }
 
@@ -574,7 +574,7 @@ impl Presenter for LedgerPresenter {
                         .into_iter()
                         .map(|start| Choice {
                             value: start,
-                            label: lib_locale::format::format_month(start.month()),
+                            label: lib_locale::format::format_month_name(start.month()),
                         })
                         .collect(),
                     chosen: Some(self.units.financial_year_start()),

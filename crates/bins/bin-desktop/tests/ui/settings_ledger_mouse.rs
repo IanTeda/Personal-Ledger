@@ -170,7 +170,7 @@ fn the_financial_year_select_opens_on_a_click_and_saves_the_month_clicked(
     app: &mut TestAppContext,
 ) {
     let mut ui = on_ledger(app);
-    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("Jul"));
+    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("July"));
 
     ui.click("settings-ledger-financial-year");
     assert!(ledger(&mut ui).list_open);
@@ -191,5 +191,5 @@ fn a_click_away_from_an_open_list_saves_its_highlight(app: &mut TestAppContext) 
 
     let page = ledger(&mut ui);
     assert!(!page.list_open);
-    assert_eq!(page.financial_year.as_deref(), Some("Jun"));
+    assert_eq!(page.financial_year.as_deref(), Some("June"));
 }

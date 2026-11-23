@@ -22,7 +22,7 @@ mod time;
 pub use amount::{Amount, AmountStyle, Places, format_amount, parse_positive_amount};
 pub use casing::upper;
 pub use currency::{Unit, format_money};
-pub use date::{format_date, format_month, format_month_day, format_year_month};
+pub use date::{format_date, format_month, format_month_day, format_month_name, format_year_month};
 pub use input::{
     DateField, DateInputError, DateInputOptions, date_error_message, format_date_input,
     ledger_name_error_message, optional_date_message, parse_date, parse_date_with,

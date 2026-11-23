@@ -176,20 +176,7 @@ pub fn month_key(start: FinancialYearStart) -> &'static str {
 
 /// A financial year start month's label.
 pub fn month_label(start: FinancialYearStart) -> String {
-    match start.month() {
-        1 => msg::tui_settings_month_january(),
-        2 => msg::tui_settings_month_february(),
-        3 => msg::tui_settings_month_march(),
-        4 => msg::tui_settings_month_april(),
-        5 => msg::tui_settings_month_may(),
-        6 => msg::tui_settings_month_june(),
-        7 => msg::tui_settings_month_july(),
-        8 => msg::tui_settings_month_august(),
-        9 => msg::tui_settings_month_september(),
-        10 => msg::tui_settings_month_october(),
-        11 => msg::tui_settings_month_november(),
-        _ => msg::tui_settings_month_december(),
-    }
+    lib_locale::format::format_month_name(start.month())
 }
 
 /// What saving a value to one of the Ledger's Preferences did.

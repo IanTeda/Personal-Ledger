@@ -14,8 +14,8 @@ use chrono::{NaiveDate, NaiveTime};
 use lib_core::{DateStyle, Money, UnitKind};
 use lib_locale::format::{
     Amount, AmountStyle, Unit, format_amount, format_count, format_date, format_money,
-    format_month, format_month_day, format_number, format_time, format_time_minutes,
-    format_year_month, parse_positive_amount, upper,
+    format_month, format_month_day, format_month_name, format_number, format_time,
+    format_time_minutes, format_year_month, parse_positive_amount, upper,
 };
 use lib_locale::{Locale, with_locale};
 
@@ -303,6 +303,17 @@ fn months_are_named_by_the_locale() {
         assert_eq!(format_year_month(2025, 9), "Sep 2025");
     });
     with_locale(Locale::EnXa, || assert_eq!(format_month(9), "Sep"));
+}
+
+#[test]
+fn month_names_are_full_in_the_locale() {
+    with_locale(Locale::EnAu, || {
+        assert_eq!(format_month_name(9), "September");
+        assert_eq!(format_month_name(13), "13");
+    });
+    with_locale(Locale::EnUs, || {
+        assert_eq!(format_month_name(9), "September")
+    });
 }
 
 #[test]

@@ -5163,7 +5163,7 @@ mod tests {
         press(&mut shell, &[KeyCode::Tab]);
         let text = drawn(&mut shell);
         assert!(
-            row_of(&text, "financial year starts").contains("january"),
+            row_of(&text, "financial year starts").contains("January"),
             "{text}"
         );
         assert_eq!(
@@ -5185,16 +5185,16 @@ mod tests {
         for needle in [
             "this year runs",
             "was",
-            "july ·",
+            "July ·",
             "budget years",
-            "january",
-            "december",
+            "January",
+            "December",
         ] {
             assert!(text.contains(needle), "{needle} missing:\n{text}");
         }
         let footer = lines(&text).last().copied().unwrap_or_default();
         assert!(
-            footer.contains("j/k choose") && footer.contains("esc keep july"),
+            footer.contains("j/k choose") && footer.contains("esc keep July"),
             "{text}"
         );
     }
@@ -5774,7 +5774,7 @@ mod tests {
         assert_eq!(stored(&shell).2.month(), 10);
         assert_eq!(
             shell.status_message.as_deref(),
-            Some("financial year starts changed to october")
+            Some("financial year starts changed to October")
         );
         let text = drawn(&mut shell);
         assert!(
@@ -5782,7 +5782,7 @@ mod tests {
             "{text}"
         );
         assert!(
-            row_of(&text, "financial year starts").contains("october"),
+            row_of(&text, "financial year starts").contains("October"),
             "{text}"
         );
     }
@@ -5883,7 +5883,7 @@ mod tests {
         assert_eq!(stored(&shell).2.month(), 5);
         assert_eq!(
             shell.status_message.as_deref(),
-            Some("financial year starts changed to may")
+            Some("financial year starts changed to May")
         );
     }
 

@@ -16,6 +16,7 @@ thread_local! {
     static FORMATTERS: Cache<(Locale, u8), DateTimeFormatter<YMD>> = Cache::default();
     static YEAR_MONTH: Cache<Locale, DateTimeFormatter<YM>> = Cache::default();
     static MONTH: Cache<Locale, DateTimeFormatter<M>> = Cache::default();
+    static MONTH_NAME: Cache<Locale, DateTimeFormatter<M>> = Cache::default();
     static MONTH_DAY: Cache<Locale, DateTimeFormatter<MD>> = Cache::default();
 }
 
@@ -96,6 +97,24 @@ fn try_month(month: u32) -> Result<String> {
             .map_err(|error| Error::Format(format!("month formatter for {locale}: {error}")))
     })?;
     Ok(formatter.format(&first_of_month(2026, month)?).to_string())
+}
+
+fn try_month_name(month: u32) -> Result<String> {
+    let locale = crate::locale();
+    let formatter = cached(&MONTH_NAME, locale, || {
+        DateTimeFormatter::try_new(icu_locale(locale)?.into(), M::long())
+            .map_err(|error| Error::Format(format!("month-name formatter for {locale}: {error}")))
+    })?;
+    Ok(formatter.format(&first_of_month(2026, month)?).to_string())
+}
+
+/// A month's full name in the Locale (`September`), for a field value that names a month. Falls
+/// back to the month number if it is not a real month.
+pub fn format_month_name(month: u32) -> String {
+    try_month_name(month).unwrap_or_else(|error| {
+        tracing::warn!(%error, "month-name formatting failed; using the number");
+        month.to_string()
+    })
 }
 
 /// A month and year for a chart axis or heading, abbreviated by the Locale (`Mar 2025`). Falls back

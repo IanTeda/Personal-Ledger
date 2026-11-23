@@ -341,37 +341,37 @@ fn a_g_jump_away_saves_an_open_list(app: &mut TestAppContext) {
     ui.press("g d");
     assert_eq!(ui.noun(), Noun::Dashboard);
     ui.press("g s");
-    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("Aug"));
+    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("August"));
 }
 
 #[gpui::test]
 fn the_financial_year_list_moves_without_saving_and_enter_saves_it(app: &mut TestAppContext) {
     let mut ui = on_ledger(app);
     ui.press("l j j");
-    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("Jul"));
+    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("July"));
 
     ui.press("enter");
     assert!(ledger(&mut ui).list_open);
     ui.press("j j j");
     assert_eq!(
         ledger(&mut ui).financial_year.as_deref(),
-        Some("Jul"),
+        Some("July"),
         "moving writes nothing"
     );
 
     ui.press("enter");
     let page = ledger(&mut ui);
     assert!(!page.list_open);
-    assert_eq!(page.financial_year.as_deref(), Some("Oct"));
+    assert_eq!(page.financial_year.as_deref(), Some("October"));
 
     ui.press("u");
-    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("Jul"));
+    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("July"));
     assert_eq!(
         status(&mut ui).as_deref(),
-        Some("Undid Financial year starts changed to Oct")
+        Some("Undid Financial year starts changed to October")
     );
     ui.press("ctrl-r");
-    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("Oct"));
+    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("October"));
 }
 
 #[gpui::test]
@@ -381,11 +381,11 @@ fn esc_collapses_the_list_without_saving_and_l_changes_nothing(app: &mut TestApp
 
     let page = ledger(&mut ui);
     assert!(!page.list_open);
-    assert_eq!(page.financial_year.as_deref(), Some("Jul"));
+    assert_eq!(page.financial_year.as_deref(), Some("July"));
     assert!(ui.settings_frame().page_focused);
 
     ui.press("l");
-    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("Jul"));
+    assert_eq!(ledger(&mut ui).financial_year.as_deref(), Some("July"));
 }
 
 #[gpui::test]

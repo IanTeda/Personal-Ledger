@@ -372,7 +372,7 @@ mod tests {
             "owner",
             "Sam Sample",
             "financial year starts",
-            "july",
+            "July",
             "base unit",
             "aud — Australian Dollar",
             "this ledger",
