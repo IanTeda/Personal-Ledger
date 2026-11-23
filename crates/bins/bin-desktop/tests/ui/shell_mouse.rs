@@ -129,9 +129,12 @@ fn the_caret_lists_three_changes_newest_first_with_relative_times(app: &mut Test
     assert_eq!(
         rows,
         [
-            ("Language and region: English (Australia)", "just now"),
-            ("Start view: Last view", "just now"),
-            ("On start: Start with no Ledger open", "just now"),
+            (
+                "Language and region changed to English (Australia)",
+                "just now"
+            ),
+            ("Start view changed to Last view", "just now"),
+            ("On start changed to Start with no Ledger open", "just now"),
         ]
     );
 }

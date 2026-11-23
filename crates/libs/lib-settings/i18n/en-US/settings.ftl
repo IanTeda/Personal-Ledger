@@ -171,5 +171,6 @@ settings-display-note = These belong to this device and never sync: each is save
 settings-display-colour-theme = Colour theme
 settings-display-colour-appearance = Appearance
 
-## What History calls a change a This device page saved, for Undo and Redo to name it (#1244).
-settings-changed = { $field }: { $value }
+## What History calls a change a Settings page saved, for Undo and Redo to name it (#1244). Every
+## Changed Toast reads the same, `$field` the field's label and `$value` what it now holds (#1363).
+settings-changed = { $field } changed to { $value }

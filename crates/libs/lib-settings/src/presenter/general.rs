@@ -615,7 +615,7 @@ impl GeneralPresenter {
     }
 
     /// What History calls a saved change of `field` to `value`: the field's name and the value's,
-    /// as the page shows them ("Toasts: Off").
+    /// as the page shows them ("Toasts changed to Off").
     fn change_label(&self, field: GeneralField, value: &FieldValue) -> String {
         let view = self.form.view(field);
         let name = view
@@ -1270,7 +1270,9 @@ mod tests {
         assert_eq!(
             router.routed,
             [
-                Routed::Notice(Notice::Changed("Data folder: /home/me/finance".to_string())),
+                Routed::Notice(Notice::Changed(
+                    "Data folder changed to /home/me/finance".to_string()
+                )),
                 Routed::Notice(Notice::Toast(
                     ToastKind::Success,
                     "Data folder is now /home/me/finance".to_string()
@@ -1429,14 +1431,17 @@ mod tests {
         assert_eq!(
             changes(&router),
             [
-                "Toasts: Off",
-                "Language and region: English (United Kingdom)",
-                "Language and region: System",
-                "On start: Start with no Ledger open",
-                "Start view: bills",
+                "Toasts changed to Off",
+                "Language and region changed to English (United Kingdom)",
+                "Language and region changed to System",
+                "On start changed to Start with no Ledger open",
+                "Start view changed to bills",
             ]
         );
-        assert_eq!(changes(&picked), ["Data folder: /home/me/finance"]);
+        assert_eq!(
+            changes(&picked),
+            ["Data folder changed to /home/me/finance"]
+        );
     }
 
     #[test]

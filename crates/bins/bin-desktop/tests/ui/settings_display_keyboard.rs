@@ -457,7 +457,10 @@ fn u_undoes_a_display_field_and_ctrl_r_redoes_it(app: &mut TestAppContext) {
     ui.press("u");
     assert_eq!(ui.conf(), "[Display]\n");
     assert_eq!(ui.settings::<SettingsDisplaySnapshot>().date_style, None);
-    assert!(status_message(&mut ui).is_some_and(|text| text.starts_with("Undid Date format: ")));
+    assert!(
+        status_message(&mut ui)
+            .is_some_and(|text| text.starts_with("Undid Date format changed to "))
+    );
 
     ui.press("ctrl-r");
     assert_eq!(ui.conf(), "[Display]\ndate_style = short\n");

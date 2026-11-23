@@ -463,9 +463,9 @@ impl LedgerPresenter {
     }
 }
 
-/// What History calls a saved field.
+/// What History and the Changed Toast call a saved field.
 fn changed(label: &str, value: &str) -> String {
-    msg::settings_ledger_changed(label, value)
+    msg::settings_changed(label, value)
 }
 
 impl Presenter for LedgerPresenter {
@@ -1096,7 +1096,10 @@ mod tests {
         );
 
         assert_eq!(base(&presenter), Some(UnitId::SEED_VAS));
-        assert_eq!(routed, [changed("Base unit: vas"), Routed::BaseUnitChanged]);
+        assert_eq!(
+            routed,
+            [changed("Base unit changed to vas"), Routed::BaseUnitChanged]
+        );
     }
 
     #[test]
@@ -1136,7 +1139,10 @@ mod tests {
             &[LedgerEvent::ChooseBaseUnit(UnitId::new())],
         ));
         assert_eq!(base(&presenter), Some(UnitId::SEED_BTC));
-        assert_eq!(routed, [changed("Base unit: btc"), Routed::BaseUnitChanged]);
+        assert_eq!(
+            routed,
+            [changed("Base unit changed to btc"), Routed::BaseUnitChanged]
+        );
     }
 
     #[test]

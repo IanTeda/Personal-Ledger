@@ -16,9 +16,6 @@ settings-ledger-summary-units = units
 settings-ledger-summary-institutions = institutions
 settings-ledger-note = Ledger settings are ledger-scoped Preferences that travel with the ledger as Change Sets. What belongs to this device is under General and Display.
 
-## What History calls a saved Ledger name, Owner or Financial year start, for Undo and Redo to
-## name it. `$field` is the field's label, `$value` what it now holds.
-settings-ledger-changed = { $field } changed to { $value }
 settings-ledger-owner-cleared = Owner cleared
 
 ## The status line when the Ledger name field is left blank: the stored name stays.

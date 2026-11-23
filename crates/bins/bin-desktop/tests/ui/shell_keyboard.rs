@@ -329,8 +329,8 @@ fn u_and_ctrl_r_move_entries_across_now_in_the_undo_list(app: &mut TestAppContex
     assert_eq!(
         undo,
         [
-            "Start view: Last view",
-            "On start: Start with no Ledger open"
+            "Start view changed to Last view",
+            "On start changed to Start with no Ledger open"
         ]
     );
     assert!(redo.is_empty());
@@ -344,8 +344,8 @@ fn u_and_ctrl_r_move_entries_across_now_in_the_undo_list(app: &mut TestAppContex
     assert_eq!(
         labels(&mut ui),
         (
-            vec!["On start: Start with no Ledger open".to_string()],
-            vec!["Start view: Last view".to_string()]
+            vec!["On start changed to Start with no Ledger open".to_string()],
+            vec!["Start view changed to Last view".to_string()]
         )
     );
 

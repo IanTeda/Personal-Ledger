@@ -594,7 +594,7 @@ fn u_undoes_a_general_change_and_ctrl_r_redoes_it_saying_so(app: &mut TestAppCon
     );
     assert_eq!(
         status_message(&mut ui).as_deref(),
-        Some("Undid On start: Start with no Ledger open")
+        Some("Undid On start changed to Start with no Ledger open")
     );
 
     ui.press("ctrl-r");
@@ -605,7 +605,7 @@ fn u_undoes_a_general_change_and_ctrl_r_redoes_it_saying_so(app: &mut TestAppCon
     );
     assert_eq!(
         status_message(&mut ui).as_deref(),
-        Some("Redid On start: Start with no Ledger open")
+        Some("Redid On start changed to Start with no Ledger open")
     );
 }
 
@@ -718,7 +718,7 @@ fn a_refused_undo_says_why_and_stays_to_undo_again(app: &mut TestAppContext) {
     assert_eq!(ui.conf(), "[General]\n");
     assert_eq!(
         status_message(&mut ui).as_deref(),
-        Some("Undid On start: Start with no Ledger open")
+        Some("Undid On start changed to Start with no Ledger open")
     );
 }
 
@@ -743,7 +743,10 @@ fn undoing_a_data_folder_puts_back_where_open_starts_with_no_toast(app: &mut Tes
     assert_eq!(ui.toasts().history.len(), toasts, "no Toast on Undo");
     assert_eq!(
         status_message(&mut ui),
-        Some(format!("Undid Data folder: {}", finance.display()))
+        Some(format!(
+            "Undid Data folder changed to {}",
+            finance.display()
+        ))
     );
 
     ui.press("ctrl-r");

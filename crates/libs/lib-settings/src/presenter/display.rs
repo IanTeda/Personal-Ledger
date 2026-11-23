@@ -1019,7 +1019,7 @@ mod tests {
             Some(&ConfigValue::StartSidebarMinimised(true))
         );
         assert_eq!(router.statuses().len(), 1, "the write is reported");
-        assert_eq!(changes(&router), ["Start Sidebar minimised: On"]);
+        assert_eq!(changes(&router), ["Start Sidebar minimised changed to On"]);
         assert!(
             router.displays().is_empty(),
             "the rail changes at the next start, not now"
@@ -1031,7 +1031,7 @@ mod tests {
             [DisplayEvent::Press(DisplayField::StartSidebar)],
         );
         assert!(!display.output().start_sidebar_minimised);
-        assert_eq!(changes(&router), ["Start Sidebar minimised: Off"]);
+        assert_eq!(changes(&router), ["Start Sidebar minimised changed to Off"]);
     }
 
     #[test]
@@ -1415,9 +1415,15 @@ mod tests {
 
         let labels = changes(&router);
         assert_eq!(labels.len(), 3, "{labels:?}");
-        assert!(labels[0].starts_with("Row density: "), "{labels:?}");
-        assert_eq!(labels[1], "Colour theme: Nord");
-        assert!(labels[2].starts_with("Appearance: "), "{labels:?}");
+        assert!(
+            labels[0].starts_with("Row density changed to "),
+            "{labels:?}"
+        );
+        assert_eq!(labels[1], "Colour theme changed to Nord");
+        assert!(
+            labels[2].starts_with("Appearance changed to "),
+            "{labels:?}"
+        );
     }
 
     #[test]

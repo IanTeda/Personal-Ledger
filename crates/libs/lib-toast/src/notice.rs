@@ -8,7 +8,7 @@ use crate::ToastKind;
 pub enum Notice {
     Toast(ToastKind, String),
     Status(String),
-    /// The change this input made, named as Undo and Redo will name it ("Toasts: Off"): the label
+    /// The change this input made, named as Undo and Redo will name it ("Toasts changed to Off"): the label
     /// of the History entry the input's recorded changes become (#1244). Shown nowhere by itself.
     Changed(String),
 }

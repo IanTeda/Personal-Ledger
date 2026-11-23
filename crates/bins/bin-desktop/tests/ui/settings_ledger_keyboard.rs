@@ -122,7 +122,7 @@ fn u_undoes_the_base_unit_and_ctrl_r_redoes_it_saying_so(app: &mut TestAppContex
     assert_eq!(base(&mut ui).as_deref(), Some("aud"));
     assert_eq!(
         ui.read(|shell| shell.status_message()).as_deref(),
-        Some("Undid Base unit: btc")
+        Some("Undid Base unit changed to btc")
     );
 
     ui.press("ctrl-r");
