@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTYPE · Units price history</title>
+<!--
+  PROTOTYPE (throwaway, #1377). Three options for showing a Unit's price history on the Units
+  page, drawn as Window Size cards (Medium 960x1040, Large 1280x800, X-Large 1920x1080) in the
+  16g mockup palette. ?variant=A|B|C&unit=btc|vas|gold|eth, bottom bar or ← → to switch.
+-->
+<style>
+:root{--ink:#201e1d;--paper:#f3f2f2;--chrome:#eae9e9;--muted:#605d5d;--faint:#9b9797;--rule:#d7d3d3;--soft:#bab6b6;--accent:#ec3013;--ok:#2ecc71;--deep:#ae1800}
+*{box-sizing:border-box}
+body{margin:0;background:#cfcbca;color:var(--ink);font:13px/1.4 system-ui,sans-serif;padding:16px 16px 90px}
+h1{font-size:15px;margin:0 0 4px}
+.sub{color:#3d3a39;margin:0 0 12px;max-width:1200px}
+.controls{display:flex;flex-wrap:wrap;gap:12px 24px;margin-bottom:14px;padding:10px 12px;background:var(--paper);border:1px solid var(--soft)}
+.controls label{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px;font-weight:800}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg button{background:#fff;color:var(--ink);border:1px solid var(--soft);padding:4px 9px;font:inherit;font-size:12px;cursor:pointer}
+.seg button.on{background:var(--ink);color:var(--paper);font-weight:700}
+.notes{background:var(--paper);border:1px solid var(--soft);padding:8px 14px;margin-bottom:16px;max-width:1200px}
+.notes li{margin:3px 0}
+.cards{display:flex;flex-direction:column;gap:22px}
+.cardwrap .lbl{font-weight:800;font-size:12px;margin:0 0 6px}
+.cardwrap .lbl span{color:#3d3a39;font-weight:400}
+.scaler{overflow:hidden;border:1px solid #8d8988;box-shadow:0 4px 18px #0003;background:var(--paper)}
+/* window */
+.win{display:flex;flex-direction:column;background:var(--paper);transform-origin:0 0;font-size:13px}
+.hdr{height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:2px solid rgba(32,30,29,.38);background:var(--chrome);font-weight:800}
+.hdr .brand{color:var(--accent)}
+.hdr .crumb{font-weight:800;font-size:15px}
+.body{flex:1;display:flex;min-height:0}
+.rail{flex:none;background:var(--chrome);border-right:2px solid rgba(32,30,29,.38);padding:10px 0}
+.rail .it{display:flex;gap:10px;align-items:center;padding:6px 14px;color:var(--muted);font-weight:600;white-space:nowrap}
+.rail .it i{width:18px;height:18px;border:1.5px solid var(--faint);border-radius:4px;flex:none}
+.rail .it.on{color:var(--ink);background:#d7d3d380}
+.rail .it.on i{border-color:var(--accent)}
+.index{flex:none;width:232px;background:var(--paper);border-right:1px solid var(--rule);padding:12px 0}
+.index .grp{font-size:10px;font-weight:800;letter-spacing:.11em;color:var(--muted);padding:10px 16px 4px}
+.index .it{padding:5px 16px;color:var(--muted)}
+.index .it.on{background:var(--ink);color:var(--paper);font-weight:700}
+.view{flex:1;min-width:0;display:flex}
+.content{flex:1;min-width:0;padding:22px 28px;overflow:hidden;display:flex;flex-direction:column;gap:18px}
+.content h2{margin:0;font-size:22px;font-weight:800}
+.sect{display:flex;flex-direction:column}
+.sect-h{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:5px}
+.caps{font-size:10.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}
+.caps small{letter-spacing:0;text-transform:none;font-weight:400;color:var(--muted);font-size:11.5px;margin-left:8px}
+.plus{width:26px;height:26px;border:1px solid rgba(32,30,29,.3);display:grid;place-items:center;font-weight:800;background:#fff}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{font-size:10px;letter-spacing:.09em;font-weight:800;color:var(--muted);text-align:left;padding:7px 8px;border-bottom:1px solid var(--rule)}
+td{padding:6px 8px;border-bottom:1px solid var(--rule);white-space:nowrap}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.sel td{background:var(--ink);color:var(--paper)}
+tr.sel td.m{color:var(--rule)}
+td.m{color:var(--muted)}
+.up{color:#1e8449}.down{color:var(--deep)}
+.prov{font-size:10px;border:1px solid var(--soft);padding:0 4px;margin-left:6px;color:var(--muted);font-weight:700}
+.flag{color:var(--deep);font-weight:700}
+.legend{font-size:11.5px;color:var(--muted);text-align:right;margin-top:4px}
+.hint{font-size:11.5px;color:var(--muted);margin-top:6px}
+.empty{padding:16px 8px;color:var(--faint);font-size:12px;border-bottom:1px solid var(--rule)}
+th.col-sel,td.col-sel{background:#20201d14;font-weight:800}
+th.col-sel{color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+/* pane */
+.pane{flex:none;width:400px;background:var(--chrome);border-left:2px solid rgba(32,30,29,.38);overflow:hidden}
+.pg-h{padding:14px 16px 8px;border-bottom:2px solid rgba(32,30,29,.38);font-size:10px;font-weight:800;letter-spacing:.11em}
+.pg-b{padding:12px 16px 16px}
+.fact{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(32,30,29,.15);font-size:12px}
+.fact b{font-weight:400;color:var(--muted)}
+.ptitle{font-weight:800;font-size:15px}
+.pmeta{font-size:11.5px;color:var(--muted);margin-bottom:6px}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.btns span{width:112px;height:34px;display:grid;place-items:center;border:1px solid rgba(32,30,29,.3);background:var(--paper);font-weight:800;font-size:12px}
+.pane table{font-size:12px}
+.pane td{padding:4px 6px}.pane th{padding:5px 6px}
+/* strip (C) */
+.strip{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;padding:12px 4px 4px}
+.big{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+.bigsub{font-size:11.5px;color:var(--muted)}
+.hz td,.hz th{text-align:right;padding:5px 7px}
+.hz th:first-child,.hz td:first-child{text-align:left}
+.status{height:28px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:var(--ink);color:#d7d3d3;font-family:ui-monospace,monospace;font-size:11.5px}
+/* switcher */
+.switcher{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:999px;box-shadow:0 6px 24px #0007;display:flex;align-items:center;gap:6px;padding:6px 8px;font-weight:700;z-index:9}
+.switcher button{border:0;background:#fff;color:var(--ink);border-radius:999px;width:30px;height:30px;font-size:15px;cursor:pointer}
+.switcher span{padding:0 10px;min-width:320px;text-align:center}
+</style>
+</head>
+<body>
+<h1>PROTOTYPE · Units price history <span style="font-weight:400;color:#3d3a39">(#1377, throwaway)</span></h1>
+<p class="sub">Three options for showing a Unit's price history on the Units page without opening the prices view (<code>Enter</code>). Each option is drawn at Medium, Large and X-Large in the 16g palette, scaled to fit. Switch options with the bottom bar or ← →, and the selected Unit with the buttons below.</p>
+<div class="controls">
+  <div><label>Selected unit</label><div class="seg" id="unit"></div></div>
+  <div><label>Scale</label><div class="seg" id="scale"></div></div>
+</div>
+<div class="notes" id="notes"></div>
+<div class="cards" id="cards"></div>
+<div class="switcher"><button id="prev">←</button><span id="vlabel"></span><button id="next">→</button></div>
+
+<script>
+const VARIANTS = {
+  A: 'Selected unit\'s history table',
+  B: 'Every unit\'s weekly closes',
+  C: 'Summary strip with sparkline',
+};
+const SIZES = [
+  {key:'M', name:'Medium', w:960, h:1040, rail:'icon', index:false, pane:false, frame:'DESKTOP-123'},
+  {key:'L', name:'Large', w:1280, h:800, rail:'full', index:true, pane:false, frame:'DESKTOP-124'},
+  {key:'X', name:'X-Large', w:1920, h:1080, rail:'full', index:true, pane:true, frame:'DESKTOP-125'},
+];
+
+// ---- sample Ledger ----
+const UNITS = [
+  {code:'aud', name:'Australian Dollar', kind:'currency', source:'—', base:true},
+  {code:'btc', name:'Bitcoin', kind:'crypto', source:'CoinGecko', quote:'aud', start:131000, vol:.06, dp:2, updated:'5 minutes ago'},
+  {code:'eth', name:'Ether', kind:'crypto', source:'CoinGecko', quote:'aud', none:true, updated:'—'},
+  {code:'gold', name:'Gold (troy oz)', kind:'commodity', source:'Manual entry', quote:'aud', start:3920, vol:.02, dp:2, manual:true, sparse:true, updated:'—'},
+  {code:'usd', name:'US Dollar', kind:'currency', source:'Frankfurter', quote:'aud', start:1.52, vol:.008, dp:4, updated:'2 hours ago'},
+  {code:'vas', name:'Vanguard Aus Shares', kind:'equity', source:'Yahoo Finance', quote:'aud', start:96.4, vol:.018, dp:2, stale:true, updated:'9 days ago'},
+];
+const SOURCES = [
+  ['CoinGecko','https://api.coingecko.com/api/v3','5 minutes ago'],
+  ['Frankfurter','https://api.frankfurter.dev/v2','2 hours ago'],
+  ['Manual entry','—','—'],
+  ['Yahoo Finance','https://query1.finance.yahoo.com','<span class="flag">⚠ fetch failed · 9 days ago</span>'],
+];
+// deterministic weekly OHLC, newest first; this week (w/c 23 Nov 2026) provisional
+function rng(seed){ let s=seed; return ()=>{ s=(s*1103515245+12345)%2147483648; return s/2147483648 } }
+const WEEKS = 26;
+function mondays(n){ const out=[]; const d=new Date(Date.UTC(2026,10,23)); for(let i=0;i<n;i++){ out.push(new Date(d)); d.setUTCDate(d.getUTCDate()-7) } return out }
+const MON = mondays(WEEKS);
+function fmtWeek(d){ return d.getUTCDate()+' '+['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'][d.getUTCMonth()] }
+const SERIES = {};
+for (const u of UNITS){
+  if (!u.start) continue;
+  const r = rng(u.code.charCodeAt(0)*97+u.code.length);
+  let close = u.start; const rows=[];
+  for (let i=WEEKS-1;i>=0;i--){
+    const open = close; close = open*(1+(r()-.48)*u.vol*2);
+    const high = Math.max(open,close)*(1+r()*u.vol*.6), low = Math.min(open,close)*(1-r()*u.vol*.6);
+    rows.unshift({week:MON[i], open, high, low, close});
+  }
+  rows.forEach((w,i)=>{ w.change = i<rows.length-1 ? (w.close/rows[i+1].close-1)*100 : null });
+  if (u.stale) { rows.shift(); rows.shift(); } // vas: no price for the last two weeks
+  if (u.manual) { rows.forEach(w=>{ w.open=w.high=w.low=null }); SERIES[u.code]=rows.filter((_,i)=>i%4===1); continue }
+  SERIES[u.code]=rows;
+}
+const params = new URLSearchParams(location.search);
+let variant = VARIANTS[params.get('variant')] ? params.get('variant') : 'A';
+let sel = UNITS.find(u=>u.code===params.get('unit')) ? params.get('unit') : 'btc';
+let scale = parseFloat(params.get('scale')) || 0.62;
+
+const fmt = (v,dp)=> v==null ? '—' : v.toLocaleString('en-AU',{minimumFractionDigits:dp,maximumFractionDigits:dp});
+const pct = v => v==null ? '' : `<span class="${v>=0?'up':'down'}">${v>=0?'+':'−'}${Math.abs(v).toFixed(1)}%</span>`;
+function unit(){ return UNITS.find(u=>u.code===sel) }
+function isThisWeek(w){ return w.week.getTime()===MON[0].getTime() }
+
+// ---- shared page parts ----
+function unitsTable(){
+  return `<div class="sect"><div class="sect-h"><span class="caps">Units</span><span class="plus">+</span></div>
+  <table><tr><th style="width:24px"></th><th style="width:100px">CODE</th><th>NAME</th><th style="width:90px">TYPE</th><th style="width:130px">PRICE SOURCE</th></tr>
+  ${UNITS.map(u=>`<tr class="${u.code===sel?'sel':''}"><td style="color:var(--accent)">${u.base?'◆':''}</td><td><b>${u.code}</b></td><td>${u.name}</td><td class="m">${u.kind}</td><td class="m">${u.source}</td></tr>`).join('')}
+  </table><div class="legend">◆ base unit</div></div>`;
+}
+function sourcesTable(){
+  return `<div class="sect"><div class="sect-h"><span class="caps">Price sources</span><span class="plus">+</span></div>
+  <table><tr><th style="width:130px">NAME</th><th>SOURCE</th><th style="width:170px">LAST UPDATED</th></tr>
+  ${SOURCES.map(s=>`<tr><td><b>${s[0]}</b></td><td class="m">${s[1]}</td><td class="m">${s[2]}</td></tr>`).join('')}</table></div>`;
+}
+function why(u){
+  if (u.base) return 'aud is the base unit: everything is valued in it, so it has no price.';
+  if (u.none) return 'No prices yet. eth was added today; the first fetch or backfill will fill this.';
+  return null;
+}
+function headline(u){
+  const s = SERIES[u.code]; const last = s && s[0];
+  if (!last) return '';
+  const tag = u.stale ? ` <span class="flag">⚠ Out of date · fetch failed</span>` : (isThisWeek(last)?' <span class="prov">this week · provisional</span>':'');
+  return `${u.code} · ${u.source}${tag}`;
+}
+
+// ---- Option A: selected unit's history table ----
+function historyTable(u, rows, {cols='full', limit}){
+  const s = SERIES[u.code];
+  if (!s) return `<div class="empty">${why(u)}</div>`;
+  const list = s.slice(0, limit);
+  const full = cols==='full' && !u.manual;
+  const head = full
+    ? `<tr><th>WEEK</th><th class="n">OPEN</th><th class="n">HIGH</th><th class="n">LOW</th><th class="n">CLOSE</th><th class="n">CHANGE</th></tr>`
+    : `<tr><th>WEEK</th><th class="n">CLOSE</th><th class="n">CHANGE</th></tr>`;
+  const body = list.map(w=> full
+    ? `<tr><td>${fmtWeek(w.week)}${isThisWeek(w)?'<span class="prov">provisional</span>':''}</td><td class="n m">${fmt(w.open,u.dp)}</td><td class="n m">${fmt(w.high,u.dp)}</td><td class="n m">${fmt(w.low,u.dp)}</td><td class="n"><b>${fmt(w.close,u.dp)}</b></td><td class="n">${pct(w.change)}</td></tr>`
+    : `<tr><td>${fmtWeek(w.week)}${isThisWeek(w)?'<span class="prov">prov.</span>':''}</td><td class="n"><b>${fmt(w.close,u.dp)}</b></td><td class="n">${pct(w.change)}</td></tr>`).join('');
+  return `<table>${head}${body}</table>`;
+}
+function rowsFor(size){ return size.key==='M' ? 10 : 4 }
+
+function pageA(size){
+  const u = unit();
+  const hist = size.pane ? '' : `<div class="sect"><div class="sect-h"><span class="caps">Price history<small>${headline(u)||u.code}</small></span><span class="hint" style="margin:0">enter all prices</span></div>
+    ${historyTable(u, null, {limit: rowsFor(size)})}
+    ${u.manual?'<div class="hint">Manual entry: only the weeks someone set a price for.</div>':''}
+    ${SERIES[u.code]?`<div class="hint">Newest week first · ${rowsFor(size)} of ${SERIES[u.code].length} weeks${size.key==='L'?' · scrolls':''}</div>`:''}</div>`;
+  return unitsTable()+sourcesTable()+hist;
+}
+// ---- Option B: matrix of every unit's weekly closes ----
+function matrix(size){
+  const priced = UNITS.filter(u=>!u.base);
+  const limit = size.key==='M' ? 10 : (size.key==='L' ? 4 : 12);
+  const weeks = MON.slice(0, limit);
+  const head = `<tr><th>WEEK</th>${priced.map(u=>`<th class="n ${u.code===sel?'col-sel':''}">${u.code.toUpperCase()}${u.stale?' <span class="flag">⚠</span>':''}</th>`).join('')}</tr>`;
+  const body = weeks.map((wk,i)=>`<tr><td>${fmtWeek(wk)}${i===0?'<span class="prov">provisional</span>':''}</td>${priced.map(u=>{
+    const w = (SERIES[u.code]||[]).find(x=>x.week.getTime()===wk.getTime());
+    return `<td class="n ${u.code===sel?'col-sel':''} ${w?'':'m'}">${w?fmt(w.close,u.dp):'—'}</td>` }).join('')}</tr>`).join('');
+  return `<div class="sect"><div class="sect-h"><span class="caps">Weekly closes<small>in each unit's quote unit · aud</small></span><span class="hint" style="margin:0">←/→ unit · enter all prices</span></div>
+   <table>${head}${body}</table><div class="hint">— no price that week (vas hasn't fetched for two weeks; gold is set by hand; eth has none yet)</div></div>`;
+}
+function pageB(size){ return unitsTable()+sourcesTable()+matrix(size) }
+// ---- Option C: summary strip ----
+function spark(u, w, h){
+  const s = SERIES[u.code]; if (!s || s.length<2) return `<svg width="${w}" height="${h}"></svg>`;
+  const pts = s.slice().reverse(); const vals = pts.map(p=>p.close);
+  const min=Math.min(...vals), max=Math.max(...vals);
+  const x=i=> (i/(pts.length-1))*(w-6)+3, y=v=> h-4-((v-min)/(max-min||1))*(h-8);
+  const d = pts.map((p,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(p.close).toFixed(1)).join(' ');
+  const lastX=x(pts.length-1), lastY=y(vals[vals.length-1]);
+  return `<svg width="${w}" height="${h}" style="display:block"><path d="${d}" fill="none" stroke="#201e1d" stroke-width="1.6"/><circle cx="${lastX}" cy="${lastY}" r="3" fill="${u.stale?'#ae1800':'#ec3013'}"/>
+   <text x="3" y="11" font-size="10" fill="#605d5d">${fmt(max,u.dp)}</text><text x="3" y="${h-2}" font-size="10" fill="#605d5d">${fmt(min,u.dp)}</text></svg>`;
+}
+function strip(u, size, w){
+  const s = SERIES[u.code];
+  if (!s) return `<div class="empty">${why(u)}</div>`;
+  const last = s[0], n = size.key==='M'?6:(size.key==='L'?8:4);
+  const recent = s.slice(0,n);
+  const hz = `<table class="hz"><tr><th>WEEK</th>${recent.map(x=>`<th>${fmtWeek(x.week)}</th>`).join('')}</tr>
+    <tr><td class="m">close</td>${recent.map(x=>`<td><b>${fmt(x.close,u.dp)}</b></td>`).join('')}</tr>
+    <tr><td class="m">change</td>${recent.map(x=>`<td>${pct(x.change)}</td>`).join('')}</tr></table>`;
+  return `<div class="strip" style="${size.key==='X'?'grid-template-columns:1fr':''}"><div><div class="big">${fmt(last.close,u.dp)} <span style="font-size:13px;color:var(--muted)">${u.quote}</span></div>
+     <div class="bigsub">${pct(last.change)} on the week before · ${isThisWeek(last)?'this week, provisional':'week of '+fmtWeek(last.week)}</div></div>
+    <div>${spark(u, w, 64)}<div class="bigsub" style="text-align:right">${s.length} weeks${u.manual?' · set by hand':''}</div></div></div>${hz}`;
+}
+function pageC(size){
+  const u = unit();
+  const st = size.pane ? '' : `<div class="sect"><div class="sect-h"><span class="caps">Price<small>${headline(u)||u.code}</small></span><span class="hint" style="margin:0">enter all prices</span></div>${strip(u,size, size.key==='M'?560:620)}</div>`;
+  return unitsTable()+sourcesTable()+st;
+}
+
+// ---- X-Large pane ----
+function pane(){
+  const u = unit();
+  let hist;
+  if (variant==='A') hist = `<div class="pg-h">PRICE HISTORY</div><div class="pg-b">${SERIES[u.code]?`<div style="margin-bottom:6px">${spark(u,368,48)}</div>`:''}${historyTable(u,null,{cols:'short',limit:12})}<div class="hint">Newest first · enter opens all ${SERIES[u.code]?SERIES[u.code].length:0} weeks</div></div>`;
+  if (variant==='B') hist = `<div class="pg-h">PRICE HISTORY</div><div class="pg-b">${historyTable(u,null,{cols:'short',limit:8})}<div class="hint">The selected column of Weekly closes, with change</div></div>`;
+  if (variant==='C') hist = `<div class="pg-h">PRICE</div><div class="pg-b" style="padding-top:4px">${SERIES[u.code]?strip(u,{key:'X'},180):`<div class="empty">${why(u)}</div>`}</div>`;
+  const src = u.base ? '' : `<div class="pg-h">PRICE SOURCE</div><div class="pg-b">
+     <div class="fact"><b>Source</b><span>${u.source}</span></div>
+     <div class="fact"><b>Last price</b><span>${SERIES[u.code]?fmt(SERIES[u.code][0].close,u.dp)+' '+u.quote:'—'}</span></div>
+     <div class="fact"><b>Last updated</b><span>${u.stale?'<span class="flag">9 days ago · Offline</span>':u.updated}</span></div>
+     <div class="btns">${u.manual?'<span>Set price</span>':'<span>Fetch now</span><span>Test</span>'}<span>Edit source</span></div></div>`;
+  return `<div class="pane"><div class="pg-h">UNIT</div><div class="pg-b"><div class="ptitle">${u.code} · ${u.name}</div><div class="pmeta">${u.kind}${u.base?' · base unit':' · valued in aud'}</div>
+    <div class="fact"><b>Used by</b><span>1 account · 38 transactions</span></div><div class="btns"><span>Edit unit</span><span>Delete unit</span></div></div>
+    ${hist}${src}</div>`;
+}
+
+// ---- window chrome ----
+const RAIL = ['Dashboard','Transactions','Accounts','Bills','Budgets','Reports','Documents','Inventory','Settings'];
+const INDEX = [['THIS DEVICE',['General','Display','Tracing']],['THIS LEDGER',['Ledger','Accounts','Categories','Institutions','Payees','Tags','Units','Sync server','Backup']]];
+function win(size){
+  const rail = size.rail==='icon'
+    ? `<div class="rail" style="width:52px">${RAIL.map(r=>`<div class="it ${r==='Settings'?'on':''}" style="padding:8px 15px"><i></i></div>`).join('')}</div>`
+    : `<div class="rail" style="width:206px">${RAIL.map(r=>`<div class="it ${r==='Settings'?'on':''}"><i></i>${r}</div>`).join('')}</div>`;
+  const index = size.index ? `<div class="index">${INDEX.map(([g,its])=>`<div class="grp">${g}</div>${its.map(i=>`<div class="it ${i==='Units'?'on':''}">${i}</div>`).join('')}`).join('')}</div>` : '';
+  const heading = size.index ? 'Units' : 'Settings › Units ▾';
+  const page = ({A:pageA,B:pageB,C:pageC})[variant](size);
+  const status = size.pane ? 'j/k unit · e edit · f fetch now · t test source · enter prices · tab next section' : (variant==='B' ? 'j/k unit · ←/→ column · enter prices · tab next section · esc settings' : 'j/k unit · enter prices · tab next section · [/] pages · esc settings');
+  return `<div class="win" style="width:${size.w}px;height:${size.h}px;transform:scale(${scale})">
+    <div class="hdr"><span class="brand">▮</span> Personal Ledger <span style="flex:1"></span><span style="font-weight:400;color:var(--muted)">teda</span></div>
+    <div class="body">${rail}${index}<div class="view"><div class="content"><h2>${heading}</h2>${page}</div>${size.pane?pane():''}</div></div>
+    <div class="status"><span>${status}</span><span>${size.key==='M'?'…/teda.pldb':'~/documents/ledgers/teda.pldb'}</span></div></div>`;
+}
+
+const NOTES = {
+  A: `<ul><li><b>Medium and Large:</b> a PRICE HISTORY section under PRICE SOURCES follows the UNITS selection: the selected Unit's weeks, newest first, WEEK · OPEN · HIGH · LOW · CLOSE · CHANGE. Medium has room for 10 weeks; Large shows 4 and scrolls, since the tables already fill 800px.</li>
+   <li><b>X-Large:</b> the section moves into the pane as a PRICE HISTORY group: a sparkline over 12 weeks of CLOSE · CHANGE.</li>
+   <li><b>Trade-off:</b> it's the prices view's table in miniature, so <code>Enter</code> still earns its place (26 weeks and a chart). One Unit at a time.</li></ul>`,
+  B: `<ul><li><b>Medium and Large:</b> a WEEKLY CLOSES matrix under PRICE SOURCES, weeks down and every priced Unit across. The selected Unit's column is marked, and a missing week shows —, so gaps and stale Units stand out across the Ledger.</li>
+   <li><b>X-Large:</b> the matrix stays on the page, and the pane adds the selected Unit's CLOSE · CHANGE.</li>
+   <li><b>Trade-off:</b> it shows the whole Ledger at once, but closes only, and the columns grow with the Units (a dozen Units won't fit at Medium). It needs <code>←/→</code> for a column focus.</li></ul>`,
+  C: `<ul><li><b>Medium and Large:</b> a PRICE strip under PRICE SOURCES for the selected Unit: the last close in large type with its weekly change, a 26-week sparkline, and the last 6–8 weeks as columns (close over change).</li>
+   <li><b>X-Large:</b> the same strip stacks in the pane as a PRICE group.</li>
+   <li><b>Trade-off:</b> the shortest (about 150px), so Large keeps both tables in view. It summarises rather than tabulates, with no open, high or low; the prices view stays the table.</li></ul>`,
+};
+
+function render(){
+  const cards = document.getElementById('cards');
+  cards.innerHTML = SIZES.map(s=>`<div class="cardwrap"><p class="lbl">${variant} · ${s.name} (${s.w} × ${s.h}) <span>· ${s.frame} · ${VARIANTS[variant]} · ${sel} selected</span></p>
+    <div class="scaler" style="width:${s.w*scale+2}px;height:${s.h*scale+2}px">${win(s)}</div></div>`).join('');
+  document.getElementById('notes').innerHTML = NOTES[variant];
+  document.getElementById('vlabel').textContent = variant+' ('+VARIANTS[variant]+')';
+  const ue=document.getElementById('unit'); ue.innerHTML='';
+  for (const u of UNITS){ const b=document.createElement('button'); b.textContent=u.code+(u.base?' (base)':u.none?' (no prices)':u.stale?' (out of date)':u.manual?' (manual)':''); b.className=u.code===sel?'on':''; b.onclick=()=>{sel=u.code;render()}; ue.appendChild(b) }
+  const se=document.getElementById('scale'); se.innerHTML='';
+  for (const v of [0.45,0.62,0.8,1]){ const b=document.createElement('button'); b.textContent=Math.round(v*100)+'%'; b.className=v===scale?'on':''; b.onclick=()=>{scale=v;render()}; se.appendChild(b) }
+  history.replaceState(null,'','?'+new URLSearchParams({variant,unit:sel,scale}));
+}
+function step(d){ const ks=Object.keys(VARIANTS); variant=ks[(ks.indexOf(variant)+d+ks.length)%ks.length]; render() }
+document.getElementById('prev').onclick=()=>step(-1);
+document.getElementById('next').onclick=()=>step(1);
+addEventListener('keydown',e=>{ if(e.key==='ArrowLeft')step(-1); if(e.key==='ArrowRight')step(1) });
+render();
+</script>
+</body>
+</html>
