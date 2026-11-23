@@ -374,15 +374,9 @@ mod tests {
         view.handle_key(key(KeyCode::Tab));
         let text = render_at(&view, 96, 30);
         assert!(text.contains("Values 1 unit: BTC."), "{text}");
-        // Testing isn't built in `lib-units` yet, which it says through the page's Toasts.
+        // With no price feed there is nothing to test through, so `t` says nothing.
         view.handle_key(key(KeyCode::Char('t')));
-        assert_eq!(
-            view.take_toasts(),
-            vec![(
-                ToastKind::Info,
-                "test price source — not yet built".to_string()
-            )]
-        );
+        assert_eq!(view.take_toasts(), vec![]);
 
         for code in [KeyCode::Char('n'), KeyCode::Char('e'), KeyCode::Char('d')] {
             let mut view = units_page(96);

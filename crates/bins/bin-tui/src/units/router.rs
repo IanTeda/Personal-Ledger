@@ -15,6 +15,8 @@ pub struct Router<'a> {
     ports: SharedPorts,
     /// Where the set price Dialog reads the time from.
     now: lib_units::presenter::Clock,
+    /// The Open Ledger's price fetching, which the price source forms test through.
+    fetching: Option<lib_units::SharedFetching>,
     toasts: &'a mut Vec<(ToastKind, String)>,
     /// The Dialog the page asked to open, built on the shared ports.
     pub opened: Option<Dialog>,
@@ -36,16 +38,23 @@ impl<'a> Router<'a> {
         Self {
             ports,
             now,
+            fetching: None,
             toasts,
             opened: None,
             closed: None,
         }
     }
+
+    /// The Router opening price source forms that test through `fetching`.
+    pub fn with_fetching(mut self, fetching: Option<lib_units::SharedFetching>) -> Self {
+        self.fetching = fetching;
+        self
+    }
 }
 
 impl UnitsRouter for Router<'_> {
     fn open_dialog(&mut self, dialog: Which) -> bool {
-        self.opened = Dialog::open(dialog, &self.ports, &self.now);
+        self.opened = Dialog::open(dialog, &self.ports, &self.now, self.fetching.as_ref());
         self.opened.is_some()
     }
 }

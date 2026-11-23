@@ -50,12 +50,15 @@ impl UnitsRouter for PageRouter<'_, '_, UnitsPagePresenter> {
                 };
                 self.open(set);
             }
-            Which::AddPriceSource => self.open(PriceSourceFormPresenter::add(ports, keys)),
+            Which::AddPriceSource => {
+                let form = PriceSourceFormPresenter::add(ports, keys);
+                self.open(testing(form, setup));
+            }
             Which::EditPriceSource(id) => {
                 let Some(form) = PriceSourceFormPresenter::edit(ports, id, keys) else {
                     return false;
                 };
-                self.open(form);
+                self.open(testing(form, setup));
             }
             Which::DeletePriceSource(id) => {
                 let Some(delete) = DeletePriceSourcePresenter::new(ports, id, keys) else {
@@ -65,6 +68,16 @@ impl UnitsRouter for PageRouter<'_, '_, UnitsPagePresenter> {
             }
         }
         true
+    }
+}
+
+/// `form` testing through the Open Ledger's fetching, when it has a price feed.
+fn testing(form: PriceSourceFormPresenter, setup: &UnitsSetup) -> PriceSourceFormPresenter {
+    match &setup.fetching {
+        Some(fetching) => {
+            form.with_testing(fetching.clone(), super::view::page::now_of(&setup.clock))
+        }
+        None => form,
     }
 }
 

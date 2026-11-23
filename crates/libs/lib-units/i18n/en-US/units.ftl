@@ -41,7 +41,6 @@ units-hint-fetch = fetch price
 units-hint-prices = prices
 units-hint-units = units
 units-hint-price-sources = price sources
-units-status-test-not-yet-built = test price source — not yet built
 units-activity-saved = Saved unit { $code }
 units-activity-deleted = Deleted unit { $code }
 units-activity-deactivated = Deactivated unit { $code }
@@ -353,7 +352,6 @@ units-price-source-auth-none = None
 units-price-source-auth-api-key = API key
 units-price-source-test-with-symbol = Test with symbol
 units-price-source-test = Test price source
-units-price-source-test-not-built = Testing isn't built yet.
 units-price-source-built-in = { $name } · built-in
 units-price-source-built-in-help = Built-in sources update with the app, so their address isn't edited here.
 units-price-source-usage = { $count ->
@@ -456,3 +454,27 @@ units-toast-fetch-round-fetched = Fetched { $fetched ->
     [one] { $fetched } price
    *[other] { $fetched } prices
 } from { $source }
+
+## Testing a Price Source (#1393): one symbol's price asked and shown, writing nothing. In the form,
+## `$quote` and `$code` are Unit codes, `$field` a field's label, `$ms` the milliseconds the answer
+## took, `$time` when it came (`14:36`) and `$status` its HTTP status. `$reason` is a fetch
+## failure's name and `$detail` its detail.
+
+units-price-source-field-symbol = Symbol
+units-price-source-symbol-placeholder = e.g. VAS.AX
+units-price-source-test-quoted = Quoted in { $quote }, the base unit.
+units-price-source-test-first-unit = Prices { $code }, the first unit it values.
+units-price-source-test-no-units = { $source } values no unit, so there is nothing to test.
+units-price-source-test-needs-field = Fill in { $field } to test.
+units-price-source-test-fix-field = Fix { $field } to test.
+units-price-source-test-needs-symbol = Type a symbol to test.
+units-price-source-test-needs-key = Type an API key to test.
+units-price-source-testing = Testing…
+units-price-source-test-found = Price found · { $ms } ms
+units-price-source-test-found-detail = { $symbol } · { $price } · tested { $time }
+units-price-source-test-unsaved = with unsaved changes
+units-price-source-test-response = Response · HTTP { $status }
+units-price-source-test-writes-nothing = A test writes nothing.
+units-toast-test-found = { $source } works: { $symbol } · { $price } · { $ms } ms
+units-toast-test-failed = { $source } test: { $reason } · { $detail }
+units-toast-already-testing = Already testing { $source }

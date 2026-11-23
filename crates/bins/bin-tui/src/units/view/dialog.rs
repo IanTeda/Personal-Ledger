@@ -14,10 +14,10 @@ use lib_shell::DialogCommand;
 use lib_units::presenter::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, DeleteUnitEvent, DeleteUnitPresenter,
     PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter, SetBaseUnitEvent,
-    SetBaseUnitPresenter, SetPriceEvent, SetPricePresenter, UnitFormEvent, UnitFormPresenter,
-    UnitsOutcome,
+    SetBaseUnitPresenter, SetPriceEvent, SetPricePresenter, TestState, TestView, UnitFormEvent,
+    UnitFormPresenter, UnitsOutcome,
 };
-use lib_units::{SharedPorts, UnitsDialog as Which};
+use lib_units::{SharedFetching, SharedPorts, UnitsDialog as Which};
 use lib_viper::dialog::{DialogKeys, DialogRouter};
 use lib_viper::keymap::{Keymap, SELECT};
 use lib_viper::presenter::Presenter as _;
@@ -72,15 +72,25 @@ enum Item {
     Note(String),
     Fact(String, String),
     Refusal(String),
+    /// A test's heading, coloured by how it went.
+    Result(String, TestState),
+    /// A line of a test's response, indented under the result.
+    Response(String),
 }
 
 impl Dialog {
-    /// `which`'s Presenter on `ports`, or `None` when the row it names is gone.
+    /// `which`'s Presenter on `ports`, or `None` when the row it names is gone. The price source
+    /// forms test through `fetching`, when the Ledger has a price feed.
     pub fn open(
         which: Which,
         ports: &SharedPorts,
         now: &lib_units::presenter::Clock,
+        fetching: Option<&SharedFetching>,
     ) -> Option<Self> {
+        let testing = |form: PriceSourceFormPresenter| match fetching {
+            Some(fetching) => form.with_testing(fetching.clone(), now.clone()),
+            None => form,
+        };
         let ports = ports.clone();
         // The TUI's footer reads its own hints from the keymap, so the Presenters' stay empty.
         let keys = DialogKeys::default();
@@ -93,11 +103,11 @@ impl Dialog {
                 Self::SetPrice(SetPricePresenter::new(ports, now.clone(), id, keys)?)
             }
             Which::AddPriceSource => Self::PriceSourceForm(
-                PriceSourceFormPresenter::add(ports, keys),
+                testing(PriceSourceFormPresenter::add(ports, keys)),
                 SecretString::from(String::new()),
             ),
             Which::EditPriceSource(id) => Self::PriceSourceForm(
-                PriceSourceFormPresenter::edit(ports, id, keys)?,
+                testing(PriceSourceFormPresenter::edit(ports, id, keys)?),
                 SecretString::from(String::new()),
             ),
             Which::DeletePriceSource(id) => {
@@ -321,6 +331,9 @@ impl Dialog {
                     items.push(Item::Note(api_key.note));
                 }
                 items.extend(view.usage.map(Item::Note));
+                if let Some(test) = view.test {
+                    test_items(test, &mut items);
+                }
                 (view.frame, view.refusal)
             }
             Self::DeletePriceSource(presenter) => {
@@ -334,6 +347,47 @@ impl Dialog {
         items.extend(refusal.map(Item::Refusal));
         (dialog, items)
     }
+}
+
+/// The test: a Custom source's Symbol, the button and what it prices or why it is off, the last
+/// result, its Response as indented text while open, and that a test writes nothing.
+fn test_items(test: TestView, items: &mut Vec<Item>) {
+    items.extend(test.symbol.map(Item::Text));
+    items.push(Item::Button {
+        label: test.button,
+        focused: test.focused,
+    });
+    items.push(Item::Note(test.help));
+    if let Some(result) = test.result {
+        let heading = match result.unsaved {
+            Some(unsaved) => format!("{} \u{b7} {unsaved}", result.heading),
+            None => result.heading,
+        };
+        items.push(Item::Result(heading, result.state));
+        if !result.detail.is_empty() {
+            items.push(Item::Note(format!("  {}", result.detail)));
+        }
+        if let Some(response) = result.response {
+            let caret = if response.open {
+                "\u{25be}"
+            } else {
+                "\u{25b8}"
+            };
+            items.push(Item::Button {
+                label: format!("{caret} {}", response.label),
+                focused: response.focused,
+            });
+            if response.open {
+                items.extend(
+                    response
+                        .body
+                        .lines()
+                        .map(|line| Item::Response(format!("    {line}"))),
+                );
+            }
+        }
+    }
+    items.push(Item::Note(test.note));
 }
 
 fn unit_form_event(
@@ -387,6 +441,22 @@ fn price_source_event(
         *api_key = SecretString::from(String::new());
         return Some(PriceSourceFormEvent::RemoveKey);
     }
+    // Enter on the test's Symbol or button tests, and on its Response opens or closes it.
+    if matches!(form, Some(FormKey::Confirm))
+        && let Some(test) = &view.test
+    {
+        let on_symbol = test.symbol.as_ref().is_some_and(|symbol| symbol.focused);
+        if test.focused || on_symbol {
+            return Some(PriceSourceFormEvent::Test);
+        }
+        let response = test
+            .result
+            .as_ref()
+            .and_then(|result| result.response.as_ref());
+        if response.is_some_and(|response| response.focused) {
+            return Some(PriceSourceFormEvent::ToggleResponse);
+        }
+    }
     // The selects (Updates, Authentication) step through the Presenter, which knows the focus.
     match form {
         Some(FormKey::Cancel) => return Some(PriceSourceFormEvent::Cancel),
@@ -409,6 +479,15 @@ fn price_source_event(
         let typed = edited(api_key.expose_secret(), key)?;
         *api_key = SecretString::from(typed);
         return Some(PriceSourceFormEvent::ApiKey(api_key.clone()));
+    }
+    if let Some(symbol) = view
+        .test
+        .as_ref()
+        .and_then(|test| test.symbol.as_ref())
+        .filter(|symbol| symbol.focused)
+    {
+        return edited(&symbol.text, key)
+            .map(|text| PriceSourceFormEvent::Text(PriceSourceField::Symbol, text));
     }
     let endpoint = view.endpoint?;
     let fields = [
@@ -574,6 +653,15 @@ fn item_line<'a>(item: &'a Item, c: &Colours) -> Line<'a> {
         Item::Note(text) => Line::from(Span::styled(text.as_str(), c.muted())),
         Item::Fact(name, value) => Line::from(vec![label(name, false), Span::raw(value.as_str())]),
         Item::Refusal(text) => Line::from(Span::styled(text.as_str(), c.negative())),
+        Item::Result(text, state) => Line::from(Span::styled(
+            text.as_str(),
+            match state {
+                TestState::Found => c.positive().add_modifier(Modifier::BOLD),
+                TestState::Failed => c.negative().add_modifier(Modifier::BOLD),
+                TestState::Testing => c.muted(),
+            },
+        )),
+        Item::Response(text) => Line::from(Span::styled(text.as_str(), c.muted())),
     }
 }
 

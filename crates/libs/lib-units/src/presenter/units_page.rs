@@ -14,13 +14,15 @@ use lib_viper::keymap::{
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
-use super::fetch_text::{failure_name, fetching_status, round_failed_toast};
+use super::fetch_text::{
+    Asked, failure_name, fetching_status, round_failed_toast, test_failed_toast,
+};
 use super::price_history::{HistoryInput, PriceHistory, price_history};
 use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
 use crate::fetching::{FetchFailure, SharedFetching, is_out_of_date};
-use crate::interactor::{FetchAll, FetchNow, FetchSource, ReactivateUnit};
+use crate::interactor::{FetchAll, FetchNow, FetchSource, ReactivateUnit, TestPriceSource};
 use crate::keymap::{FETCH_NOW, NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE, unit_prices_keymap};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
 use crate::{
@@ -913,9 +915,7 @@ impl UnitsPagePresenter {
                 self.open(UnitsDialog::DeleteUnit(id), router);
             }
             (MenuAction::ReactivateUnit, UnitsRow::Unit(id)) => self.reactivate(id, router),
-            (MenuAction::TestSource, _) => {
-                router.notify(Notice::Status(msg::units_status_test_not_yet_built()))
-            }
+            (MenuAction::TestSource, UnitsRow::Source(id)) => self.test_source(id, router),
             (MenuAction::EditSource, UnitsRow::Source(id)) => {
                 self.open(UnitsDialog::EditPriceSource(id), router);
             }
@@ -926,23 +926,86 @@ impl UnitsPagePresenter {
         }
     }
 
-    /// `t`: on a Price Source row its own Test, on a Unit row the Test of the source it links to
-    /// (none on Manual entry). Testing has no backing yet, so it says so on the status line.
+    /// `t`: on a Price Source row its own Test, on a Unit row a test of that Unit's link (none on
+    /// Manual entry).
     fn test(&mut self, router: &mut dyn UnitsRouter) {
-        let row = match self.selection() {
+        match self.selection() {
             Some(UnitsRow::Unit(id)) => {
-                let link = self.ports.borrow().units().unit(id).map(|unit| unit.link);
-                match link {
-                    Some(link) if link.source_id != MANUAL_ENTRY => {
-                        UnitsRow::Source(link.source_id)
-                    }
-                    _ => return,
+                let unit = self.ports.borrow().units().unit(id);
+                if let Some(unit) = unit.filter(|unit| unit.link.source_id != MANUAL_ENTRY) {
+                    self.test_link(&unit, router);
                 }
             }
-            Some(row) => row,
-            None => return,
+            Some(row @ UnitsRow::Source(_)) => self.run(MenuAction::TestSource, row, router),
+            None => {}
+        }
+    }
+
+    /// Tests source `id` on the first Unit (by code) it values, or with none opens its Edit
+    /// Dialog, whose Test says why it can't.
+    fn test_source(&mut self, id: PriceSourceId, router: &mut dyn UnitsRouter) {
+        if self.fetching.is_none() {
+            return;
+        }
+        let first = {
+            let ports = self.ports.borrow();
+            let units = ports.units().units();
+            units_by_code(&units)
+                .into_iter()
+                .find(|unit| unit.link.source_id == id)
+                .cloned()
         };
-        self.run(MenuAction::TestSource, row, router);
+        match first {
+            Some(unit) => self.test_link(&unit, router),
+            None => self.open(UnitsDialog::EditPriceSource(id), router),
+        }
+    }
+
+    /// Tests `unit`'s link on its source in the background, writing nothing: its response raises
+    /// one Toast. A press while that source's test is out, or with no key where one is needed,
+    /// answers at once instead.
+    fn test_link(&mut self, unit: &UnitRow, router: &mut dyn UnitsRouter) {
+        let Some(fetching) = &self.fetching else {
+            return;
+        };
+        let ports = self.ports.borrow();
+        let catalogue = ports.source_catalogue();
+        let Some(source) = catalogue.source(unit.link.source_id) else {
+            return;
+        };
+        let (Some(endpoint), Some(quote)) =
+            (source.endpoint(), ports.units().unit(unit.link.quote))
+        else {
+            return;
+        };
+        if fetching.borrow().source_testing(source.id) {
+            router.notify(Notice::Toast(
+                ToastKind::Info,
+                msg::units_toast_already_testing(source.name),
+            ));
+            return;
+        }
+        let test = TestPriceSource {
+            source: Some(source.id),
+            source_name: source.name.to_string(),
+            endpoint: endpoint.clone(),
+            symbol: unit.link.symbol.clone(),
+            quote: quote.id,
+            quote_code: quote.code.clone(),
+            key: ports.keys().key(source.id),
+            toast: true,
+            unsaved: false,
+        };
+        if let Err(Error::KeyMissing) = test.run(&mut fetching.borrow_mut(), (self.clock)()) {
+            router.notify(test_failed_toast(
+                FetchFailure::KeyMissing,
+                source.name,
+                Asked {
+                    symbol: &unit.link.symbol,
+                    quote: &quote.code,
+                },
+            ));
+        }
     }
 
     /// Asks the Unit's source for its price; the response writes it. A Unit fetching isn't
@@ -1778,18 +1841,6 @@ mod tests {
             vec![],
             "an active Unit has none"
         );
-    }
-
-    #[test]
-    fn test_says_on_the_status_line_that_it_is_not_built_unless_the_unit_is_priced_by_hand() {
-        let mut page = Page::new();
-        let not_built = vec![RouterCall::Notice(Notice::Status(
-            "test price source — not yet built".to_string(),
-        ))];
-        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
-        assert_eq!(page.send(UnitsPageEvent::Test), not_built);
-        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_AUD)));
-        assert_eq!(page.send(UnitsPageEvent::Test), vec![]);
     }
 
     /// History names each change by what it did, which a save tells from the Dialog it came from.
@@ -3058,6 +3109,130 @@ mod tests {
             page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
 
             assert!(!offers_fetch(&page));
+        }
+
+        /// `t` on a row: a test in the background, answered with one Toast and writing nothing.
+        mod testing {
+            use super::*;
+            use crate::price_source;
+
+            /// Hands the newest request's answer to the fetched-prices Presenter, returning what
+            /// it raised.
+            fn answer(on: &Fetching, status: u16, body: &str) -> Vec<Notice> {
+                let mut responses = FetchedPricesPresenter::new(
+                    on.page.ports.clone(),
+                    on.fetching.clone(),
+                    clock(),
+                );
+                let mut notices: Vec<Notice> = Vec::new();
+                responses.handle(on.transport.answer_last(status, body), &mut notices);
+                notices
+            }
+
+            /// Whether the test left any trace: a price on EUR, or a fetch held for it or
+            /// Frankfurter.
+            fn wrote_nothing(on: &Fetching) -> bool {
+                let ports = on.page.ports.borrow();
+                let eur = ports.units.units.iter().find(|unit| unit.id == on.eur);
+                let records = ports.price_sources.records.clone();
+                let source =
+                    price_source(&records, "Manual entry", FRANKFURTER).expect("a built-in");
+                let fetching = on.fetching.borrow();
+                eur.is_some_and(|eur| eur.prices.is_empty())
+                    && fetching.source_fetch(&source).is_none()
+                    && eur.is_some_and(|eur| fetching.unit_fetch(eur, &source).is_none())
+                    && ports.keys.keys.is_empty()
+            }
+
+            #[test]
+            fn t_on_a_price_source_tests_its_first_unit_and_a_price_raises_one_info_toast() {
+                let mut on = fetching();
+                on.page
+                    .send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
+
+                assert_eq!(on.page.send(UnitsPageEvent::Test), vec![]);
+                assert_eq!(
+                    on.transport.urls(),
+                    ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
+                );
+                assert!(
+                    on.page
+                        .view()
+                        .units
+                        .iter()
+                        .all(|unit| unit.last_age != Some("Fetching\u{2026}".into())),
+                    "a test is no fetch"
+                );
+
+                assert_eq!(
+                    answer(&on, 200, BODY),
+                    [Notice::Toast(
+                        ToastKind::Info,
+                        "Frankfurter works: EUR · 1.65 AUD · 0 ms".into()
+                    )]
+                );
+                assert!(wrote_nothing(&on));
+            }
+
+            #[test]
+            fn t_on_a_unit_tests_its_link_and_a_failure_warns_with_its_reason_holding_no_back_off()
+            {
+                let mut on = fetching();
+                on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(on.eur)));
+                on.page.send(UnitsPageEvent::Test);
+
+                assert_eq!(
+                    answer(&on, 429, ""),
+                    [Notice::Toast(
+                        ToastKind::Warning,
+                        "Frankfurter test: Rate limited · Frankfurter asked to be called less often"
+                            .into()
+                    )]
+                );
+                assert!(wrote_nothing(&on), "no failure or back-off is held");
+            }
+
+            #[test]
+            fn a_second_t_while_the_test_is_out_says_so_and_sends_nothing() {
+                let mut on = fetching();
+                on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(on.eur)));
+                on.page.send(UnitsPageEvent::Test);
+
+                assert_eq!(
+                    on.page.send(UnitsPageEvent::Test),
+                    [RouterCall::Notice(Notice::Toast(
+                        ToastKind::Info,
+                        "Already testing Frankfurter".into()
+                    ))]
+                );
+                assert_eq!(on.transport.requests().len(), 1);
+            }
+
+            #[test]
+            fn t_on_a_source_valuing_no_unit_opens_its_edit_dialog_and_on_manual_entry_nothing() {
+                let mut on = fetching();
+                let eur = on.eur;
+                on.page
+                    .ports
+                    .borrow_mut()
+                    .units
+                    .units
+                    .retain(|unit| unit.id != eur);
+                on.page
+                    .send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
+
+                assert_eq!(
+                    on.page.send(UnitsPageEvent::Test),
+                    [RouterCall::OpenDialog(UnitsDialog::EditPriceSource(
+                        FRANKFURTER
+                    ))]
+                );
+                on.page.send(UnitsPageEvent::DialogClosed(None));
+                on.page
+                    .send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_AUD)));
+                assert_eq!(on.page.send(UnitsPageEvent::Test), vec![]);
+                assert!(on.transport.requests().is_empty());
+            }
         }
     }
 

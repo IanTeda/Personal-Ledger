@@ -65,6 +65,9 @@ pub struct UnitsSetup {
     /// The Dialog keymap's chords, which the module's Dialogs build their status-line hints from.
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
     pub clock: lib_core::Clock,
+    /// The Open Ledger's price fetching, which the price source forms test through; `None` with
+    /// no price feed, when they offer no test.
+    pub fetching: Option<lib_units::SharedFetching>,
 }
 
 impl UnitsSetup {
@@ -79,7 +82,7 @@ impl UnitsSetup {
         config: &lib_config::KeyBindingConfig,
     ) -> (UnitsPagePresenter, Self) {
         let presenter = UnitsPagePresenter::new(ports.clone(), now_of(&clock), config);
-        let presenter = match fetching {
+        let presenter = match fetching.clone() {
             Some(fetching) => presenter.with_fetching(fetching),
             None => presenter,
         };
@@ -88,6 +91,7 @@ impl UnitsSetup {
             deletion,
             dialog_keys,
             clock,
+            fetching,
         };
         (presenter, setup)
     }

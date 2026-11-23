@@ -19,6 +19,7 @@ mod record_fetched_prices;
 mod save_price_source_key;
 mod set_base_unit;
 mod set_price;
+mod test_price_source;
 
 pub use add_price_source::AddPriceSource;
 pub use add_unit::AddUnit;
@@ -36,3 +37,4 @@ pub use record_fetched_prices::{FetchedPrice, RecordFetchedPrices, RoundOutcome}
 pub use save_price_source_key::{KeyChange, SavePriceSourceKey};
 pub use set_base_unit::SetBaseUnit;
 pub use set_price::SetPrice;
+pub use test_price_source::TestPriceSource;

@@ -535,16 +535,47 @@ fn the_base_glyph_follows_the_unit_picked_on_ledger(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn the_menus_test_entry_puts_not_built_on_the_status_line(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
+fn the_menus_test_entry_tests_the_source_and_its_edit_dialogs_button_tests_inline(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), |_| {});
+    ui.resize_to(WindowSize::Large);
+    ui.press("g s");
+    ui.click("settings-index-Units");
     let row = source_row(&mut ui, "CoinGecko");
     ui.right_click(&row);
     ui.click("settings-units-menu-test-source");
+    assert_eq!(ui.dialog(), None, "it tests in the background");
     assert_eq!(
-        ui.read(|shell| shell.status_message()).as_deref(),
-        Some("test price source \u{2014} not yet built")
+        transport.urls(),
+        ["https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=aud"]
     );
-    assert_eq!(ui.dialog(), None);
+    transport.answer_last(404, "{}");
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+    assert!(
+        ui.toast_texts()
+            .iter()
+            .any(|text| text.starts_with("CoinGecko test: Not found")),
+        "{:?}",
+        ui.toast_texts()
+    );
+
+    ui.right_click(&row);
+    ui.click("settings-units-menu-edit-source");
+    assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+    ui.click("price-source-test");
+    assert_eq!(transport.requests().len(), 2);
+    transport.answer_last(200, r#"{"bitcoin":{"aud":92568}}"#);
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+    assert_eq!(
+        ui.dialog_value("test_heading").as_deref(),
+        Some("Price found \u{b7} 0 ms")
+    );
+    assert!(
+        ui.dialog_value("test_detail")
+            .is_some_and(|detail| detail.starts_with("bitcoin \u{b7} 92,568.00 AUD \u{b7} tested ")),
+    );
 }
 
 #[gpui::test]

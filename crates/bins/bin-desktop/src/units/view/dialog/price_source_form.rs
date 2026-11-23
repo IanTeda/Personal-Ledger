@@ -7,17 +7,21 @@
 //! way to reveal it: a Custom source's under Authentication, and CoinGecko's optional Demo key on
 //! its Edit Dialog. A saved key shows only as the field's placeholder, and Remove key clears it on
 //! Save. The Ledger keeps it encrypted (ADR-0043).
+//!
+//! Under the fields, with the Ledger's price feed, a Custom source's Symbol and Test with symbol,
+//! or a built-in's Test price source, then the last test's result and a Custom source's
+//! collapsible Response (#1393). The footer says a test writes nothing.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_shell::Hint;
 use lib_units::Updates;
 use lib_units::presenter::{
     ApiKeyView, AuthChoice, PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter,
-    PriceSourceFormViewModel,
+    PriceSourceFormViewModel, TestState, TestView,
 };
 use lib_viper::view::{Choice, SelectView, TextFieldView};
 
-use super::{help, refusal, test_not_built};
+use super::{help, refusal};
 use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{
     dialog,
@@ -80,6 +84,21 @@ fn focused(view: &PriceSourceFormViewModel) -> Option<PriceSourceField> {
         }
         if api_key.remove_focused {
             return Some(PriceSourceField::RemoveKey);
+        }
+    }
+    if let Some(test) = &view.test {
+        if test.focused {
+            return Some(PriceSourceField::Test);
+        }
+        if test.symbol.as_ref().is_some_and(text_focus) {
+            return Some(PriceSourceField::Symbol);
+        }
+        let response = test
+            .result
+            .as_ref()
+            .and_then(|result| result.response.as_ref());
+        if response.is_some_and(|response| response.focused) {
+            return Some(PriceSourceField::Response);
         }
     }
     let endpoint = view.endpoint.as_ref()?;
@@ -278,16 +297,15 @@ fn render_custom(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) ->
                     .child(key_box(api_key, actions, cx))
             }))
             .into_any_element(),
-        test_not_built(
-            "price-source-test-with-symbol",
-            view.test.clone(),
-            view.test_note.clone(),
-            cx,
-        ),
     ];
     if let Some(api_key) = &view.api_key {
         fields.push(key_remove_and_note(api_key, actions, cx));
     }
+    fields.extend(
+        view.test
+            .as_ref()
+            .map(|test| test_section(test, actions, cx)),
+    );
     fields.extend(view.usage.clone().map(|usage| {
         div()
             .debug_selector(|| "edit-price-source-usage".to_string())
@@ -331,12 +349,11 @@ fn render_built_in(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) 
             .child(dialog::info_panel(usage, cx))
             .into_any_element()
     }));
-    fields.push(test_not_built(
-        "edit-built-in-source-test",
-        view.test.clone(),
-        view.test_note.clone(),
-        cx,
-    ));
+    fields.extend(
+        view.test
+            .as_ref()
+            .map(|test| test_section(test, actions, cx)),
+    );
     fields.extend(refusal(view.refusal.clone(), cx));
     frame(
         view,
@@ -407,6 +424,149 @@ fn key_remove_and_note(api_key: &ApiKeyView, actions: &Clicks, cx: &App) -> AnyE
         .into_any_element()
 }
 
+/// The test: a Custom source's Symbol, the button and what it prices or why it is off, then the
+/// last result and a Custom source's Response.
+fn test_section(test: &TestView, actions: &Clicks, cx: &App) -> AnyElement {
+    let on_click = actions.send(PriceSourceFormEvent::Test);
+    let enabled = test.enabled;
+    let button = div()
+        .id("price-source-test")
+        .debug_selector(|| "price-source-test".to_string())
+        .flex_none()
+        .py(px(7.0))
+        .px(px(12.0))
+        .border_1()
+        .border_color(if test.focused {
+            color::accent(cx)
+        } else {
+            color::border(cx)
+        })
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .text_size(px(12.0))
+        .when(enabled, |this| {
+            this.cursor_pointer()
+                .on_click(move |_event, window, cx| on_click(window, cx))
+        })
+        .when(!enabled, |this| this.opacity(0.45))
+        .child(test.button.clone());
+    let row = div()
+        .flex()
+        .items_end()
+        .gap(px(12.0))
+        .children(test.symbol.as_ref().map(|symbol| {
+            div().w(px(180.0)).flex_none().child(text_box(
+                "price-source-symbol",
+                symbol,
+                PriceSourceField::Symbol,
+                true,
+                actions,
+                cx,
+            ))
+        }))
+        .child(button)
+        .child(
+            div()
+                .debug_selector(|| "price-source-test-help".to_string())
+                .min_w(px(0.0))
+                .pb(px(8.0))
+                .text_size(px(11.5))
+                .text_color(color::faint_text(cx))
+                .child(test.help.clone()),
+        );
+    let result = test.result.as_ref().map(|result| {
+        let heading_color = match result.state {
+            TestState::Found => color::positive_text(cx),
+            TestState::Failed => color::negative_text(cx),
+            TestState::Testing => color::muted(cx),
+        };
+        let response = result.response.as_ref().map(|response| {
+            let toggle = actions.send(PriceSourceFormEvent::ToggleResponse);
+            let caret = if response.open {
+                "\u{25be}"
+            } else {
+                "\u{25b8}"
+            };
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(4.0))
+                .mt(px(6.0))
+                .child(
+                    div()
+                        .id("price-source-response")
+                        .debug_selector(|| "price-source-response".to_string())
+                        .cursor_pointer()
+                        .text_size(px(12.0))
+                        .text_color(if response.focused {
+                            color::accent(cx)
+                        } else {
+                            color::muted(cx)
+                        })
+                        .on_click(move |_event, window, cx| toggle(window, cx))
+                        .child(format!("{caret} {}", response.label)),
+                )
+                .when(response.open, |this| {
+                    this.child(
+                        div()
+                            .debug_selector(|| "price-source-response-body".to_string())
+                            .p(px(8.0))
+                            .bg(color::chrome(cx))
+                            .font_family(MONOSPACE)
+                            .text_size(px(11.5))
+                            .flex()
+                            .flex_col()
+                            .children(
+                                response
+                                    .body
+                                    .lines()
+                                    .map(|line| div().child(line.to_string())),
+                            ),
+                    )
+                })
+        });
+        div()
+            .debug_selector(|| "price-source-test-result".to_string())
+            .flex()
+            .flex_col()
+            .px(px(12.0))
+            .py(px(8.0))
+            .border_1()
+            .border_color(color::hairline(cx))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(8.0))
+                    .font_weight(gpui::FontWeight::BOLD)
+                    .text_color(heading_color)
+                    .child(result.heading.clone())
+                    .children(result.unsaved.clone().map(|tag| {
+                        div()
+                            .font_weight(gpui::FontWeight::NORMAL)
+                            .text_color(color::muted(cx))
+                            .child(tag)
+                    })),
+            )
+            .when(!result.detail.is_empty(), |this| {
+                this.child(
+                    div()
+                        .mt(px(2.0))
+                        .text_size(px(12.0))
+                        .text_color(color::muted(cx))
+                        .font_family(MONOSPACE)
+                        .child(result.detail.clone()),
+                )
+            })
+            .children(response)
+    });
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(8.0))
+        .child(row)
+        .children(result)
+        .into_any_element()
+}
+
 /// The card: title, the fields, Cancel and the submit.
 fn frame(
     view: &PriceSourceFormViewModel,
@@ -430,6 +590,13 @@ fn frame(
         )
         .child(dialog::action_row(
             [
+                div()
+                    .debug_selector(|| "price-source-test-note".to_string())
+                    .mr_auto()
+                    .text_size(px(11.5))
+                    .text_color(color::faint_text(cx))
+                    .children(view.test.as_ref().map(|test| test.note.clone()))
+                    .into_any_element(),
                 dialog::cancel_button(
                     SharedString::from(format!("{prefix}-cancel")),
                     actions.cancel.clone(),
@@ -556,5 +723,66 @@ fn readback(view: &PriceSourceFormViewModel) -> Vec<(&'static str, String)> {
         ),
         ("usage", view.usage.clone().unwrap_or_default()),
         ("refusal", view.refusal.clone().unwrap_or_default()),
+    ]
+    .into_iter()
+    .chain(test_readback(view.test.as_ref()))
+    .collect()
+}
+
+/// The test's state as labelled values, empty while the form offers no test.
+fn test_readback(test: Option<&TestView>) -> Vec<(&'static str, String)> {
+    let Some(test) = test else {
+        return Vec::new();
+    };
+    let result = test.result.as_ref();
+    let response = result.and_then(|result| result.response.as_ref());
+    vec![
+        ("test", test.button.clone()),
+        ("test_enabled", test.enabled.to_string()),
+        ("test_help", test.help.clone()),
+        (
+            "symbol",
+            test.symbol
+                .as_ref()
+                .map(|symbol| symbol.text.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "test_heading",
+            result
+                .map(|result| result.heading.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "test_detail",
+            result
+                .map(|result| result.detail.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "test_unsaved",
+            result
+                .and_then(|result| result.unsaved.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "response",
+            response
+                .map(|response| response.label.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "response_open",
+            response
+                .map(|response| response.open.to_string())
+                .unwrap_or_default(),
+        ),
+        (
+            "response_body",
+            response
+                .map(|response| response.body.clone())
+                .unwrap_or_default(),
+        ),
+        ("test_note", test.note.clone()),
     ]
 }

@@ -419,18 +419,6 @@ fn r_reactivates_the_selected_deactivated_unit(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn t_puts_the_presenters_not_built_on_the_status_line(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.press("t");
-    assert_eq!(status_message(&mut ui), None, "AUD is priced by hand");
-    ui.press("j t");
-    assert_eq!(
-        status_message(&mut ui).as_deref(),
-        Some("test price source — not yet built")
-    );
-}
-
-#[gpui::test]
 fn a_custom_price_source_is_added_by_typing_tab_and_left_right(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.press("tab n");
@@ -2166,5 +2154,159 @@ fn f_on_a_price_source_row_fetches_its_units_with_a_start_toast_the_status_and_f
     assert_ne!(
         source_line(&mut ui, "Frankfurter").1.last_updated,
         "Fetching\u{2026}"
+    );
+}
+
+#[gpui::test]
+fn t_on_a_price_source_row_tests_its_first_unit_with_one_toast_writing_nothing(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_on_frankfurter);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    ui.press("t");
+    assert!(transport.requests().is_empty(), "AUD is priced by hand");
+    ui.press("tab j");
+    assert_eq!(selected(&mut ui), "Frankfurter");
+
+    ui.press("t");
+    assert_eq!(
+        transport.urls(),
+        ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
+    );
+    ui.press("t");
+    assert_eq!(
+        transport.requests().len(),
+        1,
+        "a second press sends nothing"
+    );
+    assert!(visible_toasts(&mut ui).contains(&(
+        "Info".to_string(),
+        "Already testing Frankfurter".to_string()
+    )));
+
+    transport.answer_last(200, r#"{"base":"EUR","quote":"AUD","rate":1.6512}"#);
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert!(visible_toasts(&mut ui).contains(&(
+        "Info".to_string(),
+        "Frankfurter works: EUR \u{b7} 1.65 AUD \u{b7} 0 ms".to_string()
+    )));
+    assert_eq!(
+        unit_line(&mut ui, "EUR").1.last_price,
+        "1.60 AUD",
+        "a test writes no price"
+    );
+}
+
+#[gpui::test]
+fn test_with_symbol_tests_an_unsaved_custom_source_and_opens_its_response_on_no_price(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_on_frankfurter);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    ui.press("tab n");
+    type_word(&mut ui, "broker");
+    ui.press("tab tab");
+    type_word(&mut ui, "https://b.example");
+    ui.press("tab");
+    type_word(&mut ui, "/q");
+    ui.press("tab");
+    type_word(&mut ui, "/last");
+    assert_eq!(
+        ui.dialog_value("test_help").as_deref(),
+        Some("Type a symbol to test.")
+    );
+    assert_eq!(ui.dialog_value("test_enabled").as_deref(), Some("false"));
+    assert_eq!(
+        ui.dialog_value("test_note").as_deref(),
+        Some("A test writes nothing.")
+    );
+
+    ui.press("tab tab tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Symbol"));
+    type_word(&mut ui, "abc");
+    assert_eq!(
+        ui.dialog_value("test_help").as_deref(),
+        Some("Quoted in AUD, the base unit.")
+    );
+    ui.press("tab enter");
+    assert_eq!(transport.urls(), ["https://b.example/q"]);
+    assert_eq!(ui.dialog_value("test").as_deref(), Some("Testing\u{2026}"));
+
+    transport.answer_last(200, r#"{"price":12.5}"#);
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert_eq!(ui.dialog(), Some("AddPriceSource"), "the form stays open");
+    assert_eq!(ui.dialog_value("test_heading").as_deref(), Some("No price"));
+    assert_eq!(
+        ui.dialog_value("response").as_deref(),
+        Some("Response \u{b7} HTTP 200")
+    );
+    assert_eq!(ui.dialog_value("response_open").as_deref(), Some("true"));
+    ui.press("tab tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Response"));
+    ui.press("enter");
+    assert_eq!(ui.dialog_value("response_open").as_deref(), Some("false"));
+    let names: Vec<String> = ui
+        .settings::<SettingsUnitsSnapshot>()
+        .price_sources
+        .into_iter()
+        .map(|source| source.name)
+        .collect();
+    assert!(
+        !names.contains(&"broker".to_string()),
+        "a test saves nothing"
+    );
+}
+
+#[gpui::test]
+fn a_built_ins_edit_dialog_tests_the_first_unit_it_values(app: &mut TestAppContext) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_on_frankfurter);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    ui.press("tab j e");
+    assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+    assert_eq!(
+        ui.dialog_value("test").as_deref(),
+        Some("Test price source")
+    );
+    assert_eq!(
+        ui.dialog_value("test_help").as_deref(),
+        Some("Prices EUR, the first unit it values.")
+    );
+
+    ui.press("tab tab enter");
+    assert_eq!(
+        transport.urls(),
+        ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
+    );
+    transport.answer_last(429, "");
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert_eq!(
+        ui.dialog_value("test_heading").as_deref(),
+        Some("Rate limited")
+    );
+    assert_eq!(
+        ui.dialog_value("test_detail").as_deref(),
+        Some("Frankfurter asked to be called less often")
+    );
+    assert_eq!(
+        ui.dialog_value("response").as_deref(),
+        Some(""),
+        "a built-in shows none"
+    );
+    ui.press("escape");
+    assert!(
+        !source_line(&mut ui, "Frankfurter")
+            .1
+            .last_updated
+            .contains("Rate limited"),
+        "a test holds no failure"
     );
 }

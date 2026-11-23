@@ -220,7 +220,7 @@ fn render(
         fields.push(test_not_built(
             ids.test,
             test.clone(),
-            lib_units::msg::units_price_source_test_not_built(),
+            crate::msg::desktop_unit_test_price_not_built(),
             cx,
         ));
     }

@@ -9,7 +9,7 @@ use lib_toast::{Notice, Notify, ToastKind};
 
 use super::Clock;
 use super::fetch_text::{
-    Asked, fetching_status, round_failed_toast, some_failed_toast, unit_failed_toast,
+    Asked, fetching_status, round_failed_toast, some_failed_toast, test_toast, unit_failed_toast,
 };
 use super::units_pane::amount;
 use crate::fetching::{PriceResponse, SharedFetching};
@@ -47,7 +47,21 @@ impl FetchedPricesPresenter {
     /// carries for a Unit that still wants it. A round a person asked for raises a Toast naming
     /// each price; a scheduled one raises nothing. A fetched price is never undoable, so it raises
     /// no `Notice::Changed`.
+    ///
+    /// A test's response writes nothing: `t` on a row raises its one Toast, and a form's is held
+    /// for the form to show.
     pub fn handle(&mut self, response: PriceResponse, router: &mut dyn Notify) {
+        if self.fetching.borrow().is_test(&response) {
+            let landed = self
+                .fetching
+                .borrow_mut()
+                .land_test(&response, (self.clock)());
+            if let Some(result) = landed.filter(|result| result.asked.toast) {
+                let quote = self.ports.borrow().units().unit(result.asked.quote);
+                router.notify(test_toast(&result, quote.as_ref()));
+            }
+            return;
+        }
         let Some(landed) = self.fetching.borrow_mut().land(response) else {
             return;
         };

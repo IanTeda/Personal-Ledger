@@ -6,19 +6,31 @@
 //! alike. A saved key shows only as the field's placeholder; blank keeps it, typed text replaces it
 //! and Remove key clears it, written in the Save's commit through the [`crate::PriceSourceKeys`]
 //! port, which `lib-database` encrypts (ADR-0043).
+//!
+//! With the Client's fetching, the form tests its source inline (#1393): a Custom form asks its
+//! Symbol, quoted in the base Unit, with the fields as they stand, saved or not; a built-in's
+//! prices the first Unit (by code) it values. The result shows under the button, a Custom
+//! source's response in a disclosure that opens by itself where it helps fix the Price path. A
+//! test writes nothing, and closing the form drops one still out.
 
-use lib_core::PriceSourceId;
+use lib_core::{PriceSourceId, UnitId};
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView, count};
 use secrecy::{ExposeSecret as _, SecretString};
 
-use super::{UnitsOutcome, cycle, step, updates_choices};
-use crate::interactor::{AddPriceSource, EditPriceSource, KeyChange, SavePriceSourceKey};
+use super::fetch_text::test_lines;
+use super::{Clock, UnitsOutcome, cycle, step, updates_choices};
+use crate::fetching::{
+    FetchFailure, RequestId, SharedFetching, TestOutcome, TestResult, key_missing,
+};
+use crate::interactor::{
+    AddPriceSource, EditPriceSource, KeyChange, SavePriceSourceKey, TestPriceSource,
+};
 use crate::protocols::SharedPorts;
 use crate::{
     Endpoint, Error, KeyPlacement, KeyState, PriceSourceAuth, RequestHeader, SourceOrigin, Updates,
-    msg,
+    msg, units_by_code,
 };
 
 /// The Authentication control's value: whether the source needs a key.
@@ -45,10 +57,16 @@ pub enum PriceSourceField {
     ApiKey,
     /// The Remove key button beside the API key, while a saved key can be removed.
     RemoveKey,
+    /// A Custom source's symbol to test with.
+    Symbol,
+    /// Test with symbol, or a built-in's Test price source, while it can run.
+    Test,
+    /// A Custom source's test response disclosure, once one came back.
+    Response,
 }
 
 impl PriceSourceField {
-    const CUSTOM_ORDER: [Self; 10] = [
+    const CUSTOM_ORDER: [Self; 13] = [
         Self::Name,
         Self::Updates,
         Self::Address,
@@ -59,8 +77,17 @@ impl PriceSourceField {
         Self::KeyParam,
         Self::ApiKey,
         Self::RemoveKey,
+        Self::Symbol,
+        Self::Test,
+        Self::Response,
     ];
-    const BUILT_IN_ORDER: [Self; 4] = [Self::Name, Self::Updates, Self::ApiKey, Self::RemoveKey];
+    const BUILT_IN_ORDER: [Self; 5] = [
+        Self::Name,
+        Self::Updates,
+        Self::ApiKey,
+        Self::RemoveKey,
+        Self::Test,
+    ];
 }
 
 /// Not `PartialEq`: [`Self::ApiKey`] holds a secret, which can't be compared or printed.
@@ -86,6 +113,10 @@ pub enum PriceSourceFormEvent {
     NextField,
     PrevField,
     Focus(PriceSourceField),
+    /// Test with symbol, or Test price source: sends the test while it can run.
+    Test,
+    /// Opens or closes the test's Response.
+    ToggleResponse,
     Confirm,
     Cancel,
 }
@@ -107,9 +138,8 @@ pub struct PriceSourceFormViewModel {
     /// The API key field: a Custom source's with API key authentication, or a built-in's that takes
     /// a key.
     pub api_key: Option<ApiKeyView>,
-    /// The Test button's label, and the note that testing isn't built yet.
-    pub test: String,
-    pub test_note: String,
+    /// The test's button, symbol and result; `None` without the Client's fetching.
+    pub test: Option<TestView>,
     /// The fields on screen, in `Tab` order.
     pub fields: Vec<PriceSourceField>,
     pub refusal: Option<String>,
@@ -148,6 +178,82 @@ pub struct ApiKeyView {
     pub note: String,
 }
 
+/// Test with symbol, or a built-in's Test price source, and what the last test came to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestView {
+    /// The button's label: *Testing…* while one is out.
+    pub button: String,
+    /// Off while one is out, or the form lacks what a test needs.
+    pub enabled: bool,
+    pub focused: bool,
+    /// A Custom source's symbol to test with; `None` for a built-in, which tests its first Unit.
+    pub symbol: Option<TextFieldView>,
+    /// What it prices (`Quoted in AUD, the base unit.`), or why it is off.
+    pub help: String,
+    pub result: Option<TestResultView>,
+    /// *A test writes nothing.*, for the footer.
+    pub note: String,
+}
+
+/// How the last test went.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TestState {
+    Testing,
+    Found,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestResultView {
+    pub state: TestState,
+    /// *Price found · 412 ms*, *Testing…* or a reason's name.
+    pub heading: String,
+    /// `VAS.AX · 101.84 AUD · tested 14:36`, or the reason's detail.
+    pub detail: String,
+    /// *with unsaved changes*, when an edited source was tested with fields not yet saved.
+    pub unsaved: Option<String>,
+    /// A Custom source's response; `None` for a built-in, whose price path is code, and when
+    /// nothing came back.
+    pub response: Option<ResponseView>,
+}
+
+/// The collapsed *Response · HTTP n* disclosure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResponseView {
+    pub label: String,
+    /// The body, indented when it is JSON, as text when it isn't, any echo of the key masked.
+    pub body: String,
+    pub open: bool,
+    pub focused: bool,
+}
+
+/// Why the test is off, or the test ready to send.
+enum Readiness {
+    Ready(Box<TestPriceSource>),
+    Off(TestOff),
+}
+
+enum TestOff {
+    /// No Client fetching to send through.
+    NoFeed,
+    Testing,
+    /// A built-in that values no Unit has nothing to price.
+    NoUnits,
+    NeedsField(PriceSourceField),
+    FixField(PriceSourceField),
+    NeedsSymbol,
+    NeedsKey,
+}
+
+/// The source's fields as the Edit form opened on them, so a test can say it ran on unsaved
+/// changes.
+#[derive(Clone, PartialEq)]
+struct Opened {
+    name: String,
+    updates: Updates,
+    endpoint: Endpoint,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     AddCustom,
@@ -180,6 +286,26 @@ pub struct PriceSourceFormPresenter {
     placement: KeyPlacement,
     focused: PriceSourceField,
     refusal: Option<String>,
+    /// The Client's fetching and Clock, which a test goes through; `None` offers no test.
+    testing: Option<(SharedFetching, Clock)>,
+    symbol: String,
+    /// The last test sent, whose result the form shows.
+    test: Option<RequestId>,
+    /// The person's choice to open or close the Response; `None` leaves it to the reason.
+    response_open: Option<bool>,
+    /// An edited Custom source as stored.
+    opened: Option<Opened>,
+}
+
+/// Closing the form drops a test still out, so its response lands as no one's.
+impl Drop for PriceSourceFormPresenter {
+    fn drop(&mut self) {
+        if let (Some(id), Some((fetching, _))) = (self.test, &self.testing)
+            && let Ok(mut fetching) = fetching.try_borrow_mut()
+        {
+            fetching.drop_test(id);
+        }
+    }
 }
 
 impl PriceSourceFormPresenter {
@@ -207,7 +333,18 @@ impl PriceSourceFormPresenter {
             placement: KeyPlacement::Param,
             focused: PriceSourceField::Name,
             refusal: None,
+            testing: None,
+            symbol: String::new(),
+            test: None,
+            response_open: None,
+            opened: None,
         }
+    }
+
+    /// The form testing through `fetching`, the Client's for its open Ledger, timed by `clock`.
+    pub fn with_testing(mut self, fetching: SharedFetching, clock: Clock) -> Self {
+        self.testing = Some((fetching, clock));
+        self
     }
 
     /// The Edit form for source `id`: a built-in's name, Updates and any key it takes, or a Custom
@@ -239,6 +376,11 @@ impl PriceSourceFormPresenter {
                     form.key_param = name.to_string();
                     form.placement = *placement;
                 }
+                form.opened = Some(Opened {
+                    name: form.name.clone(),
+                    updates: form.updates,
+                    endpoint: form.endpoint(),
+                });
             }
         }
         drop(ports);
@@ -276,6 +418,8 @@ impl Presenter for PriceSourceFormPresenter {
                     self.focused = field;
                 }
             }
+            PriceSourceFormEvent::Test => self.run_test(),
+            PriceSourceFormEvent::ToggleResponse => self.toggle_response(),
             PriceSourceFormEvent::Confirm => self.save(router),
             PriceSourceFormEvent::Cancel => router.close(None),
         }
@@ -386,12 +530,7 @@ impl Presenter for PriceSourceFormPresenter {
             built_in_help,
             usage: self.usage(),
             api_key,
-            test: if self.is_custom() {
-                msg::units_price_source_test_with_symbol()
-            } else {
-                msg::units_price_source_test()
-            },
-            test_note: msg::units_price_source_test_not_built(),
+            test: self.test_view(),
             fields: self
                 .order()
                 .iter()
@@ -430,6 +569,10 @@ impl PriceSourceFormPresenter {
             (DialogInput::NextField, _) => self.cycle_focus(false),
             (DialogInput::PreviousField, _) => self.cycle_focus(true),
             (DialogInput::Select, PriceSourceField::RemoveKey) => self.remove_key(),
+            (DialogInput::Select, PriceSourceField::Symbol | PriceSourceField::Test) => {
+                self.run_test();
+            }
+            (DialogInput::Select, PriceSourceField::Response) => self.toggle_response(),
             (DialogInput::Select | DialogInput::Submit, _) => self.save(router),
             (DialogInput::Left, _) => self.step_focused(-1),
             (DialogInput::Right, _) => self.step_focused(1),
@@ -516,12 +659,18 @@ impl PriceSourceFormPresenter {
             PriceSourceField::KeyParam => self.auth == AuthChoice::ApiKey,
             PriceSourceField::ApiKey => self.keyed(),
             PriceSourceField::RemoveKey => self.keyed() && self.key_kept(),
+            PriceSourceField::Symbol | PriceSourceField::Test => self.testing.is_some(),
+            PriceSourceField::Response => self.response().is_some(),
             _ => true,
         }
     }
 
-    /// Whether `field` takes focus: drawn, and for the key and Remove key, writable here.
+    /// Whether `field` takes focus: drawn, for the key and Remove key writable here, and for Test
+    /// able to run.
     fn focusable(&self, field: PriceSourceField) -> bool {
+        if field == PriceSourceField::Test && !matches!(self.readiness(), Readiness::Ready(_)) {
+            return false;
+        }
         self.shows(field)
             && (self.keys_writable
                 || !matches!(
@@ -603,8 +752,11 @@ impl PriceSourceFormPresenter {
             PriceSourceField::PricePath => &mut self.price_path,
             PriceSourceField::Headers => &mut self.headers,
             PriceSourceField::KeyParam => &mut self.key_param,
+            PriceSourceField::Symbol => &mut self.symbol,
             PriceSourceField::ApiKey
             | PriceSourceField::RemoveKey
+            | PriceSourceField::Test
+            | PriceSourceField::Response
             | PriceSourceField::Updates
             | PriceSourceField::Auth => {
                 return None;
@@ -699,6 +851,284 @@ impl PriceSourceFormPresenter {
             count(codes.len()),
             &codes.join(", "),
         ))
+    }
+
+    /// The key a test sends: the typed one, else the stored one unless Remove key was pressed.
+    fn test_key(&self) -> Option<SecretString> {
+        let typed = self.api_key.expose_secret().trim();
+        if !typed.is_empty() {
+            return Some(SecretString::from(typed.to_string()));
+        }
+        let id = match self.mode {
+            Mode::AddCustom => return None,
+            Mode::EditCustom(id) | Mode::EditBuiltIn(id) => id,
+        };
+        (!self.remove_key)
+            .then(|| self.ports.borrow().keys().key(id))
+            .flatten()
+    }
+
+    /// The test the form would send now, or why it can't: what it lacks, in the order the fields
+    /// show.
+    fn readiness(&self) -> Readiness {
+        let Some((fetching, _)) = &self.testing else {
+            return Readiness::Off(TestOff::NoFeed);
+        };
+        if self.test.is_some_and(|id| fetching.borrow().testing(id)) {
+            return Readiness::Off(TestOff::Testing);
+        }
+        let ports = self.ports.borrow();
+        let blank = |text: &String| text.trim().is_empty();
+        let (source, endpoint, symbol, quote) = match self.mode {
+            Mode::EditBuiltIn(id) => {
+                let Some(built_in) = crate::built_in(id) else {
+                    return Readiness::Off(TestOff::NoUnits);
+                };
+                let units = ports.units().units();
+                let Some(first) = units_by_code(&units)
+                    .into_iter()
+                    .find(|unit| unit.link.source_id == id)
+                    .cloned()
+                else {
+                    return Readiness::Off(TestOff::NoUnits);
+                };
+                (
+                    Some(id),
+                    built_in.endpoint.clone(),
+                    first.link.symbol,
+                    first.link.quote,
+                )
+            }
+            Mode::AddCustom | Mode::EditCustom(_) => {
+                let mut needed = vec![
+                    (PriceSourceField::Address, &self.address),
+                    (PriceSourceField::Request, &self.request),
+                    (PriceSourceField::PricePath, &self.price_path),
+                ];
+                if self.auth == AuthChoice::ApiKey {
+                    needed.push((PriceSourceField::KeyParam, &self.key_param));
+                }
+                if let Some((field, _)) = needed.into_iter().find(|(_, text)| blank(text)) {
+                    return Readiness::Off(TestOff::NeedsField(field));
+                }
+                if parse_headers(&self.headers).is_none() {
+                    return Readiness::Off(TestOff::FixField(PriceSourceField::Headers));
+                }
+                if blank(&self.symbol) {
+                    return Readiness::Off(TestOff::NeedsSymbol);
+                }
+                let source = match self.mode {
+                    Mode::EditCustom(id) => Some(id),
+                    Mode::AddCustom | Mode::EditBuiltIn(_) => None,
+                };
+                (
+                    source,
+                    self.endpoint(),
+                    self.symbol.trim().to_string(),
+                    ports.base_unit().base_unit(),
+                )
+            }
+        };
+        drop(ports);
+        let key = self.test_key();
+        if key_missing(&endpoint, key.as_ref()) {
+            return Readiness::Off(TestOff::NeedsKey);
+        }
+        let quote_code = self.unit_code(quote);
+        let unsaved = self.opened.as_ref().is_some_and(|opened| {
+            *opened
+                != Opened {
+                    name: self.name.clone(),
+                    updates: self.updates,
+                    endpoint: self.endpoint(),
+                }
+                || !self.api_key.expose_secret().trim().is_empty()
+        });
+        Readiness::Ready(Box::new(TestPriceSource {
+            source,
+            source_name: self.source_name(),
+            endpoint,
+            symbol,
+            quote,
+            quote_code,
+            key,
+            toast: false,
+            unsaved,
+        }))
+    }
+
+    fn unit_code(&self, id: UnitId) -> String {
+        self.ports
+            .borrow()
+            .units()
+            .unit(id)
+            .map(|unit| unit.code)
+            .unwrap_or_default()
+    }
+
+    /// The name a failure's detail gives the source: its Name, or its Address while that is blank.
+    fn source_name(&self) -> String {
+        let name = self.name.trim();
+        if name.is_empty() {
+            self.address.trim().to_string()
+        } else {
+            name.to_string()
+        }
+    }
+
+    /// Sends the test, dropping the last one, while it can run. Writes nothing.
+    fn run_test(&mut self) {
+        let Readiness::Ready(test) = self.readiness() else {
+            return;
+        };
+        let Some((fetching, clock)) = &self.testing else {
+            return;
+        };
+        let mut fetching = fetching.borrow_mut();
+        if let Some(last) = self.test.take() {
+            fetching.drop_test(last);
+        }
+        self.response_open = None;
+        // Ready checked the key, so no refusal is left.
+        self.test = test.run(&mut fetching, clock()).ok();
+        drop(fetching);
+        if !self.focusable(self.focused) {
+            self.focused = if self.is_custom() {
+                PriceSourceField::Symbol
+            } else {
+                PriceSourceField::Name
+            };
+        }
+    }
+
+    fn toggle_response(&mut self) {
+        if let Some(open) = self.response().map(|response| response.open) {
+            self.response_open = Some(!open);
+        }
+    }
+
+    /// The last test's result, once it has landed.
+    fn result(&self) -> Option<TestResult> {
+        let (fetching, _) = self.testing.as_ref()?;
+        fetching.borrow().test_result(self.test?).cloned()
+    }
+
+    /// A Custom source's last response, open by itself on No price, Not found and Key rejected.
+    fn response(&self) -> Option<ResponseView> {
+        if !self.is_custom() {
+            return None;
+        }
+        let result = self.result()?;
+        let (status, body) = result.response?;
+        let auto = matches!(
+            result.outcome,
+            TestOutcome::Failed(
+                FetchFailure::NoPrice | FetchFailure::NotFound | FetchFailure::KeyRejected
+            )
+        );
+        let body = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|json| serde_json::to_string_pretty(&json).ok())
+            .unwrap_or(body);
+        Some(ResponseView {
+            label: msg::units_price_source_test_response(&status.to_string()),
+            body,
+            open: self.response_open.unwrap_or(auto),
+            focused: self.focused == PriceSourceField::Response,
+        })
+    }
+
+    fn test_view(&self) -> Option<TestView> {
+        self.testing.as_ref()?;
+        let readiness = self.readiness();
+        let testing = matches!(readiness, Readiness::Off(TestOff::Testing));
+        let label = |field: PriceSourceField| match field {
+            PriceSourceField::Address => msg::units_price_source_field_address(),
+            PriceSourceField::Request => msg::units_price_source_field_request(),
+            PriceSourceField::PricePath => msg::units_price_source_field_price_path(),
+            PriceSourceField::Headers => msg::units_price_source_field_headers(),
+            _ => msg::units_price_source_field_key_param(),
+        };
+        let ready_help = || match self.mode {
+            Mode::AddCustom | Mode::EditCustom(_) => {
+                let base = self.ports.borrow().base_unit().base_unit();
+                msg::units_price_source_test_quoted(&self.unit_code(base))
+            }
+            Mode::EditBuiltIn(id) => {
+                let ports = self.ports.borrow();
+                let units = ports.units().units();
+                let first = units_by_code(&units)
+                    .into_iter()
+                    .find(|unit| unit.link.source_id == id)
+                    .map(|unit| unit.code.clone())
+                    .unwrap_or_default();
+                msg::units_price_source_test_first_unit(&first)
+            }
+        };
+        let help = match &readiness {
+            Readiness::Ready(_) | Readiness::Off(TestOff::Testing | TestOff::NoFeed) => {
+                ready_help()
+            }
+            Readiness::Off(TestOff::NoUnits) => {
+                msg::units_price_source_test_no_units(self.name.trim())
+            }
+            Readiness::Off(TestOff::NeedsField(field)) => {
+                msg::units_price_source_test_needs_field(&label(*field))
+            }
+            Readiness::Off(TestOff::FixField(field)) => {
+                msg::units_price_source_test_fix_field(&label(*field))
+            }
+            Readiness::Off(TestOff::NeedsSymbol) => msg::units_price_source_test_needs_symbol(),
+            Readiness::Off(TestOff::NeedsKey) => msg::units_price_source_test_needs_key(),
+        };
+        let button = if testing {
+            msg::units_price_source_testing()
+        } else if self.is_custom() {
+            msg::units_price_source_test_with_symbol()
+        } else {
+            msg::units_price_source_test()
+        };
+        let result = if testing {
+            Some(TestResultView {
+                state: TestState::Testing,
+                heading: msg::units_price_source_testing(),
+                detail: String::new(),
+                unsaved: None,
+                response: None,
+            })
+        } else {
+            self.result().map(|result| {
+                let quote = self.ports.borrow().units().unit(result.asked.quote);
+                let (heading, detail) = test_lines(&result, quote.as_ref());
+                TestResultView {
+                    state: match result.outcome {
+                        TestOutcome::Priced(_) => TestState::Found,
+                        TestOutcome::Failed(_) => TestState::Failed,
+                    },
+                    heading,
+                    detail,
+                    unsaved: result
+                        .asked
+                        .unsaved
+                        .then(msg::units_price_source_test_unsaved),
+                    response: self.response(),
+                }
+            })
+        };
+        Some(TestView {
+            button,
+            enabled: matches!(readiness, Readiness::Ready(_)),
+            focused: self.focused == PriceSourceField::Test,
+            symbol: self.is_custom().then(|| TextFieldView {
+                label: msg::units_price_source_field_symbol(),
+                text: self.symbol.clone(),
+                placeholder: msg::units_price_source_symbol_placeholder(),
+                focused: self.focused == PriceSourceField::Symbol,
+            }),
+            help,
+            result,
+            note: msg::units_price_source_test_writes_nothing(),
+        })
     }
 
     /// Saves the source, then its key in the same commit. A key the port refuses leaves the Dialog
@@ -1395,5 +1825,330 @@ mod tests {
             saved[0].endpoint.auth,
             PriceSourceAuth::ApiKey { .. }
         ));
+    }
+
+    /// Test with symbol and Test price source, through a fake transport.
+    mod testing {
+        use super::*;
+        use crate::fake::FakeTransport;
+        use crate::fetching::{PriceFetching, PriceResponse, SharedFetching};
+        use crate::presenter::FetchedPricesPresenter;
+        use crate::presenter::test_support::{clock, now};
+        use crate::protocols::UnitsPorts as _;
+        use lib_toast::Notice;
+
+        struct Tested {
+            ports: Rc<RefCell<InMemoryPorts>>,
+            shared: SharedPorts,
+            transport: FakeTransport,
+            fetching: SharedFetching,
+        }
+
+        fn tested() -> Tested {
+            let (ports, shared) = sample();
+            let transport = FakeTransport::default();
+            let fetching = PriceFetching::shared(Rc::new(transport.clone()));
+            Tested {
+                ports,
+                shared,
+                transport,
+                fetching,
+            }
+        }
+
+        impl Tested {
+            fn add(&self) -> PriceSourceFormPresenter {
+                PriceSourceFormPresenter::add(self.shared.clone(), DialogKeys::default())
+                    .with_testing(self.fetching.clone(), clock())
+            }
+
+            fn edit(&self, id: PriceSourceId) -> PriceSourceFormPresenter {
+                PriceSourceFormPresenter::edit(self.shared.clone(), id, DialogKeys::default())
+                    .expect("an editable source")
+                    .with_testing(self.fetching.clone(), clock())
+            }
+
+            /// Lands `response` as the Client's input door does.
+            fn land(&self, response: PriceResponse) -> Vec<Notice> {
+                let mut notices = Vec::new();
+                FetchedPricesPresenter::new(self.shared.clone(), self.fetching.clone(), clock())
+                    .handle(response, &mut notices);
+                notices
+            }
+
+            /// No source, key, price or fetch failure was written.
+            fn wrote_nothing(&self) -> bool {
+                let ports = self.ports.borrow();
+                let fetching = self.fetching.borrow();
+                let catalogue = ports.source_catalogue();
+                ports.price_sources.records.is_empty()
+                    && ports.keys.keys.is_empty()
+                    && ports.units.units.iter().all(|unit| {
+                        catalogue.source(unit.link.source_id).is_none_or(|source| {
+                            fetching.unit_fetch(unit, &source).is_none()
+                                && fetching.source_fetch(&source).is_none()
+                        })
+                    })
+                    && ports.units.units == InMemoryPorts::sample(now()).units.units
+            }
+        }
+
+        fn test_view(form: &PriceSourceFormPresenter) -> TestView {
+            form.view_model().test.expect("the form tests")
+        }
+
+        #[test]
+        fn test_with_symbol_waits_for_the_fields_it_needs_and_says_which() {
+            let on = tested();
+            let mut form = on.add();
+            let view = test_view(&form);
+            assert_eq!(view.button, "Test with symbol");
+            assert!(!view.enabled);
+            assert_eq!(view.help, "Fill in Address to test.");
+            assert_eq!(view.note, "A test writes nothing.");
+
+            send(&mut form, filled());
+            assert_eq!(test_view(&form).help, "Type a symbol to test.");
+            send(
+                &mut form,
+                vec![
+                    typed(PriceSourceField::Symbol, "VAS.AX"),
+                    PriceSourceFormEvent::Auth(AuthChoice::ApiKey),
+                ],
+            );
+            assert_eq!(test_view(&form).help, "Fill in Key parameter to test.");
+            send(&mut form, vec![typed(PriceSourceField::KeyParam, "apikey")]);
+            let view = test_view(&form);
+            assert_eq!(view.help, "Type an API key to test.");
+            assert!(!view.enabled);
+            assert!(!form.view_model().fields.contains(&PriceSourceField::Test));
+
+            send(&mut form, vec![PriceSourceFormEvent::Test]);
+            assert!(
+                on.transport.requests().is_empty(),
+                "nothing is sent while off"
+            );
+        }
+
+        #[test]
+        fn an_unsaved_custom_source_is_tested_in_the_base_unit_and_writes_nothing() {
+            let on = tested();
+            let mut form = on.add();
+            let mut events = filled();
+            events.extend([
+                typed(PriceSourceField::Symbol, "VAS.AX"),
+                PriceSourceFormEvent::Auth(AuthChoice::ApiKey),
+                typed(PriceSourceField::KeyParam, "apikey"),
+                PriceSourceFormEvent::ApiKey("s3cr3t".into()),
+            ]);
+            send(&mut form, events);
+            let view = test_view(&form);
+            assert!(view.enabled);
+            assert_eq!(view.help, "Quoted in AUD, the base unit.");
+
+            send(
+                &mut form,
+                vec![
+                    PriceSourceFormEvent::Focus(PriceSourceField::Test),
+                    PriceSourceFormEvent::Input(DialogInput::Select),
+                ],
+            );
+            let requests = on.transport.requests();
+            let [(_, request)] = requests.as_slice() else {
+                panic!("one test request, not {requests:?}");
+            };
+            assert_eq!(
+                request.url, "https://www.alphavantage.co/query?symbol=VAS.AX",
+                "the form's unsaved values"
+            );
+            let view = test_view(&form);
+            assert_eq!(view.button, "Testing…");
+            assert!(!view.enabled);
+            assert_eq!(
+                view.result.map(|result| (result.state, result.heading)),
+                Some((TestState::Testing, "Testing…".to_string()))
+            );
+
+            let notices = on.land(
+                on.transport
+                    .answer_last(200, r#"{"Global Quote":{"05. price":"101.8400"}}"#),
+            );
+            assert!(notices.is_empty(), "a form's test raises no Toast");
+            let result = test_view(&form).result.expect("landed");
+            assert_eq!(result.state, TestState::Found);
+            assert_eq!(result.heading, "Price found · 0 ms");
+            assert!(
+                result.detail.starts_with("VAS.AX · 101.84 AUD · tested "),
+                "{}",
+                result.detail
+            );
+            assert_eq!(
+                result.unsaved, None,
+                "a new source has nothing saved to differ from"
+            );
+            assert!(!result.response.expect("a Custom source's").open);
+            assert!(on.wrote_nothing());
+        }
+
+        #[test]
+        fn no_price_opens_the_response_by_itself_with_the_keys_echo_masked() {
+            let on = tested();
+            let mut form = on.add();
+            let mut events = filled();
+            events.extend([
+                typed(PriceSourceField::Symbol, "VAS.AX"),
+                PriceSourceFormEvent::Auth(AuthChoice::ApiKey),
+                typed(PriceSourceField::KeyParam, "apikey"),
+                PriceSourceFormEvent::ApiKey("s3cr3t".into()),
+                PriceSourceFormEvent::Test,
+            ]);
+            send(&mut form, events);
+            on.land(on.transport.answer_last(
+                200,
+                r#"{"Global Quote":{"5. price":"101.84"},"apikey":"s3cr3t"}"#,
+            ));
+
+            let result = test_view(&form).result.expect("landed");
+            assert_eq!(
+                (result.state, result.heading.as_str()),
+                (TestState::Failed, "No price")
+            );
+            assert_eq!(
+                result.detail,
+                "Alpha Vantage gave no price for VAS.AX in AUD"
+            );
+            let response = result.response.expect("shown");
+            assert_eq!(response.label, "Response · HTTP 200");
+            assert!(response.open, "No price opens it by itself");
+            assert!(response.body.contains("\"5. price\""));
+            assert!(!response.body.contains("s3cr3t"), "{}", response.body);
+
+            send(&mut form, vec![PriceSourceFormEvent::ToggleResponse]);
+            assert!(!test_view(&form).result.unwrap().response.unwrap().open);
+        }
+
+        #[test]
+        fn an_unparseable_body_is_shown_as_text() {
+            let on = tested();
+            let mut form = on.add();
+            let mut events = filled();
+            events.extend([
+                typed(PriceSourceField::Symbol, "VAS.AX"),
+                PriceSourceFormEvent::Test,
+            ]);
+            send(&mut form, events);
+            on.land(on.transport.answer_last(502, "<html>Bad Gateway</html>"));
+
+            let result = test_view(&form).result.expect("landed");
+            assert_eq!(result.heading, "Source error");
+            let response = result.response.expect("shown");
+            assert_eq!(response.label, "Response · HTTP 502");
+            assert_eq!(response.body, "<html>Bad Gateway</html>");
+            assert!(!response.open);
+        }
+
+        #[test]
+        fn an_edited_source_is_tested_with_its_stored_key_and_tagged_with_unsaved_changes() {
+            let on = tested();
+            let id = keyed_source(&on.ports, &on.shared);
+            let mut form = on.edit(id);
+            send(
+                &mut form,
+                vec![
+                    typed(PriceSourceField::Symbol, "VAS.AX"),
+                    PriceSourceFormEvent::Test,
+                ],
+            );
+            on.land(
+                on.transport
+                    .answer_last(200, r#"{"Global Quote":{"05. price":"1"}}"#),
+            );
+            assert_eq!(test_view(&form).result.unwrap().unsaved, None, "as saved");
+            let requests = on.transport.requests();
+            assert_eq!(
+                requests[0]
+                    .1
+                    .key
+                    .as_ref()
+                    .map(|key| key.value.expose_secret().to_string()),
+                Some("k3y".to_string()),
+                "blank uses the stored key"
+            );
+
+            send(
+                &mut form,
+                vec![
+                    typed(PriceSourceField::PricePath, "/Global Quote/5. price"),
+                    PriceSourceFormEvent::Test,
+                ],
+            );
+            on.land(
+                on.transport
+                    .answer_last(200, r#"{"Global Quote":{"5. price":"1"}}"#),
+            );
+            assert_eq!(
+                test_view(&form).result.unwrap().unsaved.as_deref(),
+                Some("with unsaved changes")
+            );
+            assert_eq!(
+                custom_records(&on.ports.borrow())[0]
+                    .endpoint
+                    .price_path
+                    .as_ref(),
+                "/Global Quote/05. price",
+                "a test saves nothing"
+            );
+        }
+
+        #[test]
+        fn a_built_ins_test_prices_the_first_unit_it_values_and_shows_no_response() {
+            let on = tested();
+            let mut form = on.edit(COINGECKO);
+            let view = test_view(&form);
+            assert_eq!(view.button, "Test price source");
+            assert_eq!(view.symbol, None);
+            assert_eq!(view.help, "Prices BTC, the first unit it values.");
+            assert!(form.view_model().fields.contains(&PriceSourceField::Test));
+
+            send(&mut form, vec![PriceSourceFormEvent::Test]);
+            assert_eq!(
+                on.transport.urls(),
+                ["https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=aud"]
+            );
+            on.land(on.transport.answer_last(404, "{}"));
+            let result = test_view(&form).result.expect("landed");
+            assert_eq!(result.heading, "Not found");
+            assert_eq!(result.response, None, "a built-in's path is code");
+            assert!(on.wrote_nothing());
+
+            let yahoo = test_view(&on.edit(crate::YAHOO_FINANCE));
+            assert!(!yahoo.enabled);
+            assert_eq!(
+                yahoo.help,
+                "Yahoo Finance values no unit, so there is nothing to test."
+            );
+        }
+
+        #[test]
+        fn closing_the_form_drops_a_test_still_out() {
+            let on = tested();
+            let mut form = on.edit(COINGECKO);
+            send(&mut form, vec![PriceSourceFormEvent::Test]);
+            send(&mut form, vec![PriceSourceFormEvent::Cancel]);
+            drop(form);
+
+            assert!(
+                on.land(on.transport.answer_last(200, r#"{"bitcoin":{"aud":1}}"#))
+                    .is_empty()
+            );
+            assert!(on.wrote_nothing());
+        }
+
+        #[test]
+        fn without_the_clients_fetching_the_form_offers_no_test() {
+            let (_, shared) = sample();
+            let form = PriceSourceFormPresenter::add(shared, DialogKeys::default());
+            assert_eq!(form.view_model().test, None);
+        }
     }
 }

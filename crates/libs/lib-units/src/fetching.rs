@@ -323,6 +323,62 @@ pub struct PriceFetching {
     rounds: HashMap<RoundId, Round>,
     units: HashMap<UnitId, UnitRecord>,
     sources: HashMap<PriceSourceId, SourceRecord>,
+    /// Tests out, by request: never part of a round, so they write nothing when they land.
+    tests: HashMap<RequestId, TestInFlight>,
+    /// Tests landed for a form that hasn't read them yet, dropped with the form.
+    test_results: HashMap<RequestId, TestResult>,
+    /// Tests out whose form has closed, whose responses are dropped as they land.
+    dropped: HashSet<RequestId>,
+}
+
+/// What a test asked (`GLOSSARY.md`'s Price Source, test): one symbol's price, shown and never
+/// written.
+#[derive(Clone)]
+pub(crate) struct TestInFlight {
+    /// The stored source tested, `None` for an unsaved one being added.
+    pub source: Option<PriceSourceId>,
+    /// The name its Toast and detail give it.
+    pub source_name: String,
+    pub symbol: String,
+    pub quote: UnitId,
+    pub quote_code: String,
+    pub price_path: String,
+    /// The key sent, so its echo in the response can be masked.
+    pub key: Option<SecretString>,
+    pub sent_at: DateTime<Utc>,
+    /// `t` on a row: it answers with a Toast rather than in a form.
+    pub toast: bool,
+    /// Whether the form's fields differed from the stored source when it was sent.
+    pub unsaved: bool,
+}
+
+/// How a test went: a price, or one of the seven reasons.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TestOutcome {
+    Priced(Money),
+    Failed(FetchFailure),
+}
+
+/// A landed test, as the form or the Toast shows it.
+#[derive(Clone)]
+pub(crate) struct TestResult {
+    pub asked: TestInFlight,
+    pub outcome: TestOutcome,
+    pub elapsed: Duration,
+    pub at: DateTime<Utc>,
+    /// The status and body the provider answered, the key masked; `None` when nothing came back.
+    pub response: Option<(u16, String)>,
+}
+
+/// What stands in for a key echoed back in a response.
+const MASK: &str = "\u{2022}\u{2022}\u{2022}";
+
+/// `body` with every echo of `key` masked.
+fn masked(body: &str, key: Option<&SecretString>) -> String {
+    match key.map(|key| key.expose_secret().trim()) {
+        Some(key) if !key.is_empty() => body.replace(key, MASK),
+        _ => body.to_string(),
+    }
 }
 
 /// [`PriceFetching`] as the Presenters share it, single-threaded as both Clients' UI threads are.
@@ -338,6 +394,9 @@ impl PriceFetching {
             rounds: HashMap::new(),
             units: HashMap::new(),
             sources: HashMap::new(),
+            tests: HashMap::new(),
+            test_results: HashMap::new(),
+            dropped: HashSet::new(),
         }
     }
 
@@ -389,6 +448,83 @@ impl PriceFetching {
         self.rounds
             .values()
             .any(|round| round.asked && round.source == source)
+    }
+
+    /// Sends a test's `request`, remembering what it asked until it lands. Never in a round, so
+    /// it neither waits for nor holds up a fetch.
+    pub(crate) fn send_test(&mut self, request: PriceRequest, asked: TestInFlight) -> RequestId {
+        let id = RequestId(self.next);
+        self.next += 1;
+        self.tests.insert(id, asked);
+        self.transport.send(id, request);
+        id
+    }
+
+    /// Whether `response` answers a test this Client sent, dropped or not, so it is never read as
+    /// a round's.
+    pub(crate) fn is_test(&self, response: &PriceResponse) -> bool {
+        self.tests.contains_key(&response.request)
+    }
+
+    /// Reads a test's `response` at `now`, holding it for its form unless it answers with a
+    /// Toast. `None` for a response that is no test's, or a dropped one's.
+    pub(crate) fn land_test(
+        &mut self,
+        response: &PriceResponse,
+        now: DateTime<Utc>,
+    ) -> Option<TestResult> {
+        let asked = self.tests.remove(&response.request)?;
+        if self.dropped.remove(&response.request) {
+            return None;
+        }
+        let outcome = match read(&response.outcome, &asked.price_path) {
+            Reading::Priced(price) => TestOutcome::Priced(price),
+            Reading::Failed(reason) => TestOutcome::Failed(reason),
+        };
+        let answered = match &response.outcome {
+            TransportOutcome::Answered { status, body } => {
+                Some((*status, masked(body, asked.key.as_ref())))
+            }
+            TransportOutcome::Failed(_) => None,
+        };
+        let result = TestResult {
+            elapsed: now - asked.sent_at,
+            at: now,
+            outcome,
+            response: answered,
+            asked,
+        };
+        if !result.asked.toast {
+            self.test_results.insert(response.request, result.clone());
+        }
+        Some(result)
+    }
+
+    /// Whether test `id` is still out.
+    pub(crate) fn testing(&self, id: RequestId) -> bool {
+        self.tests.contains_key(&id)
+    }
+
+    /// Whether a test of stored source `source` is out.
+    pub(crate) fn source_testing(&self, source: PriceSourceId) -> bool {
+        self.tests
+            .iter()
+            .any(|(id, asked)| asked.source == Some(source) && !self.dropped.contains(id))
+    }
+
+    /// Test `id`'s result, once it has landed.
+    pub(crate) fn test_result(&self, id: RequestId) -> Option<&TestResult> {
+        self.test_results.get(&id)
+    }
+
+    /// Forgets test `id`: its form closed or tested again. A response still to come lands as no
+    /// one's and is dropped.
+    pub(crate) fn drop_test(&mut self, id: RequestId) {
+        self.test_results.remove(&id);
+        // Kept among the tests, so its response is still known as a test's, never a round's.
+        if self.tests.contains_key(&id) {
+            self.dropped.insert(id);
+        }
     }
 
     /// Starts a round on `source`, `asked` when a person asked for it. Every request sent into it

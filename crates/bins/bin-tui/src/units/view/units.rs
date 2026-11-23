@@ -163,7 +163,8 @@ impl UnitsView {
     /// Sends `event` to the page Presenter, which holds the prices view and hands it its events,
     /// hosts any Dialog it asked for, and commits whatever it wrote as one transaction.
     fn send(&mut self, event: UnitsPageEvent) {
-        let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone());
+        let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone())
+            .with_fetching(self.setup.fetching.clone());
         self.presenter.handle(event, &mut router);
         let opened = router.opened.take();
         self.setup.commit();
@@ -201,7 +202,8 @@ impl UnitsView {
         let Some(dialog) = &mut self.dialog else {
             return;
         };
-        let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone());
+        let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone())
+            .with_fetching(self.setup.fetching.clone());
         dialog.handle_key(key, &self.dialog_keymap, &mut router);
         let closed = router.closed.take();
         self.setup.commit();

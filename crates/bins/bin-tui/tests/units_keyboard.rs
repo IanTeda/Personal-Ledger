@@ -731,3 +731,96 @@ fn coingeckos_edit_dialog_takes_a_masked_demo_key_and_remove_key_clears_it() {
     let cleared = common::screen_sized(&mut shell, 220, 60);
     assert!(cleared.contains("Not set"), "{cleared}");
 }
+
+#[test]
+fn t_on_a_price_source_row_tests_its_first_unit_and_answers_with_one_toast_writing_nothing() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u Tab j t");
+    assert_eq!(
+        transport.urls(),
+        ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
+    );
+    press(&mut shell, "t");
+    assert!(
+        screen(&mut shell).contains("Already testing Frankfurter"),
+        "a second press says so"
+    );
+    assert_eq!(transport.requests().len(), 1);
+
+    transport.answer_last(200, r#"{"base":"EUR","quote":"AUD","rate":1.6512}"#);
+    shell.handle_event(Event::Tick);
+
+    let frame = screen(&mut shell);
+    assert!(
+        frame.contains("Frankfurter works: EUR · 1.65 AUD"),
+        "{frame}"
+    );
+    assert!(
+        !frame.contains("Fetched EUR"),
+        "a test writes no price:\n{frame}"
+    );
+}
+
+#[test]
+fn a_built_ins_edit_dialog_tests_its_first_unit_inline() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u Tab e");
+    let open = screen(&mut shell);
+    assert!(open.contains("[ Test price source ]"), "{open}");
+    assert!(
+        open.contains("Prices BTC, the first unit it values."),
+        "{open}"
+    );
+    assert!(open.contains("A test writes nothing."), "{open}");
+
+    press(&mut shell, "Tab Tab Tab Enter");
+    assert_eq!(
+        transport.urls(),
+        ["https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=aud"]
+    );
+    assert!(screen(&mut shell).contains("Testing…"));
+    transport.answer_last(200, r#"{"bitcoin":{"aud":92568}}"#);
+    shell.handle_event(Event::Tick);
+
+    let tested = screen(&mut shell);
+    assert!(tested.contains("Price found"), "{tested}");
+    assert!(
+        tested.contains("bitcoin · 92,568.00 AUD · tested"),
+        "{tested}"
+    );
+    assert!(!tested.contains("Fetched BTC"), "{tested}");
+}
+
+#[test]
+fn test_with_symbol_on_an_unsaved_custom_source_shows_no_price_and_its_response_indented() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u Tab n");
+    type_text(&mut shell, "Broker");
+    press(&mut shell, "Tab Tab");
+    type_text(&mut shell, "https://broker.example");
+    press(&mut shell, "Tab");
+    type_text(&mut shell, "/quote/{symbol}");
+    press(&mut shell, "Tab");
+    type_text(&mut shell, "/last");
+    let incomplete = screen(&mut shell);
+    assert!(
+        incomplete.contains("Type a symbol to test."),
+        "{incomplete}"
+    );
+
+    press(&mut shell, "Tab Tab Tab");
+    type_text(&mut shell, "ABC");
+    press(&mut shell, "Enter");
+    assert_eq!(transport.urls(), ["https://broker.example/quote/ABC"]);
+    transport.answer_last(200, r#"{"price":12.5}"#);
+    shell.handle_event(Event::Tick);
+
+    let frame = screen(&mut shell);
+    assert!(frame.contains("No price"), "{frame}");
+    assert!(frame.contains("Response · HTTP 200"), "{frame}");
+    assert!(frame.contains(r#"    "price": 12.5"#), "indented:\n{frame}");
+    assert!(frame.contains("Add price source"), "the form stays open");
+}
