@@ -55,7 +55,7 @@ The Unit Kind decides which built-in Price Sources are offered for a unit: CoinG
 
 ## Screens
 
-The Units screen lists all units you've created with their names and types, each unit's last price in the unit it is quoted in (and how long ago it was written: under the price in the desktop app, beside it in the terminal app's summary for the selected unit), and whether they're currently in use by an account. At its widest, the detail pane shows the selected unit's precision, its price figures (its last price and how long ago it was written, the change on the week before and its 52-week range, or *No weekly prices yet.*), each account's balance in the unit at the unit's precision, and its last price and the accounts' values at the precision of the unit it is quoted in. In the terminal app, press `g` then `u` to jump there. The Units screen in the desktop app is still in design.
+The Units screen lists all units you've created with their names and types, each unit's last price in the unit it is quoted in (and how long ago it was written: under the price in the desktop app, beside it in the terminal app's summary for the selected unit), and whether they're currently in use by an account. At its widest, the detail pane shows the selected unit's precision, its price figures (its last price and how long ago it was written, the change on the week before and its 52-week range, or *No weekly prices yet.*), each account's balance in the unit at the unit's precision, and its last price and the accounts' values at the precision of the unit it is quoted in. In the terminal app, press `g` then `u` to jump there. In the desktop app it is the Units page in Settings: type `:units`, or `:settings units`.
 
 ## Rules to know
 
@@ -87,7 +87,7 @@ The Units screen lists all units you've created with their names and types, each
 
 | Go to | Terminal app | Desktop app |
 | --- | --- | --- |
-| Units | `g` `u` | not in the desktop app yet |
+| Units | `g` `u` | Settings › Units (`:units`) |
 
 For the full set of keys, see [Getting around](getting-around.md).
 

@@ -6,13 +6,18 @@ use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 
 use crate::{dialog, theme::color};
 
-/// Two fields side by side: `gap:16px`, each `flex:1`.
+/// Two fields side by side: `gap:16px`, each `flex:1`. Each column takes half the row from a zero
+/// basis, so a field is as wide empty as it is filled, rather than growing with its text.
 pub(crate) fn two_up(fields: [AnyElement; 2]) -> AnyElement {
     div()
         .flex()
         .items_start()
         .gap(px(16.0))
-        .children(fields)
+        .children(
+            fields
+                .into_iter()
+                .map(|field| div().flex_1().min_w(px(0.0)).child(field)),
+        )
         .into_any_element()
 }
 
