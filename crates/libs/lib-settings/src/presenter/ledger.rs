@@ -20,7 +20,7 @@ use lib_list_cursor::Step;
 use lib_toast::Notice;
 use lib_viper::keymap::{KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter, TextKey};
-use lib_viper::view::Hint;
+use lib_viper::view::{Choice, Hint, SelectView, TextFieldView};
 
 use lib_locale::format::format_count;
 
@@ -108,28 +108,20 @@ pub struct BaseUnitView {
     pub highlight: Option<usize>,
 }
 
-/// The Financial year starts select: the twelve months, the one chosen and its open list.
+/// The Financial year starts select: the twelve months, each labelled as the Locale writes it,
+/// January first, the one chosen, and its open list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FinancialYearView {
-    pub label: String,
-    /// Each month's name as the Locale writes it, January first.
-    pub options: Vec<String>,
-    /// The chosen month's place in [`Self::options`].
-    pub chosen: usize,
-    pub focused: bool,
+    pub select: SelectView<FinancialYearStart>,
     /// The open list's highlighted month, `None` while it is closed.
     pub highlight: Option<usize>,
 }
 
-/// A text field: what is stored, or the draft while it is being edited.
+/// A text field: what is stored, or the draft while it is being edited, its placeholder shown
+/// while the text is empty and the field isn't being edited.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LedgerTextView {
-    pub label: String,
-    /// The draft while editing, what is stored otherwise.
-    pub text: String,
-    /// Shown while the text is empty and the field isn't being edited.
-    pub placeholder: String,
-    pub focused: bool,
+    pub field: TextFieldView,
     pub editing: bool,
     /// The last save of the draft was refused, which draws the field in the danger colour.
     pub refused: bool,
@@ -251,7 +243,10 @@ impl LedgerPresenter {
     fn chosen_index(&self, field: LedgerField) -> usize {
         match field {
             LedgerField::FinancialYear => {
-                usize::try_from(self.units.financial_year_start().month().saturating_sub(1))
+                let start = self.units.financial_year_start();
+                FinancialYearStart::ALL
+                    .iter()
+                    .position(|month| *month == start)
                     .unwrap_or(0)
             }
             LedgerField::BaseUnit => self
@@ -265,7 +260,7 @@ impl LedgerPresenter {
 
     fn option_count(&self, field: LedgerField) -> usize {
         match field {
-            LedgerField::FinancialYear => 12,
+            LedgerField::FinancialYear => FinancialYearStart::ALL.len(),
             LedgerField::BaseUnit => self.unit_ids().len(),
             LedgerField::Name | LedgerField::Owner => 0,
         }
@@ -357,13 +352,9 @@ impl LedgerPresenter {
     fn choose(&mut self, field: LedgerField, index: usize, router: &mut dyn LedgerRouter) {
         match field {
             LedgerField::FinancialYear => {
-                let Some(start) = u32::try_from(index + 1)
-                    .ok()
-                    .and_then(|month| FinancialYearStart::new(month).ok())
-                else {
-                    return;
-                };
-                self.set_financial_year_start(start, router);
+                if let Some(start) = FinancialYearStart::ALL.get(index).copied() {
+                    self.set_financial_year_start(start, router);
+                }
             }
             LedgerField::BaseUnit => {
                 if let Some(id) = self.unit_ids().get(index).copied() {
@@ -427,10 +418,12 @@ impl LedgerPresenter {
     fn text_view(&self, field: LedgerField, label: String, placeholder: String) -> LedgerTextView {
         let edit = self.edit.as_ref().filter(|edit| edit.field == field);
         LedgerTextView {
-            label,
-            text: edit.map_or_else(|| self.stored_text(field), |edit| edit.draft.clone()),
-            placeholder,
-            focused: self.has_focus(field),
+            field: TextFieldView {
+                label,
+                text: edit.map_or_else(|| self.stored_text(field), |edit| edit.draft.clone()),
+                placeholder,
+                focused: self.has_focus(field),
+            },
             editing: edit.is_some(),
             refused: edit.is_some_and(|edit| edit.refused),
         }
@@ -495,13 +488,13 @@ impl Presenter for LedgerPresenter {
             return;
         }
         match event {
-            LedgerEvent::Step(step) => match &mut self.list {
+            LedgerEvent::Step(step) => match self.list {
                 Some(list) => {
-                    let len = match list.field {
-                        LedgerField::FinancialYear => 12,
-                        _ => self.units.choices().len(),
-                    };
-                    list.highlight = lib_list_cursor::step(list.highlight, len, step);
+                    let len = self.option_count(list.field);
+                    self.list = Some(OpenList {
+                        highlight: lib_list_cursor::step(list.highlight, len, step),
+                        ..list
+                    });
                 }
                 None => self.step_focus(step),
             },
@@ -585,10 +578,18 @@ impl Presenter for LedgerPresenter {
                 msg::settings_ledger_owner_none(),
             ),
             financial_year: FinancialYearView {
-                label: msg::settings_ledger_financial_year(),
-                options: (1..=12).map(lib_locale::format::format_month).collect(),
-                chosen: self.chosen_index(LedgerField::FinancialYear),
-                focused: self.has_focus(LedgerField::FinancialYear),
+                select: SelectView {
+                    label: msg::settings_ledger_financial_year(),
+                    options: FinancialYearStart::ALL
+                        .into_iter()
+                        .map(|start| Choice {
+                            value: start,
+                            label: lib_locale::format::format_month(start.month()),
+                        })
+                        .collect(),
+                    chosen: Some(self.units.financial_year_start()),
+                    focused: self.has_focus(LedgerField::FinancialYear),
+                },
                 highlight: self.highlight(LedgerField::FinancialYear),
             },
             base_unit: BaseUnitView {
@@ -793,10 +794,11 @@ mod tests {
         let len = presenter
             .view_model()
             .name
+            .field
             .text
             .chars()
             .count()
-            .max(presenter.view_model().owner.text.chars().count());
+            .max(presenter.view_model().owner.field.text.chars().count());
         send(presenter, &vec![LedgerEvent::Backspace; len]);
     }
 
@@ -807,9 +809,9 @@ mod tests {
     fn focused(presenter: &LedgerPresenter) -> Vec<&'static str> {
         let view = presenter.view_model();
         [
-            ("name", view.name.focused),
-            ("owner", view.owner.focused),
-            ("financial year", view.financial_year.focused),
+            ("name", view.name.field.focused),
+            ("owner", view.owner.field.focused),
+            ("financial year", view.financial_year.select.focused),
             ("base unit", view.base_unit.focused),
         ]
         .into_iter()
@@ -853,7 +855,7 @@ mod tests {
 
         send(&mut presenter, &[LedgerEvent::Open]);
         assert_eq!(presenter.mode(), Some(PageMode::Insert));
-        assert_eq!(presenter.view_model().name.text, "Sample Ledger");
+        assert_eq!(presenter.view_model().name.field.text, "Sample Ledger");
         clear(&mut presenter);
         send(&mut presenter, &typing("  Teda household "));
         let routed = send(&mut presenter, &[LedgerEvent::Save(None)]);
@@ -861,7 +863,7 @@ mod tests {
         assert_eq!(routed, [changed("Ledger name changed to Teda household")]);
         assert_eq!(units.name().as_str(), "Teda household");
         assert_eq!(presenter.mode(), None);
-        assert_eq!(presenter.view_model().name.text, "Teda household");
+        assert_eq!(presenter.view_model().name.field.text, "Teda household");
     }
 
     #[test]
@@ -913,7 +915,7 @@ mod tests {
         let routed = send(&mut presenter, &[LedgerEvent::Cancel]);
 
         assert!(routed.is_empty());
-        assert_eq!(presenter.view_model().name.text, "Sample Ledger");
+        assert_eq!(presenter.view_model().name.field.text, "Sample Ledger");
         assert!(!presenter.view_model().open());
         assert!(
             !presenter.takes(&LedgerEvent::Cancel),
@@ -935,7 +937,7 @@ mod tests {
 
         assert_eq!(routed, [changed("Owner cleared")]);
         assert_eq!(units.owner(), None);
-        assert_eq!(presenter.view_model().owner.placeholder, "None");
+        assert_eq!(presenter.view_model().owner.field.placeholder, "None");
     }
 
     #[test]
@@ -950,7 +952,7 @@ mod tests {
         assert_eq!(routed, [status("A ledger needs a name")]);
         let name = presenter.view_model().name;
         assert!(name.editing && name.refused);
-        assert_eq!(name.text, "  ", "the draft stays");
+        assert_eq!(name.field.text, "  ", "the draft stays");
 
         let routed = send(&mut presenter, &[LedgerEvent::ClickAway]);
         assert_eq!(routed, [status("Ledger name kept: it can't be blank")]);
@@ -969,7 +971,7 @@ mod tests {
         let routed = send(&mut presenter, &[LedgerEvent::Save(None)]);
 
         assert_eq!(routed, [status("A ledger name is at most 60 characters")]);
-        assert_eq!(presenter.view_model().name.text, "x".repeat(61));
+        assert_eq!(presenter.view_model().name.field.text, "x".repeat(61));
         assert_eq!(units.name().as_str(), "Sample Ledger");
     }
 
@@ -1013,7 +1015,7 @@ mod tests {
         send(&mut presenter, &[LedgerEvent::Open]);
         let view = presenter.view_model().financial_year;
         assert_eq!(view.highlight, Some(6), "the list opens on July");
-        assert_eq!(view.options[0], "Jan");
+        assert_eq!(view.select.options[0].label, "Jan");
         let routed = send(&mut presenter, &[LedgerEvent::Step(Step::Next); 3]);
         assert!(routed.is_empty());
         assert_eq!(units.financial_year_start(), FinancialYearStart::JULY);
@@ -1067,7 +1069,10 @@ mod tests {
         );
 
         assert_eq!(routed, [changed("Financial year starts changed to Apr")]);
-        assert_eq!(presenter.view_model().financial_year.chosen, 3);
+        assert_eq!(
+            presenter.view_model().financial_year.select.chosen,
+            Some(FinancialYearStart::APRIL)
+        );
     }
 
     #[test]

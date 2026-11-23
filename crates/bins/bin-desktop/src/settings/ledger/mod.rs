@@ -120,9 +120,9 @@ impl PageSnapshot for SettingsLedgerSnapshot {
     fn read(page: &LedgerPage, _cx: &App) -> Self {
         let view = page.view_model();
         let focused = [
-            ("name", view.name.focused),
-            ("owner", view.owner.focused),
-            ("financial_year", view.financial_year.focused),
+            ("name", view.name.field.focused),
+            ("owner", view.owner.field.focused),
+            ("financial_year", view.financial_year.select.focused),
             ("base_unit", view.base_unit.focused),
         ]
         .into_iter()
@@ -131,16 +131,18 @@ impl PageSnapshot for SettingsLedgerSnapshot {
         let select = view.base_unit;
         let summary = view.summary;
         SettingsLedgerSnapshot {
-            name: view.name.text,
-            owner: view.owner.text,
+            name: view.name.field.text,
+            owner: view.owner.field.text,
             editing: view.name.editing || view.owner.editing,
             refused: view.name.refused || view.owner.refused,
             focused,
             financial_year: view
                 .financial_year
+                .select
                 .options
-                .get(view.financial_year.chosen)
-                .cloned(),
+                .iter()
+                .find(|option| Some(option.value) == view.financial_year.select.chosen)
+                .map(|option| option.label.clone()),
             list_open: view.financial_year.highlight.is_some() || select.highlight.is_some(),
             base_unit: select.chosen.and_then(|chosen| {
                 select

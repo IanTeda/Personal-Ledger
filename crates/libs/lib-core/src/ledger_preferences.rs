@@ -116,6 +116,22 @@ impl FinancialYearStart {
     /// The Australian year.
     pub const JULY: Self = Self(7);
 
+    /// Every start a Ledger can choose, January first, as a select lists them.
+    pub const ALL: [Self; 12] = [
+        Self(1),
+        Self(2),
+        Self(3),
+        Self(4),
+        Self(5),
+        Self(6),
+        Self(7),
+        Self(8),
+        Self(9),
+        Self(10),
+        Self(11),
+        Self(12),
+    ];
+
     pub fn new(month: u32) -> Result<Self, FinancialYearStartError> {
         if (1..=12).contains(&month) {
             Ok(Self(month))
@@ -279,6 +295,15 @@ mod tests {
                     Err(FinancialYearStartError::NotAMonth(month))
                 );
             }
+        }
+
+        #[test]
+        fn all_runs_january_to_december() {
+            let months: Vec<u32> = FinancialYearStart::ALL
+                .iter()
+                .map(|start| start.month())
+                .collect();
+            assert_eq!(months, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
         }
 
         #[test]

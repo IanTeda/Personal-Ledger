@@ -5,7 +5,6 @@
 //! saves what is open.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_core::FinancialYearStart;
 use lib_settings::LedgerEvent;
 use lib_settings::presenter::{
     BaseUnitView, FinancialYearView, LedgerField, LedgerTextView, LedgerViewModel,
@@ -87,20 +86,22 @@ fn text_field(
     clicks: &PageClicks<LedgerPage>,
     cx: &App,
 ) -> impl IntoElement {
-    let caret = if view.editing { "\u{2502}" } else { "" };
-    let (text, text_color) = if view.text.is_empty() && !view.editing {
-        (view.placeholder.clone(), color::faint_text(cx))
+    let editing = view.editing;
+    let view_field = &view.field;
+    let caret = if editing { "\u{2502}" } else { "" };
+    let (text, text_color) = if view_field.text.is_empty() && !editing {
+        (view_field.placeholder.clone(), color::faint_text(cx))
     } else {
-        (format!("{}{caret}", view.text), color::foreground(cx))
+        (format!("{}{caret}", view_field.text), color::foreground(cx))
     };
     let border = if view.refused {
         color::negative(cx)
-    } else if view.focused {
+    } else if view_field.focused {
         color::accent(cx)
     } else {
         color::border(cx)
     };
-    div().child(field_label(view.label.clone())).child(
+    div().child(field_label(view_field.label.clone())).child(
         div()
             .id(id)
             .debug_selector(move || id.to_string())
@@ -132,27 +133,28 @@ fn financial_year_select(
     scroll: &mut usize,
     cx: &App,
 ) -> AnyElement {
-    let state = drawn(
-        view.options.get(view.chosen).cloned(),
-        view.highlight,
-        view.options.len(),
-        scroll,
-    );
+    let months = &view.select;
+    let labels: Vec<String> = months.options.iter().map(|o| o.label.clone()).collect();
+    let starts: Vec<_> = months.options.iter().map(|o| o.value).collect();
+    let chosen = months
+        .options
+        .iter()
+        .find(|option| Some(option.value) == months.chosen)
+        .map(|option| option.label.clone());
+    let state = drawn(chosen, view.highlight, labels.len(), scroll);
     select(
         SelectFieldProps {
             id: "settings-ledger-financial-year".into(),
-            label: view.label.clone().into(),
-            options: &view.options,
+            label: months.label.clone().into(),
+            options: &labels,
             state: &state,
-            focused: view.focused,
+            focused: months.focused,
             accent: false,
             read_only: None,
             on_field_click: pressed(clicks, LedgerEvent::Press(LedgerField::FinancialYear)),
-            on_option_click: clicks.option(|index| {
-                let month = u32::try_from(index + 1).unwrap_or(1);
-                LedgerEvent::ChooseMonth(
-                    FinancialYearStart::new(month).unwrap_or(FinancialYearStart::JANUARY),
-                )
+            on_option_click: clicks.option(move |index| match starts.get(index).copied() {
+                Some(start) => LedgerEvent::ChooseMonth(start),
+                None => LedgerEvent::ClickAway,
             }),
         },
         cx,
@@ -229,7 +231,7 @@ fn select(props: SelectFieldProps<'_>, cx: &App) -> AnyElement {
 /// own Preference-vs-Configuration scope (mirrors the section's own "ledger identity" scope
 /// note).
 fn summary_panel(model: &LedgerViewModel, cx: &App) -> impl IntoElement {
-    let last = model.summary.len().saturating_sub(1);
+    let rows = model.summary.len();
     div()
         .flex_1()
         .min_w(px(0.0))
@@ -255,7 +257,7 @@ fn summary_panel(model: &LedgerViewModel, cx: &App) -> impl IntoElement {
                         .iter()
                         .enumerate()
                         .map(|(index, (label, value))| {
-                            summary_row(label.clone(), value.clone(), index == last, cx)
+                            summary_row(label.clone(), value.clone(), index + 1 == rows, cx)
                         }),
                 ),
         )

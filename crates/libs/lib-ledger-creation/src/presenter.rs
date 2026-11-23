@@ -548,8 +548,8 @@ impl Presenter for CreateLedgerPresenter {
             owner_help: msg::ledger_creation_owner_help(),
             financial_year: SelectView {
                 label: msg::ledger_creation_field_financial_year(),
-                options: (1..=12)
-                    .filter_map(|month| FinancialYearStart::new(month).ok())
+                options: FinancialYearStart::ALL
+                    .into_iter()
                     .map(|start| Choice {
                         value: start,
                         label: lib_locale::format::format_month(start.month()),
