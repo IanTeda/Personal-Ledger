@@ -14,15 +14,18 @@ use lib_viper::keymap::{
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
+use super::fetch_text::{failure_name, round_failed_toast};
 use super::price_history::{HistoryInput, PriceHistory, price_history};
 use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
-use crate::fetching::SharedFetching;
+use crate::fetching::{FetchFailure, SharedFetching, is_out_of_date};
 use crate::interactor::{FetchNow, ReactivateUnit};
 use crate::keymap::{FETCH_NOW, NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE, unit_prices_keymap};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
-use crate::{MANUAL_ENTRY, PriceSource, SourceOrigin, UnitRow, last_fetched, msg, units_by_code};
+use crate::{
+    Error, MANUAL_ENTRY, PriceSource, SourceOrigin, UnitRow, last_fetched, msg, units_by_code,
+};
 
 /// A row of either table. One is selected at a time, the Units drawn above the Price Sources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -262,14 +265,18 @@ pub struct UnitLine {
     pub last_price: String,
     /// How long ago that price was written, `5 minutes ago`; `None` with no price.
     pub last_age: Option<String>,
+    /// Whether that price is Out of date, which draws its age in the warning colour.
+    pub out_of_date: bool,
     pub is_base: bool,
     /// `base` for the base Unit.
     pub base_flag: Option<String>,
     /// `inactive` for a deactivated Unit, which is drawn dimmed.
     pub inactive_tag: Option<String>,
-    /// The kind, then the base and inactive flags that apply: `Currency · base`.
+    /// `fetch failed` while this Client's last fetch of the Unit failed, at either level.
+    pub fetch_failed_tag: Option<String>,
+    /// The kind, then the flags that apply: `Currency · base`.
     pub kind_meta: String,
-    /// The base and inactive flags that apply, `base · inactive`; empty for neither.
+    /// The base, inactive and fetch failed flags that apply, `base · inactive`; empty for none.
     pub flags: String,
     pub selected: bool,
 }
@@ -281,8 +288,11 @@ pub struct SourceLine {
     pub name: String,
     /// The address it fetches from, or — for Manual entry.
     pub address: String,
-    /// How long ago it last fetched, `Not fetched yet`, or — for Manual entry.
+    /// How long ago it last fetched, `Not fetched yet`, or — for Manual entry; while its last
+    /// round failed, the round's reason (`Offline`).
     pub last_updated: String,
+    /// Whether its last round failed, which draws LAST UPDATED in the warning colour.
+    pub failed: bool,
     /// Whether it fetches but has not yet, which draws a muted ✗ before LAST UPDATED.
     pub not_fetched: bool,
     pub selected: bool,
@@ -483,7 +493,7 @@ impl UnitsPagePresenter {
             UnitsPageEvent::Test => self.test(router),
             UnitsPageEvent::SetBase => self.open(UnitsDialog::SetBaseUnit, router),
             UnitsPageEvent::SetPrice => self.run_on_selection(MenuAction::SetPrice, router),
-            UnitsPageEvent::FetchNow => self.fetch_now(),
+            UnitsPageEvent::FetchNow => self.fetch_now(router),
             UnitsPageEvent::Open => match self.selection() {
                 Some(UnitsRow::Unit(_)) => self.run_on_selection(MenuAction::Prices, router),
                 _ => self.edit(router),
@@ -531,6 +541,23 @@ impl UnitsPagePresenter {
         let by_code = units_by_code(&units);
         let selection = resolve(Self::rows_of(&by_code, &sources), self.selected);
         let now = (self.clock)();
+        let fetching = self.fetching.as_ref().map(|fetching| fetching.borrow());
+        let fetching = fetching.as_deref();
+        let source_of = |unit: &UnitRow| {
+            sources
+                .iter()
+                .find(|source| source.id == unit.link.source_id)
+        };
+        let unit_failed = |unit: &UnitRow| {
+            fetching
+                .zip(source_of(unit))
+                .and_then(|(fetching, source)| fetching.unit_fetch(unit, source))
+                .is_some_and(|last| last.failure().is_some())
+        };
+        let out_of_date = |unit: &UnitRow| {
+            unit.link.source_id != MANUAL_ENTRY
+                && is_out_of_date(unit, source_of(unit).map(|source| source.updates), now)
+        };
         let history = self.history_unit(&by_code, selection).map(|unit| {
             price_history(
                 &HistoryInput {
@@ -539,6 +566,8 @@ impl UnitsPagePresenter {
                     base,
                     open_chord: self.keymap.hint_chord(OPEN),
                     today: now.with_timezone(&Local).date_naive(),
+                    out_of_date: out_of_date(unit),
+                    fetch_failed: unit_failed(unit),
                 },
                 unit,
             )
@@ -549,7 +578,12 @@ impl UnitsPagePresenter {
             .map(|unit| {
                 let base_flag = (unit.id == base).then(msg::units_flag_base);
                 let inactive_tag = (!unit.is_active).then(msg::units_inactive);
-                let flags = [base_flag.clone(), inactive_tag.clone()];
+                let fetch_failed_tag = unit_failed(unit).then(msg::units_flag_fetch_failed);
+                let flags = [
+                    base_flag.clone(),
+                    inactive_tag.clone(),
+                    fetch_failed_tag.clone(),
+                ];
                 let last = unit.last_price();
                 let quote = units.iter().find(|quote| quote.id == unit.link.quote);
                 UnitLine {
@@ -565,6 +599,7 @@ impl UnitsPagePresenter {
                     last_price: last
                         .map_or_else(msg::units_none, |price| amount(&price.close, quote)),
                     last_age: last.map(|price| ago(price.written_at, now)),
+                    out_of_date: out_of_date(unit),
                     is_base: unit.id == base,
                     kind_meta: joined(
                         std::iter::once(unit.kind.label())
@@ -573,6 +608,7 @@ impl UnitsPagePresenter {
                     flags: joined(flags.into_iter().flatten()),
                     base_flag,
                     inactive_tag,
+                    fetch_failed_tag,
                     selected: selection == Some(UnitsRow::Unit(unit.id)),
                 }
             })
@@ -582,6 +618,9 @@ impl UnitsPagePresenter {
             .map(|source| {
                 let fetched = last_fetched(&units, source.id);
                 let fetches = source.endpoint().is_some();
+                let round_failure = fetching
+                    .and_then(|fetching| fetching.source_fetch(source))
+                    .and_then(|last| last.failure());
                 SourceLine {
                     id: source.id,
                     kind: SourceKind::of(source),
@@ -589,12 +628,14 @@ impl UnitsPagePresenter {
                     address: source
                         .endpoint()
                         .map_or_else(msg::units_none, |endpoint| endpoint.address.to_string()),
-                    last_updated: match fetched {
+                    last_updated: match (fetched, round_failure) {
                         _ if !fetches => msg::units_none(),
-                        Some(at) => ago(at, now),
-                        None => msg::units_not_fetched_yet(),
+                        (_, Some(reason)) => failure_name(reason),
+                        (Some(at), None) => ago(at, now),
+                        (None, None) => msg::units_not_fetched_yet(),
                     },
-                    not_fetched: fetches && fetched.is_none(),
+                    not_fetched: fetches && fetched.is_none() && round_failure.is_none(),
+                    failed: round_failure.is_some(),
                     selected: selection == Some(UnitsRow::Source(source.id)),
                 }
             })
@@ -666,6 +707,7 @@ impl UnitsPagePresenter {
                     activity: &self.activity,
                     now,
                     history: history.as_ref(),
+                    fetching,
                 })
             }),
             open_dialog: self.open_dialog,
@@ -869,8 +911,9 @@ impl UnitsPagePresenter {
     }
 
     /// `f`: asks the selected Unit's source for its price; the response writes it. A Unit `f`
-    /// isn't offered on is left alone. Never undoable, so it raises no `Notice::Changed`.
-    fn fetch_now(&mut self) {
+    /// isn't offered on is left alone. Never undoable, so it raises no `Notice::Changed`. A source
+    /// needing a key this Client doesn't have sends nothing and says so in a Warning Toast.
+    fn fetch_now(&mut self, router: &mut dyn UnitsRouter) {
         let Some(UnitsRow::Unit(id)) = self.selection() else {
             return;
         };
@@ -882,9 +925,24 @@ impl UnitsPagePresenter {
             .units()
             .unit(id)
             .is_some_and(|unit| self.fetches(&unit, &ports.source_catalogue().sources()));
-        if offered {
-            // A refusal is logged by the Interactor; the checks above leave none but a race.
-            let _ = FetchNow { id }.run(&*ports, &mut fetching.borrow_mut());
+        if !offered {
+            return;
+        }
+        // Any other refusal is logged by the Interactor; the checks above leave none but a race.
+        let sent = FetchNow { id }.run(&*ports, &mut fetching.borrow_mut(), (self.clock)());
+        if !matches!(sent, Err(Error::KeyMissing)) {
+            return;
+        }
+        let catalogue = ports.source_catalogue();
+        if let Some(source) = ports
+            .units()
+            .unit(id)
+            .and_then(|unit| catalogue.source(unit.link.source_id))
+        {
+            router.notify(Notice::Toast(
+                ToastKind::Warning,
+                round_failed_toast(FetchFailure::KeyMissing, source.name),
+            ));
         }
     }
 
@@ -2308,6 +2366,196 @@ mod tests {
             on.page.send(UnitsPageEvent::FetchNow);
 
             assert!(on.transport.requests().is_empty());
+        }
+
+        fn eur_line(page: &Page) -> UnitLine {
+            page.view()
+                .units
+                .into_iter()
+                .find(|unit| unit.code == "EUR")
+                .expect("EUR is listed")
+        }
+
+        fn frankfurter_line(page: &Page) -> SourceLine {
+            page.view()
+                .price_sources
+                .into_iter()
+                .find(|source| source.id == FRANKFURTER)
+                .expect("Frankfurter is listed")
+        }
+
+        fn last_fetch(group: &SourceGroup) -> Option<String> {
+            group
+                .facts
+                .iter()
+                .find(|fact| fact.label == "Last fetch")
+                .map(|fact| fact.value.clone())
+        }
+
+        /// Fetches EUR now and answers it with `status` and `body`, through the Client's door.
+        fn fetch_eur(on: &mut Fetching, status: u16, body: &str) -> Vec<Notice> {
+            on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(on.eur)));
+            on.page.send(UnitsPageEvent::FetchNow);
+            let mut responses =
+                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
+            let mut notices: Vec<Notice> = Vec::new();
+            responses.handle(on.transport.answer_last(status, body), &mut notices);
+            notices
+        }
+
+        #[test]
+        fn a_unit_failure_flags_the_row_the_history_and_the_panes_last_fetch() {
+            let mut on = fetching();
+            on.page.send(UnitsPageEvent::SetDocked(true));
+            let before = eur_line(&on.page);
+            assert_eq!(before.fetch_failed_tag, None);
+            assert_eq!(
+                last_fetch(&source_group(&pane(&on.page))),
+                None,
+                "not tried yet"
+            );
+
+            fetch_eur(&mut on, 404, r#"{"message":"not found"}"#);
+
+            let line = eur_line(&on.page);
+            assert_eq!(line.fetch_failed_tag.as_deref(), Some("fetch failed"));
+            assert_eq!(line.flags, "fetch failed");
+            assert_eq!(line.kind_meta, "Currency · fetch failed");
+            assert_eq!(
+                last_fetch(&source_group(&pane(&on.page))).as_deref(),
+                Some(
+                    "Failed just now · Not found: Frankfurter has no EUR in AUD · tries again in 24 hours"
+                )
+            );
+            assert_eq!(
+                on.page
+                    .view()
+                    .history
+                    .expect("eur's history")
+                    .warning
+                    .as_deref(),
+                Some("⚠ fetch failed")
+            );
+            let source = frankfurter_line(&on.page);
+            assert!(!source.failed, "a Unit failure stays on its Unit's row");
+        }
+
+        #[test]
+        fn a_round_failure_shows_its_reason_in_last_updated_until_the_next_success() {
+            let mut on = fetching();
+            on.page.send(UnitsPageEvent::SetDocked(true));
+
+            fetch_eur(&mut on, 503, "");
+
+            let source = frankfurter_line(&on.page);
+            assert_eq!(source.last_updated, "Source error");
+            assert!(source.failed);
+            assert!(!source.not_fetched);
+            on.page
+                .send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
+            assert_eq!(
+                last_fetch(&source_group(&pane(&on.page))).as_deref(),
+                Some(
+                    "Failed just now · Source error: Frankfurter answered with an error · tries again in 24 hours"
+                )
+            );
+
+            fetch_eur(&mut on, 200, BODY);
+
+            let source = frankfurter_line(&on.page);
+            assert_eq!(source.last_updated, "just now");
+            assert!(!source.failed);
+            assert_eq!(eur_line(&on.page).fetch_failed_tag, None);
+            on.page
+                .send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
+            assert_eq!(
+                last_fetch(&source_group(&pane(&on.page))).as_deref(),
+                Some("Fetched just now")
+            );
+        }
+
+        #[test]
+        fn a_price_past_twice_its_sources_interval_is_out_of_date_but_never_on_manual_entry() {
+            let on = fetching();
+            let age = |page: &Page, id: UnitId| {
+                page.view()
+                    .units
+                    .into_iter()
+                    .find(|unit| unit.id == id)
+                    .expect("listed")
+                    .out_of_date
+            };
+            assert!(
+                !age(&on.page, UnitId::SEED_BTC),
+                "five minutes on a 15-minute source"
+            );
+            for unit in &mut on.page.ports.borrow_mut().units.units {
+                for price in &mut unit.prices {
+                    price.written_at = (clock())() - chrono::Duration::minutes(31);
+                }
+            }
+
+            assert!(age(&on.page, UnitId::SEED_BTC));
+            assert!(!age(&on.page, UnitId::SEED_VAS), "Manual entry");
+            assert!(!age(&on.page, on.eur), "no price yet");
+            let mut page = on.page;
+            page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+            assert_eq!(
+                page.view()
+                    .history
+                    .expect("btc's history")
+                    .warning
+                    .as_deref(),
+                Some("⚠ Out of date")
+            );
+        }
+
+        #[test]
+        fn f_on_a_source_needing_a_key_sends_nothing_and_warns_key_missing() {
+            let mut on = fetching();
+            let id = PriceSourceId::new();
+            on.page.ports.borrow_mut().price_sources.records.push(
+                crate::PriceSourceRecord::Custom(crate::CustomSource {
+                    id,
+                    name: "Rates".into(),
+                    endpoint: crate::Endpoint {
+                        address: "https://rates.example".into(),
+                        request: "/{symbol}".into(),
+                        price_path: "/rate".into(),
+                        auth: crate::PriceSourceAuth::ApiKey {
+                            placement: crate::KeyPlacement::Header,
+                            name: "x-key".into(),
+                        },
+                    },
+                    updates: crate::Updates::Hourly,
+                }),
+            );
+            on.page
+                .ports
+                .borrow_mut()
+                .units
+                .units
+                .iter_mut()
+                .find(|unit| unit.id == on.eur)
+                .expect("eur")
+                .link
+                .source_id = id;
+            on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(on.eur)));
+
+            let calls = on.page.send(UnitsPageEvent::FetchNow);
+
+            assert!(on.transport.requests().is_empty());
+            assert_eq!(
+                calls,
+                [RouterCall::Notice(Notice::Toast(
+                    ToastKind::Warning,
+                    "Couldn't fetch from Rates: no API key on this device".into()
+                ))]
+            );
+            assert_eq!(
+                eur_line(&on.page).fetch_failed_tag.as_deref(),
+                Some("fetch failed")
+            );
         }
 
         #[test]

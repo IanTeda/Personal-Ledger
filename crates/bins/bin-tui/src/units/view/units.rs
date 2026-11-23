@@ -620,7 +620,13 @@ fn render_source_row(frame: &mut Frame<'_>, area: Rect, source: &SourceLine, c: 
     if source.not_fetched {
         spans.push(Span::styled(NOT_FETCHED_GLYPH, c.muted()));
     }
-    spans.push(Span::styled(source.last_updated.as_str(), rest));
+    // A failed round's reason shows in place of the age, warning until the next success.
+    let updated_style = if source.failed {
+        c.toast_mark(ToastKind::Warning)
+    } else {
+        rest
+    };
+    spans.push(Span::styled(source.last_updated.as_str(), updated_style));
     frame.render_widget(
         Paragraph::new(Line::from(spans)).alignment(Alignment::Right),
         updated,
@@ -676,7 +682,12 @@ fn render_summary(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewModel, 
         // The last price, then the age the table's LAST has no room for, dim.
         let mut last = vec![label(&columns.last), Span::raw(unit.last_price.as_str())];
         if let Some(age) = &unit.last_age {
-            last.extend([Span::raw("  "), Span::styled(age.as_str(), dim)]);
+            let age_style = if unit.out_of_date {
+                c.toast_mark(ToastKind::Warning)
+            } else {
+                dim
+            };
+            last.extend([Span::raw("  "), Span::styled(age.as_str(), age_style)]);
         }
         frame.render_widget(Paragraph::new(Line::from(last)), third_fact);
     } else if let Some(source) = view.price_sources.iter().find(|source| source.selected) {
@@ -687,10 +698,18 @@ fn render_summary(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewModel, 
         frame.render_widget(Block::new().borders(Borders::BOTTOM), divider);
         let columns = &view.source_columns;
         frame.render_widget(fact(&columns.source, &source.address), first_fact);
-        frame.render_widget(
-            fact(&columns.last_updated, &source.last_updated),
-            second_fact,
-        );
+        let updated = if source.failed {
+            Paragraph::new(Line::from(vec![
+                label(&columns.last_updated),
+                Span::styled(
+                    source.last_updated.as_str(),
+                    c.toast_mark(ToastKind::Warning),
+                ),
+            ]))
+        } else {
+            fact(&columns.last_updated, &source.last_updated)
+        };
+        frame.render_widget(updated, second_fact);
     }
 }
 
@@ -732,10 +751,13 @@ fn render_weekly_prices(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewM
         return;
     };
     let title_width = heading_text.chars().count() + 2 + history.subtitle.chars().count() + 2;
-    // The flag gives way first in a narrow column: the heading names the Unit.
-    let flag = history
-        .flag
-        .clone()
+    // The flag gives way first in a narrow column: the heading names the Unit. A warning (`⚠ Out
+    // of date · fetch failed`) takes the flag's place, since it matters more.
+    let (flag, flag_style) = match &history.warning {
+        Some(warning) => (warning.clone(), c.toast_mark(ToastKind::Warning)),
+        None => (history.flag.clone().unwrap_or_default(), dim),
+    };
+    let flag = Some(flag)
         .filter(|flag| title_width + flag.chars().count() <= usize::from(heading.width))
         .unwrap_or_default();
     let [title, flag_area] = Layout::horizontal([
@@ -752,7 +774,7 @@ fn render_weekly_prices(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewM
         title,
     );
     frame.render_widget(
-        Paragraph::new(Span::styled(flag, dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(flag, flag_style)).alignment(Alignment::Right),
         flag_area,
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rule);

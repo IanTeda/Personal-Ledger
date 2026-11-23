@@ -61,7 +61,8 @@ pub(super) fn section(history: &PriceHistory, window_size: WindowSize, cx: &App)
                 .flag
                 .clone()
                 .map(|flag| tag(flag, "units-history-flag", cx)),
-        );
+        )
+        .children(history.warning.clone().map(|text| warning(text, cx)));
     let heading = div()
         .flex()
         .items_center()
@@ -94,6 +95,31 @@ pub(super) fn section(history: &PriceHistory, window_size: WindowSize, cx: &App)
 
 /// The pane's PRICE HISTORY body, at X-Large: the sparkline, then WEEK · CLOSE · CHANGE.
 pub(super) fn pane_body(history: &PriceHistory, cx: &App) -> AnyElement {
+    let body = pane_table(history, cx);
+    match history.warning.clone() {
+        Some(text) => div()
+            .flex()
+            .flex_col()
+            .gap(px(6.0))
+            .child(warning(text, cx))
+            .child(body)
+            .into_any_element(),
+        None => body,
+    }
+}
+
+/// `⚠ Out of date · fetch failed`, in the warning colour.
+fn warning(text: String, cx: &App) -> impl IntoElement {
+    div()
+        .debug_selector(|| "units-history-warning".to_string())
+        .flex_none()
+        .text_size(px(11.5))
+        .font_weight(gpui::FontWeight::BOLD)
+        .text_color(color::toast_mark(lib_toast::ToastKind::Warning, cx))
+        .child(text)
+}
+
+fn pane_table(history: &PriceHistory, cx: &App) -> AnyElement {
     if let Some(empty) = &history.empty {
         return empty_line(empty.clone(), cx);
     }

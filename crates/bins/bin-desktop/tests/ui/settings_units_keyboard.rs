@@ -1481,6 +1481,150 @@ fn opening_the_ledger_fetches_a_due_unit_silently_and_the_minute_check_fetches_w
     );
 }
 
+/// `code`'s row in the Units table, and its index.
+#[expect(
+    clippy::panic,
+    reason = "test helper: a Unit that isn't listed should fail the test loudly"
+)]
+fn unit_line(ui: &mut Harness<'_>, code: &str) -> (usize, lib_units::presenter::UnitLine) {
+    let Some(found) = ui
+        .settings::<SettingsUnitsSnapshot>()
+        .units
+        .into_iter()
+        .enumerate()
+        .find(|(_, unit)| unit.code == code)
+    else {
+        panic!("{code} is not listed")
+    };
+    found
+}
+
+/// `name`'s row in the Price Sources table, and its index.
+#[expect(
+    clippy::panic,
+    reason = "test helper: a source that isn't listed should fail the test loudly"
+)]
+fn source_line(ui: &mut Harness<'_>, name: &str) -> (usize, lib_units::presenter::SourceLine) {
+    let Some(found) = ui
+        .settings::<SettingsUnitsSnapshot>()
+        .price_sources
+        .into_iter()
+        .enumerate()
+        .find(|(_, source)| source.name == name)
+    else {
+        panic!("{name} is not listed")
+    };
+    found
+}
+
+/// The Last fetch fact in the docked pane's PRICE SOURCE group, if it shows one.
+fn last_fetch(ui: &mut Harness<'_>) -> Option<String> {
+    ui.settings::<SettingsUnitsSnapshot>()
+        .pane?
+        .groups
+        .into_iter()
+        .find_map(|group| match group {
+            lib_units::presenter::PaneGroup::Source(source) => Some(source),
+            _ => None,
+        })?
+        .facts
+        .into_iter()
+        .find(|fact| fact.label == "Last fetch")
+        .map(|fact| fact.value)
+}
+
+#[gpui::test]
+fn f_answered_not_found_warns_and_flags_the_row_the_history_and_last_fetch(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_on_frankfurter);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    ui.press("j j");
+    assert_eq!(selected(&mut ui), "EUR");
+
+    ui.press("f");
+    transport.answer_last(404, r#"{"message":"not found"}"#);
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert!(visible_toasts(&mut ui).contains(&(
+        "Warning".to_string(),
+        "Couldn't fetch EUR: Frankfurter has no EUR in AUD".to_string()
+    )));
+    let (index, eur) = unit_line(&mut ui, "EUR");
+    assert_eq!(eur.fetch_failed_tag.as_deref(), Some("fetch failed"));
+    assert_eq!(eur.last_price, "1.60 AUD", "the last price stays");
+    assert!(ui.is_drawn(&format!("unit-fetch-failed-{index}")));
+    assert_eq!(history(&mut ui).warning.as_deref(), Some("⚠ fetch failed"));
+    assert!(ui.is_drawn("units-history-warning"));
+
+    ui.resize_to(WindowSize::XLarge);
+    assert_eq!(
+        last_fetch(&mut ui).as_deref(),
+        Some(
+            "Failed just now · Not found: Frankfurter has no EUR in AUD · tries again in 24 hours"
+        )
+    );
+}
+
+#[gpui::test]
+fn a_scheduled_round_that_fails_raises_nothing_and_shows_its_reason_in_last_updated(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_unpriced);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+
+    let (request, _) = transport.requests()[0].clone();
+    transport.answer(
+        request,
+        lib_units::TransportOutcome::Failed(lib_units::TransportError::Offline),
+    );
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    assert!(
+        visible_toasts(&mut ui).is_empty(),
+        "a scheduled failure raises no Toast"
+    );
+    let (index, frankfurter) = source_line(&mut ui, "Frankfurter");
+    assert_eq!(frankfurter.last_updated, "Offline");
+    assert!(frankfurter.failed);
+    assert!(ui.is_drawn(&format!("price-source-failed-{index}")));
+    assert_eq!(
+        unit_line(&mut ui, "EUR").1.fetch_failed_tag.as_deref(),
+        Some("fetch failed")
+    );
+
+    ui.advance_clock(bin_desktop::shell::router::PRICE_CHECK);
+    assert_eq!(
+        transport.requests().len(),
+        1,
+        "Frankfurter backs off, so the minute check leaves eur alone"
+    );
+}
+
+#[gpui::test]
+fn a_price_past_twice_its_interval_is_out_of_date_in_the_row_and_the_history(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_units(app);
+    ui.press("j");
+    assert_eq!(selected(&mut ui), "BTC");
+    assert!(!unit_line(&mut ui, "BTC").1.out_of_date);
+
+    // A day on, btc's 15-minute price is long past its 30 minutes.
+    ui.turn_date_to(common::date(2026, 6, 16));
+
+    let (index, btc) = unit_line(&mut ui, "BTC");
+    assert!(btc.out_of_date);
+    assert!(ui.is_drawn(&format!("unit-last-age-{index}")));
+    assert!(!unit_line(&mut ui, "VAS").1.out_of_date, "Manual entry");
+    assert_eq!(history(&mut ui).warning.as_deref(), Some("⚠ Out of date"));
+    assert!(ui.is_drawn("units-history-warning"));
+}
+
 /// The PRICE HISTORY the page shows.
 #[expect(
     clippy::panic,

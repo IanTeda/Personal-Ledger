@@ -58,6 +58,9 @@ pub enum Error {
     /// A Unit on Manual entry, or a deactivated one, is never fetched.
     #[error("the unit isn't fetched from a price source")]
     NotFetched,
+    /// The Unit's source needs an API key this Client doesn't have, so nothing was sent.
+    #[error("the price source needs an api key this client doesn't have")]
+    KeyMissing,
     /// A week that hasn't started has no price yet.
     #[error("a future week can't be priced")]
     FutureWeek,

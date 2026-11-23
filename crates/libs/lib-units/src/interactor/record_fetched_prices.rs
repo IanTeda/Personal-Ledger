@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use lib_core::{Money, UnitId};
+use lib_core::{Money, PriceSourceId, UnitId};
 
-use crate::fetching::{PriceFetching, PriceResponse, TransportOutcome, parse_price};
+use crate::fetching::{FetchFailure, Landed, PriceFetching, PriceResponse, Reading, read};
 use crate::protocols::UnitRepository;
 
 /// Write one round of fetched prices: each response's price into its Unit's week of the Clock's
@@ -9,10 +9,12 @@ use crate::protocols::UnitRepository;
 /// input, so the Client commits it once.
 ///
 /// A response writes nothing for a Unit deleted, deactivated or relinked since its request went
-/// out, for a request this Ledger never sent, and for an answer with no price in it.
+/// out, for a request this Ledger never sent, and for an answer with no price in it. How each
+/// Unit and the source fared is noted in [`PriceFetching`], never in the Ledger: a round failure
+/// backs off the source, a Unit failure that Unit alone, and a success clears either.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordFetchedPrices {
-    pub responses: Vec<PriceResponse>,
+    pub(crate) landed: Landed,
 }
 
 /// A price written for a Unit.
@@ -22,53 +24,73 @@ pub struct FetchedPrice {
     pub close: Money,
 }
 
+/// How a round went, for the Toast a round a person asked for raises.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RoundOutcome {
+    /// The source asked; `None` for a response for no round.
+    pub source: Option<PriceSourceId>,
+    pub written: Vec<FetchedPrice>,
+    /// The Units the round failed for, and why, round failures included.
+    pub failed: Vec<(UnitId, FetchFailure)>,
+    /// The first round failure, which backed the source off.
+    pub round_failure: Option<FetchFailure>,
+}
+
 impl RecordFetchedPrices {
     /// `today` is the Clock's day, which decides the week; `at` is when the prices are written.
-    /// Returns the prices written.
     pub fn run(
         self,
         units: &mut dyn UnitRepository,
         fetching: &mut PriceFetching,
         today: NaiveDate,
         at: DateTime<Utc>,
-    ) -> Vec<FetchedPrice> {
-        self.responses
-            .into_iter()
-            .filter_map(|response| record(response, units, fetching, today, at))
-            .collect()
+    ) -> RoundOutcome {
+        let source = self.landed.source;
+        let mut outcome = RoundOutcome {
+            source: source.as_ref().map(|(id, _)| *id),
+            ..RoundOutcome::default()
+        };
+        for response in self.landed.responses {
+            match record(response, units, fetching, today, at) {
+                Some(Settled::Written(price)) => outcome.written.push(price),
+                Some(Settled::Failed(unit, failure)) => {
+                    if failure.is_round() && outcome.round_failure.is_none() {
+                        outcome.round_failure = Some(failure);
+                    }
+                    outcome.failed.push((unit, failure));
+                }
+                None => {}
+            }
+        }
+        if let Some((id, settings)) = source {
+            fetching.record_source(id, &settings, at, outcome.round_failure);
+        }
+        outcome
     }
 }
 
+/// What one response settled for its Unit.
+enum Settled {
+    Written(FetchedPrice),
+    Failed(UnitId, FetchFailure),
+}
+
+/// What `response` settled, or `None` for one that settles nothing (no request, or a Unit
+/// changed since).
 fn record(
     response: PriceResponse,
     units: &mut dyn UnitRepository,
     fetching: &mut PriceFetching,
     today: NaiveDate,
     at: DateTime<Utc>,
-) -> Option<FetchedPrice> {
+) -> Option<Settled> {
     let request = response.request.0;
     let Some(sent) = fetching.take(response.request) else {
         tracing::debug!(request, "Dropped a price response for no request in flight");
         return None;
     };
     let unit_id = sent.unit;
-    let close = match response.outcome {
-        TransportOutcome::Answered { status, body } if (200..300).contains(&status) => {
-            let Some(close) = parse_price(&body, &sent.price_path) else {
-                tracing::warn!(%unit_id, request, status, "A fetched price response held no price");
-                return None;
-            };
-            close
-        }
-        TransportOutcome::Answered { status, .. } => {
-            tracing::warn!(%unit_id, request, status, "A price source refused a fetch");
-            return None;
-        }
-        TransportOutcome::Failed(error) => {
-            tracing::warn!(%unit_id, request, ?error, "Couldn't reach a price source");
-            return None;
-        }
-    };
+    let reading = read(&response.outcome, &sent.price_path);
     let mut unit = match units.unit(unit_id) {
         Some(unit) if unit.is_active && unit.link == sent.link => unit,
         _ => {
@@ -76,16 +98,31 @@ fn record(
                 %unit_id,
                 "Skipped a fetched price for a Unit deleted, deactivated or relinked since"
             );
-            return None;
+            // A round failure still fails the source, whichever Unit it came back for.
+            return match reading {
+                Reading::Failed(failure) if failure.is_round() => {
+                    Some(Settled::Failed(unit_id, failure))
+                }
+                Reading::Priced(_) | Reading::Failed(_) => None,
+            };
         }
     };
+    let close = match reading {
+        Reading::Priced(close) => close,
+        Reading::Failed(failure) => {
+            tracing::warn!(%unit_id, request, ?failure, "A price fetch failed");
+            fetching.record_unit(unit_id, sent.link, &sent.settings, at, Some(failure));
+            return Some(Settled::Failed(unit_id, failure));
+        }
+    };
+    fetching.record_unit(unit_id, sent.link, &sent.settings, at, None);
     unit.record_price(close.clone(), today, at);
     units.upsert_unit(unit);
     tracing::info!(%unit_id, "Recorded a fetched price");
-    Some(FetchedPrice {
+    Some(Settled::Written(FetchedPrice {
         unit: unit_id,
         close,
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -138,7 +175,7 @@ mod tests {
         let transport = FakeTransport::default();
         let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
         FetchNow { id: eur }
-            .run(&ports, &mut fetching)
+            .run(&ports, &mut fetching, at())
             .expect("sent");
         Round {
             ports,
@@ -150,10 +187,10 @@ mod tests {
 
     impl Round {
         fn record(&mut self, response: PriceResponse) -> Vec<FetchedPrice> {
-            RecordFetchedPrices {
-                responses: vec![response],
-            }
-            .run(&mut self.ports.units, &mut self.fetching, today(), at())
+            let landed = self.fetching.land(response).expect("a round of one lands");
+            RecordFetchedPrices { landed }
+                .run(&mut self.ports.units, &mut self.fetching, today(), at())
+                .written
         }
 
         fn prices(&self) -> Vec<WeeklyPrice> {
@@ -196,7 +233,7 @@ mod tests {
         let first = round.transport.answer_last(200, BODY);
         round.record(first);
         FetchNow { id: round.eur }
-            .run(&round.ports, &mut round.fetching)
+            .run(&round.ports, &mut round.fetching, at())
             .expect("sent");
         let second = round.transport.answer_last(200, r#"{"rate":1.7}"#);
 
@@ -244,20 +281,20 @@ mod tests {
         let mut round = sent();
         let failed = round.transport.answer(
             RequestId(0),
-            TransportOutcome::Failed(crate::fetching::TransportError::Offline),
+            crate::TransportOutcome::Failed(crate::fetching::TransportError::Offline),
         );
         assert!(round.record(failed).is_empty());
 
         for (status, body) in [(404, BODY), (200, r#"{"rates":{}}"#)] {
             FetchNow { id: round.eur }
-                .run(&round.ports, &mut round.fetching)
+                .run(&round.ports, &mut round.fetching, at())
                 .expect("sent");
             let response = round.transport.answer_last(status, body);
             assert!(round.record(response).is_empty());
         }
         let stray = round.transport.answer(
             RequestId(99),
-            TransportOutcome::Answered {
+            crate::TransportOutcome::Answered {
                 status: 200,
                 body: BODY.into(),
             },

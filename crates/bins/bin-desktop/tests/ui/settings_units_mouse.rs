@@ -692,3 +692,59 @@ fn a_click_on_price_history_selects_nothing(app: &mut TestAppContext) {
             .is_none()
     );
 }
+
+#[gpui::test]
+fn clicking_a_source_whose_round_failed_shows_its_reason_and_last_fetch(app: &mut TestAppContext) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let ui = Harness::fetching(app, (transport.clone(), responses), |fakes| {
+        fakes.units.units.units.push(lib_units::UnitRow::new(
+            "EUR".into(),
+            "Euro".into(),
+            lib_core::UnitKind::Currency,
+            lib_units::Precision::of_kind(lib_core::UnitKind::Currency),
+            lib_units::PriceLink {
+                source_id: lib_units::FRANKFURTER,
+                symbol: "EUR".into(),
+                quote: UnitId::SEED_AUD,
+            },
+        ));
+    });
+    let mut ui = to_units_at(ui, WindowSize::XLarge);
+    let (request, _) = transport.requests()[0].clone();
+    transport.answer(
+        request,
+        lib_units::TransportOutcome::Answered {
+            status: 401,
+            body: String::new(),
+        },
+    );
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    let row = source_row(&mut ui, "Frankfurter");
+    assert!(ui.is_drawn(&row.replace("row", "failed")));
+    ui.click(&row);
+
+    assert_eq!(selected(&mut ui), "Frankfurter");
+    let view = ui.settings::<SettingsUnitsSnapshot>();
+    let source = view
+        .pane
+        .expect("docked at X-Large")
+        .groups
+        .into_iter()
+        .find_map(|group| match group {
+            lib_units::presenter::PaneGroup::Source(source) => Some(source),
+            _ => None,
+        })
+        .expect("a PRICE SOURCE group");
+    let last_fetch = source
+        .facts
+        .iter()
+        .find(|fact| fact.label == "Last fetch")
+        .map(|fact| fact.value.as_str());
+    assert_eq!(
+        last_fetch,
+        Some(
+            "Failed just now · Key rejected: Frankfurter refused the API key · tries again in 24 hours"
+        )
+    );
+}

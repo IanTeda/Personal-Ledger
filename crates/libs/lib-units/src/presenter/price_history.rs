@@ -25,6 +25,9 @@ pub struct PriceHistory {
     pub subtitle: String,
     /// `this week · provisional` while the newest week is the current one.
     pub flag: Option<String>,
+    /// `⚠ Out of date · fetch failed`, whichever apply, drawn in the warning colour by the
+    /// heading; `None` for neither.
+    pub warning: Option<String>,
     /// `enter all prices`, at the heading's right.
     pub open_hint: String,
     pub columns: PriceColumns,
@@ -75,6 +78,10 @@ pub(super) struct HistoryInput<'a> {
     /// The chord that opens the prices view, `enter`.
     pub open_chord: &'a str,
     pub today: NaiveDate,
+    /// Whether the Unit's last price is Out of date.
+    pub out_of_date: bool,
+    /// Whether this Client's last fetch of the Unit failed.
+    pub fetch_failed: bool,
 }
 
 pub(super) fn price_history(input: &HistoryInput<'_>, unit: &UnitRow) -> PriceHistory {
@@ -133,6 +140,16 @@ pub(super) fn price_history(input: &HistoryInput<'_>, unit: &UnitRow) -> PriceHi
             .first()
             .is_some_and(|row| row.week == current)
             .then(msg::units_history_flag_provisional),
+        warning: Some(super::joined(
+            [
+                input.out_of_date.then(msg::units_history_out_of_date),
+                input.fetch_failed.then(msg::units_flag_fetch_failed),
+            ]
+            .into_iter()
+            .flatten(),
+        ))
+        .filter(|text| !text.is_empty())
+        .map(|text| msg::units_history_warning(&text)),
         open_hint: msg::units_history_hint_open(input.open_chord),
         columns: PriceColumns {
             week: msg::units_prices_column_week(),

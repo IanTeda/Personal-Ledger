@@ -8,10 +8,12 @@ use lib_locale::Label as _;
 use lib_locale::format::{AmountStyle, format_amount};
 use lib_viper::view::count;
 
+use super::fetch_text::{Asked, last_fetch_text};
 use super::price_history::PriceHistory;
 use super::unit_prices::price_figures;
 use super::units_page::{ActivityLine, MenuAction, Row, SourceKind, UnitsPageEvent, UnitsRow};
 use super::{ago, joined, updates_label};
+use crate::fetching::PriceFetching;
 use crate::protocols::UnitsPorts;
 use crate::{MANUAL_ENTRY, PriceSource, PriceSourceAuth, SourceOrigin, UnitRow, last_fetched, msg};
 
@@ -186,6 +188,8 @@ pub(super) struct PaneInput<'a> {
     pub now: DateTime<Utc>,
     /// The selected Unit's PRICE HISTORY, which the page builds for its own section too.
     pub history: Option<&'a PriceHistory>,
+    /// The Client's fetching state, for the Last fetch facts; `None` with no fetching.
+    pub fetching: Option<&'a PriceFetching>,
 }
 
 pub(super) fn detail_pane(input: &PaneInput<'_>) -> DetailPane {
@@ -332,7 +336,7 @@ fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
             }],
         };
     };
-    let facts = vec![
+    let mut facts = vec![
         Fact::plain(msg::units_column_source(), source.name.to_string()),
         Fact::mono(
             msg::units_pane_url(),
@@ -351,6 +355,20 @@ fn linked_source(input: &PaneInput<'_>, unit: &UnitRow) -> SourceGroup {
                 .map_or_else(not_fetched, |price| ago(price.written_at, input.now)),
         ),
     ];
+    if let Some(last) = input
+        .fetching
+        .and_then(|fetching| fetching.unit_fetch(unit, source))
+    {
+        let quote = quote.map(|quote| quote.code.as_str()).unwrap_or_default();
+        let asked = Asked {
+            symbol: &unit.link.symbol,
+            quote,
+        };
+        facts.push(Fact::plain(
+            msg::units_pane_last_fetch(),
+            last_fetch_text(last, input.now, source.name, Some(asked)),
+        ));
+    }
     SourceGroup {
         heading,
         title: None,
@@ -439,6 +457,15 @@ fn source_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> SourceGroup 
         msg::units_column_last_updated(),
         last_fetched(input.units, source.id).map_or_else(not_fetched, |at| ago(at, input.now)),
     ));
+    if let Some(last) = input
+        .fetching
+        .and_then(|fetching| fetching.source_fetch(source))
+    {
+        facts.push(Fact::plain(
+            msg::units_pane_last_fetch(),
+            last_fetch_text(last, input.now, source.name, None),
+        ));
+    }
     SourceGroup {
         heading,
         title: Some(source.name.to_string()),

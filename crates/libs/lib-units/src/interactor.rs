@@ -27,6 +27,6 @@ pub use edit_unit::EditUnit;
 pub use fetch_due::FetchDue;
 pub use fetch_now::FetchNow;
 pub use reactivate_unit::ReactivateUnit;
-pub use record_fetched_prices::{FetchedPrice, RecordFetchedPrices};
+pub use record_fetched_prices::{FetchedPrice, RecordFetchedPrices, RoundOutcome};
 pub use set_base_unit::SetBaseUnit;
 pub use set_price::SetPrice;

@@ -1,6 +1,8 @@
 use lib_core::UnitId;
 
-use crate::fetching::{InFlight, PriceFetching, RequestId, price_request};
+use crate::fetching::{
+    FetchFailure, InFlight, PriceFetching, RequestId, SourceSettings, key_missing, price_request,
+};
 use crate::protocols::UnitsPorts;
 use crate::{Error, Result};
 
@@ -14,9 +16,16 @@ pub struct FetchNow {
 
 impl FetchNow {
     /// Returns the request sent. Refused for a Unit on Manual entry or deactivated, which is never
-    /// fetched, and for a Unit whose source or quote Unit is gone.
-    pub fn run(self, ports: &dyn UnitsPorts, fetching: &mut PriceFetching) -> Result<RequestId> {
-        let outcome = self.apply(ports, fetching);
+    /// fetched, and for a Unit whose source or quote Unit is gone. A source needing a key this
+    /// Client doesn't have sends nothing: its round and the Unit fail Key missing at `now`, and
+    /// the refusal says so.
+    pub fn run(
+        self,
+        ports: &dyn UnitsPorts,
+        fetching: &mut PriceFetching,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<RequestId> {
+        let outcome = self.apply(ports, fetching, now);
         match &outcome {
             Ok(request) => {
                 tracing::info!(unit_id = %self.id, request = request.0, "Fetching a Unit's price");
@@ -28,7 +37,12 @@ impl FetchNow {
         outcome
     }
 
-    fn apply(self, ports: &dyn UnitsPorts, fetching: &mut PriceFetching) -> Result<RequestId> {
+    fn apply(
+        self,
+        ports: &dyn UnitsPorts,
+        fetching: &mut PriceFetching,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<RequestId> {
         let unit = ports.units().unit(self.id).ok_or(Error::UnitGone)?;
         if !unit.is_active {
             return Err(Error::NotFetched);
@@ -42,9 +56,16 @@ impl FetchNow {
             .units()
             .unit(unit.link.quote)
             .ok_or(Error::QuoteGone)?;
+        let settings = SourceSettings::of(&source);
+        if key_missing(endpoint) {
+            let failure = Some(FetchFailure::KeyMissing);
+            fetching.record_source(source.id, &settings, now, failure);
+            fetching.record_unit(unit.id, unit.link, &settings, now, failure);
+            return Err(Error::KeyMissing);
+        }
         let (request, price_path) = price_request(endpoint, &unit.link.symbol, &quote.code);
         // A round of one, asked for, so its outcome is told.
-        let round = fetching.open_round(unit.link.source_id, true);
+        let round = fetching.open_round(&source, true);
         Ok(fetching.send(
             round,
             request,
@@ -52,6 +73,7 @@ impl FetchNow {
                 unit: unit.id,
                 link: unit.link,
                 price_path,
+                settings,
             },
         ))
     }
@@ -91,7 +113,9 @@ mod tests {
         let transport = FakeTransport::default();
         let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
 
-        let request = FetchNow { id }.run(&ports, &mut fetching).expect("sent");
+        let request = FetchNow { id }
+            .run(&ports, &mut fetching, Utc::now())
+            .expect("sent");
 
         assert_eq!(
             transport.urls(),
@@ -110,18 +134,18 @@ mod tests {
         let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
 
         assert_eq!(
-            FetchNow { id }.run(&ports, &mut fetching),
+            FetchNow { id }.run(&ports, &mut fetching, Utc::now()),
             Err(Error::NotFetched)
         );
         assert_eq!(
             FetchNow {
                 id: UnitId::SEED_VAS
             }
-            .run(&ports, &mut fetching),
+            .run(&ports, &mut fetching, Utc::now()),
             Err(Error::NotFetched)
         );
         assert_eq!(
-            FetchNow { id: UnitId::new() }.run(&ports, &mut fetching),
+            FetchNow { id: UnitId::new() }.run(&ports, &mut fetching, Utc::now()),
             Err(Error::UnitGone)
         );
         assert!(transport.requests().is_empty());

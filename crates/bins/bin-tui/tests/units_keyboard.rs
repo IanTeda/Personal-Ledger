@@ -398,6 +398,67 @@ fn closing_the_ledger_drops_in_flight_fetches_without_writing() {
     assert!(!frame.contains("Fetched EUR"), "{frame}");
 }
 
+#[test]
+fn f_answered_not_found_warns_and_flags_the_row_the_weekly_prices_and_last_fetch() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u j j f");
+    transport.answer_last(404, r#"{"message":"not found"}"#);
+    shell.handle_event(Event::Tick);
+
+    let frame = large(&mut shell);
+    // The Toast's text is cut to its box.
+    assert!(
+        frame.contains("! Couldn't fetch EUR: Frankfurter has no"),
+        "{frame}"
+    );
+    assert!(frame.contains("Flags           fetch failed"), "{frame}");
+    assert!(frame.contains("⚠ fetch failed"), "{frame}");
+
+    let docked = common::screen_sized(&mut shell, 220, 60);
+    assert!(docked.contains("Last fetch"), "{docked}");
+    assert!(docked.contains("Failed just now · Not found"), "{docked}");
+}
+
+#[test]
+fn f_failing_its_round_warns_and_shows_the_reason_in_last_updated() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u j j f");
+    transport.answer(
+        transport.requests()[0].0,
+        lib_units::TransportOutcome::Failed(lib_units::TransportError::Offline),
+    );
+    shell.handle_event(Event::Tick);
+
+    let frame = large(&mut shell);
+    assert!(
+        frame.contains("! Couldn't fetch from Frankfurter"),
+        "{frame}"
+    );
+    let row = frame
+        .lines()
+        .find(|line| line.starts_with("Frankfurter"))
+        .unwrap_or_else(|| panic!("no Frankfurter row:\n{frame}"));
+    assert!(row.trim_end().ends_with("Offline"), "{row}");
+}
+
+#[test]
+fn an_out_of_date_price_flags_the_weekly_prices_heading() {
+    // The sample's btc, its prices written a day ago: past twice CoinGecko's 15 minutes.
+    let ports =
+        lib_units::fake::InMemoryPorts::sample(chrono::Utc::now() - chrono::Duration::days(1));
+    let (mut shell, _) = common::shell_on(
+        Box::new(ports),
+        std::rc::Rc::new(lib_database::InMemoryCommit::default()),
+    );
+    press(&mut shell, "g u j");
+    let frame = large(&mut shell);
+
+    assert!(frame.contains("WEEKLY PRICES  BTC · CoinGecko"), "{frame}");
+    assert!(frame.contains("⚠ Out of date"), "{frame}");
+}
+
 /// A Large terminal, tall enough for the weekly prices region to list every week it holds.
 fn large(shell: &mut bin_tui::shell::Shell) -> String {
     common::screen_sized(shell, 160, 48)

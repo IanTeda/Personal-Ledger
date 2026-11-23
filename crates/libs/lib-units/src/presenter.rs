@@ -10,6 +10,7 @@
 
 mod delete_price_source;
 mod delete_unit;
+mod fetch_text;
 mod fetched_prices;
 mod price_history;
 mod price_source_form;

@@ -1,7 +1,10 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::PriceSourceId;
 
-use crate::fetching::{InFlight, PriceFetching, PriceRequest, is_due, price_request};
+use crate::fetching::{
+    FetchFailure, InFlight, PriceFetching, PriceRequest, SourceSettings, is_due, key_missing,
+    price_request,
+};
 use crate::protocols::UnitsPorts;
 use crate::units_by_code;
 
@@ -11,7 +14,9 @@ use crate::units_by_code;
 /// [`crate::interactor::RecordFetchedPrices`], and tells no one.
 ///
 /// Never fetches a Unit on Manual entry or on a Manual only source, a deactivated Unit or the base
-/// Unit, and leaves a source with a round already in flight alone.
+/// Unit, and leaves a source with a round already in flight alone, as it does a source or Unit
+/// still backing off a failure. A Unit this Client fetched on another link is due at once. A
+/// source needing a key this Client doesn't have fails its round Key missing without sending.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FetchDue {
     /// The Clock's day, whose week a due Unit needs a price in.
@@ -25,13 +30,32 @@ impl FetchDue {
     pub fn run(self, ports: &dyn UnitsPorts, fetching: &mut PriceFetching) -> Vec<PriceSourceId> {
         let rounds = self.plan(ports, fetching);
         let mut started = Vec::with_capacity(rounds.len());
+        let catalogue = ports.source_catalogue();
         for (source, requests) in rounds {
+            let Some(listed) = catalogue.source(source) else {
+                continue;
+            };
+            let settings = SourceSettings::of(&listed);
+            if listed.endpoint().is_some_and(key_missing) {
+                tracing::warn!(price_source_id = %source, "A price source needs an API key this Client doesn't have");
+                fetching.record_source(source, &settings, self.now, Some(FetchFailure::KeyMissing));
+                for (_, sent) in requests {
+                    fetching.record_unit(
+                        sent.unit,
+                        sent.link,
+                        &settings,
+                        self.now,
+                        Some(FetchFailure::KeyMissing),
+                    );
+                }
+                continue;
+            }
             tracing::info!(
                 price_source_id = %source,
                 units = requests.len(),
                 "Fetching due Units' prices"
             );
-            let round = fetching.open_round(source, false);
+            let round = fetching.open_round(&listed, false);
             for (request, sent) in requests {
                 fetching.send(round, request, sent);
             }
@@ -64,7 +88,9 @@ impl FetchDue {
                 continue;
             };
             if fetching.source_in_flight(source.id)
-                || !is_due(unit, source.updates, self.today, self.now)
+                || fetching.source_backing_off(&source, self.now)
+                || fetching.unit_backing_off(unit, &source, self.now)
+                || !(fetching.relinked(unit) || is_due(unit, source.updates, self.today, self.now))
             {
                 continue;
             }
@@ -77,6 +103,7 @@ impl FetchDue {
                 unit: unit.id,
                 link: unit.link.clone(),
                 price_path,
+                settings: SourceSettings::of(&source),
             };
             match rounds.iter_mut().find(|(id, _)| *id == source.id) {
                 Some((_, requests)) => requests.push((request, sent)),

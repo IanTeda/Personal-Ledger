@@ -364,3 +364,62 @@ units-command-next-table = move between the Units and the price sources
 units-command-set-base = choose the base Unit
 units-command-set-price = set a price for the selected Unit
 units-command-fetch = fetch the selected Unit's price now
+
+## Fetch failures (#1387): held by each Client in memory, never in the Ledger. A reason's name shows
+## in LAST UPDATED and Last fetch, its detail after it. `$source` is a Price Source's name, `$symbol`
+## and `$quote` a Unit's symbol and quote Unit code.
+
+units-flag-fetch-failed = fetch failed
+units-fetch-failure-offline = Offline
+units-fetch-failure-rate-limited = Rate limited
+units-fetch-failure-key-missing = Key missing
+units-fetch-failure-key-rejected = Key rejected
+units-fetch-failure-source-error = Source error
+units-fetch-failure-not-found = Not found
+units-fetch-failure-no-price = No price
+units-fetch-detail-offline = couldn't reach { $source }
+units-fetch-detail-rate-limited = { $source } asked to be called less often
+units-fetch-detail-key-missing = { $source } needs an API key this device doesn't have
+units-fetch-detail-key-rejected = { $source } refused the API key
+units-fetch-detail-source-error = { $source } answered with an error
+units-fetch-detail-not-found = { $source } has no { $symbol } in { $quote }
+units-fetch-detail-no-price = { $source } gave no price for { $symbol } in { $quote }
+
+## The Last fetch fact in a Unit's or a Price Source's PRICE SOURCE group. `$ago` is how long ago,
+## `5 minutes ago`; `$reason` a reason's name and `$detail` its detail; `$retry` when it tries again.
+
+units-pane-last-fetch = Last fetch
+units-last-fetch-fetched = Fetched { $ago }
+units-last-fetch-failed = Failed { $ago } · { $reason }: { $detail } · { $retry }
+units-retry-next-check = tries again at the next check
+units-retry-minutes = { $value ->
+    [one] tries again in { $value } minute
+   *[other] tries again in { $value } minutes
+}
+units-retry-hours = { $value ->
+    [one] tries again in { $value } hour
+   *[other] tries again in { $value } hours
+}
+
+## PRICE HISTORY's warning beside its heading: `$text` is what applies, `Out of date · fetch failed`.
+
+units-history-warning = ⚠ { $text }
+units-history-out-of-date = Out of date
+
+## Fetch now's Warning Toasts. `$reason` is a round failure's phrase, `$detail` a Unit failure's
+## detail; `$fetched` counts the prices written, `$failed` the Units that weren't.
+
+units-fetch-round-offline = offline, try again later
+units-fetch-round-rate-limited = rate limited, try again later
+units-fetch-round-key-missing = no API key on this device
+units-fetch-round-key-rejected = the API key was refused
+units-fetch-round-source-error = it answered with an error
+units-toast-fetch-round-failed = Couldn't fetch from { $source }: { $reason }
+units-toast-fetch-unit-failed = Couldn't fetch { $code }: { $detail }
+units-toast-fetch-some-failed = Fetched { $fetched ->
+    [one] { $fetched } price
+   *[other] { $fetched } prices
+} from { $source }; { $failed } { $what }
+units-fetch-some-not-found = not found
+units-fetch-some-no-price = with no price
+units-fetch-some-failed = failed

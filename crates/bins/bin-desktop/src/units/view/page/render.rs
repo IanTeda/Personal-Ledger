@@ -10,6 +10,7 @@ use gpui::{
     AnyElement, App, BoxShadow, ClickEvent, MouseButton, MouseDownEvent, Pixels, Point,
     SharedString, Window, div, point, prelude::*, px,
 };
+use lib_toast::ToastKind;
 use lib_units::presenter::{
     MenuEntry, NOT_FETCHED_GLYPH, RowMenu, SourceColumns, SourceKind, SourceLine, UnitColumns,
     UnitLine, UnitsPageEvent, UnitsPageViewModel, UnitsRow,
@@ -267,6 +268,7 @@ fn unit_row(
     } else {
         color::faint_text(cx)
     };
+    let warning = color::toast_mark(ToastKind::Warning, cx);
     let row = UnitsRow::Unit(unit.id);
     row_frame(
         SharedString::from(format!("unit-row-{index}")),
@@ -315,6 +317,17 @@ fn unit_row(
                     .text_size(px(10.0))
                     .text_color(muted)
                     .child(tag)
+            }))
+            .children(unit.fetch_failed_tag.clone().map(|tag| {
+                div()
+                    .debug_selector(move || format!("unit-fetch-failed-{index}"))
+                    .flex_none()
+                    .px(px(6.0))
+                    .py(px(1.0))
+                    .border_1()
+                    .text_size(px(10.0))
+                    .text_color(warning)
+                    .child(tag)
             })),
     )
     .child(
@@ -340,11 +353,14 @@ fn unit_row(
             .flex()
             .flex_col()
             .child(unit.last_price.clone())
-            .children(
-                unit.last_age
-                    .clone()
-                    .map(|age| div().text_size(px(11.0)).text_color(muted).child(age)),
-            ),
+            .children(unit.last_age.clone().map(|age| {
+                div()
+                    .debug_selector(move || format!("unit-last-age-{index}"))
+                    .text_size(px(11.0))
+                    // An Out of date price keeps its value; only its age warns.
+                    .text_color(if unit.out_of_date { warning } else { muted })
+                    .child(age)
+            })),
     )
 }
 
@@ -392,7 +408,13 @@ fn source_row(
         color::muted(cx)
     };
     let manual = source.kind == SourceKind::ManualEntry;
-    let last_updated = if source.not_fetched {
+    let last_updated = if source.failed {
+        // The round's reason, in place of the age until the next success.
+        div()
+            .debug_selector(move || format!("price-source-failed-{index}"))
+            .text_color(color::toast_mark(ToastKind::Warning, cx))
+            .child(source.last_updated.clone())
+    } else if source.not_fetched {
         div()
             .flex()
             .gap(px(4.0))

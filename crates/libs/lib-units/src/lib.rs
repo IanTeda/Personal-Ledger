@@ -34,8 +34,8 @@ pub use entity::{
 };
 pub use error::{Error, Result};
 pub use fetching::{
-    Method, PriceFetching, PriceRequest, PriceResponse, PriceTransport, RequestId, SharedFetching,
-    TransportError, TransportOutcome,
+    FetchFailure, FetchOutcome, LastFetch, MIN_BACK_OFF, Method, PriceFetching, PriceRequest,
+    PriceResponse, PriceTransport, RequestId, SharedFetching, TransportError, TransportOutcome,
 };
 pub use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 pub use protocols::{
