@@ -1,0 +1,28 @@
+[package]
+name = "lib_price_feed"
+version = "0.1.0"
+edition = "2024"
+# Never published to crates.io; also lets cargo-deny skip licence checks on workspace crates.
+publish = false
+license.workspace = true
+
+[lib]
+# Usage is specified by unit tests, not doctests (see CLAUDE.md Conventions).
+doctest = false
+
+[dependencies]
+## -- Internal Dependencies --
+lib_units = { path = "../lib-units" }
+
+## -- Workspace Dependencies --
+reqwest = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+## -- Crate Dependencies --
+# Only to tell a failed TLS handshake from an unreachable host; reqwest already builds it.
+rustls = { version = "0.23", default-features = false }
+
+[lints]
+workspace = true

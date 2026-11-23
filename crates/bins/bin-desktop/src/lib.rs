@@ -33,6 +33,7 @@ pub mod notices;
 mod payees;
 mod period;
 pub mod persistence;
+pub mod price_feed;
 mod reversal;
 mod settings;
 pub mod shell;
@@ -326,6 +327,8 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
 
     // Set once by `start`; the Locale never changes at runtime.
     let locale = locale::info().effective;
+    // `main`'s Tokio runtime, which the price feed sends its requests on.
+    let runtime = tokio::runtime::Handle::try_current();
 
     Application::new()
         .with_assets(assets::Assets)
@@ -334,6 +337,12 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
             gpui_component::set_locale(locale::gpui_component_tag(locale));
             theme::colours::init(theme_overrides, cx);
             theme::colours::set_device_colours(&device_settings, cx);
+            match &runtime {
+                Ok(runtime) => price_feed::install(price_feed::http(runtime.clone()), cx),
+                Err(error) => {
+                    tracing::error!(%error, "No Tokio runtime for the price feed; prices won't be fetched");
+                }
+            }
 
             // Registered once, before any window opens, so every `Font { family: "Archivo".into(),
             // .. }` request resolves against the bundled weights rather than a fallback.

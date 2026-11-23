@@ -267,6 +267,32 @@ impl<'a> Harness<'a> {
         )
     }
 
+    /// As [`Harness::arrange`], with the Ledger fetching prices through `transport`, whose answers
+    /// arrive on `responses` as the price feed's do.
+    pub fn fetching(
+        app: &'a mut TestAppContext,
+        (transport, responses): (
+            lib_units::fake::FakeTransport,
+            std::sync::mpsc::Receiver<lib_units::PriceResponse>,
+        ),
+        arrange: impl FnOnce(&mut FakeStores),
+    ) -> Self {
+        // The one Ledger the Shell opens takes the channel; a second would build no feed.
+        let responses = RefCell::new(Some(responses));
+        app.update(|cx| {
+            bin_desktop::price_feed::install(
+                move || {
+                    Some(bin_desktop::price_feed::Feed {
+                        transport: Rc::new(transport.clone()),
+                        responses: responses.borrow_mut().take()?,
+                    })
+                },
+                cx,
+            );
+        });
+        Self::arrange(app, arrange)
+    }
+
     /// Writes to the stores as something outside the app would, a sync or a second window: into
     /// memory, where the Shell reads, with no commit and no `LedgerChanged`, so nothing repaints
     /// until the test moves the Shell to read afresh.

@@ -55,10 +55,7 @@ serde_json = { workspace = true }
 tempfile = "3.10.1"
 tokio-stream = { version = "0.1.19", features = ["net"] }
 
-reqwest = { version = "0.12", default-features = false, features = [
-  "json",
-  "rustls-tls",
-] }
+reqwest = { workspace = true, features = ["json"] }
 
 [lints]
 workspace = true

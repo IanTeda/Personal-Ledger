@@ -17,6 +17,7 @@ pub const TEST_SOURCE: &str = "units.test_source";
 pub const NEXT_TABLE: &str = "units.next_table";
 pub const SET_BASE: &str = "units.set_base";
 pub const SET_PRICE: &str = "units.set_price";
+pub const FETCH_NOW: &str = "units.fetch_now";
 pub const OPEN: &str = "units.open";
 pub const EARLIER: &str = "units.earlier";
 pub const LATER: &str = "units.later";
@@ -106,6 +107,13 @@ pub const UNITS_PAGE_BINDINGS: &[Binding<UnitsPageEvent>] = &[
         "units set-price",
         msg::units_command_set_price,
     ),
+    Binding::listed(
+        FETCH_NOW,
+        "f",
+        UnitsPageEvent::FetchNow,
+        "units fetch",
+        msg::units_command_fetch,
+    ),
     Binding::hidden(OPEN, "enter", UnitsPageEvent::Open),
 ];
 
@@ -163,6 +171,7 @@ mod tests {
         assert_eq!(keymap.event("d"), Some(UnitsPageEvent::Delete));
         assert_eq!(keymap.event("B"), Some(UnitsPageEvent::SetBase));
         assert_eq!(keymap.event("p"), Some(UnitsPageEvent::SetPrice));
+        assert_eq!(keymap.event("f"), Some(UnitsPageEvent::FetchNow));
         assert_eq!(keymap.event("g g"), Some(UnitsPageEvent::Move(Step::First)));
         assert_eq!(keymap.event("down"), Some(UnitsPageEvent::Move(Step::Next)));
         assert_eq!(keymap.event("end"), Some(UnitsPageEvent::Move(Step::Last)));

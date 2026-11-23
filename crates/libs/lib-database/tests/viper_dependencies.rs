@@ -1,8 +1,9 @@
 //! Enforces the VIPER Dependencies rule over `cargo metadata`: a feature crate never
 //! depends on another feature crate, a UI toolkit or `lib_database`, and a cross-domain module
 //! depends on the feature crates it writes and nothing else does on it, and no crate but the bins
-//! and `lib_database` depends on `lib_shell`, which hosts the modules
-//! (docs/development/viper-architecture.md, Rules > Dependencies).
+//! and `lib_database` depends on `lib_shell`, which hosts the modules, and no feature or shared
+//! crate depends on an adapter crate (docs/development/viper-architecture.md, Rules > Dependencies;
+//! ADR-0062).
 //!
 //! `deny.toml` already bans the toolkits and `lib_database` outside the bins, and each
 //! cross-domain module outside the bins and its adapter, but cargo-deny can't express "no feature
@@ -93,21 +94,35 @@ const SETTINGS: &str = "lib_settings";
 /// The only crates that may depend on [`SETTINGS`], as `deny.toml`'s `lib_settings` wrappers list.
 const SETTINGS_DEPENDANTS: &[&str] = &["bin_desktop", "bin_tui", "lib_database"];
 
+/// The adapter crates, which do a feature crate's I/O behind its ports (ADR-0062): no feature
+/// crate, shared crate or cross-domain module may depend on one.
+const ADAPTER_CRATES: &[&str] = &["lib_database", "lib_price_feed"];
+
+/// The price feed adapter, which answers `lib_units`' transport port and so may depend on that
+/// feature crate and no other.
+const PRICE_FEED: &str = "lib_price_feed";
+
+/// The only feature crates [`PRICE_FEED`] may depend on.
+const PRICE_FEED_FEATURES: &[&str] = &["lib_units"];
+
 /// Crates no feature crate may depend on besides the other feature crates.
-const FORBIDDEN: &[&str] = &[
-    "gpui",
-    "gpui-component",
-    "ratatui",
-    "crossterm",
-    "lib_database",
-];
+const FORBIDDEN: &[&str] = &["gpui", "gpui-component", "ratatui", "crossterm"];
 
 /// Whether `dependency` is one `name` may not have: a feature crate (unless `name` is a
-/// cross-domain module that writes it), a toolkit, `lib_database`, a cross-domain module, or the
-/// Shell (for any crate but [`SHELL_DEPENDANTS`]).
+/// cross-domain module that writes it), a toolkit, an adapter crate, a cross-domain module, or the
+/// Shell (for any crate but [`SHELL_DEPENDANTS`]). The price feed may depend on no feature crate
+/// but `lib_units`.
 fn forbidden(name: &str, dependency: &str) -> bool {
     if dependency == name {
         return false;
+    }
+    if name == PRICE_FEED && FEATURE_CRATES.contains(&dependency) {
+        return !PRICE_FEED_FEATURES.contains(&dependency);
+    }
+    if ADAPTER_CRATES.contains(&dependency) {
+        return FEATURE_CRATES.contains(&name)
+            || SHARED_CRATES.contains(&name)
+            || CROSS_DOMAIN.iter().any(|(module, _)| *module == name);
     }
     if dependency == SHELL {
         return !SHELL_DEPENDANTS.contains(&name);
@@ -167,6 +182,7 @@ fn feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
         .chain(CROSS_DOMAIN.iter().map(|(module, _)| module))
         .chain(SHELL_DEPENDANTS)
         .chain(SETTINGS_DEPENDANTS)
+        .chain(ADAPTER_CRATES)
     {
         assert!(
             names.contains(crate_name),
@@ -178,8 +194,9 @@ fn feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
     assert!(
         found.is_empty(),
         "VIPER Dependencies rule broken: a feature crate never depends on another feature crate, \
-         a UI toolkit (gpui, gpui-component, ratatui, crossterm), lib_database or a cross-domain \
-         module, a cross-domain module depends only on the feature crates it writes, and only the \
+         a UI toolkit (gpui, gpui-component, ratatui, crossterm), an adapter crate (lib_database, \
+         lib_price_feed) or a cross-domain module, lib_price_feed depends on no feature crate but \
+         lib_units, a cross-domain module depends only on the feature crates it writes, and only the \
          bins and lib_database depend on lib_shell or lib_settings. See \
          docs/development/viper-architecture.md, Rules > Dependencies. Move shared value types to \
          lib_core, declare a read port in protocols.rs, or put a multi-domain write in a \
@@ -434,6 +451,60 @@ fn violations_keeps_lib_transaction_import_on_payees_and_transactions_and_off_ev
             "lib_transactions -> lib_transaction_import",
             "lib_transaction_import -> lib_accounts",
             "lib_transaction_import -> lib_categories"
+        ]
+    );
+}
+
+#[test]
+fn violations_flags_a_feature_shared_or_cross_domain_crate_on_an_adapter_crate() {
+    let metadata = serde_json::json!({
+        "packages": [
+            {
+                "name": "lib_units",
+                "dependencies": [{ "name": "lib_price_feed" }, { "name": "lib_database" }]
+            },
+            { "name": "lib_viper", "dependencies": [{ "name": "lib_price_feed" }] },
+            { "name": "lib_toast", "dependencies": [{ "name": "lib_database" }] },
+            { "name": "lib_unit_deletion", "dependencies": [{ "name": "lib_price_feed" }] },
+            { "name": "bin_desktop", "dependencies": [{ "name": "lib_price_feed" }] },
+            { "name": "bin_tui", "dependencies": [{ "name": "lib_price_feed" }] }
+        ]
+    });
+
+    assert_eq!(
+        violations(&metadata),
+        vec![
+            "lib_units -> lib_price_feed",
+            "lib_units -> lib_database",
+            "lib_viper -> lib_price_feed",
+            "lib_toast -> lib_database",
+            "lib_unit_deletion -> lib_price_feed",
+        ]
+    );
+}
+
+#[test]
+fn violations_keeps_lib_price_feed_off_every_feature_crate_but_lib_units() {
+    let metadata = serde_json::json!({
+        "packages": [
+            {
+                "name": "lib_price_feed",
+                "dependencies": [
+                    { "name": "lib_units" },
+                    { "name": "lib_core" },
+                    { "name": "reqwest" },
+                    { "name": "lib_accounts" },
+                    { "name": "lib_settings" },
+                ]
+            }
+        ]
+    });
+
+    assert_eq!(
+        violations(&metadata),
+        vec![
+            "lib_price_feed -> lib_accounts",
+            "lib_price_feed -> lib_settings"
         ]
     );
 }

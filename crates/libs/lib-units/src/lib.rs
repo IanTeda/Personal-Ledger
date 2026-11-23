@@ -16,6 +16,7 @@ pub mod contract;
 mod entity;
 mod error;
 pub mod fake;
+pub mod fetching;
 pub mod interactor;
 pub mod keymap;
 pub mod msg;
@@ -32,6 +33,10 @@ pub use entity::{
     set_unit_active, sources_for_kind, units_by_code,
 };
 pub use error::{Error, Result};
+pub use fetching::{
+    Method, PriceFetching, PriceRequest, PriceResponse, PriceTransport, RequestId, SharedFetching,
+    TransportError, TransportOutcome,
+};
 pub use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 pub use protocols::{
     BaseUnitRepository, Holding, PortsMut, PriceSourceRepository, SharedPorts, UnitHoldings,

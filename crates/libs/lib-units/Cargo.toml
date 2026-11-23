@@ -23,6 +23,7 @@ lib_viper = { path = "../lib-viper" }
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
 secrecy = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

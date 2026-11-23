@@ -39,6 +39,7 @@ mod history;
 mod key_dispatch;
 mod log_feed;
 mod open_ledger;
+mod price_responses;
 mod rail;
 mod render;
 mod root_router;
@@ -58,6 +59,7 @@ pub use date_clock::{DATE_POLL, wall_clock};
 pub use key_dispatch::PENDING_G_TIMEOUT;
 pub use log_feed::LOG_COALESCE;
 pub use open_ledger::{LedgerFile, OpenLedger};
+pub use price_responses::PRICE_RESPONSE_POLL;
 #[doc(hidden)]
 pub use snapshots::{
     BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot, ChipSnapshot,

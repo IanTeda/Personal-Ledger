@@ -17,8 +17,9 @@ use lib_viper::view::{Hint, count};
 use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
-use crate::interactor::ReactivateUnit;
-use crate::keymap::{NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE, unit_prices_keymap};
+use crate::fetching::SharedFetching;
+use crate::interactor::{FetchNow, ReactivateUnit};
+use crate::keymap::{FETCH_NOW, NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE, unit_prices_keymap};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
 use crate::{MANUAL_ENTRY, PriceSource, SourceOrigin, UnitRow, last_fetched, msg, units_by_code};
 
@@ -182,6 +183,8 @@ pub enum UnitsPageEvent {
     SetBase,
     /// `p`: Set price on the selected Unit, when it is on Manual entry.
     SetPrice,
+    /// `f`: fetch the selected Unit's price now, when its source fetches and it is active.
+    FetchNow,
     /// `enter`: the selected Unit's prices view, or the selected Price Source's Edit Dialog.
     Open,
     /// A right-click on a row. A row with no actions opens no menu.
@@ -323,6 +326,8 @@ pub struct UnitsPagePresenter {
     prices_keymap: Keymap<UnitPricesEvent>,
     /// The page's keys while the prices view shows ([`Self::prices_keys`]).
     prices_keys: Keymap<UnitsPageEvent>,
+    /// The Client's fetching state, without which nothing is fetched and `f` is offered nowhere.
+    fetching: Option<SharedFetching>,
 }
 
 impl UnitsPagePresenter {
@@ -344,7 +349,24 @@ impl UnitsPagePresenter {
             open_dialog: None,
             prices: None,
             prices_keymap,
+            fetching: None,
         }
+    }
+
+    /// The page fetching prices through `fetching`, the Client's for its open Ledger.
+    #[must_use]
+    pub fn with_fetching(mut self, fetching: SharedFetching) -> Self {
+        self.fetching = Some(fetching);
+        self
+    }
+
+    /// Whether `f` fetches `unit`: there is fetching, the Unit is active and its source fetches.
+    fn fetches(&self, unit: &UnitRow, sources: &[PriceSource<'_>]) -> bool {
+        self.fetching.is_some()
+            && unit.is_active
+            && sources
+                .iter()
+                .any(|source| source.id == unit.link.source_id && source.endpoint().is_some())
     }
 
     /// The page's keys, the prices view's, and the page's while the prices view shows, from
@@ -457,6 +479,7 @@ impl UnitsPagePresenter {
             UnitsPageEvent::Test => self.test(router),
             UnitsPageEvent::SetBase => self.open(UnitsDialog::SetBaseUnit, router),
             UnitsPageEvent::SetPrice => self.run_on_selection(MenuAction::SetPrice, router),
+            UnitsPageEvent::FetchNow => self.fetch_now(),
             UnitsPageEvent::Open => match self.selection() {
                 Some(UnitsRow::Unit(_)) => self.run_on_selection(MenuAction::Prices, router),
                 _ => self.edit(router),
@@ -593,7 +616,10 @@ impl UnitsPagePresenter {
             },
             price_sources: source_lines,
             base_legend: msg::units_legend_base(),
-            hints: self.hints(selected_row),
+            hints: self.hints(
+                selected_row,
+                matches!(selected_row, Some(Row::Unit(unit)) if self.fetches(unit, &sources)),
+            ),
             selected_actions: selected_row.map(entries).unwrap_or_default(),
             menu: self.menu.and_then(|row| {
                 let found = match row {
@@ -809,6 +835,26 @@ impl UnitsPagePresenter {
         self.run(MenuAction::TestSource, row, router);
     }
 
+    /// `f`: asks the selected Unit's source for its price; the response writes it. A Unit `f`
+    /// isn't offered on is left alone. Never undoable, so it raises no `Notice::Changed`.
+    fn fetch_now(&mut self) {
+        let Some(UnitsRow::Unit(id)) = self.selection() else {
+            return;
+        };
+        let Some(fetching) = &self.fetching else {
+            return;
+        };
+        let ports = self.ports.borrow();
+        let offered = ports
+            .units()
+            .unit(id)
+            .is_some_and(|unit| self.fetches(&unit, &ports.source_catalogue().sources()));
+        if offered {
+            // A refusal is logged by the Interactor; the checks above leave none but a race.
+            let _ = FetchNow { id }.run(&*ports, &mut fetching.borrow_mut());
+        }
+    }
+
     /// Reactivating loses nothing to undo, so it runs at once, with no Dialog.
     fn reactivate(&mut self, id: UnitId, router: &mut dyn UnitsRouter) {
         let reactivated = {
@@ -850,8 +896,9 @@ impl UnitsPagePresenter {
         }
     }
 
-    /// The legend for `row`'s table, with Set price while `row` offers it.
-    fn hints(&self, row: Option<Row<'_>>) -> Vec<Hint> {
+    /// The legend for `row`'s table, with Set price while `row` offers it and Fetch price while
+    /// `fetch`.
+    fn hints(&self, row: Option<Row<'_>>, fetch: bool) -> Vec<Hint> {
         let chord = |command| self.keymap.hint_chord(command);
         let moves = self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]);
         let on_source = matches!(row, Some(Row::Source(..)));
@@ -881,6 +928,9 @@ impl UnitsPagePresenter {
         }
         if set_price {
             hints.push(Hint::new(chord(SET_PRICE), msg::units_hint_set_price()));
+        }
+        if fetch {
+            hints.push(Hint::new(chord(FETCH_NOW), msg::units_hint_fetch()));
         }
         hints.push(Hint::new(chord(TEST_SOURCE), test));
         hints.push(Hint::new(chord(NEXT_TABLE), other));
@@ -1057,7 +1107,7 @@ mod tests {
                 ),
                 (
                     "Frankfurter",
-                    "https://api.frankfurter.app",
+                    "https://api.frankfurter.dev",
                     "Not fetched yet"
                 ),
                 ("Manual entry", "—", "—"),
@@ -2105,5 +2155,133 @@ mod tests {
         page.ports.borrow_mut().units.units.remove(2);
 
         assert_eq!(page.selected(), "AUD");
+    }
+
+    /// Fetch now on the page, through the fake transport: no HTTP in `lib-units`.
+    mod fetch_now {
+        use std::rc::Rc;
+
+        use lib_toast::{Notice, ToastKind};
+
+        use super::*;
+        use crate::fake::FakeTransport;
+        use crate::fetching::{PriceFetching, SharedFetching};
+        use crate::presenter::FetchedPricesPresenter;
+        use crate::{Precision, PriceLink, UnitKind};
+
+        const BODY: &str = r#"{"date":"2026-10-21","base":"EUR","quote":"AUD","rate":1.6512}"#;
+
+        struct Fetching {
+            page: Page,
+            transport: FakeTransport,
+            fetching: SharedFetching,
+            eur: UnitId,
+        }
+
+        /// The sample with EUR on Frankfurter, quoted in aud, on a page that fetches.
+        fn fetching() -> Fetching {
+            let (ports, shared) = sample();
+            let unit = UnitRow::new(
+                "EUR".into(),
+                "Euro".into(),
+                UnitKind::Currency,
+                Precision::of_kind(UnitKind::Currency),
+                PriceLink {
+                    source_id: FRANKFURTER,
+                    symbol: "EUR".into(),
+                    quote: UnitId::SEED_AUD,
+                },
+            );
+            let eur = unit.id;
+            ports.borrow_mut().units.units.push(unit);
+            let transport = FakeTransport::default();
+            let fetching = PriceFetching::shared(Rc::new(transport.clone()));
+            let presenter = UnitsPagePresenter::new(shared, clock(), &KeyBindingConfig::default())
+                .with_fetching(fetching.clone());
+            Fetching {
+                page: Page {
+                    ports,
+                    presenter,
+                    router: RecordingRouter::default(),
+                },
+                transport,
+                fetching,
+                eur,
+            }
+        }
+
+        fn offers_fetch(page: &Page) -> bool {
+            page.view()
+                .hints
+                .iter()
+                .any(|hint| hint.chord == "f" && hint.action == "fetch price")
+        }
+
+        #[test]
+        fn f_on_a_frankfurter_unit_asks_frankfurter_v2_and_its_answer_writes_the_price() {
+            let mut on = fetching();
+            on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(on.eur)));
+            assert!(offers_fetch(&on.page));
+
+            assert_eq!(on.page.send(UnitsPageEvent::FetchNow), vec![]);
+            assert_eq!(
+                on.transport.urls(),
+                ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
+            );
+
+            let mut responses =
+                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
+            let mut notices: Vec<Notice> = Vec::new();
+            responses.handle(on.transport.answer_last(200, BODY), &mut notices);
+
+            assert_eq!(
+                notices,
+                [Notice::Toast(
+                    ToastKind::Success,
+                    "Fetched EUR at 1.65 AUD".into()
+                )]
+            );
+            let line = on
+                .page
+                .view()
+                .units
+                .into_iter()
+                .find(|unit| unit.code == "EUR")
+                .expect("EUR is listed");
+            assert_eq!(line.last_price, "1.65 AUD");
+            assert_eq!(on.fetching.borrow().in_flight(), 0);
+        }
+
+        #[test]
+        fn f_is_not_offered_and_sends_nothing_on_manual_entry_or_a_deactivated_unit() {
+            let mut on = fetching();
+            on.page
+                .send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_VAS)));
+            assert!(!offers_fetch(&on.page));
+            on.page.send(UnitsPageEvent::FetchNow);
+
+            on.page
+                .ports
+                .borrow_mut()
+                .units
+                .units
+                .iter_mut()
+                .find(|unit| unit.id == on.eur)
+                .expect("eur")
+                .is_active = false;
+            on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(on.eur)));
+            assert!(!offers_fetch(&on.page));
+            on.page.send(UnitsPageEvent::FetchNow);
+
+            assert!(on.transport.requests().is_empty());
+        }
+
+        #[test]
+        fn a_page_with_no_fetching_offers_no_f() {
+            let mut page = Page::new();
+            page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+
+            assert!(!offers_fetch(&page));
+        }
     }
 }

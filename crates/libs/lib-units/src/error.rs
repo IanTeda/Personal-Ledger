@@ -55,6 +55,9 @@ pub enum Error {
     /// A Unit whose source fetches is priced by it; only Manual entry takes a price by hand.
     #[error("only a unit on manual entry takes a price by hand")]
     PricedBySource,
+    /// A Unit on Manual entry, or a deactivated one, is never fetched.
+    #[error("the unit isn't fetched from a price source")]
+    NotFetched,
     /// A week that hasn't started has no price yet.
     #[error("a future week can't be priced")]
     FutureWeek,

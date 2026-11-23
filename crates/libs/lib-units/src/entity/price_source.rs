@@ -106,12 +106,12 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
         id: FRANKFURTER,
         name: "Frankfurter",
         endpoint: Endpoint {
-            address: Cow::Borrowed("https://api.frankfurter.app"),
-            request: Cow::Borrowed("/latest?from={symbol}&to={quote}"),
-            price_path: Cow::Borrowed("/rates/{quote}"),
+            address: Cow::Borrowed("https://api.frankfurter.dev"),
+            request: Cow::Borrowed("/v2/rate/{symbol}/{quote}"),
+            price_path: Cow::Borrowed("/rate"),
             auth: PriceSourceAuth::None,
         },
-        // Frankfurter publishes the ECB's reference rates once a working day.
+        // v2 blends its rates from several central banks, same day (ADR-0043).
         updates: Updates::Daily,
         kinds: &[UnitKind::Currency],
     },

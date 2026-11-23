@@ -21,6 +21,7 @@ use lib_units::SharedPorts;
 use lib_units::presenter::UnitsPagePresenter;
 pub use router::units_page;
 pub(crate) use view::dialog::{help, refusal};
+pub(crate) use view::page::now_of;
 
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::ModulePage;
@@ -68,15 +69,20 @@ pub struct UnitsSetup {
 
 impl UnitsSetup {
     /// The page's Presenter, with its keys, and the Unit prices view's, from `config`, dated by
-    /// `clock`, and its Setup.
+    /// `clock`, fetching through `fetching` when the Ledger has a price feed, and its Setup.
     pub fn new(
         ports: SharedPorts,
+        fetching: Option<lib_units::SharedFetching>,
         deletion: lib_unit_deletion::SharedUnitDeletion,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         clock: lib_core::Clock,
         config: &lib_config::KeyBindingConfig,
     ) -> (UnitsPagePresenter, Self) {
-        let presenter = UnitsPagePresenter::new(ports.clone(), view::page::now_of(&clock), config);
+        let presenter = UnitsPagePresenter::new(ports.clone(), now_of(&clock), config);
+        let presenter = match fetching {
+            Some(fetching) => presenter.with_fetching(fetching),
+            None => presenter,
+        };
         let setup = Self {
             ports,
             deletion,
@@ -96,6 +102,7 @@ impl UnitsSetup {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             ports.units(),
+            None,
             ports.unit_deletion(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),

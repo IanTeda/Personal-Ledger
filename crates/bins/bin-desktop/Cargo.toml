@@ -48,6 +48,7 @@ lib_tags = { path = "../../libs/lib-tags" }
 lib_unit_deletion = { path = "../../libs/lib-unit-deletion" }
 lib_ledger_creation = { path = "../../libs/lib-ledger-creation" }
 lib_units = { path = "../../libs/lib-units" }
+lib_price_feed = { path = "../../libs/lib-price-feed" }
 lib_viper = { path = "../../libs/lib-viper" }
 lib_transactions = { path = "../../libs/lib-transactions" }
 lib_transaction_import = { path = "../../libs/lib-transaction-import" }

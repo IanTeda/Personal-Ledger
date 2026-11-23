@@ -736,6 +736,7 @@ dependencies = [
  "lib_locale",
  "lib_locale_build",
  "lib_payees",
+ "lib_price_feed",
  "lib_settings",
  "lib_shell",
  "lib_tag_removal",
@@ -5017,6 +5018,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "lib_price_feed"
+version = "0.1.0"
+dependencies = [
+ "lib_units",
+ "reqwest",
+ "rustls",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lib_rpc"
 version = "0.1.0"
 dependencies = [
@@ -5183,6 +5196,7 @@ dependencies = [
  "lib_toast",
  "lib_viper",
  "secrecy",
+ "serde_json",
  "thiserror 2.0.20",
  "tracing",
 ]

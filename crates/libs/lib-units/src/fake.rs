@@ -1,16 +1,18 @@
 //! In-memory ports and the sample seed, for tests and UI-first work. Each holds its rows in a plain
 //! field so a test can set up or read state directly. [`RecordingRouter`] is a Router that only
-//! records what it was asked.
+//! records what it was asked. [`FakeTransport`] records each price request and answers it on cue.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::mpsc::{Receiver, Sender};
 
 use chrono::{DateTime, Utc};
 use lib_core::{PriceSourceId, UnitId};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
+use crate::fetching::{PriceRequest, PriceResponse, PriceTransport, RequestId, TransportOutcome};
 use crate::protocols::{PortsMut, SharedPorts, UnitsDialog, UnitsOutcome, UnitsPorts, UnitsRouter};
 use crate::{
     BaseUnitRepository, Holding, PriceSourceRecord, PriceSourceRepository, UnitHoldings,
@@ -203,6 +205,81 @@ impl DialogRouter<UnitsOutcome> for RecordingRouter {
 impl Notify for RecordingRouter {
     fn notify(&mut self, notice: Notice) {
         self.calls.push(RouterCall::Notice(notice));
+    }
+}
+
+/// A price transport that sends nothing: it records each request and answers one when a test says,
+/// returning the response and, when built by [`FakeTransport::channel`], sending it on as a
+/// Client's adapter would. Clones share the record.
+#[derive(Debug, Clone, Default)]
+pub struct FakeTransport {
+    sent: Rc<RefCell<Vec<(RequestId, PriceRequest)>>>,
+    responses: Option<Sender<PriceResponse>>,
+}
+
+impl FakeTransport {
+    /// A transport whose answers also arrive on the returned channel, as `lib-price-feed`'s do.
+    pub fn channel() -> (Self, Receiver<PriceResponse>) {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let transport = Self {
+            sent: Rc::default(),
+            responses: Some(sender),
+        };
+        (transport, receiver)
+    }
+
+    /// Every request sent, oldest first.
+    pub fn requests(&self) -> Vec<(RequestId, PriceRequest)> {
+        self.sent.borrow().clone()
+    }
+
+    /// Every request's URL, oldest first.
+    pub fn urls(&self) -> Vec<String> {
+        self.sent
+            .borrow()
+            .iter()
+            .map(|(_, request)| request.url.clone())
+            .collect()
+    }
+
+    /// Answers request `request` with `outcome`.
+    pub fn answer(&self, request: RequestId, outcome: TransportOutcome) -> PriceResponse {
+        let response = PriceResponse { request, outcome };
+        if let Some(responses) = &self.responses {
+            // A test that dropped the receiver reads the response returned instead.
+            let _ = responses.send(response.clone());
+        }
+        response
+    }
+
+    /// Answers the newest request with `status` and `body`.
+    ///
+    /// # Panics
+    /// With no request sent, which is a test's mistake.
+    #[expect(
+        clippy::panic,
+        reason = "test support: answering nothing is a broken test"
+    )]
+    pub fn answer_last(&self, status: u16, body: &str) -> PriceResponse {
+        let (id, _) = self
+            .sent
+            .borrow()
+            .last()
+            .cloned()
+            .unwrap_or_else(|| panic!("a request to answer"));
+        self.answer(
+            id,
+            TransportOutcome::Answered {
+                status,
+                body: body.to_string(),
+            },
+        )
+    }
+}
+
+impl PriceTransport for FakeTransport {
+    fn send(&self, id: RequestId, request: PriceRequest) {
+        self.sent.borrow_mut().push((id, request));
     }
 }
 

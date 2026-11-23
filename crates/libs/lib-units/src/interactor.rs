@@ -10,7 +10,9 @@ mod delete_price_source;
 mod delete_unit;
 mod edit_price_source;
 mod edit_unit;
+mod fetch_now;
 mod reactivate_unit;
+mod record_fetched_prices;
 mod set_base_unit;
 mod set_price;
 
@@ -21,6 +23,8 @@ pub use delete_price_source::{DeletePriceSource, PriceSourceDeleted};
 pub use delete_unit::{CheckedDelete, DeleteUnit};
 pub use edit_price_source::EditPriceSource;
 pub use edit_unit::EditUnit;
+pub use fetch_now::FetchNow;
 pub use reactivate_unit::ReactivateUnit;
+pub use record_fetched_prices::{FetchedPrice, RecordFetchedPrices};
 pub use set_base_unit::SetBaseUnit;
 pub use set_price::SetPrice;

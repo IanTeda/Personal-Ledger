@@ -74,6 +74,9 @@ allow-wildcard-paths = true
 # `lib_settings` is the Desktop's Settings module: only the two Clients and `lib_database`, which answers
 # its Ledger page's ports, reach it. The TUI keeps its own Settings pages until #805, but reads and
 # writes Settings › Ledger through those ports (#1359).
+# `lib_price_feed` is the second adapter crate (ADR-0062): the only crate doing HTTP for a feature
+# crate, so only it and the Sync Server (its test-only use in `tests/auth_flow.rs`) wrap `reqwest`,
+# and only the two Clients build it.
 deny = [
   { crate = "gpui", wrappers = ["bin_desktop", "gpui-component"], reason = "UI toolkit: only bin-desktop may depend on it (VIPER Dependencies rule)" },
   { crate = "gpui-component", wrappers = ["bin_desktop"], reason = "UI toolkit: only bin-desktop may depend on it (VIPER Dependencies rule)" },
@@ -89,6 +92,8 @@ deny = [
   { crate = "lib_ledger_creation", wrappers = ["bin_desktop", "bin_tui", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_bill_payments", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_dashboard", wrappers = ["bin_desktop", "lib_database"], reason = "the Dashboard module: only the bins and the adapter answering its read ports may depend on it (VIPER Dependencies rule)" },
+  { crate = "reqwest", wrappers = ["lib_price_feed", "bin_sync_server"], reason = "HTTP: only the price feed adapter, and the Sync Server's tests, may depend on it (ADR-0062)" },
+  { crate = "lib_price_feed", wrappers = ["bin_desktop", "bin_tui"], reason = "price fetch adapter: only the two Clients may depend on it (ADR-0062)" },
   { crate = "lib_settings", wrappers = ["bin_desktop", "bin_tui", "lib_database"], reason = "the Settings module: only the two Clients and the adapter answering its ports may depend on it (VIPER Dependencies rule)" },
 ]
 

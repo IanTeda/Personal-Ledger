@@ -1339,3 +1339,77 @@ fn u_restores_a_deleted_unit_to_its_place_by_code(app: &mut TestAppContext) {
 
     assert_eq!(ui.unit_codes(), before);
 }
+
+/// Adds EUR, quoted in aud, on Frankfurter. For [`Harness::fetching`].
+fn eur_on_frankfurter(fakes: &mut FakeStores) {
+    fakes.units.units.units.push(lib_units::UnitRow::new(
+        "EUR".into(),
+        "Euro".into(),
+        lib_core::UnitKind::Currency,
+        lib_units::Precision::of_kind(lib_core::UnitKind::Currency),
+        lib_units::PriceLink {
+            source_id: lib_units::FRANKFURTER,
+            symbol: "EUR".into(),
+            quote: UnitId::SEED_AUD,
+        },
+    ));
+}
+
+#[gpui::test]
+fn f_on_a_frankfurter_unit_asks_the_feed_and_its_answer_writes_the_price_with_a_toast(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_on_frankfurter);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    ui.press("j j");
+    assert_eq!(selected(&mut ui), "EUR");
+    assert!(
+        ui.status_as_shortcuts()
+            .contains(&("fetch price".into(), "f".into()))
+    );
+
+    ui.press("f");
+    assert_eq!(
+        transport.urls(),
+        ["https://api.frankfurter.dev/v2/rate/EUR/AUD"],
+        "f reached the Presenter, which sent Frankfurter v2's request"
+    );
+
+    transport.answer_last(200, r#"{"base":"EUR","quote":"AUD","rate":1.6512}"#);
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    let eur = ui
+        .settings::<SettingsUnitsSnapshot>()
+        .units
+        .into_iter()
+        .find(|unit| unit.code == "EUR")
+        .expect("EUR is listed");
+    assert_eq!(eur.last_price, "1.65 AUD");
+    assert!(
+        visible_toasts(&mut ui)
+            .contains(&("Success".to_string(), "Fetched EUR at 1.65 AUD".to_string()))
+    );
+    assert!(
+        undo_labels(&mut ui).is_empty(),
+        "a fetched price is never undoable"
+    );
+}
+
+#[gpui::test]
+fn f_on_a_manual_entry_unit_sends_nothing(app: &mut TestAppContext) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(app, (transport.clone(), responses), eur_on_frankfurter);
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    assert_eq!(selected(&mut ui), "AUD");
+    assert!(
+        !ui.status_as_shortcuts()
+            .contains(&("fetch price".into(), "f".into()))
+    );
+
+    ui.press("f");
+
+    assert!(transport.requests().is_empty());
+}

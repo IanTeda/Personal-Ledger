@@ -108,6 +108,12 @@ pub struct OpenLedger {
     failures: Rc<std::sync::mpsc::Receiver<lib_database::WriteFailure>>,
     /// Polls the writer's failure channel; dropped with the Ledger, which stops it.
     _write_failures: Task<()>,
+    /// Where each price response lands, `None` with no price feed installed.
+    pub(super) price_responses:
+        Option<Rc<std::cell::RefCell<lib_units::presenter::FetchedPricesPresenter>>>,
+    /// Polls the price feed's response channel; dropped with the Ledger, which stops it and drops
+    /// the responses still to come.
+    _price_responses: Option<Task<()>>,
 }
 
 impl OpenLedger {
@@ -140,8 +146,23 @@ impl OpenLedger {
         let dialog_keys = crate::dialog_keys::LiveDialogKeys::new(DialogKeys::of(
             &lib_shell::dialog_keymap(keybindings),
         ));
+        // The Units' price fetching, on a feed of this Ledger's own, dropped with it (ADR-0062).
+        let feed = crate::price_feed::feed(cx);
+        let fetching = feed
+            .as_ref()
+            .map(|feed| lib_units::PriceFetching::shared(feed.transport.clone()));
+        let price_responses = fetching.clone().map(|fetching| {
+            Rc::new(std::cell::RefCell::new(
+                lib_units::presenter::FetchedPricesPresenter::new(
+                    ports.units(),
+                    fetching,
+                    crate::units::now_of(clock),
+                ),
+            ))
+        });
         let units = crate::units::UnitsSetup::new(
             ports.units(),
+            fetching,
             ports.unit_deletion(),
             dialog_keys.clone(),
             clock.clone(),
@@ -316,6 +337,8 @@ impl OpenLedger {
             _subscriptions: subscriptions,
             _write_failures: Root::listen_for_write_failures(failures.clone(), cx),
             failures,
+            price_responses,
+            _price_responses: feed.map(|feed| Root::listen_for_price_responses(feed.responses, cx)),
         }
     }
 
