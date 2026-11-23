@@ -36,7 +36,7 @@ A Unit's last price is out of date when it was written more than twice its Price
 _Avoid_: stale (a Documents term), expired, old.
 
 **Daily Price**, **Hourly Price**:
-A Unit's prices at a grain finer than a week, one per day or per hour, asked of its Price Source when a View wants to show them. Unlike a Weekly Price, they are never kept in the Ledger and never sync: they are shown and then forgotten, and asking for them neither writes a Weekly Price nor counts as the Unit being priced.
+A Unit's prices at a grain finer than a week, one per day or per hour, asked of its Price Source when a View wants to show them. A day is the source's own day (a trading day, a UTC day or a rate's date), so a day it has no price for simply has none; an hour is shown in the device's local time. Not every source offers both, and Manual entry offers neither. Unlike a Weekly Price, they are never kept in the Ledger and never sync: they are shown and then forgotten, and asking for them neither writes a Weekly Price nor counts as the Unit being priced.
 _Avoid_: intraday price, price history, tick.
 
 **API key secret**:
