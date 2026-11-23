@@ -759,6 +759,7 @@ fn clicking_a_source_whose_round_failed_shows_its_reason_and_last_fetch(app: &mu
         lib_units::TransportOutcome::Answered {
             status: 401,
             body: String::new(),
+            retry_after: None,
         },
     );
     ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);

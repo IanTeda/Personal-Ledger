@@ -403,6 +403,39 @@ fn f_on_a_coingecko_unit_asks_in_lower_case_and_writes_the_price() {
     assert!(frame.contains("Fetched BTC at 92,568.00 AUD"), "{frame}");
 }
 
+#[test]
+fn f_after_a_429_waits_out_its_retry_after_and_a_tick_sends_it_once_the_clock_passes() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+    press(&mut shell, "g u j f");
+    // The TUI reads the real time, so the provider asks for the shortest wait it can.
+    transport.answer_last_with(429, "", Some("1"));
+    shell.handle_event(Event::Tick);
+
+    press(&mut shell, "f");
+    shell.handle_event(Event::Tick);
+    assert_eq!(
+        transport.requests().len(),
+        1,
+        "held by CoinGecko's Retry-After"
+    );
+    let waiting = screen(&mut shell);
+    assert!(waiting.contains("Waiting for CoinGecko, 1 s"), "{waiting}");
+
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    shell.handle_event(Event::Tick);
+
+    assert_eq!(
+        transport.requests().len(),
+        2,
+        "the tick sent the paced call"
+    );
+    transport.answer_last(200, r#"{"bitcoin":{"aud":92568}}"#);
+    shell.handle_event(Event::Tick);
+    let frame = screen(&mut shell);
+    assert!(frame.contains("Fetched BTC at 92,568.00 AUD"), "{frame}");
+}
+
 /// Adds ABC on a Custom source sending one header and BHP on Yahoo Finance, both quoted in AUD.
 fn abc_on_a_broker_and_bhp_on_yahoo(fakes: &mut lib_database::FakeStores) {
     let broker = lib_units::CustomSource {
@@ -418,6 +451,7 @@ fn abc_on_a_broker_and_bhp_on_yahoo(fakes: &mut lib_database::FakeStores) {
                 value: "ledger; v1".to_string().into(),
             }]
             .into(),
+            batch: None,
         },
         updates: lib_units::Updates::Hourly,
     };

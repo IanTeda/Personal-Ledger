@@ -1,7 +1,8 @@
 //! The price-fetching concern of `Root`: the minute timer that reaches the Units' scheduled check,
 //! and polling the Open Ledger's price feed and sending each response as one input, so the round it
 //! completes is that input's one commit and the Units repaint on its `LedgerChanged` (ADR-0062).
-//! An `impl Root` block.
+//! The same poll pumps the calls waiting their source's call rate or `Retry-After` out. An
+//! `impl Root` block.
 
 use std::sync::mpsc;
 use std::time::Duration;
@@ -24,8 +25,9 @@ pub const PRICE_RESPONSE_POLL: Duration = Duration::from_millis(250);
 pub const PRICE_CHECK: Duration = Duration::from_secs(60);
 
 impl Root {
-    /// Polls `responses` for as long as the returned task is held, sending each as an input. Stops
-    /// once the feed has gone, the window with the Shell, or the Open Ledger holding the task.
+    /// Polls `responses` for as long as the returned task is held, sending each as an input, then
+    /// pumps the queued calls out. Stops once the feed has gone, the window with the Shell, or the
+    /// Open Ledger holding the task.
     pub(super) fn listen_for_price_responses(
         responses: mpsc::Receiver<PriceResponse>,
         cx: &mut Context<'_, Self>,
@@ -46,6 +48,9 @@ impl Root {
                     {
                         return;
                     }
+                }
+                if this.update(cx, |shell, cx| shell.pump_prices(cx)).is_err() {
+                    return;
                 }
             }
         })
@@ -78,6 +83,28 @@ impl Root {
             return;
         };
         presenter.borrow_mut().fetch_due();
+    }
+
+    /// Sends the queued price calls the Clock now allows. It writes nothing, so it needs no input:
+    /// only a change to the *Waiting for…* status is shown, straight onto the status line.
+    fn pump_prices(&mut self, cx: &mut Context<'_, Self>) {
+        let Some(presenter) = self
+            .open
+            .as_ref()
+            .and_then(|open| open.price_responses.clone())
+        else {
+            return;
+        };
+        let mut notices: Vec<lib_toast::Notice> = Vec::new();
+        presenter.borrow_mut().pump(&mut notices);
+        if notices.is_empty() {
+            return;
+        }
+        for notice in notices {
+            lib_toast::Notify::notify(&mut crate::notices::Queue, notice);
+        }
+        self.drain_notices(cx);
+        cx.notify();
     }
 
     /// Hands `response` to the Units' Presenter as one input. A fetched price is never undoable

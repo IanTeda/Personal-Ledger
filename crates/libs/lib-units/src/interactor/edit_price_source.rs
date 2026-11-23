@@ -87,6 +87,7 @@ mod tests {
             price_path: "/price".to_string().into(),
             auth: PriceSourceAuth::None,
             headers: Vec::new().into(),
+            batch: None,
         }
     }
 

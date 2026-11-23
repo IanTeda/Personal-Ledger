@@ -70,7 +70,7 @@ fn round_phrase(reason: FetchFailure) -> String {
 
 /// The status line while asked-for rounds are out, naming their sources in the order they list
 /// (`Fetching prices from CoinGecko, Yahoo Finance…`); `None` once everything has landed.
-pub(super) fn fetching_status(ports: &dyn UnitsPorts, fetching: &PriceFetching) -> Option<String> {
+fn fetching_status(ports: &dyn UnitsPorts, fetching: &PriceFetching) -> Option<String> {
     let out = fetching.named_sources();
     let names: Vec<String> = ports
         .source_catalogue()
@@ -80,6 +80,39 @@ pub(super) fn fetching_status(ports: &dyn UnitsPorts, fetching: &PriceFetching) 
         .map(|source| source.name.to_string())
         .collect();
     (!names.is_empty()).then(|| msg::units_status_fetching(&names.join(", ")))
+}
+
+/// `Waiting for CoinGecko, 40 s…` while a call a person asked for waits out a `Retry-After` at
+/// `now`; `None` while none does.
+pub(super) fn waiting_status(
+    ports: &dyn UnitsPorts,
+    fetching: &PriceFetching,
+    now: DateTime<Utc>,
+) -> Option<String> {
+    let (source, seconds) = fetching.waiting(now)?;
+    let catalogue = ports.source_catalogue();
+    let name = catalogue.source(source)?.name.to_string();
+    Some(msg::units_status_fetch_waiting(&name, &seconds.to_string()))
+}
+
+/// What the status line says of fetching at `now`: a `Retry-After` being waited out first, else
+/// the asked-for rounds still out; `None` once there is neither.
+pub(super) fn fetch_status(
+    ports: &dyn UnitsPorts,
+    fetching: &PriceFetching,
+    now: DateTime<Utc>,
+) -> Option<String> {
+    waiting_status(ports, fetching, now).or_else(|| fetching_status(ports, fetching))
+}
+
+/// `Fetched 2 prices from CoinGecko; then rate limited, try again later`: a round a round failure
+/// stopped after it had written some prices.
+pub(super) fn round_stopped_toast(fetched: usize, reason: FetchFailure, source: &str) -> String {
+    msg::units_toast_fetch_round_stopped(
+        lib_viper::view::count(fetched),
+        source,
+        &round_phrase(reason),
+    )
 }
 
 /// `Couldn't fetch from CoinGecko: rate limited, try again later`.

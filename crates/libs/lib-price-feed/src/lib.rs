@@ -80,8 +80,18 @@ impl PriceTransport for PriceFeed {
             let outcome = match builder.send().await {
                 Ok(response) => {
                     let status = response.status().as_u16();
+                    // Passed on raw: reading it against the Clock is `lib-units`'.
+                    let retry_after = response
+                        .headers()
+                        .get(reqwest::header::RETRY_AFTER)
+                        .and_then(|value| value.to_str().ok())
+                        .map(str::to_string);
                     match response.text().await {
-                        Ok(body) => TransportOutcome::Answered { status, body },
+                        Ok(body) => TransportOutcome::Answered {
+                            status,
+                            body,
+                            retry_after,
+                        },
                         Err(error) => TransportOutcome::Failed(failure(&error)),
                     }
                 }
@@ -236,7 +246,31 @@ mod tests {
                 outcome: TransportOutcome::Answered {
                     status: 404,
                     body: r#"{"message":"not found"}"#.into(),
+                    retry_after: None,
                 },
+            }
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_429s_retry_after_header_comes_back_raw() {
+        let (listener, address) = listener().await;
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("a connection");
+            let mut request = [0_u8; 1024];
+            let _ = socket.read(&mut request).await.expect("the request");
+            let reply = "HTTP/1.1 429 Too Many Requests\r\nretry-after: Wed, 21 Oct 2015 07:28:00 GMT\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+            socket.write_all(reply.as_bytes()).await.expect("the reply");
+        });
+
+        let response = fetch(get(format!("{address}/v2/rate/EUR/AUD")), TIMEOUT).await;
+
+        assert_eq!(
+            response.outcome,
+            TransportOutcome::Answered {
+                status: 429,
+                body: String::new(),
+                retry_after: Some("Wed, 21 Oct 2015 07:28:00 GMT".into()),
             }
         );
     }

@@ -1,7 +1,7 @@
 use lib_core::UnitId;
 
 use crate::fetching::{
-    FetchFailure, InFlight, PriceFetching, RequestId, SourceSettings, key_missing, price_request,
+    FetchFailure, PriceFetching, RequestId, SourceSettings, Wanted, key_missing, round_calls,
 };
 use crate::protocols::UnitsPorts;
 use crate::{Error, Result};
@@ -15,7 +15,8 @@ pub struct FetchNow {
 }
 
 impl FetchNow {
-    /// Returns the request sent. Refused for a Unit on Manual entry or deactivated, which is never
+    /// Returns the request queued, which goes out at once unless the source's call rate or a
+    /// `Retry-After` holds it. Refused for a Unit on Manual entry or deactivated, which is never
     /// fetched, and for a Unit whose source or quote Unit is gone. A source needing a key this
     /// Client doesn't have sends nothing: its round and the Unit fail Key missing at `now`, and
     /// the refusal says so.
@@ -64,19 +65,17 @@ impl FetchNow {
             fetching.record_unit(unit.id, unit.link, &settings, now, failure);
             return Err(Error::KeyMissing);
         }
-        let (request, price_path) = price_request(endpoint, &unit.link.symbol, &quote.code, key);
-        // A round of one, asked for, so its outcome is told.
+        let wanted = [Wanted {
+            unit: unit.id,
+            link: unit.link,
+            quote: quote.code,
+        }];
+        let mut calls = round_calls(endpoint, &wanted, key.as_ref(), &settings).into_iter();
+        let (request, sent) = calls.next().ok_or(Error::NotFetched)?;
+        // A round of one, asked for, so its outcome is told; a source with a batch request asks
+        // through it, as a batch of one.
         let round = fetching.open_round(&source, true);
-        Ok(fetching.send(
-            round,
-            request,
-            InFlight {
-                unit: unit.id,
-                link: unit.link,
-                price_path,
-                settings,
-            },
-        ))
+        Ok(fetching.send(round, request, sent, now))
     }
 }
 

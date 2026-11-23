@@ -15,7 +15,7 @@ use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
 use super::fetch_text::{
-    Asked, failure_name, fetching_status, round_failed_toast, test_failed_toast,
+    Asked, failure_name, fetch_status, round_failed_toast, test_failed_toast, waiting_status,
 };
 use super::price_history::{HistoryInput, PriceHistory, price_history};
 use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
@@ -1024,7 +1024,15 @@ impl UnitsPagePresenter {
             return;
         }
         // Any other refusal is logged by the Interactor; the checks above leave none but a race.
-        let sent = FetchNow { id }.run(&*ports, &mut fetching.borrow_mut(), (self.clock)());
+        let now = (self.clock)();
+        let sent = FetchNow { id }.run(&*ports, &mut fetching.borrow_mut(), now);
+        if sent.is_ok() {
+            // Held by its source's `Retry-After`, it says so until it goes out.
+            if let Some(status) = waiting_status(&*ports, &fetching.borrow(), now) {
+                router.notify(Notice::Status(status));
+            }
+            return;
+        }
         if !matches!(sent, Err(Error::KeyMissing)) {
             return;
         }
@@ -1106,7 +1114,7 @@ impl UnitsPagePresenter {
                 Err(_) => {}
             }
         }
-        if started && let Some(status) = fetching_status(&*ports, &fetching.borrow()) {
+        if started && let Some(status) = fetch_status(&*ports, &fetching.borrow(), (self.clock)()) {
             router.notify(Notice::Status(status));
         }
     }
@@ -2658,6 +2666,7 @@ mod tests {
                         value: "ledger; v1".to_string().into(),
                     }]
                     .into(),
+                    batch: None,
                 },
                 updates: crate::Updates::Hourly,
             }
@@ -2792,6 +2801,7 @@ mod tests {
                     crate::TransportOutcome::Answered {
                         status: 200,
                         body: BODY.into(),
+                        retry_after: None,
                     },
                 ),
                 &mut notices,
@@ -3071,6 +3081,7 @@ mod tests {
                             optional: false,
                         },
                         headers: Vec::new().into(),
+                        batch: None,
                     },
                     updates: crate::Updates::Hourly,
                 }),

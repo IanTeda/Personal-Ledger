@@ -413,6 +413,7 @@ mod tests {
                             optional: false,
                         },
                         headers: Vec::new().into(),
+                        batch: None,
                     },
                     updates: Updates::Daily,
                 }));

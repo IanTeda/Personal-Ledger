@@ -369,11 +369,25 @@ impl FakeTransport {
     ///
     /// # Panics
     /// With no request sent, which is a test's mistake.
+    pub fn answer_last(&self, status: u16, body: &str) -> PriceResponse {
+        self.answer_last_with(status, body, None)
+    }
+
+    /// Answers the newest request with `status`, `body` and the raw `Retry-After` header
+    /// `retry_after`, as a throttling provider does.
+    ///
+    /// # Panics
+    /// With no request sent, which is a test's mistake.
     #[expect(
         clippy::panic,
         reason = "test support: answering nothing is a broken test"
     )]
-    pub fn answer_last(&self, status: u16, body: &str) -> PriceResponse {
+    pub fn answer_last_with(
+        &self,
+        status: u16,
+        body: &str,
+        retry_after: Option<&str>,
+    ) -> PriceResponse {
         let (id, _) = self
             .sent
             .borrow()
@@ -385,6 +399,7 @@ impl FakeTransport {
             TransportOutcome::Answered {
                 status,
                 body: body.to_string(),
+                retry_after: retry_after.map(str::to_string),
             },
         )
     }

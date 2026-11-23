@@ -247,6 +247,7 @@ fn custom_source(name: &str) -> AddPriceSource {
                 value: "application/json".into(),
             }]
             .into(),
+            batch: None,
         },
         updates: Updates::Hourly,
     }

@@ -1,15 +1,17 @@
-//! Where a price response lands, and what the Client's minute timer reaches: the Client hands each
-//! response here through its input door, so the round it completes is written as that input's one
-//! commit and every View reading the Units repaints. It draws nothing; a Fetch now that wrote a
-//! price says so in a Success Toast, one that failed in a Warning Toast, and a scheduled round
-//! says nothing at all, whether it landed or failed.
+//! Where a price response lands, and what the Client's minute timer and response poll reach: the
+//! Client hands each response here through its input door, so the round it completes is written
+//! as that input's one commit and every View reading the Units repaints, and pumps the queued
+//! calls out from the same poll. It draws nothing; a Fetch now that wrote a price says so in a
+//! Success Toast, one that failed in a Warning Toast, and a scheduled round says nothing at all,
+//! whether it landed or failed.
 
 use chrono::Local;
 use lib_toast::{Notice, Notify, ToastKind};
 
 use super::Clock;
 use super::fetch_text::{
-    Asked, fetching_status, round_failed_toast, some_failed_toast, test_toast, unit_failed_toast,
+    Asked, fetch_status, round_failed_toast, round_stopped_toast, some_failed_toast, test_toast,
+    unit_failed_toast, waiting_status,
 };
 use super::units_pane::amount;
 use crate::fetching::{PriceResponse, SharedFetching};
@@ -21,6 +23,8 @@ pub struct FetchedPricesPresenter {
     ports: SharedPorts,
     fetching: SharedFetching,
     clock: Clock,
+    /// The *Waiting for…* status last put up, so a pump says only what changed.
+    waiting: Option<String>,
 }
 
 impl FetchedPricesPresenter {
@@ -29,7 +33,32 @@ impl FetchedPricesPresenter {
             ports,
             fetching,
             clock,
+            waiting: None,
         }
+    }
+
+    /// Releases the queued calls at the Clock's now: sends what each source's call rate and any
+    /// `Retry-After` allow, and counts *Waiting for CoinGecko, 40 s…* down on the status line,
+    /// putting back what is still fetching, or clearing it, once the call goes out. Each Client
+    /// calls it from its response poll; nothing here waits or sleeps.
+    pub fn pump(&mut self, router: &mut dyn Notify) {
+        let now = (self.clock)();
+        let sent = self.fetching.borrow_mut().release(now);
+        if sent > 0 {
+            tracing::debug!(sent, "Sent queued price requests");
+        }
+        let ports = self.ports.borrow();
+        let fetching = self.fetching.borrow();
+        let waiting = waiting_status(&*ports, &fetching, now);
+        if waiting == self.waiting {
+            return;
+        }
+        let status = waiting
+            .clone()
+            .or_else(|| fetch_status(&*ports, &fetching, now))
+            .unwrap_or_default();
+        router.notify(Notice::Status(status));
+        self.waiting = waiting;
     }
 
     /// The scheduled check, on Ledger open and every minute after: starts a silent round on each
@@ -62,10 +91,10 @@ impl FetchedPricesPresenter {
             }
             return;
         }
-        let Some(landed) = self.fetching.borrow_mut().land(response) else {
+        let now = (self.clock)();
+        let Some(landed) = self.fetching.borrow_mut().land(response, now) else {
             return;
         };
-        let now = (self.clock)();
         let asked = landed.asked;
         let named = landed.named;
         let outcome = {
@@ -85,7 +114,7 @@ impl FetchedPricesPresenter {
             // asked-for round has landed.
             let status = {
                 let ports = self.ports.borrow();
-                fetching_status(&*ports, &self.fetching.borrow())
+                fetch_status(&*ports, &self.fetching.borrow(), now)
             };
             router.notify(Notice::Status(status.unwrap_or_default()));
         }
@@ -104,7 +133,13 @@ impl FetchedPricesPresenter {
             .unwrap_or_default();
         let warn = |text: String| Notice::Toast(ToastKind::Warning, text);
         if let Some(reason) = outcome.round_failure {
-            router.notify(warn(round_failed_toast(reason, &source)));
+            // A round stopped before it wrote anything says only why; one stopped part way also
+            // counts what it wrote.
+            let text = match outcome.written.len() {
+                0 => round_failed_toast(reason, &source),
+                fetched => round_stopped_toast(fetched, reason, &source),
+            };
+            router.notify(warn(text));
             return;
         }
         match (outcome.written.as_slice(), outcome.failed.as_slice()) {
@@ -226,6 +261,7 @@ mod tests {
             crate::TransportOutcome::Answered {
                 status: 200,
                 body: r#"{"rate":1.65}"#.into(),
+                retry_after: None,
             },
         );
         presenter.handle(eur, &mut notices);
@@ -271,6 +307,7 @@ mod tests {
         }
 
         fn client(units: Vec<UnitRow>) -> Client {
+            crate::presenter::test_support::locale();
             let mut sample = InMemoryPorts::sample(now());
             sample.units.units.extend(units);
             let (ports, shared) = sample.shared();
@@ -336,6 +373,35 @@ mod tests {
                     .expect("sent");
             }
 
+            fn fetch_source(&mut self, id: PriceSourceId) -> crate::Result<usize> {
+                crate::interactor::FetchSource { id }.run(
+                    &*self.ports.borrow(),
+                    &mut self.fetching.borrow_mut(),
+                    self.at.get(),
+                )
+            }
+
+            fn pump(&mut self) -> Vec<Notice> {
+                let mut notices = Vec::new();
+                self.presenter.pump(&mut notices);
+                notices
+            }
+
+            fn sent(&self) -> usize {
+                self.transport.requests().len()
+            }
+
+            /// `source`'s last round's retry time.
+            fn retry_at(&self, id: PriceSourceId) -> Option<DateTime<Utc>> {
+                let ports = self.ports.borrow();
+                let catalogue = ports.source_catalogue();
+                let source = catalogue.source(id)?;
+                match self.fetching.borrow().source_fetch(&source)?.outcome {
+                    FetchOutcome::Failed { retry_at, .. } => Some(retry_at),
+                    FetchOutcome::Fetched => None,
+                }
+            }
+
             fn unit(&self, code: &str) -> UnitRow {
                 self.ports
                     .borrow()
@@ -389,6 +455,7 @@ mod tests {
             TransportOutcome::Answered {
                 status: 200,
                 body: r#"{"rate":1.5}"#.into(),
+                retry_after: None,
             }
         }
 
@@ -399,6 +466,7 @@ mod tests {
                     TransportOutcome::Answered {
                         status: 404,
                         body: r#"{"message":"not found"}"#.into(),
+                        retry_after: None,
                     }
                 } else {
                     priced(url)
@@ -540,6 +608,7 @@ mod tests {
                             optional: false,
                         },
                         headers: Vec::new().into(),
+                        batch: None,
                     },
                     updates: Updates::Hourly,
                 }));
@@ -590,6 +659,7 @@ mod tests {
                     optional: false,
                 },
                 headers: Vec::new().into(),
+                batch: None,
             };
             let mut ports = client.ports.borrow_mut();
             ports
@@ -616,6 +686,162 @@ mod tests {
             assert_eq!(requests.len(), 1, "only CoinGecko is asked");
             assert!(requests[0].1.url.contains("coingecko"));
             assert_eq!(requests[0].1.key, None, "keyless");
+        }
+
+        fn throttled(retry_after: Option<&str>) -> TransportOutcome {
+            TransportOutcome::Answered {
+                status: 429,
+                body: String::new(),
+                retry_after: retry_after.map(str::to_string),
+            }
+        }
+
+        #[test]
+        fn a_round_failure_mid_round_stops_it_and_writes_what_it_fetched_in_one_go() {
+            let currencies: Vec<UnitRow> = (0..62)
+                .map(|index| currency(&format!("C{index:02}")))
+                .collect();
+            let mut client = client(currencies);
+            assert_eq!(client.fetch_source(FRANKFURTER), Ok(62));
+            assert_eq!(client.sent(), 60, "two wait for Frankfurter's call rate");
+
+            let rate_limited = client.transport.requests()[3].0;
+            client.answer(|url| {
+                if url.ends_with("/C03/AUD") {
+                    throttled(Some("30"))
+                } else {
+                    priced(url)
+                }
+            });
+            assert!(!client.fetching.borrow().in_flight_request(rate_limited));
+
+            assert_eq!(
+                client.notices,
+                [
+                    Notice::Toast(
+                        ToastKind::Warning,
+                        "Fetched 59 prices from Frankfurter; then rate limited, try again later"
+                            .into()
+                    ),
+                    Notice::Status(String::new()),
+                ]
+            );
+            assert_eq!(
+                client.source_failure(FRANKFURTER),
+                Some(FetchFailure::RateLimited)
+            );
+            assert_eq!(client.unit_failure("C03"), Some(FetchFailure::RateLimited));
+            assert_eq!(
+                client.unit_failure("C60"),
+                None,
+                "never reached, never failed"
+            );
+            assert!(client.unit("C60").prices.is_empty());
+            assert_eq!(client.fetching.borrow().in_flight(), 0);
+            client.later(Duration::minutes(2));
+            client.pump();
+            assert_eq!(
+                client.sent(),
+                60,
+                "the stopped round's queued calls never go"
+            );
+        }
+
+        #[test]
+        fn a_round_stopped_before_it_wrote_anything_keeps_its_failure_toast() {
+            let mut client = client(vec![currency("EUR")]);
+            client.fetch_now("EUR");
+            client.answer(|_| throttled(None));
+
+            assert_eq!(
+                client.notices,
+                [Notice::Toast(
+                    ToastKind::Warning,
+                    "Couldn't fetch from Frankfurter: rate limited, try again later".into()
+                )]
+            );
+        }
+
+        #[test]
+        fn a_429_backs_off_for_the_longer_of_the_usual_rule_and_its_retry_after() {
+            let mut client = client(vec![]);
+            client.fetch_now("BTC");
+            client.answer(|_| throttled(Some("3600")));
+            assert_eq!(
+                client.retry_at(crate::COINGECKO),
+                Some(now() + Duration::hours(1)),
+                "an hour outlasts CoinGecko's 15 minutes"
+            );
+
+            let mut client = self::client(vec![]);
+            client.fetch_now("BTC");
+            client.answer(|_| throttled(Some("30")));
+            assert_eq!(
+                client.retry_at(crate::COINGECKO),
+                Some(now() + Duration::minutes(15)),
+                "15 minutes outlast 30 seconds"
+            );
+        }
+
+        #[test]
+        fn fetch_now_waits_out_an_unexpired_retry_after_counting_it_down_then_sends() {
+            let mut client = client(vec![]);
+            client.fetch_now("BTC");
+            client.answer(|_| throttled(Some("40")));
+            client.notices.clear();
+
+            client.fetch_now("BTC");
+            assert_eq!(
+                client.sent(),
+                1,
+                "held by the Retry-After, not the back-off"
+            );
+            assert_eq!(
+                client.pump(),
+                [Notice::Status("Waiting for CoinGecko, 40 s\u{2026}".into())]
+            );
+            client.later(Duration::milliseconds(1500));
+            assert_eq!(
+                client.pump(),
+                [Notice::Status("Waiting for CoinGecko, 39 s\u{2026}".into())]
+            );
+            assert_eq!(client.pump(), [], "nothing new to say");
+            assert_eq!(client.sent(), 1);
+
+            client.later(Duration::milliseconds(38_500));
+            assert_eq!(client.pump(), [Notice::Status(String::new())]);
+            assert_eq!(client.sent(), 2, "the call goes out once the wait is over");
+        }
+
+        #[test]
+        fn a_round_queued_behind_the_call_rate_is_in_flight_and_says_fetching_not_waiting() {
+            let mut client = client(vec![]);
+            for _ in 0..5 {
+                client.fetch_now("BTC");
+                client.answer(priced_btc);
+            }
+            client.notices.clear();
+
+            assert_eq!(client.fetch_source(crate::COINGECKO), Ok(1));
+            assert_eq!(client.sent(), 5, "CoinGecko's five a minute are spent");
+            assert!(client.fetching.borrow().source_asked_for(crate::COINGECKO));
+            assert_eq!(
+                client.fetch_source(crate::COINGECKO),
+                Err(crate::Error::AlreadyFetching)
+            );
+            assert_eq!(client.pump(), [], "no Retry-After, so no Waiting");
+
+            client.later(Duration::seconds(60));
+            client.pump();
+            assert_eq!(client.sent(), 6);
+        }
+
+        fn priced_btc(_: &str) -> TransportOutcome {
+            TransportOutcome::Answered {
+                status: 200,
+                body: r#"{"bitcoin":{"aud":92568}}"#.into(),
+                retry_after: None,
+            }
         }
 
         #[test]

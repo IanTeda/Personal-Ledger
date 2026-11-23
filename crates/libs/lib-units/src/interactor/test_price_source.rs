@@ -27,7 +27,8 @@ pub struct TestPriceSource {
 }
 
 impl TestPriceSource {
-    /// Returns the test's request. Refused with [`Error::KeyMissing`], sending nothing, when the
+    /// Returns the test's request, queued as a call a person asked for: it waits out the source's
+    /// call rate and any unexpired `Retry-After`, never its back-off. Refused with [`Error::KeyMissing`], sending nothing, when the
     /// endpoint needs a key and there is none.
     pub fn run(self, fetching: &mut PriceFetching, now: DateTime<Utc>) -> Result<RequestId> {
         let source_id = self.source.map(|id| id.to_string()).unwrap_or_default();
@@ -59,6 +60,7 @@ impl TestPriceSource {
                 toast: self.toast,
                 unsaved: self.unsaved,
             },
+            now,
         );
         tracing::info!(price_source_id = %source_id, request = id.0, "Testing a Price Source");
         Ok(id)
@@ -91,6 +93,7 @@ mod tests {
                 optional: false,
             },
             headers: Vec::new().into(),
+            batch: None,
         }
     }
 
@@ -125,6 +128,7 @@ mod tests {
             TransportOutcome::Answered {
                 status: 200,
                 body: r#"{"price":"1.25","echo":"s3cr3t"}"#.into(),
+                retry_after: None,
             },
         );
         let later = now() + chrono::Duration::milliseconds(412);

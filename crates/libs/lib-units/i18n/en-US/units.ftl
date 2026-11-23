@@ -437,6 +437,10 @@ units-toast-fetch-some-failed = Fetched { $fetched ->
     [one] { $fetched } price
    *[other] { $fetched } prices
 } from { $source }; { $failed } { $what }
+units-toast-fetch-round-stopped = Fetched { $fetched ->
+    [one] { $fetched } price
+   *[other] { $fetched } prices
+} from { $source }; then { $reason }
 units-fetch-some-not-found = not found
 units-fetch-some-no-price = with no price
 units-fetch-some-failed = failed
@@ -450,6 +454,8 @@ units-toast-fetching = Fetching prices from { $source }…
 units-toast-already-fetching = Already fetching prices from { $source }
 units-status-fetching = Fetching prices from { $sources }…
 units-status-fetch-no-units = No active Unit uses { $source }
+# A call a person asked for waiting out the source's `Retry-After`, counting `$seconds` down.
+units-status-fetch-waiting = Waiting for { $source }, { $seconds } s…
 units-toast-fetch-round-fetched = Fetched { $fetched ->
     [one] { $fetched } price
    *[other] { $fetched } prices

@@ -2,8 +2,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::PriceSourceId;
 
 use crate::fetching::{
-    FetchFailure, InFlight, PriceFetching, PriceRequest, SourceSettings, is_due, key_missing,
-    price_request,
+    FetchFailure, PriceFetching, SourceSettings, Wanted, is_due, key_missing, round_calls,
 };
 use crate::protocols::UnitsPorts;
 use crate::units_by_code;
@@ -16,7 +15,9 @@ use crate::units_by_code;
 /// Never fetches a Unit on Manual entry or on a Manual only source, a deactivated Unit or the base
 /// Unit, and leaves a source with a round already in flight alone, as it does a source or Unit
 /// still backing off a failure. A Unit this Client fetched on another link is due at once. A
-/// source needing a key this Client doesn't have fails its round Key missing without sending.
+/// source needing a key this Client doesn't have fails its round Key missing without sending. A
+/// source with a batch request asks for its due Units in batches; every call waits its turn
+/// behind the calls a person asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FetchDue {
     /// The Clock's day, whose week a due Unit needs a price in.
@@ -31,22 +32,22 @@ impl FetchDue {
         let rounds = self.plan(ports, fetching);
         let mut started = Vec::with_capacity(rounds.len());
         let catalogue = ports.source_catalogue();
-        for (source, requests) in rounds {
+        for (source, wanted) in rounds {
             let Some(listed) = catalogue.source(source) else {
+                continue;
+            };
+            let Some(endpoint) = listed.endpoint() else {
                 continue;
             };
             let settings = SourceSettings::of(&listed);
             let key = ports.keys().key(source);
-            if listed
-                .endpoint()
-                .is_some_and(|endpoint| key_missing(endpoint, key.as_ref()))
-            {
+            if key_missing(endpoint, key.as_ref()) {
                 tracing::warn!(price_source_id = %source, "A price source needs an API key this Client doesn't have");
                 fetching.record_source(source, &settings, self.now, Some(FetchFailure::KeyMissing));
-                for (_, sent) in requests {
+                for one in wanted {
                     fetching.record_unit(
-                        sent.unit,
-                        sent.link,
+                        one.unit,
+                        one.link,
                         &settings,
                         self.now,
                         Some(FetchFailure::KeyMissing),
@@ -54,14 +55,16 @@ impl FetchDue {
                 }
                 continue;
             }
+            let requests = round_calls(endpoint, &wanted, key.as_ref(), &settings);
             tracing::info!(
                 price_source_id = %source,
-                units = requests.len(),
+                units = wanted.len(),
+                calls = requests.len(),
                 "Fetching due Units' prices"
             );
             let round = fetching.open_round(&listed, false);
             for (request, sent) in requests {
-                fetching.send(round, request, sent);
+                fetching.send(round, request, sent, self.now);
             }
             started.push(source);
         }
@@ -71,16 +74,16 @@ impl FetchDue {
         started
     }
 
-    /// Every due Unit's request, grouped by source.
+    /// Every due Unit, grouped by source.
     fn plan(
         self,
         ports: &dyn UnitsPorts,
         fetching: &PriceFetching,
-    ) -> Vec<(PriceSourceId, Vec<(PriceRequest, InFlight)>)> {
+    ) -> Vec<(PriceSourceId, Vec<Wanted>)> {
         let base = ports.base_unit().base_unit();
         let catalogue = ports.source_catalogue();
         let units = ports.units().units();
-        let mut rounds: Vec<(PriceSourceId, Vec<(PriceRequest, InFlight)>)> = Vec::new();
+        let mut rounds: Vec<(PriceSourceId, Vec<Wanted>)> = Vec::new();
         for unit in units_by_code(&units) {
             if !unit.is_active || unit.id == base {
                 continue;
@@ -88,10 +91,8 @@ impl FetchDue {
             let Some(source) = catalogue.source(unit.link.source_id) else {
                 continue;
             };
-            let Some(endpoint) = source.endpoint() else {
-                continue;
-            };
-            if fetching.source_in_flight(source.id)
+            if source.endpoint().is_none()
+                || fetching.source_in_flight(source.id)
                 || fetching.source_backing_off(&source, self.now)
                 || fetching.unit_backing_off(unit, &source, self.now)
                 || !(fetching.relinked(unit) || is_due(unit, source.updates, self.today, self.now))
@@ -102,18 +103,14 @@ impl FetchDue {
                 tracing::warn!(unit_id = %unit.id, "Skipped a due Unit whose quote Unit is gone");
                 continue;
             };
-            let key = ports.keys().key(source.id);
-            let (request, price_path) =
-                price_request(endpoint, &unit.link.symbol, &quote.code, key);
-            let sent = InFlight {
+            let wanted = Wanted {
                 unit: unit.id,
                 link: unit.link.clone(),
-                price_path,
-                settings: SourceSettings::of(&source),
+                quote: quote.code.clone(),
             };
             match rounds.iter_mut().find(|(id, _)| *id == source.id) {
-                Some((_, requests)) => requests.push((request, sent)),
-                None => rounds.push((source.id, vec![(request, sent)])),
+                Some((_, due)) => due.push(wanted),
+                None => rounds.push((source.id, vec![wanted])),
             }
         }
         rounds
@@ -209,6 +206,51 @@ mod tests {
             "btc, priced five minutes ago on a 15-minute source, isn't due"
         );
         assert_eq!(check.fetching.in_flight(), 3);
+    }
+
+    #[test]
+    fn coingeckos_due_units_go_out_in_one_batch() {
+        let mut check = on(vec![
+            unit("SOL", UnitKind::Crypto, COINGECKO, "solana"),
+            unit("ETH", UnitKind::Crypto, COINGECKO, "ethereum"),
+        ]);
+
+        assert_eq!(check.run(), [COINGECKO]);
+
+        assert_eq!(
+            check.transport.urls(),
+            ["https://api.coingecko.com/api/v3/simple/price?ids=ethereum,solana&vs_currencies=aud"],
+            "btc, priced five minutes ago, isn't due"
+        );
+        assert_eq!(check.fetching.in_flight(), 1);
+        assert!(check.fetching.fetching(check.ports.units.units[3].id));
+    }
+
+    #[test]
+    fn a_round_queued_behind_the_call_rate_is_in_flight_so_the_next_check_skips_it() {
+        let mut check = on(vec![unit("ETH", UnitKind::Crypto, COINGECKO, "ethereum")]);
+        let btc = crate::interactor::FetchNow {
+            id: UnitId::SEED_BTC,
+        };
+        // CoinGecko keyless takes 5 calls a minute: five asked-for fetches fill the window.
+        for _ in 0..5 {
+            btc.run(&check.ports, &mut check.fetching, now())
+                .expect("sent");
+            let answer = check.transport.answer_last(200, r#"{"bitcoin":{"aud":1}}"#);
+            let landed = check.fetching.land(answer, now()).expect("a round of one");
+            crate::interactor::RecordFetchedPrices { landed }.run(
+                &mut check.ports.units,
+                &mut check.fetching,
+                today(),
+                now(),
+            );
+        }
+
+        assert_eq!(check.run(), [COINGECKO], "eth's round starts, queued");
+        assert_eq!(check.transport.urls().len(), 5, "and nothing more goes out");
+
+        assert!(check.run().is_empty(), "the queued round is in flight");
+        assert_eq!(check.transport.urls().len(), 5);
     }
 
     #[test]

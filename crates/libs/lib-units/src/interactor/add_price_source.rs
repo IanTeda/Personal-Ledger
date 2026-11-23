@@ -47,6 +47,7 @@ mod tests {
                 optional: false,
             },
             headers: Vec::new().into(),
+            batch: None,
         };
 
         let added = AddPriceSource {

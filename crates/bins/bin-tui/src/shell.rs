@@ -459,8 +459,9 @@ impl Shell {
     }
 
     /// Hands each price response that has arrived to the Open Ledger's Presenter as one input,
-    /// committing what it wrote and raising its Toasts. A fetched price is never undoable, and the
-    /// TUI keeps no History.
+    /// committing what it wrote and raising its Toasts, then pumps out the calls waiting their
+    /// source's call rate or `Retry-After`. A fetched price is never undoable, and the TUI keeps no
+    /// History.
     fn receive_prices(&mut self) {
         let Some(ledger) = &mut self.ledger else {
             return;
@@ -477,6 +478,7 @@ impl Shell {
         if got {
             ledger.units.commit();
         }
+        presenter.pump(&mut notices);
         for notice in notices {
             match notice {
                 Notice::Toast(kind, text) => self.raise_toast(kind, text),

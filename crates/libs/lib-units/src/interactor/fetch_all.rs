@@ -81,7 +81,46 @@ mod tests {
                 .map(|(_, outcome)| *outcome)
         };
         assert_eq!(of(FRANKFURTER), Some(Err(Error::AlreadyFetching)));
-        assert_eq!(of(COINGECKO), Some(Ok(2)), "btc and eth");
+        assert_eq!(of(COINGECKO), Some(Ok(1)), "btc and eth in one batch");
         assert!(fetching.source_asked_for(COINGECKO));
+        assert_eq!(
+            transport
+                .urls()
+                .into_iter()
+                .filter(|url| url.contains("coingecko"))
+                .collect::<Vec<_>>(),
+            [
+                "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=aud"
+            ]
+        );
+    }
+
+    #[test]
+    fn frankfurter_and_yahoo_still_ask_one_call_per_unit() {
+        let mut ports = InMemoryPorts::sample(Utc::now());
+        ports.units.units.extend([
+            unit("EUR", FRANKFURTER, "EUR"),
+            unit("USD", FRANKFURTER, "USD"),
+            unit("BHP", crate::YAHOO_FINANCE, "BHP.AX"),
+            unit("CBA", crate::YAHOO_FINANCE, "CBA.AX"),
+        ]);
+        let transport = FakeTransport::default();
+        let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
+
+        let outcomes = FetchAll.run(&ports, &mut fetching, Utc::now());
+
+        let of = |id| {
+            outcomes
+                .iter()
+                .find(|(source, _)| *source == id)
+                .map(|(_, outcome)| *outcome)
+        };
+        assert_eq!(of(FRANKFURTER), Some(Ok(2)));
+        assert_eq!(of(crate::YAHOO_FINANCE), Some(Ok(2)));
+        assert_eq!(
+            transport.urls().len(),
+            5,
+            "one CoinGecko batch, four single calls"
+        );
     }
 }

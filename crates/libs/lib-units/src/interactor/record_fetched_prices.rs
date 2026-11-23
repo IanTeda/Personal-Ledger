@@ -51,15 +51,16 @@ impl RecordFetchedPrices {
             ..RoundOutcome::default()
         };
         for response in self.landed.responses {
-            match record(response, units, fetching, today, at) {
-                Some(Settled::Written(price)) => outcome.written.push(price),
-                Some(Settled::Failed(unit, failure)) => {
-                    if failure.is_round() && outcome.round_failure.is_none() {
-                        outcome.round_failure = Some(failure);
+            for settled in record(response, units, fetching, today, at) {
+                match settled {
+                    Settled::Written(price) => outcome.written.push(price),
+                    Settled::Failed(unit, failure) => {
+                        if failure.is_round() && outcome.round_failure.is_none() {
+                            outcome.round_failure = Some(failure);
+                        }
+                        outcome.failed.push((unit, failure));
                     }
-                    outcome.failed.push((unit, failure));
                 }
-                None => {}
             }
         }
         if let Some((id, settings)) = source {
@@ -75,54 +76,59 @@ enum Settled {
     Failed(UnitId, FetchFailure),
 }
 
-/// What `response` settled, or `None` for one that settles nothing (no request, or a Unit
-/// changed since).
+/// What `response` settled for each Unit it asked for: none for no request, or for a Unit
+/// changed since. A Unit missing from a batch reply reads Not found or No price.
 fn record(
     response: PriceResponse,
     units: &mut dyn UnitRepository,
     fetching: &mut PriceFetching,
     today: NaiveDate,
     at: DateTime<Utc>,
-) -> Option<Settled> {
+) -> Vec<Settled> {
     let request = response.request.0;
     let Some(sent) = fetching.take(response.request) else {
         tracing::debug!(request, "Dropped a price response for no request in flight");
-        return None;
+        return Vec::new();
     };
-    let unit_id = sent.unit;
-    let reading = read(&response.outcome, &sent.price_path);
-    let mut unit = match units.unit(unit_id) {
-        Some(unit) if unit.is_active && unit.link == sent.link => unit,
-        _ => {
-            tracing::info!(
-                %unit_id,
-                "Skipped a fetched price for a Unit deleted, deactivated or relinked since"
-            );
-            // A round failure still fails the source, whichever Unit it came back for.
-            return match reading {
-                Reading::Failed(failure) if failure.is_round() => {
-                    Some(Settled::Failed(unit_id, failure))
+    let mut settled = Vec::with_capacity(sent.units.len());
+    for call in sent.units {
+        let unit_id = call.unit;
+        let reading = read(&response.outcome, &call.price_path);
+        let mut unit = match units.unit(unit_id) {
+            Some(unit) if unit.is_active && unit.link == call.link => unit,
+            _ => {
+                tracing::info!(
+                    %unit_id,
+                    "Skipped a fetched price for a Unit deleted, deactivated or relinked since"
+                );
+                // A round failure still fails the source, whichever Unit it came back for.
+                if let Reading::Failed(failure) = reading
+                    && failure.is_round()
+                {
+                    settled.push(Settled::Failed(unit_id, failure));
                 }
-                Reading::Priced(_) | Reading::Failed(_) => None,
-            };
-        }
-    };
-    let close = match reading {
-        Reading::Priced(close) => close,
-        Reading::Failed(failure) => {
-            tracing::warn!(%unit_id, request, ?failure, "A price fetch failed");
-            fetching.record_unit(unit_id, sent.link, &sent.settings, at, Some(failure));
-            return Some(Settled::Failed(unit_id, failure));
-        }
-    };
-    fetching.record_unit(unit_id, sent.link, &sent.settings, at, None);
-    unit.record_price(close.clone(), today, at);
-    units.upsert_unit(unit);
-    tracing::info!(%unit_id, "Recorded a fetched price");
-    Some(Settled::Written(FetchedPrice {
-        unit: unit_id,
-        close,
-    }))
+                continue;
+            }
+        };
+        let close = match reading {
+            Reading::Priced(close) => close,
+            Reading::Failed(failure) => {
+                tracing::warn!(%unit_id, request, ?failure, "A price fetch failed");
+                fetching.record_unit(unit_id, call.link, &sent.settings, at, Some(failure));
+                settled.push(Settled::Failed(unit_id, failure));
+                continue;
+            }
+        };
+        fetching.record_unit(unit_id, call.link, &sent.settings, at, None);
+        unit.record_price(close.clone(), today, at);
+        units.upsert_unit(unit);
+        tracing::info!(%unit_id, "Recorded a fetched price");
+        settled.push(Settled::Written(FetchedPrice {
+            unit: unit_id,
+            close,
+        }));
+    }
+    settled
 }
 
 #[cfg(test)]
@@ -187,7 +193,10 @@ mod tests {
 
     impl Round {
         fn record(&mut self, response: PriceResponse) -> Vec<FetchedPrice> {
-            let landed = self.fetching.land(response).expect("a round of one lands");
+            let landed = self
+                .fetching
+                .land(response, at())
+                .expect("a round of one lands");
             RecordFetchedPrices { landed }
                 .run(&mut self.ports.units, &mut self.fetching, today(), at())
                 .written
@@ -297,6 +306,7 @@ mod tests {
             crate::TransportOutcome::Answered {
                 status: 200,
                 body: BODY.into(),
+                retry_after: None,
             },
         );
         assert!(round.record(stray).is_empty());

@@ -551,6 +551,7 @@ async fn read(conn: &mut SqliteConnection) -> Result<Rows> {
                 price_path: row.price_path.ok_or_else(missing)?.into(),
                 auth,
                 headers: parse_headers(row.id, row.headers.as_deref())?.into(),
+                batch: None,
             },
             updates,
         }))

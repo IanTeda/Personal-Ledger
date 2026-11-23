@@ -1627,6 +1627,7 @@ fn broker() -> lib_units::CustomSource {
                 value: "ledger; v1".to_string().into(),
             }]
             .into(),
+            batch: None,
         },
         updates: lib_units::Updates::Hourly,
     }
@@ -1743,6 +1744,57 @@ fn f_on_a_coingecko_a_yahoo_and_a_custom_sources_unit_sends_their_requests_and_w
 
         assert_eq!(unit_line(&mut ui, code).1.last_price, price);
     }
+}
+
+#[gpui::test]
+fn f_after_a_429_waits_out_its_retry_after_counting_down_then_the_poll_sends_it(
+    app: &mut TestAppContext,
+) {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut ui = Harness::fetching(
+        app,
+        (transport.clone(), responses),
+        one_unit_on_each_fetching_source,
+    );
+    ui.resize_to(WindowSize::Large);
+    to_units(&mut ui);
+    select_unit(&mut ui, "ETH");
+    ui.press("f");
+    transport.answer_last_with(429, "", Some("30"));
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+
+    ui.press("f");
+    assert_eq!(
+        transport.requests().len(),
+        1,
+        "held by CoinGecko's Retry-After"
+    );
+    assert_eq!(
+        status_message(&mut ui).as_deref(),
+        Some("Waiting for CoinGecko, 30 s\u{2026}")
+    );
+
+    ui.advance_now(chrono::Duration::seconds(20));
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+    assert_eq!(
+        status_message(&mut ui).as_deref(),
+        Some("Waiting for CoinGecko, 10 s\u{2026}"),
+        "the poll counts it down"
+    );
+    assert_eq!(transport.requests().len(), 1);
+
+    ui.advance_now(chrono::Duration::seconds(10));
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+    assert_eq!(
+        transport.requests().len(),
+        2,
+        "the poll sent the paced call"
+    );
+    assert_eq!(status_message(&mut ui), None, "and took the wait down");
+
+    transport.answer_last(200, r#"{"ethereum":{"aud":4321.5}}"#);
+    ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
+    assert_eq!(unit_line(&mut ui, "ETH").1.last_price, "4,321.50 AUD");
 }
 
 #[gpui::test]

@@ -1,14 +1,16 @@
 //! Fetching a Unit's price from its Price Source (ADR-0062): the plain transport port the Client's
 //! adapter (`lib-price-feed`) answers, the request it is handed and the response it hands back,
 //! and [`PriceFetching`], the per-Client bookkeeping of what is in flight and how each source's and
-//! Unit's last fetch went.
+//! Unit's last fetch went. Every call to a source waits its turn in [`PriceFetching`]'s queue, paced
+//! by the source's [`CallRate`] and any `Retry-After` it answered with (ADR-0043's batching and
+//! throttling amendment), and goes out when [`PriceFetching`] is next released.
 //!
 //! Every piece of provider knowledge stays here: filling an [`Endpoint`]'s placeholders into a
 //! request and reading the price at its price path. The transport only carries bytes, so these
 //! rules are tested with no network.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
@@ -21,6 +23,56 @@ use crate::{
 
 /// The shortest a failing source or Unit is left alone, whatever its source's Updates.
 pub const MIN_BACK_OFF: Duration = Duration::minutes(15);
+
+/// How long a 429 waits when its `Retry-After` is missing, unreadable or already past.
+pub const RETRY_AFTER_DEFAULT: Duration = Duration::seconds(60);
+
+/// How many calls this Client sends one source in any [`CallRate::WINDOW`], declared in code
+/// from what each provider allows (ADR-0043). A burst goes out while the window has room; only
+/// the calls past it wait. Counted per Client, with no coordination across devices.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CallRate {
+    pub calls: usize,
+}
+
+impl CallRate {
+    /// The sliding window the calls are counted over.
+    pub const WINDOW: Duration = Duration::seconds(60);
+
+    /// The rate of `source`, `keyed` when the call carries an API key: CoinGecko takes 5 a minute
+    /// keyless and 30 with a Demo key, Yahoo Finance 30, Frankfurter 60 and a Custom source, or
+    /// one not yet saved (`None`), 30.
+    pub fn of(source: Option<PriceSourceId>, keyed: bool) -> Self {
+        let calls = match source {
+            Some(id) if id == crate::COINGECKO => {
+                if keyed {
+                    30
+                } else {
+                    5
+                }
+            }
+            Some(id) if id == crate::FRANKFURTER => 60,
+            Some(id) if id == crate::YAHOO_FINANCE => 30,
+            Some(_) | None => 30,
+        };
+        Self { calls }
+    }
+}
+
+/// How long a 429's raw `Retry-After` asks to wait from `now`: whole seconds, or an HTTP date.
+/// Missing, unreadable or already past, it is [`RETRY_AFTER_DEFAULT`].
+pub(crate) fn retry_after_wait(raw: Option<&str>, now: DateTime<Utc>) -> Duration {
+    let Some(raw) = raw.map(str::trim) else {
+        return RETRY_AFTER_DEFAULT;
+    };
+    if let Ok(seconds) = raw.parse::<u32>() {
+        return Duration::seconds(i64::from(seconds));
+    }
+    match DateTime::parse_from_rfc2822(raw) {
+        Ok(at) if at.with_timezone(&Utc) > now => at.with_timezone(&Utc) - now,
+        Ok(_) | Err(_) => RETRY_AFTER_DEFAULT,
+    }
+}
 
 /// Why a fetch failed: the fixed set the transport's outcome is read onto, so no rule here sees a
 /// status code. The first five are round failures (nothing came back for the source); the last
@@ -143,6 +195,14 @@ pub(crate) enum Reading {
     Failed(FetchFailure),
 }
 
+/// The round failure `outcome` is, if it is one: what stops a round whatever Unit it was for.
+fn round_failure(outcome: &TransportOutcome) -> Option<FetchFailure> {
+    match read(outcome, "") {
+        Reading::Failed(failure) if failure.is_round() => Some(failure),
+        Reading::Priced(_) | Reading::Failed(_) => None,
+    }
+}
+
 /// Reads `outcome` onto a price at `price_path`, or onto one of the [`FetchFailure`]s.
 pub(crate) fn read(outcome: &TransportOutcome, price_path: &str) -> Reading {
     let failed = Reading::Failed;
@@ -153,7 +213,7 @@ pub(crate) fn read(outcome: &TransportOutcome, price_path: &str) -> Reading {
         TransportOutcome::Failed(TransportError::Tls | TransportError::Other) => {
             failed(FetchFailure::SourceError)
         }
-        TransportOutcome::Answered { status, body } => match status {
+        TransportOutcome::Answered { status, body, .. } => match status {
             200..=299 => {
                 if serde_json::from_str::<serde_json::Value>(body).is_err() {
                     failed(FetchFailure::SourceError)
@@ -252,9 +312,14 @@ pub struct PriceResponse {
 }
 
 /// The provider answered with `status` and `body`, whatever the status, or no answer came.
+/// `retry_after` is the raw `Retry-After` header, if it sent one, which only a 429 is read for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransportOutcome {
-    Answered { status: u16, body: String },
+    Answered {
+        status: u16,
+        body: String,
+        retry_after: Option<String>,
+    },
     Failed(TransportError),
 }
 
@@ -271,14 +336,35 @@ pub enum TransportError {
     Other,
 }
 
-/// What a request was for: the Unit and its link as they were when it went out, so a response for
-/// a Unit relinked since writes nothing, and the price path filled for that link.
+/// What a request was for: every Unit it asks the price of, one, or several in a batch, and the
+/// source settings it went out on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InFlight {
+    pub units: Vec<UnitCall>,
+    pub settings: SourceSettings,
+}
+
+/// One Unit a request asks for: the Unit and its link as they were when it was asked, so a
+/// response for a Unit relinked since writes nothing, and the price path filled for that link.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UnitCall {
     pub unit: UnitId,
     pub link: PriceLink,
     pub price_path: String,
-    pub settings: SourceSettings,
+}
+
+/// Which window and `Retry-After` a call counts against: its source, `None` for a test of a
+/// source not saved yet.
+type Lane = Option<PriceSourceId>;
+
+/// A call waiting its turn: it goes out once its lane's window has room and no `Retry-After`
+/// holds it, a call a person asked for ahead of a scheduled one.
+struct Queued {
+    id: RequestId,
+    lane: Lane,
+    rate: CallRate,
+    asked: bool,
+    request: PriceRequest,
 }
 
 /// Names one round: the requests sent to one source together, written in one commit.
@@ -298,6 +384,7 @@ struct Round {
     named: bool,
     /// Every Unit sent into the round, until it lands.
     units: HashSet<UnitId>,
+    /// Its calls queued or out: a round is in flight from its first call joining the queue.
     pending: HashSet<RequestId>,
     landed: Vec<PriceResponse>,
 }
@@ -318,7 +405,14 @@ pub(crate) struct Landed {
 pub struct PriceFetching {
     transport: Rc<dyn PriceTransport>,
     next: u64,
+    /// Every round's call queued or out, by request.
     in_flight: HashMap<RequestId, InFlight>,
+    /// The calls, round and test alike, waiting their turn, oldest first.
+    queue: Vec<Queued>,
+    /// When each lane's calls in the last [`CallRate::WINDOW`] went out, oldest first.
+    windows: HashMap<Lane, VecDeque<DateTime<Utc>>>,
+    /// Until when each lane waits out a `Retry-After`.
+    holds: HashMap<Lane, DateTime<Utc>>,
     next_round: u64,
     rounds: HashMap<RoundId, Round>,
     units: HashMap<UnitId, UnitRecord>,
@@ -390,6 +484,9 @@ impl PriceFetching {
             transport,
             next: 0,
             in_flight: HashMap::new(),
+            queue: Vec::new(),
+            windows: HashMap::new(),
+            holds: HashMap::new(),
             next_round: 0,
             rounds: HashMap::new(),
             units: HashMap::new(),
@@ -404,22 +501,24 @@ impl PriceFetching {
         Rc::new(RefCell::new(Self::new(transport)))
     }
 
-    /// How many requests are out.
+    /// How many of the rounds' requests are queued or out.
     pub fn in_flight(&self) -> usize {
         self.in_flight.len()
     }
 
-    /// Whether request `id` is still out.
+    /// Whether request `id` is still queued or out.
     pub(crate) fn in_flight_request(&self, id: RequestId) -> bool {
         self.in_flight.contains_key(&id)
     }
 
-    /// Whether a request for `unit` is out.
+    /// Whether a request for `unit` is queued or out.
     pub fn fetching(&self, unit: UnitId) -> bool {
-        self.in_flight.values().any(|sent| sent.unit == unit)
+        self.in_flight
+            .values()
+            .any(|sent| sent.units.iter().any(|call| call.unit == unit))
     }
 
-    /// Whether `source` has a round out, which a scheduled check leaves alone.
+    /// Whether `source` has a round queued or out, which a scheduled check leaves alone.
     pub(crate) fn source_in_flight(&self, source: PriceSourceId) -> bool {
         self.rounds.values().any(|round| round.source == source)
     }
@@ -450,14 +549,104 @@ impl PriceFetching {
             .any(|round| round.asked && round.source == source)
     }
 
-    /// Sends a test's `request`, remembering what it asked until it lands. Never in a round, so
-    /// it neither waits for nor holds up a fetch.
-    pub(crate) fn send_test(&mut self, request: PriceRequest, asked: TestInFlight) -> RequestId {
+    /// Queues a test's `request` at `now`, remembering what it asked until it lands. Never in a
+    /// round, so it neither waits for nor holds up a fetch's response, but it is a call a person
+    /// asked for, paced like any other.
+    pub(crate) fn send_test(
+        &mut self,
+        request: PriceRequest,
+        asked: TestInFlight,
+        now: DateTime<Utc>,
+    ) -> RequestId {
+        let id = self.next_request();
+        let lane = asked.source;
+        self.tests.insert(id, asked);
+        self.enqueue(id, lane, true, request);
+        self.release(now);
+        id
+    }
+
+    fn next_request(&mut self) -> RequestId {
         let id = RequestId(self.next);
         self.next += 1;
-        self.tests.insert(id, asked);
-        self.transport.send(id, request);
         id
+    }
+
+    fn enqueue(&mut self, id: RequestId, lane: Lane, asked: bool, request: PriceRequest) {
+        let rate = CallRate::of(lane, request.key.is_some());
+        self.queue.push(Queued {
+            id,
+            lane,
+            rate,
+            asked,
+            request,
+        });
+    }
+
+    /// Sends every queued call its lane allows at `now`: the asked-for first, then the scheduled,
+    /// oldest first within each, while the lane's window has room and no `Retry-After` holds it.
+    /// A lane that can't send one call sends none after it, so no call overtakes another on its
+    /// lane but an asked-for one. Returns how many went out.
+    pub(crate) fn release(&mut self, now: DateTime<Utc>) -> usize {
+        self.holds.retain(|_, until| now < *until);
+        let mut order: Vec<usize> = (0..self.queue.len()).collect();
+        order.sort_by_key(|&index| !self.queue[index].asked);
+        let mut blocked: HashSet<Lane> = HashSet::new();
+        let mut going: Vec<usize> = Vec::new();
+        for index in order {
+            let call = &self.queue[index];
+            if blocked.contains(&call.lane) {
+                continue;
+            }
+            let window = self.windows.entry(call.lane).or_default();
+            while window
+                .front()
+                .is_some_and(|sent| now - *sent >= CallRate::WINDOW)
+            {
+                window.pop_front();
+            }
+            if self.holds.contains_key(&call.lane) || window.len() >= call.rate.calls {
+                blocked.insert(call.lane);
+                continue;
+            }
+            window.push_back(now);
+            going.push(index);
+        }
+        let mut queue: Vec<Option<Queued>> = std::mem::take(&mut self.queue)
+            .into_iter()
+            .map(Some)
+            .collect();
+        let sent = going.len();
+        for index in going {
+            let Some(call) = queue[index].take() else {
+                continue;
+            };
+            if let Some(test) = self.tests.get_mut(&call.id) {
+                // A test times its answer from when it went out, not from when it queued.
+                test.sent_at = now;
+            }
+            self.transport.send(call.id, call.request);
+        }
+        self.queue = queue.into_iter().flatten().collect();
+        if !self.queue.is_empty() {
+            tracing::debug!(queued = self.queue.len(), "Price requests wait their turn");
+        }
+        sent
+    }
+
+    /// The source a call a person asked for waits on, and the whole seconds left of its
+    /// `Retry-After` at `now`, rounded up: what the status line counts down. `None` while no such
+    /// call is held, a queued one only waiting its call rate included.
+    pub(crate) fn waiting(&self, now: DateTime<Utc>) -> Option<(PriceSourceId, i64)> {
+        self.queue
+            .iter()
+            .filter(|call| call.asked && !self.tests.contains_key(&call.id))
+            .find_map(|call| {
+                let source = call.lane?;
+                let until = self.holds.get(&call.lane)?;
+                let left = (*until - now).num_milliseconds();
+                (left > 0).then_some((source, (left + 999) / 1000))
+            })
     }
 
     /// Whether `response` answers a test this Client sent, dropped or not, so it is never read as
@@ -482,7 +671,7 @@ impl PriceFetching {
             Reading::Failed(reason) => TestOutcome::Failed(reason),
         };
         let answered = match &response.outcome {
-            TransportOutcome::Answered { status, body } => {
+            TransportOutcome::Answered { status, body, .. } => {
                 Some((*status, masked(body, asked.key.as_ref())))
             }
             TransportOutcome::Failed(_) => None,
@@ -554,30 +743,43 @@ impl PriceFetching {
         }
     }
 
-    /// Sends `request` for `sent` in `round`, remembering it until its response comes back.
+    /// Queues `request` for `sent` in `round`, remembering it until its response comes back, and
+    /// sends what the call rate allows at `now`.
     pub(crate) fn send(
         &mut self,
         round: RoundId,
         request: PriceRequest,
         sent: InFlight,
+        now: DateTime<Utc>,
     ) -> RequestId {
-        let id = RequestId(self.next);
-        self.next += 1;
-        let unit = sent.unit;
-        self.in_flight.insert(id, sent);
+        let id = self.next_request();
+        let mut lane = None;
+        let mut asked = false;
         if let Some(round) = self.rounds.get_mut(&round) {
-            round.units.insert(unit);
+            round.units.extend(sent.units.iter().map(|call| call.unit));
             round.pending.insert(id);
+            lane = Some(round.source);
+            asked = round.asked;
         }
-        self.transport.send(id, request);
+        self.in_flight.insert(id, sent);
+        self.enqueue(id, lane, asked, request);
+        self.release(now);
         id
     }
 
     /// Holds `response` in its round, handing back the whole round once its last response lands.
+    /// A round failure stops the round: its calls still queued never go out, and it lands once the
+    /// calls already out have. A 429 also holds the source until its `Retry-After`, read at `now`.
     /// A response for no round in flight lands alone, for the writer to drop.
-    pub(crate) fn land(&mut self, response: PriceResponse) -> Option<Landed> {
-        let Some((&id, round)) = self
-            .rounds
+    pub(crate) fn land(&mut self, response: PriceResponse, now: DateTime<Utc>) -> Option<Landed> {
+        let Self {
+            rounds,
+            queue,
+            in_flight,
+            holds,
+            ..
+        } = self;
+        let Some((&id, round)) = rounds
             .iter_mut()
             .find(|(_, round)| round.pending.contains(&response.request))
         else {
@@ -589,6 +791,40 @@ impl PriceFetching {
             });
         };
         round.pending.remove(&response.request);
+        if let Some(failure) = round_failure(&response.outcome) {
+            if let TransportOutcome::Answered { retry_after, .. } = &response.outcome
+                && failure == FetchFailure::RateLimited
+            {
+                let until = now + retry_after_wait(retry_after.as_deref(), now);
+                tracing::info!(price_source_id = %round.source, %until, "A price source asked to wait");
+                holds.insert(Some(round.source), until);
+            }
+            // The round's calls still queued never go; what is left pending is out already.
+            let dropped: HashSet<RequestId> = queue
+                .iter()
+                .filter(|call| round.pending.contains(&call.id))
+                .map(|call| call.id)
+                .collect();
+            if !dropped.is_empty() {
+                tracing::info!(
+                    price_source_id = %round.source,
+                    dropped = dropped.len(),
+                    ?failure,
+                    "Stopped a price round before its queued calls went out"
+                );
+                queue.retain(|call| !dropped.contains(&call.id));
+                for id in &dropped {
+                    for call in in_flight
+                        .remove(id)
+                        .map(|sent| sent.units)
+                        .unwrap_or_default()
+                    {
+                        round.units.remove(&call.unit);
+                    }
+                }
+                round.pending.retain(|id| !dropped.contains(id));
+            }
+        }
         round.landed.push(response);
         if !round.pending.is_empty() {
             return None;
@@ -699,7 +935,16 @@ impl PriceFetching {
         at: DateTime<Utc>,
         failure: Option<FetchFailure>,
     ) {
-        let last = Self::last(settings, at, failure);
+        let mut last = Self::last(settings, at, failure);
+        // A 429 backs off for the longer of the usual rule and its `Retry-After`.
+        if let (
+            Some(FetchFailure::RateLimited),
+            Some(until),
+            FetchOutcome::Failed { retry_at, .. },
+        ) = (failure, self.holds.get(&Some(source)), &mut last.outcome)
+        {
+            *retry_at = (*retry_at).max(*until);
+        }
         self.sources.insert(
             source,
             SourceRecord {
@@ -757,15 +1002,108 @@ fn fill(text: &str, symbol: &str, quote: &str) -> String {
         .replace("{quote_lower}", &quote.to_lowercase())
 }
 
+/// `text` with the list placeholders `{symbols}` and `{quotes}` filled comma-joined, and
+/// `{symbols_lower}` and `{quotes_lower}` with the same in lower case.
+fn fill_lists(text: &str, symbols: &[&str], quotes: &[&str]) -> String {
+    let lower = |list: &[&str]| list.join(",").to_lowercase();
+    text.replace("{symbols_lower}", &lower(symbols))
+        .replace("{quotes_lower}", &lower(quotes))
+        .replace("{symbols}", &symbols.join(","))
+        .replace("{quotes}", &quotes.join(","))
+}
+
 /// The request asking `endpoint` for `symbol`'s price in `quote` (the quote Unit's code), carrying
 /// the endpoint's fixed headers and `key` where its authentication places it, and the price path
-/// filled the same way. With no key, a source whose key is optional is asked keyless.
+/// filled the same way. A source with a batch request asks through it, as a batch of one. With no
+/// key, a source whose key is optional is asked keyless.
 pub(crate) fn price_request(
     endpoint: &Endpoint,
     symbol: &str,
     quote: &str,
     key: Option<SecretString>,
 ) -> (PriceRequest, String) {
+    let path_and_query = match &endpoint.batch {
+        Some(batch) => fill_lists(&batch.request, &[symbol], &[quote]),
+        None => fill(&endpoint.request, symbol, quote),
+    };
+    (
+        request(endpoint, &path_and_query, key),
+        fill(&endpoint.price_path, symbol, quote),
+    )
+}
+
+/// One Unit a round wants priced: its id and link, and its quote Unit's code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Wanted {
+    pub unit: UnitId,
+    pub link: PriceLink,
+    pub quote: String,
+}
+
+/// The calls a round on `endpoint` makes for `wanted`, in order: one per Unit, or, for a source
+/// with a batch request, one per chunk of at most its `max_symbols` distinct symbols, each asking
+/// every quote its Units need. Each Unit's price is read at its own filled price path.
+pub(crate) fn round_calls(
+    endpoint: &Endpoint,
+    wanted: &[Wanted],
+    key: Option<&SecretString>,
+    settings: &SourceSettings,
+) -> Vec<(PriceRequest, InFlight)> {
+    let call = |wanted: &Wanted| UnitCall {
+        unit: wanted.unit,
+        link: wanted.link.clone(),
+        price_path: fill(&endpoint.price_path, &wanted.link.symbol, &wanted.quote),
+    };
+    let Some(batch) = &endpoint.batch else {
+        return wanted
+            .iter()
+            .map(|one| {
+                let (request, _) =
+                    price_request(endpoint, &one.link.symbol, &one.quote, key.cloned());
+                let sent = InFlight {
+                    units: vec![call(one)],
+                    settings: settings.clone(),
+                };
+                (request, sent)
+            })
+            .collect();
+    };
+    let mut symbols: Vec<&str> = Vec::new();
+    for one in wanted {
+        if !symbols.contains(&one.link.symbol.as_str()) {
+            symbols.push(&one.link.symbol);
+        }
+    }
+    symbols
+        .chunks(batch.max_symbols.max(1))
+        .map(|chunk| {
+            let units: Vec<&Wanted> = wanted
+                .iter()
+                .filter(|one| chunk.contains(&one.link.symbol.as_str()))
+                .collect();
+            let mut quotes: Vec<&str> = Vec::new();
+            for one in &units {
+                if !quotes.contains(&one.quote.as_str()) {
+                    quotes.push(&one.quote);
+                }
+            }
+            let request = request(
+                endpoint,
+                &fill_lists(&batch.request, chunk, &quotes),
+                key.cloned(),
+            );
+            let sent = InFlight {
+                units: units.into_iter().map(call).collect(),
+                settings: settings.clone(),
+            };
+            (request, sent)
+        })
+        .collect()
+}
+
+/// A GET of `path_and_query` on `endpoint`'s address with its fixed headers, and `key` where its
+/// authentication places it.
+fn request(endpoint: &Endpoint, path_and_query: &str, key: Option<SecretString>) -> PriceRequest {
     let key = match (&endpoint.auth, key) {
         (
             PriceSourceAuth::ApiKey {
@@ -779,12 +1117,12 @@ pub(crate) fn price_request(
         }),
         (PriceSourceAuth::None, _) | (PriceSourceAuth::ApiKey { .. }, None) => None,
     };
-    let request = PriceRequest {
+    PriceRequest {
         method: Method::Get,
         url: format!(
             "{}{}",
             endpoint.address.trim_end_matches('/'),
-            fill(&endpoint.request, symbol, quote)
+            path_and_query
         ),
         headers: endpoint
             .headers
@@ -792,8 +1130,7 @@ pub(crate) fn price_request(
             .map(|header| (header.name.to_string(), header.value.to_string()))
             .collect(),
         key,
-    };
-    (request, fill(&endpoint.price_path, symbol, quote))
+    }
 }
 
 /// The price at JSON pointer `path` in `body`: a number, or a string holding one. `None` for a
@@ -880,6 +1217,7 @@ mod tests {
                 optional: false,
             },
             headers: Vec::new().into(),
+            batch: None,
         };
 
         let (request, _) = price_request(&endpoint, "ABC", "USD", Some("s3cr3t".into()));
@@ -940,6 +1278,7 @@ mod tests {
                 },
             ]
             .into(),
+            batch: None,
         };
 
         let (request, path) = price_request(&endpoint, "ABC", "USD", None);
@@ -967,6 +1306,7 @@ mod tests {
                 optional,
             },
             headers: Vec::new().into(),
+            batch: None,
         };
         let key = SecretString::from("k3y");
         assert!(key_missing(&keyed(false), None));
@@ -989,6 +1329,7 @@ mod tests {
                 &TransportOutcome::Answered {
                     status: 200,
                     body: body.into(),
+                    retry_after: None,
                 },
                 &path,
             )
@@ -1027,7 +1368,8 @@ mod tests {
                 read(
                     &TransportOutcome::Answered {
                         status: 404,
-                        body: body.into()
+                        body: body.into(),
+                        retry_after: None,
                     },
                     &path
                 ),
@@ -1068,6 +1410,7 @@ mod tests {
         let answered = |status: u16, body: &str| TransportOutcome::Answered {
             status,
             body: body.into(),
+            retry_after: None,
         };
         let cases = [
             (
@@ -1115,6 +1458,196 @@ mod tests {
         assert!(round.iter().all(|reason| reason.is_round()));
         assert!(!FetchFailure::NotFound.is_round());
         assert!(!FetchFailure::NoPrice.is_round());
+    }
+
+    mod retry_after {
+        use super::*;
+
+        fn now() -> DateTime<Utc> {
+            NaiveDate::from_ymd_opt(2015, 10, 21)
+                .and_then(|day| day.and_hms_opt(7, 27, 0))
+                .expect("a real time")
+                .and_utc()
+        }
+
+        #[test]
+        fn seconds_wait_that_many_seconds() {
+            assert_eq!(retry_after_wait(Some("40"), now()), Duration::seconds(40));
+            assert_eq!(
+                retry_after_wait(Some(" 120 "), now()),
+                Duration::seconds(120)
+            );
+        }
+
+        #[test]
+        fn an_http_date_waits_until_it() {
+            assert_eq!(
+                retry_after_wait(Some("Wed, 21 Oct 2015 07:28:00 GMT"), now()),
+                Duration::seconds(60)
+            );
+            assert_eq!(
+                retry_after_wait(Some("Wed, 21 Oct 2015 07:37:30 GMT"), now()),
+                Duration::seconds(630)
+            );
+        }
+
+        #[test]
+        fn missing_unreadable_or_past_waits_60_seconds() {
+            for raw in [
+                None,
+                Some("soon"),
+                Some("-5"),
+                Some("Wed, 21 Oct 2015 07:00:00 GMT"),
+            ] {
+                assert_eq!(
+                    retry_after_wait(raw, now()),
+                    Duration::seconds(60),
+                    "{raw:?}"
+                );
+            }
+        }
+    }
+
+    mod pacing {
+        use std::rc::Rc;
+
+        use super::*;
+        use crate::fake::FakeTransport;
+        use crate::{COINGECKO, FRANKFURTER, YAHOO_FINANCE, built_in};
+
+        fn at(seconds: i64) -> DateTime<Utc> {
+            NaiveDate::from_ymd_opt(2026, 10, 21)
+                .and_then(|day| day.and_hms_opt(9, 0, 0))
+                .expect("a real time")
+                .and_utc()
+                + Duration::seconds(seconds)
+        }
+
+        struct Client {
+            transport: FakeTransport,
+            fetching: PriceFetching,
+        }
+
+        fn client() -> Client {
+            let transport = FakeTransport::default();
+            Client {
+                fetching: PriceFetching::new(Rc::new(transport.clone())),
+                transport,
+            }
+        }
+
+        fn source(id: PriceSourceId) -> PriceSource<'static> {
+            let built_in = built_in(id).expect("a built-in");
+            PriceSource {
+                id,
+                name: built_in.name,
+                origin: crate::SourceOrigin::BuiltIn(built_in),
+                updates: built_in.updates,
+            }
+        }
+
+        impl Client {
+            /// Starts a round on `source` for `symbol`, `asked` or scheduled, at `now`.
+            fn round(&mut self, id: PriceSourceId, symbol: &str, asked: bool, now: DateTime<Utc>) {
+                let source = source(id);
+                let endpoint = source.endpoint().expect("fetching");
+                let (request, price_path) = price_request(endpoint, symbol, "AUD", None);
+                let round = self.fetching.open_round(&source, asked);
+                self.fetching.send(
+                    round,
+                    request,
+                    InFlight {
+                        units: vec![UnitCall {
+                            unit: UnitId::new(),
+                            link: PriceLink {
+                                source_id: id,
+                                symbol: symbol.into(),
+                                quote: UnitId::SEED_AUD,
+                            },
+                            price_path,
+                        }],
+                        settings: SourceSettings::of(&source),
+                    },
+                    now,
+                );
+            }
+
+            fn sent(&self) -> usize {
+                self.transport.requests().len()
+            }
+        }
+
+        #[test]
+        fn each_source_has_its_call_rate_and_coingeckos_rises_with_a_demo_key() {
+            let custom = Some(PriceSourceId::new());
+            assert_eq!(CallRate::of(Some(COINGECKO), false).calls, 5);
+            assert_eq!(CallRate::of(Some(COINGECKO), true).calls, 30);
+            assert_eq!(CallRate::of(Some(YAHOO_FINANCE), false).calls, 30);
+            assert_eq!(CallRate::of(Some(FRANKFURTER), false).calls, 60);
+            assert_eq!(CallRate::of(custom, true).calls, 30);
+            assert_eq!(CallRate::of(None, false).calls, 30);
+        }
+
+        #[test]
+        fn a_burst_within_the_rate_goes_at_once_and_the_rest_wait_for_the_window_to_slide() {
+            let mut client = client();
+            for index in 0..62 {
+                client.round(FRANKFURTER, &format!("C{index:02}"), false, at(0));
+            }
+            assert_eq!(client.sent(), 60, "Frankfurter takes 60 a minute");
+
+            client.fetching.release(at(59));
+            assert_eq!(client.sent(), 60, "never more than 60 in any 60 seconds");
+
+            client.fetching.release(at(60));
+            assert_eq!(client.sent(), 62);
+        }
+
+        #[test]
+        fn the_window_slides_so_only_calls_older_than_a_minute_make_room() {
+            let mut client = client();
+            client.round(COINGECKO, "a", false, at(0));
+            for symbol in ["b", "c", "d", "e"] {
+                client.round(COINGECKO, symbol, false, at(30));
+            }
+            client.round(COINGECKO, "f", false, at(31));
+            client.round(COINGECKO, "g", false, at(31));
+            assert_eq!(client.sent(), 5);
+
+            client.fetching.release(at(60));
+            assert_eq!(client.sent(), 6, "a's slot is free, b to e's aren't yet");
+            client.fetching.release(at(90));
+            assert_eq!(client.sent(), 7);
+        }
+
+        #[test]
+        fn an_asked_for_call_goes_ahead_of_a_scheduled_one_queued_before_it() {
+            let mut client = client();
+            for symbol in ["a", "b", "c", "d", "e"] {
+                client.round(COINGECKO, symbol, true, at(0));
+            }
+            client.round(COINGECKO, "scheduled", false, at(1));
+            client.round(COINGECKO, "asked", true, at(2));
+            assert_eq!(client.sent(), 5, "the window is full");
+
+            client.fetching.release(at(60));
+
+            let urls = client.transport.urls();
+            assert_eq!(urls.len(), 7);
+            assert!(urls[5].contains("ids=asked&"), "{urls:?}");
+            assert!(urls[6].contains("ids=scheduled&"), "{urls:?}");
+        }
+
+        #[test]
+        fn each_source_counts_its_own_calls() {
+            let mut client = client();
+            for symbol in ["a", "b", "c", "d", "e", "f"] {
+                client.round(COINGECKO, symbol, true, at(0));
+            }
+            client.round(FRANKFURTER, "EUR", false, at(0));
+
+            assert_eq!(client.sent(), 6, "five CoinGecko and Frankfurter's one");
+        }
     }
 
     #[test]

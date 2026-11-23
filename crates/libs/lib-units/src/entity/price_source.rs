@@ -88,6 +88,21 @@ pub struct Endpoint {
     pub auth: PriceSourceAuth,
     /// Sent with every request, in this order.
     pub headers: Cow<'static, [RequestHeader]>,
+    /// How to ask for several symbols' prices in one call, which a source that has one always
+    /// uses, so one Unit is a batch of one. Only a built-in declares one (ADR-0043's batching
+    /// amendment), so a Custom source's is `None`.
+    pub batch: Option<BatchRequest>,
+}
+
+/// A built-in's request for several Units at once: `request` takes the list placeholders
+/// `{symbols}` and `{quotes}`, and their `{symbols_lower}` and `{quotes_lower}`, filled
+/// comma-joined, and each Unit's price is read from the reply at the source's usual price path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchRequest {
+    /// The path and query appended to the address, in place of the single request.
+    pub request: Cow<'static, str>,
+    /// The most distinct symbols one call carries.
+    pub max_symbols: usize,
 }
 
 /// Yahoo Finance's `User-Agent`: its chart answers 429 to a request with none, so we name ourselves
@@ -124,6 +139,12 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
                 optional: true,
             },
             headers: Cow::Borrowed(&[]),
+            batch: Some(BatchRequest {
+                request: Cow::Borrowed(
+                    "/simple/price?ids={symbols_lower}&vs_currencies={quotes_lower}",
+                ),
+                max_symbols: 250,
+            }),
         },
         updates: Updates::Every15Minutes,
         kinds: &[UnitKind::Crypto],
@@ -141,6 +162,8 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
                 name: Cow::Borrowed("User-Agent"),
                 value: Cow::Borrowed(YAHOO_USER_AGENT),
             }]),
+            // Its batch endpoint is undocumented, so one chart call per Unit.
+            batch: None,
         },
         updates: Updates::Hourly,
         kinds: &[UnitKind::Equity, UnitKind::FixedIncome, UnitKind::Commodity],
@@ -154,6 +177,8 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
             price_path: Cow::Borrowed("/rate"),
             auth: PriceSourceAuth::None,
             headers: Cow::Borrowed(&[]),
+            // v2 batches only as an unordered array a price path can't read (ADR-0043).
+            batch: None,
         },
         // v2 blends its rates from several central banks, same day (ADR-0043).
         updates: Updates::Daily,
@@ -417,6 +442,7 @@ mod tests {
                 optional: false,
             },
             headers: Vec::new().into(),
+            batch: None,
         }
     }
 

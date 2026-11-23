@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use lib_core::PriceSourceId;
 
 use crate::fetching::{
-    FetchFailure, InFlight, PriceFetching, SourceSettings, key_missing, price_request,
+    FetchFailure, PriceFetching, SourceSettings, Wanted, key_missing, round_calls,
 };
 use crate::protocols::UnitsPorts;
 use crate::{Error, Result, units_by_code};
@@ -21,7 +21,8 @@ pub struct FetchSource {
 }
 
 impl FetchSource {
-    /// Returns how many requests were sent, `0` for a source no active Unit uses. Refused for a
+    /// Returns how many requests were queued, one per Unit or per batch, `0` for a source no
+    /// active Unit uses. Refused for a
     /// source that is gone or is Manual entry, and while the source has a round in flight, which
     /// sends nothing. A source needing a key this Client doesn't have sends nothing: its round
     /// and its Units fail Key missing at `now`, and the refusal says so.
@@ -74,22 +75,19 @@ impl FetchSource {
             }
             return Err(Error::KeyMissing);
         }
-        let mut requests = Vec::with_capacity(wanted.len());
+        let mut asked = Vec::with_capacity(wanted.len());
         for unit in wanted {
             let Some(quote) = units.iter().find(|quote| quote.id == unit.link.quote) else {
                 tracing::warn!(unit_id = %unit.id, "Skipped a Unit whose quote Unit is gone");
                 continue;
             };
-            let (request, price_path) =
-                price_request(endpoint, &unit.link.symbol, &quote.code, key.clone());
-            let sent = InFlight {
+            asked.push(Wanted {
                 unit: unit.id,
                 link: unit.link.clone(),
-                price_path,
-                settings: settings.clone(),
-            };
-            requests.push((request, sent));
+                quote: quote.code.clone(),
+            });
         }
+        let requests = round_calls(endpoint, &asked, key.as_ref(), &settings);
         if requests.is_empty() {
             return Ok(0);
         }
@@ -98,7 +96,7 @@ impl FetchSource {
         fetching.name_round(round);
         let count = requests.len();
         for (request, sent) in requests {
-            fetching.send(round, request, sent);
+            fetching.send(round, request, sent, now);
         }
         Ok(count)
     }
@@ -215,6 +213,58 @@ mod tests {
 
         assert_eq!(ask.run(MANUAL_ENTRY), Err(Error::NotFetched));
         assert_eq!(ask.run(PriceSourceId::new()), Err(Error::PriceSourceGone));
+    }
+
+    #[test]
+    fn coingeckos_units_go_in_one_batch_asking_every_quote_they_need() {
+        let mut eth = unit("ETH", COINGECKO);
+        eth.link.symbol = "Ethereum".into();
+        let usd = unit("USD", MANUAL_ENTRY);
+        let mut btc_usd = unit("BTCUSD", COINGECKO);
+        btc_usd.link.symbol = "bitcoin".into();
+        btc_usd.link.quote = usd.id;
+        let mut ask = on(vec![eth, btc_usd, usd]);
+
+        assert_eq!(ask.run(COINGECKO), Ok(1));
+
+        assert_eq!(
+            ask.transport.urls(),
+            [
+                "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=aud,usd"
+            ],
+            "btc and btcusd share one id; each quote is asked once"
+        );
+    }
+
+    #[test]
+    fn a_coingecko_round_splits_into_chunks_of_at_most_250_ids() {
+        let coins: Vec<UnitRow> = (0..300)
+            .map(|index| {
+                let mut coin = unit(&format!("C{index:03}"), COINGECKO);
+                coin.kind = UnitKind::Crypto;
+                coin
+            })
+            .collect();
+        let mut ask = on(coins);
+
+        assert_eq!(ask.run(COINGECKO), Ok(2));
+
+        let ids = |url: &str| {
+            url.split("ids=")
+                .nth(1)
+                .and_then(|rest| rest.split('&').next())
+                .map(|ids| ids.split(',').count())
+                .unwrap_or_default()
+        };
+        let urls = ask.transport.urls();
+        assert_eq!(urls.len(), 2);
+        assert_eq!(ids(&urls[0]), 250);
+        assert_eq!(
+            ids(&urls[1]),
+            51,
+            "btc and 249 coins first, the other 51 next"
+        );
+        assert!(urls.iter().all(|url| url.ends_with("&vs_currencies=aud")));
     }
 
     #[test]

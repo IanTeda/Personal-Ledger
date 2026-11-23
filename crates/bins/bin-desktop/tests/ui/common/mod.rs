@@ -199,6 +199,9 @@ pub struct Harness<'a> {
     pub logs: lib_tracing::LogBuffer,
     /// The day the Shell's clock reads, [`today`] until [`Harness::turn_date_to`] moves it.
     date: Rc<Cell<NaiveDate>>,
+    /// How far past midday on that day the Shell's clock reads now, moved by
+    /// [`Harness::advance_now`].
+    past_midday: Rc<Cell<chrono::Duration>>,
     /// How many times the Shell has committed, once per input (`input::send`).
     commits: Rc<Cell<usize>>,
     /// A clone of the stores the Shell was built on, `None` with no Ledger open: what
@@ -530,7 +533,20 @@ impl<'a> Harness<'a> {
             theme::colours::init(ThemeOverrides::default(), cx);
             theme::colours::set_device_colours(&config, cx);
         });
-        let (clock, date) = lib_core::Clock::settable(today());
+        // Now reads midday on the day, as `Clock::settable`'s does, until a test moves it on.
+        let date = Rc::new(Cell::new(today()));
+        let past_midday = Rc::new(Cell::new(chrono::Duration::zero()));
+        let clock = {
+            let (day, now_day, offset) = (date.clone(), date.clone(), past_midday.clone());
+            lib_core::Clock::with_time(
+                move || day.get(),
+                move || {
+                    now_day.get().and_time(chrono::NaiveTime::MIN).and_utc()
+                        + chrono::Duration::hours(12)
+                        + offset.get()
+                },
+            )
+        };
         let (stores, shared) = ledger.unzip();
         let (shell, cx) = app.add_window_view(|window, cx| {
             let focus_handle = cx.focus_handle();
@@ -558,6 +574,7 @@ impl<'a> Harness<'a> {
             cx,
             logs,
             date,
+            past_midday,
             commits,
             stores: shared,
             conf_dir,
@@ -605,6 +622,12 @@ impl<'a> Harness<'a> {
     /// How many times the Shell has committed since it was built: once per input.
     pub fn commits(&self) -> usize {
         self.commits.get()
+    }
+
+    /// Moves the Shell's clock's now on by `by` within its day, as time passing would, without
+    /// running any timer: a test advances the executor after to let the Shell notice.
+    pub fn advance_now(&mut self, by: chrono::Duration) {
+        self.past_midday.set(self.past_midday.get() + by);
     }
 
     /// Moves the Shell's clock to `day`, then lets the Shell notice: past one poll of its clock.
