@@ -39,6 +39,10 @@ _Avoid_: stale (a Documents term), expired, old.
 A Unit's prices at a grain finer than a week, one per day or per hour, asked of its Price Source when a View wants to show them. Unlike a Weekly Price, they are never kept in the Ledger and never sync: they are shown and then forgotten, and asking for them neither writes a Weekly Price nor counts as the Unit being priced.
 _Avoid_: intraday price, price history, tick.
 
+**API key secret**:
+The secret string in each device's configuration that encrypts the API keys a Ledger keeps for its Price Sources. The encrypted keys sync with the Ledger, the secret never does, so every device on a Ledger needs the same one to use them; a device without it reads every key as missing. Only its fingerprint is ever shown.
+_Avoid_: password, master key, hash (a key is encrypted, not hashed: it has to be sent as typed).
+
 **Precision**:
 The number of decimal places a Unit's amounts are shown and entered to (AUD 2, BTC 8). A price shows at its quote Unit's Precision, since it is an amount in that Unit.
 _Avoid_: decimals, scale, places.
