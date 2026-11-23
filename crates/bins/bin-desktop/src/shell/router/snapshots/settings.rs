@@ -12,6 +12,8 @@ pub use crate::inventory::SettingsInventorySnapshot;
 #[doc(hidden)]
 pub use crate::payees::SettingsPayeesSnapshot;
 #[doc(hidden)]
+pub use crate::settings::data_backup::SettingsDataBackupSnapshot;
+#[doc(hidden)]
 pub use crate::settings::general::SettingsGeneralSnapshot;
 #[doc(hidden)]
 pub use crate::settings::ledger::SettingsLedgerSnapshot;

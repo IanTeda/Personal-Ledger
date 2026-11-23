@@ -163,6 +163,7 @@ impl LedgerPages {
             ledger,
         } = setup;
         let summaries = CachedCounts::new(ledger.summaries.clone());
+        let api_keys = ledger.api_keys.clone();
         // Every domain's write can change a count, so any announcement drops them.
         let _ledger_changed = cx.subscribe(announcer, |view: &mut SettingsView, _, _, cx| {
             view.ledger_changed(cx);
@@ -185,7 +186,7 @@ impl LedgerPages {
             ),
             inventory: inventory_page(inventory.0, inventory.1, announcer.clone(), cx),
             sync_server: cx.new(|cx| sync_server_page(config, announcer, cx)),
-            data_backup: cx.new(|cx| data_backup_page(config, announcer, cx)),
+            data_backup: cx.new(|cx| data_backup_page(api_keys, config, announcer, cx)),
         }
     }
 }

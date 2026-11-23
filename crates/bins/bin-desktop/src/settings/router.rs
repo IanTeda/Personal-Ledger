@@ -13,8 +13,9 @@ use std::path::PathBuf;
 use gpui::{Context, ScrollHandle};
 use lib_colour_theme::ColourAppearance;
 use lib_settings::{
-    ClearLogsPresenter, DisplayOutput, DisplayPresenter, GeneralPresenter, LedgerPresenter,
-    LogListChange, LogScroll, SettingsPage, SettingsRouter, TracingPresenter,
+    ClearLogsPresenter, DataBackupPresenter, DisplayOutput, DisplayPresenter, GeneralPresenter,
+    LedgerPresenter, LogListChange, LogScroll, RemoveApiKeysPresenter, SettingsPage,
+    SettingsRouter, TracingPresenter,
 };
 use lib_toast::{Notice, Notify};
 
@@ -159,4 +160,14 @@ impl lib_settings::TracingRouter for PageRouter<'_, '_, TracingPresenter> {
 /// follows at once (#1081).
 impl lib_settings::LedgerRouter for PageRouter<'_, '_, LedgerPresenter> {
     fn base_unit_changed(&mut self) {}
+}
+
+/// `impl lib_settings::DataBackupRouter` for the Data & backup page: the Dialog Remove all API keys
+/// opens, which asks first since every key is deleted for good (#1392). It clears the status line
+/// as the page's other Dialogs do.
+impl lib_settings::DataBackupRouter for PageRouter<'_, '_, DataBackupPresenter> {
+    fn open_remove_api_keys(&mut self, dialog: RemoveApiKeysPresenter) {
+        self.cx.emit(ViewEvent::SetStatus(None));
+        self.open(dialog);
+    }
 }

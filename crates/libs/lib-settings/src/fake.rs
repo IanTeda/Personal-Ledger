@@ -630,3 +630,34 @@ impl LedgerSummaries for FixedLedgerSummaries {
         self.0.clone()
     }
 }
+
+/// The API keys in memory: a fingerprint, or none, and how many keys are saved.
+#[derive(Debug)]
+pub struct InMemoryApiKeys {
+    fingerprint: Option<String>,
+    saved: RefCell<usize>,
+}
+
+impl InMemoryApiKeys {
+    pub fn new(fingerprint: Option<&str>, saved: usize) -> Self {
+        Self {
+            fingerprint: fingerprint.map(str::to_string),
+            saved: RefCell::new(saved),
+        }
+    }
+
+    /// How many keys are still saved.
+    pub fn saved(&self) -> usize {
+        *self.saved.borrow()
+    }
+}
+
+impl crate::protocols::ApiKeys for InMemoryApiKeys {
+    fn fingerprint(&self) -> Option<String> {
+        self.fingerprint.clone()
+    }
+
+    fn remove_all(&self) {
+        *self.saved.borrow_mut() = 0;
+    }
+}

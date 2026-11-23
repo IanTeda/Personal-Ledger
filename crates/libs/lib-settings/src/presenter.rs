@@ -10,12 +10,15 @@ mod form;
 mod frame;
 pub mod general;
 pub mod ledger;
+mod remove_api_keys;
 pub(crate) mod sync_server;
 pub mod tracing;
 
 pub use about::{AboutEvent, AboutPresenter, AboutSetup, AboutViewModel};
 pub use clear_logs::{ClearLogsEvent, ClearLogsOutcome, ClearLogsPresenter, ClearLogsViewModel};
-pub use data_backup::{DataBackupEvent, DataBackupPresenter, DataBackupRow, DataBackupViewModel};
+pub use data_backup::{
+    DataBackupEvent, DataBackupPresenter, DataBackupRow, DataBackupSetup, DataBackupViewModel,
+};
 pub use device::device_status;
 pub use display::{
     ColourCardView, ColourThemeView, DisplayEvent, DisplayField, DisplayOutput, DisplayPresenter,
@@ -33,6 +36,9 @@ pub use general::{
 pub use ledger::{
     BaseUnitOption, BaseUnitView, FinancialYearView, LedgerEvent, LedgerField, LedgerPresenter,
     LedgerSetup, LedgerTextView, LedgerViewModel,
+};
+pub use remove_api_keys::{
+    RemoveApiKeysEvent, RemoveApiKeysOutcome, RemoveApiKeysPresenter, RemoveApiKeysViewModel,
 };
 pub use sync_server::{SyncServerEvent, SyncServerPresenter, SyncServerViewModel};
 pub use tracing::{

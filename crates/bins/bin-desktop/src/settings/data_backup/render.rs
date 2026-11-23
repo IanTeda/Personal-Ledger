@@ -44,6 +44,13 @@ pub(super) fn page(
             clicks.send(DataBackupEvent::ExportLedger),
             cx,
         ))
+        .child(button(
+            "settings-remove-api-keys",
+            model.remove_keys.clone(),
+            false,
+            clicks.send(DataBackupEvent::RemoveKeys),
+            cx,
+        ))
         .into_any_element()
 }
 

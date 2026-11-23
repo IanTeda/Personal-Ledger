@@ -263,6 +263,17 @@ impl ApiKeySecret {
         self.inner.configured.borrow().is_some()
     }
 
+    /// The secret's fingerprint, as Settings › Data & backup shows it so two devices can be seen to
+    /// share one (`3F9A-21C0`): the first four bytes of the derived key's `key_check`, which is
+    /// not secret. `None` with no secret set.
+    pub fn fingerprint(&self) -> Option<String> {
+        let sealer = self.sealer()?;
+        let [a, b, c, d, ..] = *sealer.check() else {
+            return None;
+        };
+        Some(format!("{a:02X}{b:02X}-{c:02X}{d:02X}"))
+    }
+
     /// The key derived from the secret, `None` with no secret set.
     pub(crate) fn sealer(&self) -> Option<Rc<Sealer>> {
         if let Some(sealer) = self.inner.derived.borrow().as_ref() {
@@ -734,5 +745,45 @@ mod tests {
     fn an_api_key_secret_left_blank_is_none() {
         assert!(!ApiKeySecret::in_memory(Some("  ".into())).is_set());
         assert!(ApiKeySecret::in_memory(None).sealer().is_none());
+    }
+
+    #[test]
+    fn the_fingerprint_is_none_without_a_secret_and_the_same_on_two_devices_with_one() {
+        let fingerprint = |secret: ApiKeySecret| secret.fingerprint();
+
+        assert_eq!(fingerprint(ApiKeySecret::in_memory(None)), None);
+        let first = fingerprint(secret("one secret")).expect("a secret has a fingerprint");
+        assert_eq!(first.len(), 9);
+        assert_eq!(first.as_bytes()[4], b'-');
+        assert!(
+            first
+                .chars()
+                .all(|c| c == '-' || c.is_ascii_digit() || c.is_ascii_uppercase()),
+            "{first}"
+        );
+        assert_eq!(fingerprint(secret("one secret")), Some(first.clone()));
+        assert_ne!(fingerprint(secret("another secret")), Some(first));
+    }
+
+    #[test]
+    fn remove_all_deletes_every_key_row_and_the_sources_read_as_not_set() {
+        use lib_settings::ApiKeys as _;
+
+        let rows: SharedPriceSourceKeysStore = Rc::new(RefCell::new(InMemorySealedKeys::default()));
+        let secret = secret("one device's secret");
+        let mut keys = StoredPriceSourceKeys::new(rows.clone(), secret.clone());
+        let broker = PriceSourceId::new();
+        keys.store_key(lib_units::COINGECKO, KEY.into())
+            .expect("the key is sealed");
+        keys.store_key(broker, KEY.into())
+            .expect("the key is sealed");
+        assert_eq!(rows.borrow().sealed().len(), 2);
+
+        keys.remove_all();
+
+        assert!(rows.borrow().sealed().is_empty());
+        assert_eq!(keys.key_state(lib_units::COINGECKO), KeyState::NotSet);
+        assert_eq!(keys.key_state(broker), KeyState::NotSet);
+        assert!(secret.is_set(), "the secret stays on the device");
     }
 }

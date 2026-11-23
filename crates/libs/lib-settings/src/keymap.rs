@@ -24,7 +24,8 @@ use lib_viper::view::Hint;
 use crate::msg;
 
 use crate::presenter::{
-    DisplayEvent, GeneralEvent, LedgerEvent, LogScroll, SettingsFrameEvent, TracingEvent,
+    DataBackupEvent, DisplayEvent, GeneralEvent, LedgerEvent, LogScroll, SettingsFrameEvent,
+    TracingEvent,
 };
 
 /// From the index into the page on show.
@@ -193,6 +194,22 @@ pub const LEDGER_BINDINGS: &[Binding<LedgerEvent>] = &[
 /// Settings › Ledger's keymap under `config`'s overrides.
 pub fn ledger_keymap(config: &KeyBindingConfig) -> Keymap<LedgerEvent> {
     Keymap::new(LEDGER_BINDINGS, config)
+}
+
+/// On Settings › Data & backup, Remove all API keys.
+pub const REMOVE_API_KEYS: &str = "settings.remove_api_keys";
+
+/// Settings › Data & backup's commands, with today's key: `x` Remove all API keys, which asks
+/// first. Not listed in the palette.
+pub const DATA_BACKUP_BINDINGS: &[Binding<DataBackupEvent>] = &[Binding::hidden(
+    REMOVE_API_KEYS,
+    "x",
+    DataBackupEvent::RemoveKeys,
+)];
+
+/// Settings › Data & backup's keymap under `config`'s overrides.
+pub fn data_backup_keymap(config: &KeyBindingConfig) -> Keymap<DataBackupEvent> {
+    Keymap::new(DATA_BACKUP_BINDINGS, config)
 }
 
 /// On Settings › Tracing, a page of the log box down.

@@ -18,6 +18,7 @@ use crate::log::LogLine;
 use crate::page::SettingsPage;
 use crate::presenter::{
     ClearLogsPresenter, DisplayOutput, GeneralSettings, LogListChange, LogScroll,
+    RemoveApiKeysPresenter,
 };
 
 /// What only the Shell does for the Settings frame.
@@ -218,6 +219,23 @@ pub struct SettingsLedger {
     pub ledger: Rc<dyn LedgerReads>,
     pub summaries: Rc<dyn LedgerSummaries>,
     pub preferences: Rc<dyn LedgerPreferences>,
+    pub api_keys: Rc<dyn ApiKeys>,
+}
+
+/// What Settings › Data & backup shows and does of the Ledger's Price Source API keys. The secret
+/// itself never crosses this port: only its fingerprint, and the way out when it is lost.
+pub trait ApiKeys {
+    /// The device's API key secret's fingerprint (`3F9A-21C0`), `None` with no secret set.
+    fn fingerprint(&self) -> Option<String>;
+
+    /// Deletes every saved API key of the Ledger, which syncs as deletes.
+    fn remove_all(&self);
+}
+
+/// What only the Shell does for Settings › Data & backup: Remove all API keys is a Dialog it hosts.
+pub trait DataBackupRouter: Notify {
+    /// Opens the Remove all API keys Dialog, which `dialog` is the Presenter of.
+    fn open_remove_api_keys(&mut self, dialog: RemoveApiKeysPresenter);
 }
 
 /// What Settings › Ledger reads of the Ledger: its name, Owner, Financial year start and base

@@ -65,11 +65,11 @@ pub use snapshots::{
     BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot, ChipSnapshot,
     DashboardBillSnapshot, DisplayDatesSnapshot, DocumentsSnapshot, HelpGroup, ImportRowSnapshot,
     ImportSnapshot, PageKeysSnapshot, PageSnapshot, PaletteSnapshot, SettingsAccountsSnapshot,
-    SettingsCategoriesSnapshot, SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot,
-    SettingsGeneralSnapshot, SettingsInstitutionsSnapshot, SettingsInventorySnapshot,
-    SettingsLedgerSnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
-    SettingsTracingSnapshot, SettingsUnitsSnapshot, StatusSnapshot, ToastSnapshot, ToastsSnapshot,
-    TransactionsSnapshot, UnitPricesSnapshot,
+    SettingsCategoriesSnapshot, SettingsDataBackupSnapshot, SettingsDisplaySnapshot,
+    SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot, SettingsInstitutionsSnapshot,
+    SettingsInventorySnapshot, SettingsLedgerSnapshot, SettingsPayeesSnapshot, SettingsSnapshot,
+    SettingsTagsSnapshot, SettingsTracingSnapshot, SettingsUnitsSnapshot, StatusSnapshot,
+    ToastSnapshot, ToastsSnapshot, TransactionsSnapshot, UnitPricesSnapshot,
 };
 pub use write_failures::WRITE_FAILURE_POLL;
 

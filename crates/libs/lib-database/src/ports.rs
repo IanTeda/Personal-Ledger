@@ -52,7 +52,6 @@ pub(crate) use inventory::StoredInventoryPorts;
 pub(crate) use payees::StoredPayeesPorts;
 pub(crate) use tags::StoredTagsPorts;
 pub(crate) use transactions::StoredTransactionsPorts;
-#[cfg(test)]
 pub(crate) use units::StoredPriceSourceKeys;
 pub(crate) use units::StoredUnitsPorts;
 
@@ -146,6 +145,8 @@ pub struct LedgerPorts {
     settings_reads: Rc<StoredSettingsReads>,
     /// The Settings › Ledger page's base Unit write ([`LedgerPreferencesAdapter`]).
     ledger_preferences: Rc<LedgerPreferencesAdapter>,
+    /// Settings › Data & backup's fingerprint and Remove all API keys ([`lib_settings::ApiKeys`]).
+    api_keys: Rc<StoredPriceSourceKeys>,
     /// The Dashboard's Bills and Budgets reads ([`StoredDashboardReads`]).
     dashboard_reads: Rc<StoredDashboardReads>,
     /// The Shell's rail-count reads ([`StoredShellReads`]).
@@ -240,6 +241,10 @@ impl LedgerPorts {
             ledger_preferences: Rc::new(LedgerPreferencesAdapter::new(
                 stores.units.clone(),
                 stores.ledger.clone(),
+            )),
+            api_keys: Rc::new(StoredPriceSourceKeys::new(
+                stores.price_source_keys.clone(),
+                secret.clone(),
             )),
             dashboard_reads,
             shell_reads,
@@ -425,6 +430,7 @@ impl LedgerPorts {
             ledger: self.settings_reads.clone(),
             summaries: self.settings_reads.clone(),
             preferences: self.ledger_preferences.clone(),
+            api_keys: self.api_keys.clone(),
         }
     }
 

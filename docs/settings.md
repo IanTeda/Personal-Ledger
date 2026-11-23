@@ -329,7 +329,7 @@ log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 
 ### Secrets Section
 
-The [Secrets] section holds this device's **API key secret**, which bin-tui and bin-desktop encrypt and read a ledger's Price Source API keys with ([Units](units.md)). The keys sync with the ledger; the secret never does, so every device that should read them needs the same secret in its own file. No Settings page shows or changes it, and the app never prints it, in a log or anywhere else.
+The [Secrets] section holds this device's **API key secret**, which bin-tui and bin-desktop encrypt and read a ledger's Price Source API keys with ([Units](units.md)). The keys sync with the ledger; the secret never does, so every device that should read them needs the same secret in its own file. No Settings page shows or changes it, and the app never prints it, in a log or anywhere else. Settings › Data & backup shows only its fingerprint, *Encryption key · 3F9A-21C0* or *Not set*, so you can check two devices share the same secret; there is no Copy. If the secret is lost, **Remove all API keys** on that page, after a confirm, deletes every saved key from the ledger, on every device that syncs it, and you enter them again.
 
 __api_key_secret:__
 
