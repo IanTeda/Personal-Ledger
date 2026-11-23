@@ -31,6 +31,10 @@ _Avoid_: feed, provider, exchange.
 A Unit's price for one ISO week (Monday to Sunday, the same in every Locale), named by that week's Monday and stated in the Unit's quote Unit: a close, with an optional open, high and low. A Unit holds at most one per week and keeps every one it has had. The current week's Weekly Price is provisional: each new price for the Unit overwrites its close and widens its high and low, and it becomes final when the week ends. A Unit's last price is the close of its newest Weekly Price. Changing a Unit's quote Unit clears its Weekly Prices, since they were stated in the old one; changing its Price Source, Manual entry included, keeps them.
 _Avoid_: price history, quote, candle, tick.
 
+**Daily Price**, **Hourly Price**:
+A Unit's prices at a grain finer than a week, one per day or per hour, asked of its Price Source when a View wants to show them. Unlike a Weekly Price, they are never kept in the Ledger and never sync: they are shown and then forgotten, and asking for them neither writes a Weekly Price nor counts as the Unit being priced.
+_Avoid_: intraday price, price history, tick.
+
 **Precision**:
 The number of decimal places a Unit's amounts are shown and entered to (AUD 2, BTC 8). A price shows at its quote Unit's Precision, since it is an amount in that Unit.
 _Avoid_: decimals, scale, places.
