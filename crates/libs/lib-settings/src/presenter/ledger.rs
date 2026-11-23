@@ -1005,13 +1005,16 @@ mod tests {
         send(&mut presenter, &[LedgerEvent::Open]);
         let view = presenter.view_model().financial_year;
         assert_eq!(view.highlight, Some(6), "the list opens on July");
-        assert_eq!(view.select.options[0].label, "Jan");
+        assert_eq!(view.select.options[0].label, "January");
         let routed = send(&mut presenter, &[LedgerEvent::Step(Step::Next); 3]);
         assert!(routed.is_empty());
         assert_eq!(units.financial_year_start(), FinancialYearStart::JULY);
 
         let routed = send(&mut presenter, &[LedgerEvent::Open]);
-        assert_eq!(routed, [changed("Financial year starts changed to Oct")]);
+        assert_eq!(
+            routed,
+            [changed("Financial year starts changed to October")]
+        );
         assert_eq!(units.financial_year_start().month(), 10);
         assert_eq!(presenter.view_model().financial_year.highlight, None);
     }
@@ -1041,7 +1044,7 @@ mod tests {
                 LedgerEvent::ClickAway,
             ],
         );
-        assert_eq!(routed, [changed("Financial year starts changed to Jun")]);
+        assert_eq!(routed, [changed("Financial year starts changed to June")]);
     }
 
     #[test]
@@ -1058,7 +1061,7 @@ mod tests {
             &[LedgerEvent::ChooseMonth(FinancialYearStart::APRIL)],
         );
 
-        assert_eq!(routed, [changed("Financial year starts changed to Apr")]);
+        assert_eq!(routed, [changed("Financial year starts changed to April")]);
         assert_eq!(
             presenter.view_model().financial_year.select.chosen,
             Some(FinancialYearStart::APRIL)
