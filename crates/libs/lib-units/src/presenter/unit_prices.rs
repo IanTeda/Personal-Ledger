@@ -1384,7 +1384,7 @@ mod tests {
         }
 
         #[test]
-        fn an_hour_window_is_seven_days_stepped_a_day_and_stops_at_90_days() {
+        fn an_hour_window_is_seven_days_stepped_a_day_and_stops_at_364_days() {
             let mut btc = Finer::of(UnitId::SEED_BTC);
             btc.press(UnitPricesEvent::SetGrain(Grain::Hour));
             let today = btc.today();
@@ -1399,7 +1399,7 @@ mod tests {
                     .window
                     .ends_with(&format_date(today - Duration::days(1), None))
             );
-            for _ in 0..90 {
+            for _ in 0..364 {
                 btc.press(UnitPricesEvent::Earlier);
             }
             assert_eq!(
@@ -1411,7 +1411,7 @@ mod tests {
             assert!(
                 btc.view()
                     .window
-                    .starts_with(&format_date(today - Duration::days(90), None))
+                    .starts_with(&format_date(today - Duration::days(364), None))
             );
         }
 
@@ -1563,7 +1563,7 @@ mod tests {
         }
 
         #[test]
-        fn yahoo_asks_hourly_bars_back_to_730_days() {
+        fn yahoo_asks_hourly_bars_back_to_700_days() {
             let mut bhp = None;
             let mut view = Finer::with(UnitId::SEED_BTC, |ports| {
                 bhp = Some(priced_on(ports, crate::YAHOO_FINANCE, "BHP.AX"));
@@ -1583,7 +1583,7 @@ mod tests {
                 "{}",
                 view.last_url()
             );
-            for _ in 0..724 {
+            for _ in 0..694 {
                 view.press(UnitPricesEvent::Earlier);
             }
             assert!(view.router.calls.is_empty(), "{:?}", view.router.calls);

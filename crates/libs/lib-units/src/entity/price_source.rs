@@ -286,7 +286,8 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
             price_path: Cow::Borrowed("/1"),
             shape: SeriesShape::Points,
         }),
-        hourly_depth: Some(90),
+        // Hourly points answered 364 days back when checked on 2026-11-24 (#1400).
+        hourly_depth: Some(364),
         // Keyless by default; a Demo key raises it.
         call_rate: CallRate::per_minute(5),
         keyed_call_rate: Some(CallRate::per_minute(30)),
@@ -341,8 +342,8 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
                 offset_path: Cow::Borrowed("/meta/gmtoffset"),
             },
         }),
-        // Yahoo keeps hourly bars for about the last 730 days.
-        hourly_depth: Some(730),
+        // Hourly bars answered 700 days back and were refused 730 back when checked on 2026-11-24 (#1400).
+        hourly_depth: Some(700),
         call_rate: CallRate::per_minute(30),
         keyed_call_rate: None,
         attribution: Some(crate::msg::units_pane_yahoo_unofficial),
