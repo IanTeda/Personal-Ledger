@@ -49,10 +49,7 @@ impl FetchedPricesPresenter {
     /// response poll; nothing here waits or sleeps.
     pub fn pump(&mut self, router: &mut dyn Notify) {
         let now = (self.clock)();
-        let sent = self.fetching.borrow_mut().release(now);
-        if sent > 0 {
-            tracing::debug!(sent, "Sent queued price requests");
-        }
+        self.fetching.borrow_mut().release(now);
         let toast = wait_begun_toast(&*self.ports.borrow(), &mut self.fetching.borrow_mut(), now);
         if let Some(toast) = toast {
             router.notify(toast);
@@ -176,9 +173,6 @@ impl FetchedPricesPresenter {
                     .filter(|asked| !weeks.iter().any(|week| week.week == **asked))
                     .copied()
                     .collect();
-                if !missing.is_empty() {
-                    tracing::info!(unit_id = %call.unit, weeks = missing.len(), "A price source had no history for some weeks");
-                }
                 self.fetching.borrow_mut().history_empty(&call, missing);
                 let mut ports = self.ports.borrow_mut();
                 RecordPriceHistory {
@@ -189,7 +183,6 @@ impl FetchedPricesPresenter {
                 .run(ports.split_mut().units);
             }
             HistoryReading::Failed(reason) => {
-                tracing::warn!(unit_id = %call.unit, price_source_id = %call.source, ?reason, "A Unit's history request failed");
                 self.fetching
                     .borrow_mut()
                     .history_failed(&call, reason, now);

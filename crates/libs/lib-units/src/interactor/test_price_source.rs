@@ -78,7 +78,7 @@ impl TestPriceSource {
             },
             now,
         );
-        tracing::info!(price_source_id = %source_id, request = id.0, "Testing a Price Source");
+        tracing::debug!(price_source_id = %source_id, request = id.0, "Testing a Price Source");
         Ok(id)
     }
 }

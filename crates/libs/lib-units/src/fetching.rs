@@ -1020,7 +1020,7 @@ impl PriceFetching {
                 && failure == FetchFailure::RateLimited
             {
                 let until = now + retry_after_wait(retry_after.as_deref(), now);
-                tracing::info!(price_source_id = %round.source, %until, "A price source asked to wait");
+                tracing::warn!(price_source_id = %round.source, %until, "A price source asked to wait");
                 holds.insert(Some(round.source), until);
             }
             // The round's calls still queued never go; what is left pending is out already.
@@ -1030,7 +1030,7 @@ impl PriceFetching {
                 .map(|call| call.id)
                 .collect();
             if !dropped.is_empty() {
-                tracing::info!(
+                tracing::warn!(
                     price_source_id = %round.source,
                     dropped = dropped.len(),
                     ?failure,
@@ -1131,7 +1131,7 @@ impl PriceFetching {
         };
         let id = self.next_request();
         let source = call.source();
-        tracing::info!(price_source_id = %source, unit_id = %call.key.unit, grain = ?call.key.grain, "Asking a price source for finer prices");
+        tracing::debug!(price_source_id = %source, unit_id = %call.key.unit, grain = ?call.key.grain, "Asking a price source for finer prices");
         self.fine_out.insert(id, call);
         self.enqueue(id, Some(source), true, request);
         self.release(now);
@@ -1323,7 +1323,7 @@ impl PriceFetching {
             return;
         };
         let id = self.next_request();
-        tracing::info!(
+        tracing::debug!(
             price_source_id = %source,
             unit_id = %call.unit,
             weeks = call.weeks.len(),
@@ -1369,6 +1369,7 @@ impl PriceFetching {
         reason: FetchFailure,
         at: DateTime<Utc>,
     ) {
+        tracing::warn!(unit_id = %call.unit, price_source_id = %call.source, ?reason, "A Unit's history request failed");
         let hold = self.holds.get(&Some(call.source)).copied();
         let retry_at = hold.map_or(at + HISTORY_RETRY, |until| until.max(at + HISTORY_RETRY));
         let mut failed = vec![(call.unit, call.link.clone(), call.settings.clone())];
