@@ -66,6 +66,9 @@ pub(super) struct CallQueue {
     windows: HashMap<Lane, VecDeque<DateTime<Utc>>>,
     /// Until when each lane waits out a `Retry-After`.
     holds: HashMap<Lane, DateTime<Utc>>,
+    /// The `Retry-After` hold a *Waiting for…* Toast last announced, so each wait raises one
+    /// whichever of the page or the pump notices it first.
+    announced_wait: Option<(PriceSourceId, DateTime<Utc>)>,
 }
 
 impl CallQueue {
@@ -76,6 +79,7 @@ impl CallQueue {
             queue: Vec::new(),
             windows: HashMap::new(),
             holds: HashMap::new(),
+            announced_wait: None,
         }
     }
 
@@ -167,6 +171,22 @@ impl CallQueue {
                 let left = (*until - now).num_milliseconds();
                 (left > 0).then_some((source, (left + 999) / 1000))
             })
+    }
+
+    /// [`Self::waiting`] the first time it is asked of a hold, `None` after: a wait is announced
+    /// once as it begins, never counted down. `skip` is as in [`Self::waiting`].
+    pub(super) fn wait_begun(
+        &mut self,
+        now: DateTime<Utc>,
+        skip: impl Fn(RequestId) -> bool,
+    ) -> Option<(PriceSourceId, i64)> {
+        let (source, seconds) = self.waiting(now, skip)?;
+        let until = self.held_until(Some(source))?;
+        if self.announced_wait == Some((source, until)) {
+            return None;
+        }
+        self.announced_wait = Some((source, until));
+        Some((source, seconds))
     }
 
     /// Whether call `id` is still waiting its turn.
@@ -314,6 +334,32 @@ mod tests {
         assert_eq!(urls.len(), 7);
         assert!(urls[5].contains("ids=asked&"), "{urls:?}");
         assert!(urls[6].contains("ids=scheduled&"), "{urls:?}");
+    }
+
+    #[test]
+    fn a_held_asked_wait_is_begun_once_per_hold() {
+        let mut client = client();
+        let built = source(COINGECKO);
+        let (request, _) = price_request(built.endpoint().expect("fetching"), "a", "AUD", None);
+        client.calls.enqueue(Some(COINGECKO), true, request);
+        client.calls.hold(Some(COINGECKO), at(30));
+
+        assert_eq!(
+            client.calls.wait_begun(at(0), |_| false),
+            Some((COINGECKO, 30))
+        );
+        assert_eq!(
+            client.calls.wait_begun(at(1), |_| false),
+            None,
+            "the same hold is announced once"
+        );
+
+        client.calls.hold(Some(COINGECKO), at(60));
+        assert_eq!(
+            client.calls.wait_begun(at(1), |_| false),
+            Some((COINGECKO, 59)),
+            "a new hold is announced"
+        );
     }
 
     #[test]

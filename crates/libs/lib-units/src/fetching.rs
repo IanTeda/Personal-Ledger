@@ -134,9 +134,6 @@ pub struct PriceFetching {
     tests: PriceTests,
     backfill: Backfill,
     fine: FinePrices,
-    /// The `Retry-After` hold a *Waiting for…* Toast last announced, so each wait raises one
-    /// whichever of the page or the pump notices it first.
-    announced_wait: Option<(PriceSourceId, DateTime<Utc>)>,
 }
 
 /// [`PriceFetching`] as the Presenters share it, single-threaded as both Clients' UI threads are.
@@ -151,7 +148,6 @@ impl PriceFetching {
             tests: PriceTests::default(),
             backfill: Backfill::default(),
             fine: FinePrices::default(),
-            announced_wait: None,
         }
     }
 
@@ -226,13 +222,7 @@ impl PriceFetching {
     /// [`Self::waiting`] the first time it is asked of a hold, `None` after: a wait is announced
     /// once as it begins, never counted down.
     pub(crate) fn wait_begun(&mut self, now: DateTime<Utc>) -> Option<(PriceSourceId, i64)> {
-        let (source, seconds) = self.waiting(now)?;
-        let until = self.calls.held_until(Some(source))?;
-        if self.announced_wait == Some((source, until)) {
-            return None;
-        }
-        self.announced_wait = Some((source, until));
-        Some((source, seconds))
+        self.calls.wait_begun(now, |id| self.tests.asks(id))
     }
 
     /// Whether `response` answers a test this Client sent, dropped or not, so it is never read as
