@@ -1,8 +1,9 @@
 //! The price-fetching concern of `Root`: the minute timer that reaches the Units' scheduled check,
 //! and polling the Open Ledger's price feed and sending each response as one input, so the round it
 //! completes is that input's one commit and the Units repaint on its `LedgerChanged` (ADR-0062).
-//! The same poll pumps the calls waiting their source's call rate or `Retry-After` out. An
-//! `impl Root` block.
+//! The same poll pumps the calls waiting their source's call rate or `Retry-After` out. It wakes
+//! even when idle, as its twin `WRITE_FAILURE_POLL` does, so stopping only this one would save no
+//! wake-up (#1405). An `impl Root` block.
 
 use std::sync::mpsc;
 use std::time::Duration;
