@@ -20,8 +20,8 @@ use super::fetch_text::{
     unit_failed_toast, wait_begun_toast,
 };
 use super::units_pane::amount;
+use crate::fetching::{HistoryReading, fold, read_history};
 use crate::fetching::{PriceResponse, SharedFetching};
-use crate::history::{HistoryReading, fold, read_history};
 use crate::interactor::{
     Backfill, BackfillUnits, FetchDue, RecordFetchedPrices, RecordPriceHistory, RoundOutcome,
 };

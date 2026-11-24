@@ -431,7 +431,7 @@ mod tests {
     fn coingeckos_daily_closes_fold_into_weeks() {
         let weeks = folded(
             COINGECKO,
-            include_str!("../fixtures/history/coingecko_market_chart_range.json"),
+            include_str!("../../fixtures/history/coingecko_market_chart_range.json"),
             "bitcoin",
             "AUD",
         );
@@ -453,7 +453,7 @@ mod tests {
     fn yahoos_columns_fold_by_trading_day_taking_each_bars_open_high_and_low() {
         let weeks = folded(
             YAHOO_FINANCE,
-            include_str!("../fixtures/history/yahoo_chart_daily.json"),
+            include_str!("../../fixtures/history/yahoo_chart_daily.json"),
             "VAS.AX",
             "AUD",
         );
@@ -495,7 +495,7 @@ mod tests {
     fn frankfurters_rates_fold_into_weeks() {
         let weeks = folded(
             FRANKFURTER,
-            include_str!("../fixtures/history/frankfurter_rates.json"),
+            include_str!("../../fixtures/history/frankfurter_rates.json"),
             "EUR",
             "AUD",
         );

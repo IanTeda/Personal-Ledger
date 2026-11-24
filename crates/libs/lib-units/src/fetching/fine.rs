@@ -6,7 +6,7 @@
 use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike as _};
 use lib_core::{Money, UnitId};
 
-use crate::history::Point;
+use super::history::Point;
 
 /// How finely the Unit prices view shows a Unit's prices: its Weekly Prices from the Ledger, or
 /// the Daily or Hourly Prices its source offers.

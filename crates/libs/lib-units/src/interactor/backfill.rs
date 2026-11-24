@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, NaiveDate, Utc};
 use lib_core::UnitId;
 
 use crate::fetching::{FetchFailure, HistoryCall, PriceFetching, SourceSettings, key_missing};
-use crate::history::{floor, gaps, history_request, wanted_weeks};
+use crate::fetching::{floor, gaps, history_request, wanted_weeks};
 use crate::protocols::UnitsPorts;
 use crate::{UnitRow, Updates, WeeklyPrice, units_by_code};
 

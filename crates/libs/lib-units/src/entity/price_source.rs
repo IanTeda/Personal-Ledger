@@ -13,7 +13,7 @@ use lib_core::{PriceSourceId, UnitKind};
 
 use crate::UnitRow;
 use crate::fetching::CallRate;
-use crate::fine::Grain;
+use crate::fetching::Grain;
 
 /// Manual entry's id. These ids are fixed for good, not sample seeds: a Ledger refers to Manual
 /// entry and the built-ins by them.
