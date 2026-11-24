@@ -10,32 +10,43 @@
 //! rules are tested with no network.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::rc::Rc;
 
-use chrono::{DateTime, Duration, NaiveDate, Utc};
-use lib_core::{Money, PriceSourceId, UnitId};
-use secrecy::{ExposeSecret as _, SecretString};
+use chrono::{DateTime, NaiveDate, Utc};
+use lib_core::{PriceSourceId, UnitId};
 
+mod backfill;
 mod call_queue;
 mod fine;
+mod fine_prices;
 mod history;
 mod last_fetch;
+mod price_tests;
 mod reading;
 mod request;
 mod rounds;
 mod transport;
 
+use backfill::Backfill;
+pub use backfill::HISTORY_RETRY;
+pub(crate) use backfill::HistoryCall;
 use call_queue::CallQueue;
 pub use call_queue::CallRate;
 pub use fine::{FINE_FRESH, Grain};
 pub(crate) use fine::{FineKey, FinePrice, fine_prices, window};
+use fine_prices::FinePrices;
+pub(crate) use fine_prices::{FineCall, FineState};
 pub(crate) use history::{
     HistoryReading, floor, fold, gaps, history_request, read_history, wanted_weeks,
 };
 use last_fetch::LastFetches;
 pub(crate) use last_fetch::back_off;
 pub use last_fetch::{FetchOutcome, LastFetch, MIN_BACK_OFF};
+use price_tests::PriceTests;
+pub(crate) use price_tests::{
+    HistoryTestOutcome, HistoryTestResult, TestHistory, TestInFlight, TestOutcome, TestResult,
+};
 pub use reading::RETRY_AFTER_DEFAULT;
 use reading::round_failure;
 pub(crate) use reading::{Reading, read, retry_after_wait};
@@ -47,7 +58,7 @@ pub use transport::{
     TransportOutcome,
 };
 
-use crate::{Endpoint, HistoryEndpoint, PriceLink, PriceSource, UnitRow, Updates};
+use crate::{Endpoint, PriceLink, PriceSource, UnitRow, Updates};
 
 /// Why a fetch failed: the fixed set the transport's outcome is read onto, so no rule here sees a
 /// status code. The first five are round failures (nothing came back for the source); the last
@@ -108,204 +119,18 @@ pub(crate) fn is_out_of_date(unit: &UnitRow, updates: Option<Updates>, now: Date
 
 /// The fetching state one Client keeps per open Ledger, beside its ports, and drops when the
 /// Ledger closes: never persisted (ADR-0062). The requests and rounds in flight, and each source's
-/// and Unit's last fetch with its back-off, so closing the Ledger clears every failure.
+/// and Unit's last fetch with its back-off, so closing the Ledger clears every failure. Six parts
+/// hold it, none holding or calling another: every rule spanning two stays a method here.
 pub struct PriceFetching {
     calls: CallQueue,
     rounds: Rounds,
     last: LastFetches,
-    /// Tests out, by request: never part of a round, so they write nothing when they land.
-    tests: HashMap<RequestId, TestInFlight>,
-    /// Tests landed for a form that hasn't read them yet, dropped with the form.
-    test_results: HashMap<RequestId, TestResult>,
-    /// Tests out whose form has closed, whose responses are dropped as they land.
-    dropped: HashSet<RequestId>,
-    /// A form's test's history requests out, by request, each with the test it belongs to: the
-    /// test is out until its history lands too.
-    test_histories: HashMap<RequestId, (RequestId, TestHistory)>,
-    /// Each source's one history request queued or out, by request (ADR-0043's backfill
-    /// amendment): never part of a round, so it writes only its own Unit's weeks.
-    history_out: HashMap<RequestId, HistoryCall>,
-    /// The history requests waiting for their source's one in flight, oldest gap first.
-    history_queue: HashMap<PriceSourceId, Vec<HistoryCall>>,
-    /// Each Unit's failed history request, until it is tried again.
-    history_failures: HashMap<UnitId, HistoryFailure>,
-    /// The weeks each Unit's provider answered with nothing, on the link it answered for: not
-    /// asked again until the Ledger reopens or the link changes.
-    empty_weeks: HashMap<UnitId, (PriceLink, HashSet<NaiveDate>)>,
-    /// The Unit prices view's Daily and Hourly Price requests queued or out, by request.
-    fine_out: HashMap<RequestId, FineCall>,
-    /// Daily and Hourly Price requests waiting for their source's round to land, oldest first.
-    fine_parked: Vec<FineCall>,
-    /// The Daily and Hourly Prices fetched this session, never written to the Ledger.
-    fine_cache: HashMap<FineKey, FineEntry>,
-    /// Why a series' last request failed, until it is asked again: shown in place and nowhere
-    /// else, so never a Unit's or source's Last fetch.
-    fine_failed: HashMap<FineKey, (PriceLink, FetchFailure)>,
+    tests: PriceTests,
+    backfill: Backfill,
+    fine: FinePrices,
     /// The `Retry-After` hold a *Waiting for…* Toast last announced, so each wait raises one
     /// whichever of the page or the pump notices it first.
     announced_wait: Option<(PriceSourceId, DateTime<Utc>)>,
-}
-
-/// One request for a Unit's Daily or Hourly Prices in one window, as the Unit prices view asked.
-#[derive(Debug, Clone)]
-pub(crate) struct FineCall {
-    pub key: FineKey,
-    pub last: NaiveDate,
-    pub link: PriceLink,
-    pub settings: SourceSettings,
-    pub history: HistoryEndpoint,
-    /// The quote Unit's code, filling the series' paths.
-    pub quote: String,
-    /// The request, until it joins the call queue.
-    pub request: Option<PriceRequest>,
-}
-
-impl FineCall {
-    fn source(&self) -> PriceSourceId {
-        self.link.source_id
-    }
-}
-
-/// A series fetched this session, with the link it was for and whether its window held today.
-#[derive(Debug, Clone)]
-struct FineEntry {
-    link: PriceLink,
-    fetched_at: DateTime<Utc>,
-    current: bool,
-    prices: Vec<FinePrice>,
-}
-
-/// What the Unit prices view has of a series.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FineState<'a> {
-    /// Asked and not yet back: waiting out a `Retry-After` for so many whole seconds, else 0.
-    Fetching {
-        waiting: i64,
-    },
-    Shown(&'a [FinePrice]),
-    Failed(FetchFailure),
-    /// Never asked on this link.
-    Unasked,
-}
-
-/// How long a failed history request waits before it is tried again, or longer when a
-/// `Retry-After` asks for it (ADR-0043's backfill amendment).
-pub const HISTORY_RETRY: Duration = Duration::minutes(10);
-
-/// One Unit's history request: what it asked for, so the weeks it brings are written only while
-/// the Unit still wants them.
-#[derive(Debug, Clone)]
-pub(crate) struct HistoryCall {
-    pub unit: UnitId,
-    /// The Unit's code, which the status line names while a person's fetch now waits on it.
-    pub code: String,
-    pub link: PriceLink,
-    pub source: PriceSourceId,
-    pub settings: SourceSettings,
-    pub history: HistoryEndpoint,
-    /// The quote Unit's code, filling the series' paths.
-    pub quote: String,
-    /// The empty weeks asked for, oldest first: only these are written.
-    pub weeks: Vec<NaiveDate>,
-    /// Whether a person's fetch now started it, which the status line names.
-    pub asked: bool,
-    /// The request, until it joins the call queue.
-    pub request: Option<PriceRequest>,
-}
-
-/// A Unit's failed history request and when it is tried again, with the link and source settings
-/// it was for: editing either drops it.
-#[derive(Debug, Clone)]
-struct HistoryFailure {
-    reason: FetchFailure,
-    retry_at: DateTime<Utc>,
-    link: PriceLink,
-    settings: SourceSettings,
-}
-
-/// What a test asked (`GLOSSARY.md`'s Price Source, test): one symbol's price, shown and never
-/// written.
-#[derive(Clone)]
-pub(crate) struct TestInFlight {
-    /// The stored source tested, `None` for an unsaved one being added.
-    pub source: Option<PriceSourceId>,
-    /// The name its Toast and detail give it.
-    pub source_name: String,
-    pub symbol: String,
-    pub quote: UnitId,
-    pub quote_code: String,
-    pub price_path: String,
-    /// The key sent, so its echo in the response can be masked.
-    pub key: Option<SecretString>,
-    pub sent_at: DateTime<Utc>,
-    /// `t` on a row: it answers with a Toast rather than in a form.
-    pub toast: bool,
-    /// Whether the form's fields differed from the stored source when it was sent.
-    pub unsaved: bool,
-    /// The history request a form's test asks once its price passes; `None` for a source with
-    /// none, and for `t` on a row, which answers with one Toast.
-    pub history: Option<TestHistory>,
-}
-
-/// What a test asks of a source's history (ADR-0043's amendment "a Custom source's history
-/// request"): the last 14 days, through the endpoint the price came from.
-#[derive(Clone)]
-pub(crate) struct TestHistory {
-    pub endpoint: Endpoint,
-    pub history: HistoryEndpoint,
-    /// The days asked, both included.
-    pub range: (NaiveDate, NaiveDate),
-}
-
-/// How a test's history went: its points, an empty series being No price, or a reason.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum HistoryTestOutcome {
-    Points {
-        count: usize,
-        newest: NaiveDate,
-        /// The newest point's close.
-        close: Money,
-    },
-    Failed(FetchFailure),
-}
-
-/// A test's landed history.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct HistoryTestResult {
-    pub outcome: HistoryTestOutcome,
-    /// The status and body the provider answered, the key masked; `None` when nothing came back.
-    pub response: Option<(u16, String)>,
-}
-
-/// How a test went: a price, or one of the seven reasons.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TestOutcome {
-    Priced(Money),
-    Failed(FetchFailure),
-}
-
-/// A landed test, as the form or the Toast shows it.
-#[derive(Clone)]
-pub(crate) struct TestResult {
-    pub asked: TestInFlight,
-    pub outcome: TestOutcome,
-    pub elapsed: Duration,
-    pub at: DateTime<Utc>,
-    /// The status and body the provider answered, the key masked; `None` when nothing came back.
-    pub response: Option<(u16, String)>,
-    /// The history the test asked once its price passed, once it has landed.
-    pub history: Option<HistoryTestResult>,
-}
-
-/// What stands in for a key echoed back in a response.
-const MASK: &str = "\u{2022}\u{2022}\u{2022}";
-
-/// `body` with every echo of `key` masked.
-fn masked(body: &str, key: Option<&SecretString>) -> String {
-    match key.map(|key| key.expose_secret().trim()) {
-        Some(key) if !key.is_empty() => body.replace(key, MASK),
-        _ => body.to_string(),
-    }
 }
 
 /// [`PriceFetching`] as the Presenters share it, single-threaded as both Clients' UI threads are.
@@ -317,18 +142,9 @@ impl PriceFetching {
             calls: CallQueue::new(transport),
             rounds: Rounds::default(),
             last: LastFetches::default(),
-            tests: HashMap::new(),
-            test_results: HashMap::new(),
-            dropped: HashSet::new(),
-            test_histories: HashMap::new(),
-            history_out: HashMap::new(),
-            history_queue: HashMap::new(),
-            history_failures: HashMap::new(),
-            empty_weeks: HashMap::new(),
-            fine_out: HashMap::new(),
-            fine_parked: Vec::new(),
-            fine_cache: HashMap::new(),
-            fine_failed: HashMap::new(),
+            tests: PriceTests::default(),
+            backfill: Backfill::default(),
+            fine: FinePrices::default(),
             announced_wait: None,
         }
     }
@@ -379,7 +195,7 @@ impl PriceFetching {
         now: DateTime<Utc>,
     ) -> RequestId {
         let id = self.calls.enqueue(asked.source, true, request);
-        self.tests.insert(id, asked);
+        self.tests.sent(id, asked);
         self.release(now);
         id
     }
@@ -390,12 +206,7 @@ impl PriceFetching {
     /// lane but an asked-for one. Returns how many went out.
     pub(crate) fn release(&mut self, now: DateTime<Utc>) -> usize {
         let sent = self.calls.release(now);
-        for id in &sent {
-            if let Some(test) = self.tests.get_mut(id) {
-                // A test times its answer from when it went out, not from when it queued.
-                test.sent_at = now;
-            }
-        }
+        self.tests.went_out(&sent, now);
         sent.len()
     }
 
@@ -403,7 +214,7 @@ impl PriceFetching {
     /// `Retry-After` at `now`, rounded up. `None` while no such call is held, a queued one only
     /// waiting its call rate included.
     pub(crate) fn waiting(&self, now: DateTime<Utc>) -> Option<(PriceSourceId, i64)> {
-        self.calls.waiting(now, |id| self.tests.contains_key(&id))
+        self.calls.waiting(now, |id| self.tests.asks(id))
     }
 
     /// [`Self::waiting`] the first time it is asked of a hold, `None` after: a wait is announced
@@ -421,8 +232,7 @@ impl PriceFetching {
     /// Whether `response` answers a test this Client sent, dropped or not, so it is never read as
     /// a round's.
     pub(crate) fn is_test(&self, response: &PriceResponse) -> bool {
-        self.tests.contains_key(&response.request)
-            || self.test_histories.contains_key(&response.request)
+        self.tests.is_test(response)
     }
 
     /// Reads a test's `response` at `now`, holding it for its form unless it answers with a
@@ -432,39 +242,9 @@ impl PriceFetching {
         response: &PriceResponse,
         now: DateTime<Utc>,
     ) -> Option<TestResult> {
-        if self.test_histories.contains_key(&response.request) {
-            self.land_test_history(response);
-            return None;
-        }
-        let asked = self.tests.remove(&response.request)?;
-        if self.dropped.remove(&response.request) {
-            return None;
-        }
-        let outcome = match read(&response.outcome, &asked.price_path) {
-            Reading::Priced(price) => TestOutcome::Priced(price),
-            Reading::Failed(reason) => TestOutcome::Failed(reason),
-        };
-        let answered = match &response.outcome {
-            TransportOutcome::Answered { status, body, .. } => {
-                Some((*status, masked(body, asked.key.as_ref())))
-            }
-            TransportOutcome::Failed(_) => None,
-        };
-        let result = TestResult {
-            elapsed: now - asked.sent_at,
-            at: now,
-            outcome,
-            response: answered,
-            history: None,
-            asked,
-        };
-        if !result.asked.toast {
-            self.test_results.insert(response.request, result.clone());
-            if matches!(result.outcome, TestOutcome::Priced(_))
-                && let Some(history) = result.asked.history.clone()
-            {
-                self.send_test_history(response.request, &result.asked, history, now);
-            }
+        let (result, history) = self.tests.land(response, now)?;
+        if let Some(history) = history {
+            self.send_test_history(response.request, &result.asked, history, now);
         }
         Some(result)
     }
@@ -486,84 +266,29 @@ impl PriceFetching {
             asked.key.clone(),
         );
         let id = self.calls.enqueue(asked.source, true, request);
-        self.test_histories.insert(id, (test, history));
+        self.tests.history_sent(id, test, history);
         self.release(now);
-    }
-
-    /// Reads a test's history `response` onto its test's result, unless its form has dropped it.
-    fn land_test_history(&mut self, response: &PriceResponse) {
-        let Some((test, history)) = self.test_histories.remove(&response.request) else {
-            return;
-        };
-        if self.dropped.remove(&response.request) {
-            return;
-        }
-        let Some(result) = self.test_results.get_mut(&test) else {
-            return;
-        };
-        let asked = &result.asked;
-        let outcome = match read_history(
-            &response.outcome,
-            &history.history,
-            &asked.symbol,
-            &asked.quote_code,
-        ) {
-            HistoryReading::Points(mut points) => {
-                // Stable, so the last of several points on one day is its close, as a week folds.
-                points.sort_by_key(|point| point.day);
-                match points.last() {
-                    Some(newest) => HistoryTestOutcome::Points {
-                        count: points.len(),
-                        newest: newest.day,
-                        close: newest.close.clone(),
-                    },
-                    None => HistoryTestOutcome::Failed(FetchFailure::NoPrice),
-                }
-            }
-            HistoryReading::Failed(reason) => HistoryTestOutcome::Failed(reason),
-        };
-        let answered = match &response.outcome {
-            TransportOutcome::Answered { status, body, .. } => {
-                Some((*status, masked(body, asked.key.as_ref())))
-            }
-            TransportOutcome::Failed(_) => None,
-        };
-        result.history = Some(HistoryTestResult {
-            outcome,
-            response: answered,
-        });
     }
 
     /// Whether test `id` is still out.
     pub(crate) fn testing(&self, id: RequestId) -> bool {
-        self.tests.contains_key(&id) || self.test_histories.values().any(|(test, _)| *test == id)
+        self.tests.testing(id)
     }
 
     /// Whether a test of stored source `source` is out.
     pub(crate) fn source_testing(&self, source: PriceSourceId) -> bool {
-        self.tests
-            .iter()
-            .any(|(id, asked)| asked.source == Some(source) && !self.dropped.contains(id))
+        self.tests.source_testing(source)
     }
 
     /// Test `id`'s result, once it has landed.
     pub(crate) fn test_result(&self, id: RequestId) -> Option<&TestResult> {
-        self.test_results.get(&id)
+        self.tests.result(id)
     }
 
     /// Forgets test `id`: its form closed or tested again. A response still to come lands as no
     /// one's and is dropped.
     pub(crate) fn drop_test(&mut self, id: RequestId) {
-        self.test_results.remove(&id);
-        // Kept among the tests, so its response is still known as a test's, never a round's.
-        if self.tests.contains_key(&id) {
-            self.dropped.insert(id);
-        }
-        for (history, (test, _)) in &self.test_histories {
-            if *test == id {
-                self.dropped.insert(*history);
-            }
-        }
+        self.tests.drop_test(id);
     }
 
     /// Starts a round on `source`, `asked` when a person asked for it. Every request sent into it
@@ -657,16 +382,13 @@ impl PriceFetching {
     /// already in flight rather than being refused. Forgets the series' last failure and any series
     /// the Unit fetched on another link. Asks nothing while the same series is already asked.
     pub(crate) fn ask_fine(&mut self, call: FineCall, now: DateTime<Utc>) {
-        let key = call.key;
-        self.fine_failed.remove(&key);
-        self.fine_cache
-            .retain(|cached, entry| cached.unit != key.unit || entry.link == call.link);
-        if self.fine_asked(key) {
+        self.fine.forget(&call);
+        if self.fine.asked(call.key) {
             return;
         }
         if self.source_in_flight(call.source()) {
             tracing::debug!(price_source_id = %call.source(), "A finer prices request waits for its source's round");
-            self.fine_parked.push(call);
+            self.fine.park(call);
             return;
         }
         self.send_fine(call, now);
@@ -679,17 +401,13 @@ impl PriceFetching {
         let source = call.source();
         tracing::debug!(price_source_id = %source, unit_id = %call.key.unit, grain = ?call.key.grain, "Asking a price source for finer prices");
         let id = self.calls.enqueue(Some(source), true, request);
-        self.fine_out.insert(id, call);
+        self.fine.sent(id, call);
         self.release(now);
     }
 
     /// Sends the finer prices requests that waited for `source`'s round, now it has landed.
     fn release_parked(&mut self, source: PriceSourceId, now: DateTime<Utc>) {
-        let (going, staying) = std::mem::take(&mut self.fine_parked)
-            .into_iter()
-            .partition(|call| call.source() == source);
-        self.fine_parked = staying;
-        for call in going {
+        for call in self.fine.release_parked(source) {
             self.send_fine(call, now);
         }
     }
@@ -697,25 +415,23 @@ impl PriceFetching {
     /// Notes that a series couldn't be asked for `reason` without sending, as a key this Client
     /// doesn't have.
     pub(crate) fn fine_refused(&mut self, key: FineKey, link: PriceLink, reason: FetchFailure) {
-        self.fine_failed.insert(key, (link, reason));
+        self.fine.refused(key, link, reason);
     }
 
     /// Whether the series `key` is queued, out or waiting for a round.
     pub(crate) fn fine_asked(&self, key: FineKey) -> bool {
-        self.fine_out.values().any(|call| call.key == key)
-            || self.fine_parked.iter().any(|call| call.key == key)
+        self.fine.asked(key)
     }
 
     /// Whether `source` has a finer prices request waiting or out, which a scheduled check counts
     /// as in flight.
     pub(crate) fn fine_in_flight(&self, source: PriceSourceId) -> bool {
-        self.fine_out.values().any(|call| call.source() == source)
-            || self.fine_parked.iter().any(|call| call.source() == source)
+        self.fine.in_flight(source)
     }
 
     /// Whether `response` answers a finer prices request.
     pub(crate) fn is_fine(&self, response: &PriceResponse) -> bool {
-        self.fine_out.contains_key(&response.request)
+        self.fine.is_fine(response)
     }
 
     /// Reads a finer prices `response` at `now` into the cache, its days dated by the provider and
@@ -728,7 +444,7 @@ impl PriceFetching {
         today: NaiveDate,
         zone: &Tz,
     ) {
-        let Some(call) = self.fine_out.remove(&response.request) else {
+        let Some(source) = self.fine.source_of(response.request) else {
             return;
         };
         let hold = match &response.outcome {
@@ -738,48 +454,20 @@ impl PriceFetching {
                 ..
             } => {
                 let until = now + retry_after_wait(retry_after.as_deref(), now);
-                self.calls.hold(Some(call.source()), until);
+                self.calls.hold(Some(source), until);
                 Some(until)
             }
             _ => None,
         };
-        match read_history(
-            &response.outcome,
-            &call.history,
-            &call.link.symbol,
-            &call.quote,
-        ) {
-            HistoryReading::Points(points) => {
-                let prices = fine_prices(points, call.key.grain, (call.key.first, call.last), zone);
-                self.fine_cache.insert(
-                    call.key,
-                    FineEntry {
-                        link: call.link,
-                        fetched_at: now,
-                        current: call.last >= today,
-                        prices,
-                    },
-                );
-            }
-            HistoryReading::Failed(reason) => {
-                tracing::warn!(unit_id = %call.key.unit, price_source_id = %call.source(), ?reason, "A finer prices request failed");
-                if matches!(reason, FetchFailure::Offline | FetchFailure::RateLimited) {
-                    let backed = now + back_off(call.settings.updates);
-                    let until = hold.map_or(backed, |until| until.max(backed));
-                    self.last
-                        .back_off_quietly(call.source(), call.settings.clone(), until);
-                }
-                self.fine_failed.insert(call.key, (call.link, reason));
-            }
+        if let Some((settings, until)) = self.fine.land(response, now, today, zone, hold) {
+            self.last.back_off_quietly(source, settings, until);
         }
     }
 
     /// Whether the series `key` is cached on `link` and still fresh at `now`: a past window for the
     /// session, one holding today for [`FINE_FRESH`].
     pub(crate) fn fine_fresh(&self, key: FineKey, link: &PriceLink, now: DateTime<Utc>) -> bool {
-        self.fine_cache.get(&key).is_some_and(|entry| {
-            entry.link == *link && (!entry.current || now - entry.fetched_at < FINE_FRESH)
-        })
+        self.fine.fresh(key, link, now)
     }
 
     /// What the view has of the series `key` on `link` at `now`.
@@ -789,30 +477,11 @@ impl PriceFetching {
         link: &PriceLink,
         now: DateTime<Utc>,
     ) -> FineState<'_> {
-        if self.fine_asked(key) {
-            let waiting = self
-                .fine_out
-                .iter()
-                .find(|(_, call)| call.key == key)
-                .and_then(|(id, call)| self.calls.queued(*id).then_some(call))
-                .and_then(|call| self.calls.held_until(Some(call.source())))
-                .map_or(0, |until| {
-                    let left = (until - now).num_milliseconds();
-                    if left > 0 { (left + 999) / 1000 } else { 0 }
-                });
-            return FineState::Fetching { waiting };
-        }
-        if let Some(entry) = self
-            .fine_cache
-            .get(&key)
-            .filter(|entry| entry.link == *link)
-        {
-            return FineState::Shown(&entry.prices);
-        }
-        match self.fine_failed.get(&key) {
-            Some((failed_on, reason)) if failed_on == link => FineState::Failed(*reason),
-            _ => FineState::Unasked,
-        }
+        let (queued, hold) = match self.fine.out_call(key) {
+            Some((id, source)) => (self.calls.queued(id), self.calls.held_until(Some(source))),
+            None => (false, None),
+        };
+        self.fine.state(key, link, now, queued, hold)
     }
 
     /// Whether `source` failed a round, or a history request found it offline or rate limited,
@@ -825,14 +494,10 @@ impl PriceFetching {
     /// if the source has none in flight. Returns false, queuing nothing, for a Unit whose history
     /// is already queued or out.
     pub(crate) fn queue_history(&mut self, call: HistoryCall, now: DateTime<Utc>) -> bool {
-        if self.history_wanted(call.unit) {
+        let source = call.source;
+        if !self.backfill.queue(call) {
             return false;
         }
-        self.history_failures.remove(&call.unit);
-        let source = call.source;
-        let queue = self.history_queue.entry(source).or_default();
-        queue.push(call);
-        queue.sort_by_key(|call| call.weeks.first().copied());
         self.start_history(source, now);
         true
     }
@@ -840,18 +505,7 @@ impl PriceFetching {
     /// Sends `source`'s next waiting history request, unless one is already in flight: one at a
     /// time per source, through the call queue like any call.
     pub(crate) fn start_history(&mut self, source: PriceSourceId, now: DateTime<Utc>) {
-        if self.history_out.values().any(|call| call.source == source) {
-            return;
-        }
-        let Some(queue) = self.history_queue.get_mut(&source) else {
-            return;
-        };
-        if queue.is_empty() {
-            self.history_queue.remove(&source);
-            return;
-        }
-        let mut call = queue.remove(0);
-        let Some(request) = call.request.take() else {
+        let Some((call, request)) = self.backfill.next(source) else {
             return;
         };
         tracing::debug!(
@@ -861,13 +515,13 @@ impl PriceFetching {
             "Asking a price source for a Unit's history"
         );
         let id = self.calls.enqueue(Some(source), call.asked, request);
-        self.history_out.insert(id, call);
+        self.backfill.sent(id, call);
         self.release(now);
     }
 
     /// Whether `response` answers a history request.
     pub(crate) fn is_history(&self, response: &PriceResponse) -> bool {
-        self.history_out.contains_key(&response.request)
+        self.backfill.is_history(response)
     }
 
     /// What history request `response` answers, forgetting it. A 429 holds its source until its
@@ -877,7 +531,7 @@ impl PriceFetching {
         response: &PriceResponse,
         now: DateTime<Utc>,
     ) -> Option<HistoryCall> {
-        let call = self.history_out.remove(&response.request)?;
+        let call = self.backfill.land(response.request)?;
         if let TransportOutcome::Answered {
             status: 429,
             retry_after,
@@ -899,32 +553,10 @@ impl PriceFetching {
         reason: FetchFailure,
         at: DateTime<Utc>,
     ) {
-        tracing::warn!(unit_id = %call.unit, price_source_id = %call.source, ?reason, "A Unit's history request failed");
         let hold = self.calls.held_until(Some(call.source));
-        let retry_at = hold.map_or(at + HISTORY_RETRY, |until| until.max(at + HISTORY_RETRY));
-        let mut failed = vec![(call.unit, call.link.clone(), call.settings.clone())];
-        if reason.is_round() {
-            if matches!(reason, FetchFailure::Offline | FetchFailure::RateLimited) {
-                let until = hold.map_or(at + back_off(call.settings.updates), |until| {
-                    until.max(at + back_off(call.settings.updates))
-                });
-                self.last
-                    .back_off_quietly(call.source, call.settings.clone(), until);
-            }
-            for waiting in self.history_queue.remove(&call.source).unwrap_or_default() {
-                failed.push((waiting.unit, waiting.link, waiting.settings));
-            }
-        }
-        for (unit, link, settings) in failed {
-            self.history_failures.insert(
-                unit,
-                HistoryFailure {
-                    reason,
-                    retry_at,
-                    link,
-                    settings,
-                },
-            );
+        if let Some(until) = self.backfill.history_failed(call, reason, at, hold) {
+            self.last
+                .back_off_quietly(call.source, call.settings.clone(), until);
         }
     }
 
@@ -935,37 +567,22 @@ impl PriceFetching {
         call: &HistoryCall,
         weeks: impl IntoIterator<Item = NaiveDate>,
     ) {
-        let entry = self
-            .empty_weeks
-            .entry(call.unit)
-            .or_insert_with(|| (call.link.clone(), HashSet::new()));
-        if entry.0 != call.link {
-            *entry = (call.link.clone(), HashSet::new());
-        }
-        entry.1.extend(weeks);
+        self.backfill.history_empty(call, weeks);
     }
 
     /// The weeks `unit`'s provider answered with nothing on the link it has now.
     pub(crate) fn empty_weeks(&self, unit: &UnitRow) -> HashSet<NaiveDate> {
-        self.empty_weeks
-            .get(&unit.id)
-            .filter(|(link, _)| *link == unit.link)
-            .map(|(_, weeks)| weeks.clone())
-            .unwrap_or_default()
+        self.backfill.empty_weeks(unit)
     }
 
     /// Whether `unit`'s history request is queued or out.
     pub fn history_fetching(&self, unit: UnitId) -> bool {
-        self.history_out.values().any(|call| call.unit == unit)
+        self.backfill.fetching(unit)
     }
 
     /// Whether `unit` has a history request waiting, queued or out.
     pub(crate) fn history_wanted(&self, unit: UnitId) -> bool {
-        self.history_fetching(unit)
-            || self
-                .history_queue
-                .values()
-                .any(|queue| queue.iter().any(|call| call.unit == unit))
+        self.backfill.wanted(unit)
     }
 
     /// Why `unit`'s last history request on `source` failed and when it is tried again, while it
@@ -975,29 +592,17 @@ impl PriceFetching {
         unit: &UnitRow,
         source: &PriceSource<'_>,
     ) -> Option<(FetchFailure, DateTime<Utc>)> {
-        let failure = self.history_failures.get(&unit.id)?;
-        (unit.is_active
-            && source.id == unit.link.source_id
-            && failure.link == unit.link
-            && failure.settings == SourceSettings::of(source))
-        .then_some((failure.reason, failure.retry_at))
+        self.backfill.failure(unit, source)
     }
 
     /// The Units whose failed history request is due to be tried again at `now`.
     pub(crate) fn history_retries(&self, now: DateTime<Utc>) -> Vec<UnitId> {
-        let mut due: Vec<UnitId> = self
-            .history_failures
-            .iter()
-            .filter(|(_, failure)| failure.retry_at <= now)
-            .map(|(unit, _)| *unit)
-            .collect();
-        due.sort();
-        due
+        self.backfill.retries(now)
     }
 
     /// Forgets `unit`'s failed history request: it was tried again, or no longer needs trying.
     pub(crate) fn clear_history_failure(&mut self, unit: UnitId) {
-        self.history_failures.remove(&unit);
+        self.backfill.clear_failure(unit);
     }
 
     /// Whether `unit` failed and is still backing off at `now`.
