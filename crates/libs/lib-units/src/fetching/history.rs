@@ -30,7 +30,7 @@ pub(crate) struct Point {
 /// What a history reply held: its points, none at all being a range the provider can't supply,
 /// or why it failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum HistoryReading {
+pub(super) enum HistoryReading {
     Points(Vec<Point>),
     Failed(FetchFailure),
 }
@@ -106,7 +106,7 @@ pub(crate) fn history_request(
 /// [`FetchFailure`]s. A reply whose series holds no readable point is a range the provider can't
 /// supply, not a failure; one that isn't JSON, or has no series where its path says, is a
 /// Source error.
-pub(crate) fn read_history(
+pub(super) fn read_history(
     outcome: &TransportOutcome,
     history: &HistoryEndpoint,
     symbol: &str,
@@ -261,7 +261,7 @@ pub(super) fn money(value: &Value) -> Option<Money> {
 /// the first point (its open, else its close), close from the last, high and low from the
 /// extremes of every point's high and low, or its close where it has none. A week with no points
 /// gets none.
-pub(crate) fn fold(mut points: Vec<Point>, at: DateTime<Utc>) -> Vec<WeeklyPrice> {
+pub(super) fn fold(mut points: Vec<Point>, at: DateTime<Utc>) -> Vec<WeeklyPrice> {
     // Stable, so several points on one day keep the reply's order and the last is the close.
     points.sort_by_key(|point| point.day);
     let mut weeks: Vec<WeeklyPrice> = Vec::new();

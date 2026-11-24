@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use lib_core::UnitId;
 
-use crate::fetching::{FetchFailure, HistoryCall, PriceFetching, SourceSettings, key_missing};
+use crate::fetching::{HistoryCall, PriceFetching, SourceSettings, key_missing};
 use crate::fetching::{floor, gaps, history_request, wanted_weeks};
 use crate::protocols::UnitsPorts;
 use crate::{UnitRow, Updates, WeeklyPrice, units_by_code};
@@ -107,7 +107,7 @@ impl Backfill {
             };
             if key_missing(endpoint, key.as_ref()) {
                 tracing::warn!(price_source_id = %source.id, unit_id = %unit.id, "A Unit's history needs an API key this Client doesn't have");
-                fetching.history_failed(&call, FetchFailure::KeyMissing, self.now);
+                fetching.history_key_missing(&call, self.now);
                 continue;
             }
             call.request = Some(history_request(

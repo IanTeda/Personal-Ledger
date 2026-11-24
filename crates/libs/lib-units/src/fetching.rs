@@ -21,6 +21,7 @@ mod call_queue;
 mod fine;
 mod fine_prices;
 mod history;
+mod landing;
 mod last_fetch;
 mod price_tests;
 mod reading;
@@ -37,9 +38,10 @@ pub use fine::{FINE_FRESH, Grain};
 pub(crate) use fine::{FineKey, FinePrice, fine_prices, window};
 use fine_prices::FinePrices;
 pub(crate) use fine_prices::{FineCall, FineState};
-pub(crate) use history::{
-    HistoryReading, floor, fold, gaps, history_request, read_history, wanted_weeks,
-};
+use history::{HistoryReading, read_history};
+pub(crate) use history::{floor, gaps, history_request, wanted_weeks};
+pub(crate) use landing::Landing;
+pub use landing::{FetchedPrice, RoundOutcome};
 use last_fetch::LastFetches;
 pub(crate) use last_fetch::back_off;
 pub use last_fetch::{FetchOutcome, LastFetch, MIN_BACK_OFF};
@@ -51,8 +53,9 @@ pub use reading::RETRY_AFTER_DEFAULT;
 use reading::round_failure;
 pub(crate) use reading::{Reading, read, retry_after_wait};
 pub(crate) use request::{Wanted, fill, is_due, key_missing, price_request, request, round_calls};
+use rounds::Landed;
 use rounds::Rounds;
-pub(crate) use rounds::{InFlight, Landed, RoundId, UnitCall};
+pub(crate) use rounds::{InFlight, RoundId, UnitCall};
 pub use transport::{
     PriceRequest, PriceResponse, PriceTransport, RequestId, RequestKey, TransportError,
     TransportOutcome,
@@ -225,26 +228,6 @@ impl PriceFetching {
         self.calls.wait_begun(now, |id| self.tests.asks(id))
     }
 
-    /// Whether `response` answers a test this Client sent, dropped or not, so it is never read as
-    /// a round's.
-    pub(crate) fn is_test(&self, response: &PriceResponse) -> bool {
-        self.tests.is_test(response)
-    }
-
-    /// Reads a test's `response` at `now`, holding it for its form unless it answers with a
-    /// Toast. `None` for a response that is no test's, or a dropped one's.
-    pub(crate) fn land_test(
-        &mut self,
-        response: &PriceResponse,
-        now: DateTime<Utc>,
-    ) -> Option<TestResult> {
-        let (result, history) = self.tests.land(response, now)?;
-        if let Some(history) = history {
-            self.send_test_history(response.request, &result.asked, history, now);
-        }
-        Some(result)
-    }
-
     /// Queues test `test`'s history request, once its price passed, as a call a person asked for.
     fn send_test_history(
         &mut self,
@@ -350,44 +333,6 @@ impl PriceFetching {
         id
     }
 
-    /// Holds `response` in its round, handing back the whole round once its last response lands.
-    /// A round failure stops the round: its calls still queued never go out, and it lands once the
-    /// calls already out have. A 429 also holds the source until its `Retry-After`, read at `now`.
-    /// A response for no round in flight lands alone, for the writer to drop.
-    pub(crate) fn land(&mut self, response: PriceResponse, now: DateTime<Utc>) -> Option<Landed> {
-        let Some((round, source)) = self.rounds.round_of(response.request) else {
-            return Some(Landed {
-                source: None,
-                asked: false,
-                responses: vec![response],
-            });
-        };
-        let failure = round_failure(&response.outcome);
-        if let Some(until) = self.hold_on_429(source, &response.outcome, now) {
-            tracing::warn!(price_source_id = %source, %until, "A price source asked to wait");
-        }
-        let pending = self.rounds.land(round, response, failure.is_some());
-        // The round's calls still queued never go; what is left pending is out already.
-        let dropped = self.calls.remove(&pending);
-        if !dropped.is_empty() {
-            tracing::warn!(
-                price_source_id = %source,
-                dropped = dropped.len(),
-                ?failure,
-                "Stopped a price round before its queued calls went out"
-            );
-            self.rounds.forget(round, &dropped);
-        }
-        let landed = self.rounds.finish(round)?;
-        self.release_parked(source, now);
-        Some(landed)
-    }
-
-    /// What request `id` was for, forgetting it: `None` for one this Ledger never sent.
-    pub(crate) fn take(&mut self, id: RequestId) -> Option<InFlight> {
-        self.rounds.take(id)
-    }
-
     /// `unit`'s last fetch on `source` while it still holds: the Unit is active and neither its
     /// link nor its source's settings changed since. Editing either, or deactivating the Unit,
     /// drops it.
@@ -453,30 +398,6 @@ impl PriceFetching {
         self.fine.in_flight(source)
     }
 
-    /// Whether `response` answers a finer prices request.
-    pub(crate) fn is_fine(&self, response: &PriceResponse) -> bool {
-        self.fine.is_fine(response)
-    }
-
-    /// Reads a finer prices `response` at `now` into the cache, its days dated by the provider and
-    /// its hours in `zone`, or notes its failure for the view alone. A 429 holds its source until
-    /// its `Retry-After`; Offline and Rate limited back the source off, as a history request's do.
-    pub(crate) fn land_fine<Tz: chrono::TimeZone>(
-        &mut self,
-        response: &PriceResponse,
-        now: DateTime<Utc>,
-        today: NaiveDate,
-        zone: &Tz,
-    ) {
-        let Some(source) = self.fine.source_of(response.request) else {
-            return;
-        };
-        let hold = self.hold_on_429(source, &response.outcome, now);
-        if let Some((settings, until)) = self.fine.land(response, now, today, zone, hold) {
-            self.last.back_off_quietly(source, settings, until);
-        }
-    }
-
     /// Whether the series `key` is cached on `link` and still fresh at `now`: a past window for the
     /// session, one holding today for [`FINE_FRESH`].
     pub(crate) fn fine_fresh(&self, key: FineKey, link: &PriceLink, now: DateTime<Utc>) -> bool {
@@ -517,7 +438,7 @@ impl PriceFetching {
 
     /// Sends `source`'s next waiting history request, unless one is already in flight: one at a
     /// time per source, through the call queue like any call.
-    pub(crate) fn start_history(&mut self, source: PriceSourceId, now: DateTime<Utc>) {
+    fn start_history(&mut self, source: PriceSourceId, now: DateTime<Utc>) {
         let Some((call, request)) = self.backfill.next(source) else {
             return;
         };
@@ -530,23 +451,6 @@ impl PriceFetching {
         let id = self.calls.enqueue(Some(source), call.asked, request);
         self.backfill.sent(id, call);
         self.release(now);
-    }
-
-    /// Whether `response` answers a history request.
-    pub(crate) fn is_history(&self, response: &PriceResponse) -> bool {
-        self.backfill.is_history(response)
-    }
-
-    /// What history request `response` answers, forgetting it. A 429 holds its source until its
-    /// `Retry-After`, read at `now`, as a round's does.
-    pub(crate) fn land_history(
-        &mut self,
-        response: &PriceResponse,
-        now: DateTime<Utc>,
-    ) -> Option<HistoryCall> {
-        let call = self.backfill.land(response.request)?;
-        self.hold_on_429(call.source, &response.outcome, now);
-        Some(call)
     }
 
     /// Holds `source` until its `Retry-After`, read at `now`, when `outcome` is a 429, whatever
@@ -573,12 +477,7 @@ impl PriceFetching {
     /// Notes that `call` failed for `reason` at `at`: it is tried again after [`HISTORY_RETRY`],
     /// or its source's `Retry-After` if longer. Offline and Rate limited back the source off for
     /// everyone and fail the Units waiting behind it the same way, since they would fail too.
-    pub(crate) fn history_failed(
-        &mut self,
-        call: &HistoryCall,
-        reason: FetchFailure,
-        at: DateTime<Utc>,
-    ) {
+    fn history_failed(&mut self, call: &HistoryCall, reason: FetchFailure, at: DateTime<Utc>) {
         let hold = self.calls.held_until(Some(call.source));
         if let Some(until) = self.backfill.history_failed(call, reason, at, hold) {
             self.last
@@ -586,14 +485,10 @@ impl PriceFetching {
         }
     }
 
-    /// Notes that `call`'s provider answered with nothing for `weeks`, so they aren't asked again
-    /// on this link until the Ledger reopens.
-    pub(crate) fn history_empty(
-        &mut self,
-        call: &HistoryCall,
-        weeks: impl IntoIterator<Item = NaiveDate>,
-    ) {
-        self.backfill.history_empty(call, weeks);
+    /// Notes that `call` couldn't be sent at `at` for want of a key this Client doesn't have: it
+    /// fails Key missing, tried again after [`HISTORY_RETRY`], as a sent one that failed would.
+    pub(crate) fn history_key_missing(&mut self, call: &HistoryCall, at: DateTime<Utc>) {
+        self.history_failed(call, FetchFailure::KeyMissing, at);
     }
 
     /// The weeks `unit`'s provider answered with nothing on the link it has now.
@@ -648,7 +543,7 @@ impl PriceFetching {
     }
 
     /// Notes how `unit`'s fetch on `link` went at `at`, backing it off on a failure.
-    pub(crate) fn record_unit(
+    fn record_unit(
         &mut self,
         unit: UnitId,
         link: PriceLink,
@@ -661,7 +556,7 @@ impl PriceFetching {
 
     /// Notes how `source`'s round went at `at`: failed on a round failure, which backs it off, or
     /// fetched, which clears the last.
-    pub(crate) fn record_source(
+    fn record_source(
         &mut self,
         source: PriceSourceId,
         settings: &SourceSettings,

@@ -1,143 +1,59 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use lib_core::{Money, PriceSourceId, UnitId};
 
-use crate::fetching::{FetchFailure, Landed, PriceFetching, PriceResponse, Reading, read};
+use crate::fetching::FetchedPrice;
 use crate::protocols::UnitRepository;
 
-/// Write one round of fetched prices: each response's price into its Unit's week of the Clock's
-/// day, through [`crate::UnitRow::record_price`] (ADR-0052's fetching amendment). The round is one
-/// input, so the Client commits it once.
+/// Write one round of fetched prices, as [`crate::fetching::PriceFetching::land`] handed them
+/// back: each price into its Unit's week of the Clock's day, through
+/// [`crate::UnitRow::record_price`] (ADR-0052's fetching amendment). The round is one input, so
+/// the Client commits it once.
 ///
-/// A response writes nothing for a Unit deleted, deactivated or relinked since its request went
-/// out, for a request this Ledger never sent, and for an answer with no price in it. How each
-/// Unit and the source fared is noted in [`PriceFetching`], never in the Ledger: a round failure
-/// backs off the source, a Unit failure that Unit alone, and a success clears either.
+/// Fetching already left out a Unit deleted, deactivated or relinked since its request went out;
+/// the same check here is a safety net, so a price never lands on a Unit that changed meanwhile.
+/// How each Unit and the source fared is fetching's to note, never the Ledger's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordFetchedPrices {
-    pub(crate) landed: Landed,
-}
-
-/// A price written for a Unit.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FetchedPrice {
-    pub unit: UnitId,
-    pub close: Money,
-}
-
-/// How a round went, for the Toast a round a person asked for raises.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct RoundOutcome {
-    /// The source asked; `None` for a response for no round.
-    pub source: Option<PriceSourceId>,
-    pub written: Vec<FetchedPrice>,
-    /// The Units the round failed for, and why, round failures included.
-    pub failed: Vec<(UnitId, FetchFailure)>,
-    /// The first round failure, which backed the source off.
-    pub round_failure: Option<FetchFailure>,
+    pub(crate) prices: Vec<FetchedPrice>,
+    /// The Clock's day, which decides the week.
+    pub(crate) today: NaiveDate,
+    /// When the prices are written.
+    pub(crate) at: DateTime<Utc>,
 }
 
 impl RecordFetchedPrices {
-    /// `today` is the Clock's day, which decides the week; `at` is when the prices are written.
-    pub fn run(
-        self,
-        units: &mut dyn UnitRepository,
-        fetching: &mut PriceFetching,
-        today: NaiveDate,
-        at: DateTime<Utc>,
-    ) -> RoundOutcome {
-        let source = self.landed.source;
-        let mut outcome = RoundOutcome {
-            source: source.as_ref().map(|(id, _)| *id),
-            ..RoundOutcome::default()
-        };
-        for response in self.landed.responses {
-            for settled in record(response, units, fetching, today, at) {
-                match settled {
-                    Settled::Written(price) => outcome.written.push(price),
-                    Settled::Failed(unit, failure) => {
-                        if failure.is_round() && outcome.round_failure.is_none() {
-                            outcome.round_failure = Some(failure);
-                        }
-                        outcome.failed.push((unit, failure));
-                    }
+    /// Returns how many prices were written.
+    pub fn run(self, units: &mut dyn UnitRepository) -> usize {
+        let mut written = 0;
+        for price in self.prices {
+            let unit_id = price.unit;
+            let mut unit = match units.unit(unit_id) {
+                Some(unit) if unit.is_active && unit.link == price.link => unit,
+                _ => {
+                    tracing::info!(
+                        %unit_id,
+                        "Skipped a fetched price for a Unit deleted, deactivated or relinked since"
+                    );
+                    continue;
                 }
-            }
+            };
+            unit.record_price(price.close, self.today, self.at);
+            units.upsert_unit(unit);
+            tracing::info!(%unit_id, "Recorded a fetched price");
+            written += 1;
         }
-        if let Some((id, settings)) = source {
-            fetching.record_source(id, &settings, at, outcome.round_failure);
-        }
-        outcome
+        written
     }
-}
-
-/// What one response settled for its Unit.
-enum Settled {
-    Written(FetchedPrice),
-    Failed(UnitId, FetchFailure),
-}
-
-/// What `response` settled for each Unit it asked for: none for no request, or for a Unit
-/// changed since. A Unit missing from a batch reply reads Not found or No price.
-fn record(
-    response: PriceResponse,
-    units: &mut dyn UnitRepository,
-    fetching: &mut PriceFetching,
-    today: NaiveDate,
-    at: DateTime<Utc>,
-) -> Vec<Settled> {
-    let request = response.request.0;
-    let Some(sent) = fetching.take(response.request) else {
-        tracing::debug!(request, "Dropped a price response for no request in flight");
-        return Vec::new();
-    };
-    let mut settled = Vec::with_capacity(sent.units.len());
-    for call in sent.units {
-        let unit_id = call.unit;
-        let reading = read(&response.outcome, &call.price_path);
-        let mut unit = match units.unit(unit_id) {
-            Some(unit) if unit.is_active && unit.link == call.link => unit,
-            _ => {
-                tracing::info!(
-                    %unit_id,
-                    "Skipped a fetched price for a Unit deleted, deactivated or relinked since"
-                );
-                // A round failure still fails the source, whichever Unit it came back for.
-                if let Reading::Failed(failure) = reading
-                    && failure.is_round()
-                {
-                    settled.push(Settled::Failed(unit_id, failure));
-                }
-                continue;
-            }
-        };
-        let close = match reading {
-            Reading::Priced(close) => close,
-            Reading::Failed(failure) => {
-                tracing::warn!(%unit_id, request, ?failure, "A price fetch failed");
-                fetching.record_unit(unit_id, call.link, &sent.settings, at, Some(failure));
-                settled.push(Settled::Failed(unit_id, failure));
-                continue;
-            }
-        };
-        fetching.record_unit(unit_id, call.link, &sent.settings, at, None);
-        unit.record_price(close.clone(), today, at);
-        units.upsert_unit(unit);
-        tracing::info!(%unit_id, "Recorded a fetched price");
-        settled.push(Settled::Written(FetchedPrice {
-            unit: unit_id,
-            close,
-        }));
-    }
-    settled
 }
 
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
 
+    use lib_core::{Money, UnitId};
+
     use super::*;
-    use crate::fake::{FakeTransport, InMemoryPorts};
-    use crate::fetching::RequestId;
+    use crate::fake::{FakeTransport, InMemoryPorts, InMemoryUnits};
+    use crate::fetching::{Landing, PriceFetching, PriceResponse, RequestId};
     use crate::interactor::FetchNow;
     use crate::{FRANKFURTER, Precision, PriceLink, UnitKind, UnitRow, WeeklyPrice};
 
@@ -192,14 +108,26 @@ mod tests {
     }
 
     impl Round {
+        /// Lands `response` and writes the prices it hands back, returning them.
         fn record(&mut self, response: PriceResponse) -> Vec<FetchedPrice> {
-            let landed = self
+            let landing = self
                 .fetching
-                .land(response, at())
-                .expect("a round of one lands");
-            RecordFetchedPrices { landed }
-                .run(&mut self.ports.units, &mut self.fetching, today(), at())
-                .written
+                .land(response, at(), today(), &Utc, &self.ports.units);
+            let Landing::Prices { prices, .. } = landing else {
+                return Vec::new();
+            };
+            let written = RecordFetchedPrices {
+                prices: prices.clone(),
+                today: today(),
+                at: at(),
+            }
+            .run(&mut self.ports.units);
+            assert_eq!(
+                written,
+                prices.len(),
+                "every price fetching landed is written"
+            );
+            prices
         }
 
         fn prices(&self) -> Vec<WeeklyPrice> {
@@ -218,6 +146,7 @@ mod tests {
             written,
             [FetchedPrice {
                 unit: round.eur,
+                link: round.ports.units.unit(round.eur).expect("eur").link,
                 close: money("1.6512")
             }]
         );
@@ -312,5 +241,35 @@ mod tests {
         assert!(round.record(stray).is_empty());
         assert!(round.prices().is_empty());
         assert_eq!(round.fetching.in_flight(), 0);
+    }
+
+    #[test]
+    fn a_price_for_a_unit_changed_since_it_landed_is_not_written() {
+        let round = sent();
+        let eur = round.ports.units.unit(round.eur).expect("eur");
+        let price = FetchedPrice {
+            unit: eur.id,
+            link: eur.link.clone(),
+            close: money("1.6"),
+        };
+        let mut relinked = eur.clone();
+        relinked.link.symbol = "USD".into();
+        let mut inactive = eur.clone();
+        inactive.is_active = false;
+
+        for unit in [Some(relinked), Some(inactive), None] {
+            let mut units = InMemoryUnits {
+                units: unit.into_iter().collect(),
+            };
+            let written = RecordFetchedPrices {
+                prices: vec![price.clone()],
+                today: today(),
+                at: at(),
+            }
+            .run(&mut units);
+
+            assert_eq!(written, 0);
+            assert!(units.units.iter().all(|unit| unit.prices.is_empty()));
+        }
     }
 }

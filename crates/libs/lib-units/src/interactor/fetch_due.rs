@@ -216,13 +216,18 @@ mod tests {
             btc.run(&check.ports, &mut check.fetching, now())
                 .expect("sent");
             let answer = check.transport.answer_last(200, r#"{"bitcoin":{"aud":1}}"#);
-            let landed = check.fetching.land(answer, now()).expect("a round of one");
-            crate::interactor::RecordFetchedPrices { landed }.run(
-                &mut check.ports.units,
-                &mut check.fetching,
-                today(),
-                now(),
-            );
+            let landing = check
+                .fetching
+                .land(answer, now(), today(), &Utc, &check.ports.units);
+            let crate::fetching::Landing::Prices { prices, .. } = landing else {
+                panic!("a round of one lands its price");
+            };
+            crate::interactor::RecordFetchedPrices {
+                prices,
+                today: today(),
+                at: now(),
+            }
+            .run(&mut check.ports.units);
         }
 
         assert_eq!(check.run(), [COINGECKO], "eth's round starts, queued");

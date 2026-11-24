@@ -7,8 +7,12 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use lib_core::{PriceSourceId, UnitId};
 
-use super::{FetchFailure, PriceRequest, PriceResponse, RequestId, SourceSettings, back_off};
-use crate::{HistoryEndpoint, PriceLink, PriceSource, UnitRow};
+use super::history::fold;
+use super::{
+    FetchFailure, HistoryReading, PriceRequest, PriceResponse, RequestId, SourceSettings,
+    TransportOutcome, back_off, read_history,
+};
+use crate::{HistoryEndpoint, PriceLink, PriceSource, UnitRow, WeeklyPrice};
 
 /// How long a failed history request waits before it is tried again, or longer when a
 /// `Retry-After` asks for it (ADR-0043's backfill amendment).
@@ -43,6 +47,12 @@ struct HistoryFailure {
     retry_at: DateTime<Utc>,
     link: PriceLink,
     settings: SourceSettings,
+}
+
+/// What a history request's answer brought: the weeks it asked that came back, or why it failed.
+pub(super) enum HistoryAnswer {
+    Weeks(Vec<WeeklyPrice>),
+    Failed(FetchFailure),
 }
 
 /// Every history request queued or out, and every failure and empty week kept for the next ask.
@@ -144,13 +154,38 @@ impl Backfill {
         backed
     }
 
-    /// Notes that `call`'s provider answered with nothing for `weeks`, so they aren't asked again
-    /// on this link until the Ledger reopens.
-    pub(super) fn history_empty(
+    /// Reads `call`'s answer `outcome` onto the weeks it asked, each written at `at`, noting the
+    /// asked weeks that came back with nothing so they aren't asked again. The points outside the
+    /// asked weeks are dropped: a week priced since the request went out is never asked for.
+    pub(super) fn answered(
         &mut self,
         call: &HistoryCall,
-        weeks: impl IntoIterator<Item = NaiveDate>,
-    ) {
+        outcome: &TransportOutcome,
+        at: DateTime<Utc>,
+    ) -> HistoryAnswer {
+        let points = match read_history(outcome, &call.history, &call.link.symbol, &call.quote) {
+            HistoryReading::Points(points) => points,
+            HistoryReading::Failed(reason) => return HistoryAnswer::Failed(reason),
+        };
+        let asked: HashSet<NaiveDate> = call.weeks.iter().copied().collect();
+        let weeks: Vec<WeeklyPrice> = fold(points, at)
+            .into_iter()
+            .filter(|week| asked.contains(&week.week))
+            .collect();
+        let answered: HashSet<NaiveDate> = weeks.iter().map(|week| week.week).collect();
+        let missing: Vec<NaiveDate> = call
+            .weeks
+            .iter()
+            .filter(|week| !answered.contains(*week))
+            .copied()
+            .collect();
+        self.history_empty(call, missing);
+        HistoryAnswer::Weeks(weeks)
+    }
+
+    /// Notes that `call`'s provider answered with nothing for `weeks`, so they aren't asked again
+    /// on this link until the Ledger reopens.
+    fn history_empty(&mut self, call: &HistoryCall, weeks: impl IntoIterator<Item = NaiveDate>) {
         let entry = self
             .empty_weeks
             .entry(call.unit)

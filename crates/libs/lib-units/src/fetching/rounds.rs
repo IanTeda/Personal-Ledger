@@ -46,9 +46,9 @@ struct Round {
 
 /// A round whose every response has come back, ready to be written in one commit.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Landed {
-    /// The source and its settings when the round went out; `None` for a response for no round.
-    pub source: Option<(PriceSourceId, SourceSettings)>,
+pub(super) struct Landed {
+    /// The source and its settings when the round went out.
+    pub source: (PriceSourceId, SourceSettings),
     pub asked: bool,
     pub responses: Vec<PriceResponse>,
 }
@@ -193,7 +193,7 @@ impl Rounds {
         }
         let round = self.rounds.remove(&round)?;
         Some(Landed {
-            source: Some((round.source, round.settings)),
+            source: (round.source, round.settings),
             asked: round.asked,
             responses: round.landed,
         })

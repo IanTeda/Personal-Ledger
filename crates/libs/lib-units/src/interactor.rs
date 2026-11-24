@@ -23,6 +23,7 @@ mod set_base_unit;
 mod set_price;
 mod test_price_source;
 
+pub use crate::fetching::{FetchedPrice, RoundOutcome};
 pub use add_price_source::AddPriceSource;
 pub use add_unit::AddUnit;
 pub use backfill::{Backfill, BackfillUnits};
@@ -36,7 +37,7 @@ pub use fetch_due::FetchDue;
 pub use fetch_now::FetchNow;
 pub use fetch_source::FetchSource;
 pub use reactivate_unit::ReactivateUnit;
-pub use record_fetched_prices::{FetchedPrice, RecordFetchedPrices, RoundOutcome};
+pub use record_fetched_prices::RecordFetchedPrices;
 pub use record_price_history::RecordPriceHistory;
 pub use save_price_source_key::{KeyChange, SavePriceSourceKey};
 pub use set_base_unit::SetBaseUnit;

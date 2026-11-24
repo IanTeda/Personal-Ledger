@@ -88,8 +88,8 @@ mod tests {
     use std::rc::Rc;
 
     use super::*;
-    use crate::fake::FakeTransport;
-    use crate::fetching::HistoryTestOutcome;
+    use crate::fake::{FakeTransport, InMemoryUnits};
+    use crate::fetching::{HistoryTestOutcome, Landing, PriceResponse};
     use crate::{KeyPlacement, PriceSourceAuth, TransportOutcome};
 
     fn now() -> DateTime<Utc> {
@@ -113,6 +113,17 @@ mod tests {
             batch: None,
             history: None,
         }
+    }
+
+    /// Lands `response` at `at` as a Client would, on no Units.
+    fn land(fetching: &mut PriceFetching, response: PriceResponse, at: DateTime<Utc>) -> Landing {
+        fetching.land(
+            response,
+            at,
+            at.date_naive(),
+            &Utc,
+            &InMemoryUnits::default(),
+        )
     }
 
     fn test(key: Option<&str>) -> TestPriceSource {
@@ -150,7 +161,11 @@ mod tests {
             },
         );
         let later = now() + chrono::Duration::milliseconds(412);
-        let result = fetching.land_test(&response, later).expect("a test's");
+        assert!(
+            matches!(land(&mut fetching, response, later), Landing::Nothing),
+            "a form's test tells nothing"
+        );
+        let result = fetching.test_result(id).expect("held for the form").clone();
         assert_eq!(
             result.outcome,
             crate::fetching::TestOutcome::Priced("1.25".parse().expect("decimal"))
@@ -181,7 +196,10 @@ mod tests {
         let id = with_history().run(&mut fetching, now()).expect("sent");
 
         let price = transport.answer_last(200, r#"{"price":1.25}"#);
-        assert!(fetching.land_test(&price, now()).is_some());
+        assert!(matches!(
+            land(&mut fetching, price, now()),
+            Landing::Nothing
+        ));
 
         assert_eq!(
             transport.urls()[1],
@@ -195,9 +213,8 @@ mod tests {
             200,
             r#"{"data":[{"d":"2026-10-19","p":1.2},{"d":"2026-10-20","p":"1.2345"},{"d":"x","p":1}]}"#,
         );
-        assert!(fetching.is_test(&history), "a test's history is the test's");
         assert!(
-            fetching.land_test(&history, now()).is_none(),
+            matches!(land(&mut fetching, history, now()), Landing::Nothing),
             "a form's history raises nothing"
         );
 
@@ -223,8 +240,16 @@ mod tests {
         let transport = FakeTransport::default();
         let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
         let id = with_history().run(&mut fetching, now()).expect("sent");
-        fetching.land_test(&transport.answer_last(200, r#"{"price":1}"#), now());
-        fetching.land_test(&transport.answer_last(200, r#"{"data":[]}"#), now());
+        land(
+            &mut fetching,
+            transport.answer_last(200, r#"{"price":1}"#),
+            now(),
+        );
+        land(
+            &mut fetching,
+            transport.answer_last(200, r#"{"data":[]}"#),
+            now(),
+        );
         let history = fetching
             .test_result(id)
             .and_then(|result| result.history.clone());
@@ -236,7 +261,11 @@ mod tests {
         );
 
         let failed = with_history().run(&mut fetching, now()).expect("sent");
-        fetching.land_test(&transport.answer_last(200, r#"{"nothing":1}"#), now());
+        land(
+            &mut fetching,
+            transport.answer_last(200, r#"{"nothing":1}"#),
+            now(),
+        );
         assert_eq!(
             transport.requests().len(),
             3,
@@ -255,13 +284,20 @@ mod tests {
         let transport = FakeTransport::default();
         let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
         let id = with_history().run(&mut fetching, now()).expect("sent");
-        fetching.land_test(&transport.answer_last(200, r#"{"price":1}"#), now());
+        land(
+            &mut fetching,
+            transport.answer_last(200, r#"{"price":1}"#),
+            now(),
+        );
 
         fetching.drop_test(id);
         let history = transport.answer_last(200, r#"{"data":[]}"#);
 
-        assert!(fetching.is_test(&history));
-        assert!(fetching.land_test(&history, now()).is_none());
+        assert!(matches!(
+            land(&mut fetching, history, now()),
+            Landing::Nothing
+        ));
+        assert_eq!(fetching.in_flight(), 0, "never read as a round's");
         assert!(fetching.test_result(id).is_none());
     }
 
@@ -283,8 +319,15 @@ mod tests {
         fetching.drop_test(id);
         let response = transport.answer_last(200, r#"{"price":1}"#);
 
-        assert!(fetching.is_test(&response), "still known as a test's");
-        assert!(fetching.land_test(&response, now()).is_none());
+        assert!(matches!(
+            land(&mut fetching, response, now()),
+            Landing::Nothing
+        ));
+        assert_eq!(
+            fetching.in_flight(),
+            0,
+            "still known as a test's, never a round's"
+        );
         assert!(fetching.test_result(id).is_none());
     }
 }
