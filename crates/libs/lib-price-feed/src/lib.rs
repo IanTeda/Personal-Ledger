@@ -10,6 +10,7 @@
 mod error;
 
 use std::error::Error as _;
+use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
@@ -52,6 +53,28 @@ impl PriceFeed {
             },
             receiver,
         ))
+    }
+}
+
+/// One Ledger's transport and the channel its responses come back on.
+pub struct Feed {
+    pub transport: Rc<dyn PriceTransport>,
+    pub responses: Receiver<PriceResponse>,
+}
+
+/// A feed over `runtime` with [`TIMEOUT`], or `None` when its HTTP client won't start. The failure
+/// is logged here, as the adapter's own (ADR-0047), so each bin only decides what to do without a
+/// feed.
+pub fn open(runtime: Handle) -> Option<Feed> {
+    match PriceFeed::new(runtime, TIMEOUT) {
+        Ok((feed, responses)) => Some(Feed {
+            transport: Rc::new(feed),
+            responses,
+        }),
+        Err(error) => {
+            tracing::error!(%error, "Failed to start the price feed; prices won't be fetched");
+            None
+        }
     }
 }
 
@@ -169,6 +192,26 @@ mod tests {
         let reply = "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}";
         socket.write_all(reply.as_bytes()).await.expect("the reply");
         String::from_utf8_lossy(&request[..read]).to_lowercase()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn open_builds_a_feed_that_sends_on_the_runtime() {
+        let feed = open(Handle::current()).expect("a feed");
+        let (listener, address) = listener().await;
+        let server = tokio::spawn(received(listener));
+
+        feed.transport
+            .send(RequestId(7), get(format!("{address}/v2/rate/EUR/AUD")));
+
+        let response = tokio::task::spawn_blocking(move || {
+            feed.responses
+                .recv_timeout(Duration::from_secs(10))
+                .expect("a response")
+        })
+        .await
+        .expect("the wait ran");
+        server.await.expect("the server ran");
+        assert_eq!(response.request, RequestId(7));
     }
 
     #[tokio::test(flavor = "multi_thread")]

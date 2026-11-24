@@ -4,31 +4,13 @@
 //! is fetched and `f` is offered nowhere.
 
 use std::rc::Rc;
-use std::sync::mpsc::Receiver;
 
-use lib_units::{PriceResponse, PriceTransport};
-
-/// One Ledger's transport and the channel its responses come back on.
-pub struct Feed {
-    pub transport: Rc<dyn PriceTransport>,
-    pub responses: Receiver<PriceResponse>,
-}
+pub use lib_price_feed::Feed;
 
 /// How each Open Ledger builds its [`Feed`]; `None` when it can't.
 pub type Feeds = Rc<dyn Fn() -> Option<Feed>>;
 
 /// The feed the TUI fetches through: `lib-price-feed`'s on `runtime`, `main`'s Tokio runtime.
 pub fn http(runtime: tokio::runtime::Handle) -> Feeds {
-    Rc::new(move || {
-        match lib_price_feed::PriceFeed::new(runtime.clone(), lib_price_feed::TIMEOUT) {
-            Ok((feed, responses)) => Some(Feed {
-                transport: Rc::new(feed),
-                responses,
-            }),
-            Err(error) => {
-                tracing::error!(%error, "Failed to start the price feed; prices won't be fetched");
-                None
-            }
-        }
-    })
+    Rc::new(move || lib_price_feed::open(runtime.clone()))
 }
