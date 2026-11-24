@@ -1204,7 +1204,7 @@ fn a_failed_daily_request_says_why_in_place_without_a_toast() {
 }
 
 #[test]
-fn units_fetch_all_from_the_palette_fetches_every_source_and_clears_the_status_line() {
+fn units_fetch_all_from_the_palette_fetches_every_source_and_lands_each_price() {
     let (transport, responses) = lib_units::fake::FakeTransport::channel();
     let mut shell = common::fetching_shell(transport.clone(), responses);
 
