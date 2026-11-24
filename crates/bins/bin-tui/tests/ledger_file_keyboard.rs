@@ -90,7 +90,10 @@ fn open_with_a_path_opens_that_ledger_file() {
         hint_bar(&frame).trim_end().ends_with("household.pldb"),
         "{frame}"
     );
-    assert!(status_line(&frame).contains("Synced"), "{frame}");
+    assert!(
+        status_line(&frame).trim_end().ends_with("Never synced"),
+        "{frame}"
+    );
 }
 
 #[test]
