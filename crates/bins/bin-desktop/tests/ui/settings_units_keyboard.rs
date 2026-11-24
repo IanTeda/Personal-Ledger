@@ -1748,7 +1748,7 @@ fn f_on_a_coingecko_a_yahoo_and_a_custom_sources_unit_sends_their_requests_and_w
 }
 
 #[gpui::test]
-fn f_after_a_429_waits_out_its_retry_after_counting_down_then_the_poll_sends_it(
+fn f_after_a_429_waits_out_its_retry_after_with_one_info_toast_then_the_poll_sends_it(
     app: &mut TestAppContext,
 ) {
     let (transport, responses) = lib_units::fake::FakeTransport::channel();
@@ -1770,18 +1770,27 @@ fn f_after_a_429_waits_out_its_retry_after_counting_down_then_the_poll_sends_it(
         1,
         "held by CoinGecko's Retry-After"
     );
+    let waiting = (
+        "Info".to_string(),
+        "Waiting for CoinGecko, 30 s\u{2026}".to_string(),
+    );
+    let waits = |ui: &mut Harness<'_>| {
+        visible_toasts(ui)
+            .into_iter()
+            .filter(|(_, text)| text.starts_with("Waiting for"))
+            .count()
+    };
+    assert!(visible_toasts(&mut ui).contains(&waiting));
     assert_eq!(
-        status_message(&mut ui).as_deref(),
-        Some("Waiting for CoinGecko, 30 s\u{2026}")
+        status_message(&mut ui),
+        None,
+        "fetching leaves the status line"
     );
 
     ui.advance_now(chrono::Duration::seconds(20));
     ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
-    assert_eq!(
-        status_message(&mut ui).as_deref(),
-        Some("Waiting for CoinGecko, 10 s\u{2026}"),
-        "the poll counts it down"
-    );
+    assert_eq!(waits(&mut ui), 1, "the poll never counts it down");
+    assert_eq!(status_message(&mut ui), None);
     assert_eq!(transport.requests().len(), 1);
 
     ui.advance_now(chrono::Duration::seconds(10));
@@ -1791,11 +1800,20 @@ fn f_after_a_429_waits_out_its_retry_after_counting_down_then_the_poll_sends_it(
         2,
         "the poll sent the paced call"
     );
-    assert_eq!(status_message(&mut ui), None, "and took the wait down");
+    assert_eq!(waits(&mut ui), 1, "and said nothing more");
 
     transport.answer_last(200, r#"{"ethereum":{"aud":4321.5}}"#);
     ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
     assert_eq!(unit_line(&mut ui, "ETH").1.last_price, "4,321.50 AUD");
+    assert!(
+        visible_toasts(&mut ui).contains(&(
+            "Success".to_string(),
+            "Fetched ETH at 4,321.50 AUD".to_string()
+        )),
+        "{:?}",
+        visible_toasts(&mut ui)
+    );
+    assert_eq!(status_message(&mut ui), None);
 }
 
 #[gpui::test]
@@ -2143,7 +2161,7 @@ fn at_x_large_price_history_moves_into_the_pane_with_a_sparkline(app: &mut TestA
 }
 
 #[gpui::test]
-fn f_on_a_price_source_row_fetches_its_units_with_a_start_toast_the_status_and_fetching_rows(
+fn f_on_a_price_source_row_fetches_its_units_with_a_start_toast_and_fetching_rows(
     app: &mut TestAppContext,
 ) {
     let (transport, responses) = lib_units::fake::FakeTransport::channel();
@@ -2169,9 +2187,9 @@ fn f_on_a_price_source_row_fetches_its_units_with_a_start_toast_the_status_and_f
         "Fetching prices from Frankfurter\u{2026}".to_string()
     )));
     assert_eq!(
-        ui.read(bin_desktop::shell::router::Root::status_message)
-            .as_deref(),
-        Some("Fetching prices from Frankfurter\u{2026}")
+        ui.read(bin_desktop::shell::router::Root::status_message),
+        None,
+        "the start Toast says it, not the status line"
     );
     assert_eq!(
         unit_line(&mut ui, "EUR").1.last_age.as_deref(),

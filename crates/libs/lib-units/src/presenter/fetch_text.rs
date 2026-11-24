@@ -68,49 +68,20 @@ fn round_phrase(reason: FetchFailure) -> String {
     }
 }
 
-/// The status line while asked-for rounds are out, naming their sources in the order they list
-/// (`Fetching prices from CoinGecko, Yahoo Finance…`), then while a fetch now's history is out
-/// (`Fetching price history for BTC from CoinGecko…`); `None` once everything has landed.
-fn fetching_status(ports: &dyn UnitsPorts, fetching: &PriceFetching) -> Option<String> {
-    let out = fetching.named_sources();
-    let names: Vec<String> = ports
-        .source_catalogue()
-        .sources()
-        .iter()
-        .filter(|source| out.contains(&source.id))
-        .map(|source| source.name.to_string())
-        .collect();
-    if !names.is_empty() {
-        return Some(msg::units_status_fetching(&names.join(", ")));
-    }
-    // Once its rounds land, a fetch now names the first history it is still waiting on.
-    let (code, source) = fetching.asked_history().into_iter().next()?;
+/// `Waiting for CoinGecko, 40 s…` as an Info Toast, once, when a call a person asked for begins
+/// waiting out a `Retry-After` at `now`; `None` while none does, or once this wait was announced.
+pub(super) fn wait_begun_toast(
+    ports: &dyn UnitsPorts,
+    fetching: &mut PriceFetching,
+    now: DateTime<Utc>,
+) -> Option<Notice> {
+    let (source, seconds) = fetching.wait_begun(now)?;
     let catalogue = ports.source_catalogue();
     let name = catalogue.source(source)?.name.to_string();
-    Some(msg::units_status_fetching_history(&code, &name))
-}
-
-/// `Waiting for CoinGecko, 40 s…` while a call a person asked for waits out a `Retry-After` at
-/// `now`; `None` while none does.
-pub(super) fn waiting_status(
-    ports: &dyn UnitsPorts,
-    fetching: &PriceFetching,
-    now: DateTime<Utc>,
-) -> Option<String> {
-    let (source, seconds) = fetching.waiting(now)?;
-    let catalogue = ports.source_catalogue();
-    let name = catalogue.source(source)?.name.to_string();
-    Some(msg::units_status_fetch_waiting(&name, &seconds.to_string()))
-}
-
-/// What the status line says of fetching at `now`: a `Retry-After` being waited out first, else
-/// the asked-for rounds still out; `None` once there is neither.
-pub(super) fn fetch_status(
-    ports: &dyn UnitsPorts,
-    fetching: &PriceFetching,
-    now: DateTime<Utc>,
-) -> Option<String> {
-    waiting_status(ports, fetching, now).or_else(|| fetching_status(ports, fetching))
+    Some(Notice::Toast(
+        ToastKind::Info,
+        msg::units_toast_fetch_waiting(&name, &seconds.to_string()),
+    ))
 }
 
 /// `Fetched 2 prices from CoinGecko; then rate limited, try again later`: a round a round failure

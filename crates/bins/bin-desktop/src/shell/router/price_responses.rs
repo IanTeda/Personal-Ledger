@@ -87,7 +87,8 @@ impl Root {
     }
 
     /// Sends the queued price calls the Clock now allows. It writes nothing, so it needs no input:
-    /// only a change to the *Waiting for…* status is shown, straight onto the status line.
+    /// the *Waiting for…* Info Toast a wait raises as it begins is drained onto the stack, and the
+    /// status line is left to the Shell (ADR-0048).
     fn pump_prices(&mut self, cx: &mut Context<'_, Self>) {
         let Some(presenter) = self
             .open

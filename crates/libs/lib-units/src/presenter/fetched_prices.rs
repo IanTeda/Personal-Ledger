@@ -8,15 +8,16 @@
 //! It also backfills (ADR-0043's backfill amendment): on Ledger open, after a person's fetch now
 //! and again for a failed history request on the minute check, it asks each Unit's source for the
 //! past weeks it has no Weekly Price for, and writes each Unit's weeks as that response's one
-//! commit. A backfill never toasts; only a fetch now's names itself on the status line.
+//! commit. A backfill never toasts, and nothing here touches the status line (ADR-0048): a fetch now's
+//! history shows in the Weekly Prices table.
 
 use chrono::Local;
 use lib_toast::{Notice, Notify, ToastKind};
 
 use super::Clock;
 use super::fetch_text::{
-    Asked, fetch_status, round_failed_toast, round_stopped_toast, some_failed_toast, test_toast,
-    unit_failed_toast, waiting_status,
+    Asked, round_failed_toast, round_stopped_toast, some_failed_toast, test_toast,
+    unit_failed_toast, wait_begun_toast,
 };
 use super::units_pane::amount;
 use crate::fetching::{PriceResponse, SharedFetching};
@@ -31,8 +32,6 @@ pub struct FetchedPricesPresenter {
     ports: SharedPorts,
     fetching: SharedFetching,
     clock: Clock,
-    /// The *Waiting for…* status last put up, so a pump says only what changed.
-    waiting: Option<String>,
 }
 
 impl FetchedPricesPresenter {
@@ -41,32 +40,23 @@ impl FetchedPricesPresenter {
             ports,
             fetching,
             clock,
-            waiting: None,
         }
     }
 
     /// Releases the queued calls at the Clock's now: sends what each source's call rate and any
-    /// `Retry-After` allow, and counts *Waiting for CoinGecko, 40 s…* down on the status line,
-    /// putting back what is still fetching, or clearing it, once the call goes out. Each Client
-    /// calls it from its response poll; nothing here waits or sleeps.
+    /// `Retry-After` allow, raising one *Waiting for CoinGecko, 40 s…* Info Toast as a call a
+    /// person asked for begins to wait, unless the page already did. Each Client calls it from its
+    /// response poll; nothing here waits or sleeps.
     pub fn pump(&mut self, router: &mut dyn Notify) {
         let now = (self.clock)();
         let sent = self.fetching.borrow_mut().release(now);
         if sent > 0 {
             tracing::debug!(sent, "Sent queued price requests");
         }
-        let ports = self.ports.borrow();
-        let fetching = self.fetching.borrow();
-        let waiting = waiting_status(&*ports, &fetching, now);
-        if waiting == self.waiting {
-            return;
+        let toast = wait_begun_toast(&*self.ports.borrow(), &mut self.fetching.borrow_mut(), now);
+        if let Some(toast) = toast {
+            router.notify(toast);
         }
-        let status = waiting
-            .clone()
-            .or_else(|| fetch_status(&*ports, &fetching, now))
-            .unwrap_or_default();
-        router.notify(Notice::Status(status));
-        self.waiting = waiting;
     }
 
     /// The scheduled check, on Ledger open and every minute after: starts a silent round on each
@@ -129,14 +119,13 @@ impl FetchedPricesPresenter {
             return;
         }
         if self.fetching.borrow().is_history(&response) {
-            self.record_history(&response, router);
+            self.record_history(&response);
             return;
         }
         let Some(landed) = self.fetching.borrow_mut().land(response, now) else {
             return;
         };
         let asked = landed.asked;
-        let named = landed.named;
         let outcome = {
             let mut ports = self.ports.borrow_mut();
             RecordFetchedPrices { landed }.run(
@@ -146,36 +135,25 @@ impl FetchedPricesPresenter {
                 now,
             )
         };
-        let mut backfilling = false;
         if asked {
             self.tell(&outcome, router);
             // A fetch now goes on to fill the past weeks of each Unit it priced.
             let priced: Vec<_> = outcome.written.iter().map(|price| price.unit).collect();
             if !priced.is_empty() {
-                backfilling = Backfill {
+                Backfill {
                     units: BackfillUnits::Asked(priced),
                     today: now.with_timezone(&Local).date_naive(),
                     now,
                 }
-                .run(&*self.ports.borrow(), &mut self.fetching.borrow_mut())
-                    > 0;
+                .run(&*self.ports.borrow(), &mut self.fetching.borrow_mut());
             }
-        }
-        if named || backfilling {
-            // The status names what is still out and clears, with an empty message, once the last
-            // asked-for round has landed.
-            let status = {
-                let ports = self.ports.borrow();
-                fetch_status(&*ports, &self.fetching.borrow(), now)
-            };
-            router.notify(Notice::Status(status.unwrap_or_default()));
         }
     }
 
     /// Writes the weeks a history `response` brings into its Unit's empty weeks, noting the weeks
     /// it had nothing for, or its failure, then sends the source's next history request. Never a
-    /// Toast; a fetch now's status line says what is still out, or clears.
-    fn record_history(&mut self, response: &PriceResponse, router: &mut dyn Notify) {
+    /// Toast: the Weekly Prices table shows a fetch now's history in place.
+    fn record_history(&mut self, response: &PriceResponse) {
         let now = (self.clock)();
         let Some(call) = self.fetching.borrow_mut().land_history(response, now) else {
             return;
@@ -218,13 +196,6 @@ impl FetchedPricesPresenter {
             }
         }
         self.fetching.borrow_mut().start_history(call.source, now);
-        if call.asked {
-            let status = {
-                let ports = self.ports.borrow();
-                fetch_status(&*ports, &self.fetching.borrow(), now)
-            };
-            router.notify(Notice::Status(status.unwrap_or_default()));
-        }
     }
 
     /// A Fetch now's outcome, one Toast per round: a Success Toast naming the price, or counting
@@ -826,14 +797,10 @@ mod tests {
 
             assert_eq!(
                 client.notices,
-                [
-                    Notice::Toast(
-                        ToastKind::Warning,
-                        "Fetched 59 prices from Frankfurter; then rate limited, try again later"
-                            .into()
-                    ),
-                    Notice::Status(String::new()),
-                ]
+                [Notice::Toast(
+                    ToastKind::Warning,
+                    "Fetched 59 prices from Frankfurter; then rate limited, try again later".into()
+                )]
             );
             assert_eq!(
                 client.source_failure(FRANKFURTER),
@@ -893,7 +860,7 @@ mod tests {
         }
 
         #[test]
-        fn fetch_now_waits_out_an_unexpired_retry_after_counting_it_down_then_sends() {
+        fn fetch_now_waits_out_an_unexpired_retry_after_with_one_info_toast_then_sends() {
             let mut client = client(vec![]);
             client.fetch_now("BTC");
             client.answer(|_| throttled(Some("40")));
@@ -907,19 +874,27 @@ mod tests {
             );
             assert_eq!(
                 client.pump(),
-                [Notice::Status("Waiting for CoinGecko, 40 s\u{2026}".into())]
+                [Notice::Toast(
+                    ToastKind::Info,
+                    "Waiting for CoinGecko, 40 s\u{2026}".into()
+                )]
             );
             client.later(Duration::milliseconds(1500));
-            assert_eq!(
-                client.pump(),
-                [Notice::Status("Waiting for CoinGecko, 39 s\u{2026}".into())]
-            );
-            assert_eq!(client.pump(), [], "nothing new to say");
+            assert_eq!(client.pump(), [], "no countdown");
             assert_eq!(client.sent(), 1);
 
             client.later(Duration::milliseconds(38_500));
-            assert_eq!(client.pump(), [Notice::Status(String::new())]);
+            assert_eq!(client.pump(), [], "the send says nothing");
             assert_eq!(client.sent(), 2, "the call goes out once the wait is over");
+            client.answer(priced_btc);
+            assert!(
+                !client
+                    .notices
+                    .iter()
+                    .any(|notice| matches!(notice, Notice::Status(_))),
+                "the landing puts nothing on the status line: {:?}",
+                client.notices
+            );
         }
 
         #[test]
@@ -1539,7 +1514,7 @@ mod tests {
         }
 
         #[test]
-        fn a_fetch_now_names_its_backfill_on_the_status_line_until_it_lands() {
+        fn a_fetch_now_and_its_backfill_send_no_status_from_start_to_landing() {
             let mut client = client(vec![currency("EUR")]);
             client.opened("EUR", day(2026, 9, 28));
             crate::interactor::FetchNow {
@@ -1551,21 +1526,25 @@ mod tests {
                 client.at.get(),
             )
             .expect("sent");
+            client.presenter.pump(&mut client.notices);
 
             client.answer(TransportOutcome::Answered {
                 status: 200,
                 body: r#"{"rate":1.6}"#.into(),
                 retry_after: None,
             });
-            assert_eq!(
-                client.notices.last(),
-                Some(&Notice::Status(
-                    "Fetching price history for EUR from Frankfurter\u{2026}".into()
-                ))
-            );
-
+            client.presenter.pump(&mut client.notices);
             client.answer(rates());
-            assert_eq!(client.notices.last(), Some(&Notice::Status(String::new())));
+            client.presenter.pump(&mut client.notices);
+
+            assert_eq!(
+                client.notices,
+                [Notice::Toast(
+                    ToastKind::Success,
+                    "Fetched EUR at 1.60 AUD".into()
+                )],
+                "the landing Toast alone; the history is carried by the Weekly Prices table"
+            );
             assert_eq!(
                 client.weeks("EUR").len(),
                 4,

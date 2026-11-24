@@ -93,7 +93,6 @@ impl FetchSource {
         }
         // Asked for, so its outcome is told.
         let round = fetching.open_round(&source, true);
-        fetching.name_round(round);
         let count = requests.len();
         for (request, sent) in requests {
             fetching.send(round, request, sent, now);

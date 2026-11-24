@@ -718,9 +718,8 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
                 self.restart_idle_count();
                 self.toasts.raise(kind, text, at);
             }
-            // An empty message clears the status: how a module takes down one it set for work still
-            // out (Units' fetching) once the work lands, since no module sends a clear (ADR-0048).
-            Notice::Status(text) => self.status = (!text.is_empty()).then_some(text),
+            // Only a key takes the status down (ADR-0048), so even an empty message is shown.
+            Notice::Status(text) => self.status = Some(text),
             // A History entry's label, which the Client pairs with what the input recorded.
             Notice::Changed(_) => {}
         }
@@ -2287,12 +2286,18 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_status_notice_takes_the_status_down() {
+    fn an_empty_status_notice_is_shown_like_any_other_and_only_a_key_clears_it() {
         let mut shell = shell();
-        shell.show(status("Fetching prices from CoinGecko\u{2026}"), local(0));
+        shell.show(status("Exported"), local(0));
 
         shell.show(status(""), local(1));
 
+        assert_eq!(
+            shell.view_model().status.as_deref(),
+            Some(""),
+            "no module takes the status down (ADR-0048)"
+        );
+        assert!(shell.keypress(), "a key clears it as it clears any");
         assert_eq!(shell.view_model().status, None);
     }
 

@@ -470,18 +470,19 @@ units-fetch-some-not-found = not found
 units-fetch-some-no-price = with no price
 units-fetch-some-failed = failed
 
-## Fetch now on a Price Source or every Unit: a Toast as each source's round starts, the status line
-## naming the sources still out, rows reading `Fetching…`, and one outcome Toast per round.
-## `$sources` is the sources' names joined with commas.
+## Fetch now on a Price Source or every Unit: a Toast as each source's round starts, rows reading
+## `Fetching…`, and one outcome Toast per round.
 
 units-fetching = Fetching…
 units-toast-fetching = Fetching prices from { $source }…
 units-toast-already-fetching = Already fetching prices from { $source }
-units-status-fetching = Fetching prices from { $sources }…
-units-status-fetching-history = Fetching price history for { $code } from { $source }…
 units-status-fetch-no-units = No active Unit uses { $source }
-# A call a person asked for waiting out the source's `Retry-After`, counting `$seconds` down.
+# The Unit prices view's Daily or Hourly request waiting out the source's `Retry-After`, in place,
+# counting `$seconds` down.
 units-status-fetch-waiting = Waiting for { $source }, { $seconds } s…
+# A call a person asked for beginning to wait out the source's `Retry-After`: `$seconds` as it
+# begins, never counted down.
+units-toast-fetch-waiting = Waiting for { $source }, { $seconds } s…
 units-toast-fetch-round-fetched = Fetched { $fetched ->
     [one] { $fetched } price
    *[other] { $fetched } prices

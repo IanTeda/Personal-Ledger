@@ -382,9 +382,6 @@ struct Round {
     /// Whether a person asked for it (fetch now), so its outcome is told; a scheduled round is
     /// silent.
     asked: bool,
-    /// Whether the status line names its source until it lands: a source or every source asked
-    /// for, not a Unit's own price, which says nothing but its outcome.
-    named: bool,
     /// Every Unit sent into the round, until it lands.
     units: HashSet<UnitId>,
     /// Its calls queued or out: a round is in flight from its first call joining the queue.
@@ -398,7 +395,6 @@ pub(crate) struct Landed {
     /// The source and its settings when the round went out; `None` for a response for no round.
     pub source: Option<(PriceSourceId, SourceSettings)>,
     pub asked: bool,
-    pub named: bool,
     pub responses: Vec<PriceResponse>,
 }
 
@@ -451,6 +447,9 @@ pub struct PriceFetching {
     /// Why a series' last request failed, until it is asked again: shown in place and nowhere
     /// else, so never a Unit's or source's Last fetch.
     fine_failed: HashMap<FineKey, (PriceLink, FetchFailure)>,
+    /// The `Retry-After` hold a *Waiting for…* Toast last announced, so each wait raises one
+    /// whichever of the page or the pump notices it first.
+    announced_wait: Option<(PriceSourceId, DateTime<Utc>)>,
 }
 
 /// One request for a Unit's Daily or Hourly Prices in one window, as the Unit prices view asked.
@@ -644,6 +643,7 @@ impl PriceFetching {
             fine_parked: Vec::new(),
             fine_cache: HashMap::new(),
             fine_failed: HashMap::new(),
+            announced_wait: None,
         }
     }
 
@@ -671,16 +671,6 @@ impl PriceFetching {
     /// Whether `source` has a round queued or out, which a scheduled check leaves alone.
     pub(crate) fn source_in_flight(&self, source: PriceSourceId) -> bool {
         self.rounds.values().any(|round| round.source == source)
-    }
-
-    /// The sources with a named round still out, in no order: what the status line names until
-    /// everything lands. A scheduled round is silent, so it isn't among them.
-    pub(crate) fn named_sources(&self) -> HashSet<PriceSourceId> {
-        self.rounds
-            .values()
-            .filter(|round| round.named)
-            .map(|round| round.source)
-            .collect()
     }
 
     /// Whether `unit` is in a round a person asked for that is still out, which its row shows as
@@ -785,8 +775,8 @@ impl PriceFetching {
     }
 
     /// The source a call a person asked for waits on, and the whole seconds left of its
-    /// `Retry-After` at `now`, rounded up: what the status line counts down. `None` while no such
-    /// call is held, a queued one only waiting its call rate included.
+    /// `Retry-After` at `now`, rounded up. `None` while no such call is held, a queued one only
+    /// waiting its call rate included.
     pub(crate) fn waiting(&self, now: DateTime<Utc>) -> Option<(PriceSourceId, i64)> {
         self.queue
             .iter()
@@ -797,6 +787,18 @@ impl PriceFetching {
                 let left = (*until - now).num_milliseconds();
                 (left > 0).then_some((source, (left + 999) / 1000))
             })
+    }
+
+    /// [`Self::waiting`] the first time it is asked of a hold, `None` after: a wait is announced
+    /// once as it begins, never counted down.
+    pub(crate) fn wait_begun(&mut self, now: DateTime<Utc>) -> Option<(PriceSourceId, i64)> {
+        let (source, seconds) = self.waiting(now)?;
+        let until = *self.holds.get(&Some(source))?;
+        if self.announced_wait == Some((source, until)) {
+            return None;
+        }
+        self.announced_wait = Some((source, until));
+        Some((source, seconds))
     }
 
     /// Whether `response` answers a test this Client sent, dropped or not, so it is never read as
@@ -959,20 +961,12 @@ impl PriceFetching {
                 source: source.id,
                 settings: SourceSettings::of(source),
                 asked,
-                named: false,
                 units: HashSet::new(),
                 pending: HashSet::new(),
                 landed: Vec::new(),
             },
         );
         id
-    }
-
-    /// Has the status line name `round`'s source until it lands.
-    pub(crate) fn name_round(&mut self, round: RoundId) {
-        if let Some(round) = self.rounds.get_mut(&round) {
-            round.named = true;
-        }
     }
 
     /// Queues `request` for `sent` in `round`, remembering it until its response comes back, and
@@ -1018,7 +1012,6 @@ impl PriceFetching {
             return Some(Landed {
                 source: None,
                 asked: false,
-                named: false,
                 responses: vec![response],
             });
         };
@@ -1066,7 +1059,6 @@ impl PriceFetching {
         Some(Landed {
             source: Some((round.source, round.settings)),
             asked: round.asked,
-            named: round.named,
             responses: round.landed,
         })
     }
@@ -1476,21 +1468,6 @@ impl PriceFetching {
     /// Forgets `unit`'s failed history request: it was tried again, or no longer needs trying.
     pub(crate) fn clear_history_failure(&mut self, unit: UnitId) {
         self.history_failures.remove(&unit);
-    }
-
-    /// The history requests a person's fetch now is waiting on, as (Unit code, source), in the
-    /// order they were sent.
-    pub(crate) fn asked_history(&self) -> Vec<(String, PriceSourceId)> {
-        let mut asked: Vec<(&RequestId, &HistoryCall)> = self
-            .history_out
-            .iter()
-            .filter(|(_, call)| call.asked)
-            .collect();
-        asked.sort_by_key(|(id, _)| **id);
-        asked
-            .into_iter()
-            .map(|(_, call)| (call.code.clone(), call.source))
-            .collect()
     }
 
     /// Whether `unit` failed and is still backing off at `now`.

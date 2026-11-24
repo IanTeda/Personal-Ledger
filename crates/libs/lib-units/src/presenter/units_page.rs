@@ -15,8 +15,7 @@ use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
 use super::fetch_text::{
-    Asked, failure_name, fetch_status, retry_text, round_failed_toast, test_failed_toast,
-    waiting_status,
+    Asked, failure_name, retry_text, round_failed_toast, test_failed_toast, wait_begun_toast,
 };
 use super::price_history::{HistoryInput, PriceHistory, price_history};
 use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
@@ -1036,9 +1035,9 @@ impl UnitsPagePresenter {
         let now = (self.clock)();
         let sent = FetchNow { id }.run(&*ports, &mut fetching.borrow_mut(), now);
         if sent.is_ok() {
-            // Held by its source's `Retry-After`, it says so until it goes out.
-            if let Some(status) = waiting_status(&*ports, &fetching.borrow(), now) {
-                router.notify(Notice::Status(status));
+            // Held by its source's `Retry-After`, it says so once, as the wait begins.
+            if let Some(toast) = wait_begun_toast(&*ports, &mut fetching.borrow_mut(), now) {
+                router.notify(toast);
             }
             return;
         }
@@ -1079,17 +1078,18 @@ impl UnitsPagePresenter {
     }
 
     /// Tells what asking each source came to: an Info Toast as its round starts, an Info Toast for
-    /// a source already out, a Warning Toast for a missing key, and one status message naming
-    /// every source out. A source no active Unit uses sends nothing; asked alone it says so.
+    /// a source already out and a Warning Toast for a missing key; the rows read *Fetching…* until
+    /// it lands. A source no active Unit uses sends nothing; asked alone it says so.
     fn tell_started(
         &self,
         outcomes: &[(PriceSourceId, Result<usize, Error>)],
         alone: bool,
         router: &mut dyn UnitsRouter,
     ) {
-        let (Some(fetching), ports) = (&self.fetching, self.ports.borrow()) else {
+        if self.fetching.is_none() {
             return;
-        };
+        }
+        let ports = self.ports.borrow();
         let catalogue = ports.source_catalogue();
         let name = |id| {
             catalogue
@@ -1097,20 +1097,16 @@ impl UnitsPagePresenter {
                 .map(|source| source.name.to_string())
                 .unwrap_or_default()
         };
-        let mut started = false;
         for (id, outcome) in outcomes {
             match outcome {
                 Ok(0) if alone => {
                     router.notify(Notice::Status(msg::units_status_fetch_no_units(&name(*id))));
                 }
                 Ok(0) => {}
-                Ok(_) => {
-                    started = true;
-                    router.notify(Notice::Toast(
-                        ToastKind::Info,
-                        msg::units_toast_fetching(&name(*id)),
-                    ));
-                }
+                Ok(_) => router.notify(Notice::Toast(
+                    ToastKind::Info,
+                    msg::units_toast_fetching(&name(*id)),
+                )),
                 Err(Error::AlreadyFetching) => router.notify(Notice::Toast(
                     ToastKind::Info,
                     msg::units_toast_already_fetching(&name(*id)),
@@ -1122,9 +1118,6 @@ impl UnitsPagePresenter {
                 // Gone or Manual entry: the rules that offer the action leave only a race.
                 Err(_) => {}
             }
-        }
-        if started && let Some(status) = fetch_status(&*ports, &fetching.borrow(), (self.clock)()) {
-            router.notify(Notice::Status(status));
         }
     }
 
@@ -2768,7 +2761,7 @@ mod tests {
         }
 
         #[test]
-        fn f_on_a_source_row_fetches_its_units_and_tells_it_started_on_the_toast_and_status_line() {
+        fn f_on_a_source_row_fetches_its_units_and_tells_it_started_on_a_toast_alone() {
             let mut on = fetching();
             on.page
                 .send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
@@ -2776,13 +2769,7 @@ mod tests {
 
             let told = notices(on.page.send(UnitsPageEvent::FetchNow));
 
-            assert_eq!(
-                told,
-                [
-                    info("Fetching prices from Frankfurter\u{2026}"),
-                    Notice::Status("Fetching prices from Frankfurter\u{2026}".into())
-                ]
-            );
+            assert_eq!(told, [info("Fetching prices from Frankfurter\u{2026}")]);
             assert_eq!(
                 on.transport.urls(),
                 ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
@@ -2808,7 +2795,7 @@ mod tests {
         }
 
         #[test]
-        fn the_round_landing_writes_one_toast_clears_the_status_and_the_rows() {
+        fn the_round_landing_writes_one_toast_and_clears_the_rows() {
             let mut on = fetching();
             let usd = UnitRow::new(
                 "USD".into(),
@@ -2846,13 +2833,10 @@ mod tests {
 
             assert_eq!(
                 notices,
-                [
-                    Notice::Toast(
-                        ToastKind::Success,
-                        "Fetched 2 prices from Frankfurter".into()
-                    ),
-                    Notice::Status(String::new())
-                ]
+                [Notice::Toast(
+                    ToastKind::Success,
+                    "Fetched 2 prices from Frankfurter".into()
+                )]
             );
             assert_ne!(
                 eur_line(&on.page).last_age.as_deref(),
@@ -2862,7 +2846,7 @@ mod tests {
         }
 
         #[test]
-        fn fetch_all_starts_a_round_on_every_fetching_source_and_names_them_all() {
+        fn fetch_all_starts_a_round_on_every_fetching_source_with_a_toast_each() {
             let mut on = fetching();
 
             let told = notices(on.page.send(UnitsPageEvent::FetchAll));
@@ -2874,7 +2858,6 @@ mod tests {
                 [
                     info("Fetching prices from CoinGecko\u{2026}"),
                     info("Fetching prices from Frankfurter\u{2026}"),
-                    Notice::Status("Fetching prices from CoinGecko, Frankfurter\u{2026}".into())
                 ]
             );
             let mut responses =
@@ -2882,9 +2865,10 @@ mod tests {
             let mut after: Vec<Notice> = Vec::new();
             responses.handle(on.transport.answer_last(200, BODY), &mut after);
             assert!(
-                after.contains(&Notice::Status(
-                    "Fetching prices from CoinGecko\u{2026}".into()
-                )) || after.contains(&Notice::Status(String::new()))
+                !after
+                    .iter()
+                    .any(|notice| matches!(notice, Notice::Status(_))),
+                "a landing round leaves the status line to the Shell: {after:?}"
             );
         }
 
@@ -2994,6 +2978,27 @@ mod tests {
         }
 
         #[test]
+        fn f_held_by_a_retry_after_raises_one_waiting_toast_and_the_pump_adds_nothing() {
+            let mut on = fetching();
+            on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(on.eur)));
+            on.page.send(UnitsPageEvent::FetchNow);
+            let mut responses =
+                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
+            let mut ignored: Vec<Notice> = Vec::new();
+            responses.handle(
+                on.transport.answer_last_with(429, "", Some("40")),
+                &mut ignored,
+            );
+
+            let told = notices(on.page.send(UnitsPageEvent::FetchNow));
+            let mut pumped: Vec<Notice> = Vec::new();
+            responses.pump(&mut pumped);
+
+            assert_eq!(told, [info("Waiting for Frankfurter, 40 s\u{2026}")]);
+            assert_eq!(pumped, [], "the page already said so");
+        }
+
+        #[test]
         fn price_history_shows_a_fetch_nows_backfill_in_place_then_its_failure() {
             let mut on = fetching();
             let today = test_support::now().date_naive();
@@ -3029,7 +3034,7 @@ mod tests {
                 backfill(&on.page).as_deref(),
                 Some("History failed \u{b7} Source error \u{b7} tries again in 10 minutes")
             );
-            assert_eq!(notices, [Notice::Status(String::new())], "no Toast");
+            assert_eq!(notices, [], "no Toast, and no status");
             assert_eq!(
                 eur_line(&on.page).fetch_failed_tag,
                 None,
