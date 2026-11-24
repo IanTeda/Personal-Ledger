@@ -10,68 +10,44 @@
 //! rules are tested with no network.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use lib_core::{Money, PriceSourceId, UnitId};
 use secrecy::{ExposeSecret as _, SecretString};
 
+mod call_queue;
 mod fine;
 mod history;
+mod last_fetch;
 mod reading;
 mod request;
+mod rounds;
 mod transport;
 
+use call_queue::CallQueue;
+pub use call_queue::CallRate;
 pub use fine::{FINE_FRESH, Grain};
 pub(crate) use fine::{FineKey, FinePrice, fine_prices, window};
 pub(crate) use history::{
     HistoryReading, floor, fold, gaps, history_request, read_history, wanted_weeks,
 };
+use last_fetch::LastFetches;
+pub(crate) use last_fetch::back_off;
+pub use last_fetch::{FetchOutcome, LastFetch, MIN_BACK_OFF};
 pub use reading::RETRY_AFTER_DEFAULT;
 use reading::round_failure;
 pub(crate) use reading::{Reading, read, retry_after_wait};
 pub(crate) use request::{Wanted, fill, is_due, key_missing, price_request, request, round_calls};
+use rounds::Rounds;
+pub(crate) use rounds::{InFlight, Landed, RoundId, UnitCall};
 pub use transport::{
     Method, PriceRequest, PriceResponse, PriceTransport, RequestId, RequestKey, TransportError,
     TransportOutcome,
 };
 
 use crate::{Endpoint, HistoryEndpoint, PriceLink, PriceSource, UnitRow, Updates};
-
-/// The shortest a failing source or Unit is left alone, whatever its source's Updates.
-pub const MIN_BACK_OFF: Duration = Duration::minutes(15);
-
-/// How many calls this Client sends one source in any [`CallRate::WINDOW`], declared in code
-/// from what each provider allows (ADR-0043). A burst goes out while the window has room; only
-/// the calls past it wait. Counted per Client, with no coordination across devices.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CallRate {
-    pub calls: usize,
-}
-
-impl CallRate {
-    /// The sliding window the calls are counted over.
-    pub const WINDOW: Duration = Duration::seconds(60);
-
-    /// A rate of `calls` a minute, as a built-in source declares it.
-    pub const fn per_minute(calls: usize) -> Self {
-        Self { calls }
-    }
-
-    /// The rate of `source`, `keyed` when the call carries an API key: its built-in's
-    /// `keyed_call_rate` where it has one, else its `call_rate`. A Custom source, or one not yet
-    /// saved (`None`), is 30.
-    pub fn of(source: Option<PriceSourceId>, keyed: bool) -> Self {
-        let Some(built_in) = source.and_then(crate::built_in) else {
-            return Self::per_minute(30);
-        };
-        match built_in.keyed_call_rate {
-            Some(rate) if keyed => rate,
-            _ => built_in.call_rate,
-        }
-    }
-}
 
 /// Why a fetch failed: the fixed set the transport's outcome is read onto, so no rule here sees a
 /// status code. The first five are round failures (nothing came back for the source); the last
@@ -101,40 +77,6 @@ impl FetchFailure {
     }
 }
 
-/// How a fetch this Client tried went.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FetchOutcome {
-    Fetched,
-    /// Failed for `reason`, and left alone until `retry_at`.
-    Failed {
-        reason: FetchFailure,
-        retry_at: DateTime<Utc>,
-    },
-}
-
-/// What this Client last saw of a source's round or a Unit's fetch: held in memory for the open
-/// Ledger only, never written to it or synced.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LastFetch {
-    pub at: DateTime<Utc>,
-    pub outcome: FetchOutcome,
-}
-
-impl LastFetch {
-    /// The reason it failed, `None` once fetched.
-    pub fn failure(&self) -> Option<FetchFailure> {
-        match self.outcome {
-            FetchOutcome::Fetched => None,
-            FetchOutcome::Failed { reason, .. } => Some(reason),
-        }
-    }
-
-    /// Whether it failed and is still backing off at `now`.
-    fn backing_off(&self, now: DateTime<Utc>) -> bool {
-        matches!(self.outcome, FetchOutcome::Failed { retry_at, .. } if now < retry_at)
-    }
-}
-
 /// What of a source a failure was against: editing any of it clears the failure, since the edit
 /// may be the fix.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,29 +94,6 @@ impl SourceSettings {
     }
 }
 
-/// A Unit's last fetch, with the link and source settings it was for.
-#[derive(Debug, Clone)]
-struct UnitRecord {
-    last: LastFetch,
-    link: PriceLink,
-    settings: SourceSettings,
-}
-
-/// A source's last round, with the settings it was for.
-#[derive(Debug, Clone)]
-struct SourceRecord {
-    last: LastFetch,
-    settings: SourceSettings,
-}
-
-/// How long a failure on a source that updates every `updates` is left alone: its interval, never
-/// under [`MIN_BACK_OFF`].
-pub(crate) fn back_off(updates: Updates) -> Duration {
-    updates
-        .interval()
-        .map_or(MIN_BACK_OFF, |interval| interval.max(MIN_BACK_OFF))
-}
-
 /// Whether `unit`'s last price, on a source updating every `updates`, is Out of date at `now`
 /// (`GLOSSARY.md`): written more than twice the interval ago. Never for Manual only, a Unit with
 /// no price or (with no `updates`) one on Manual entry. Worked out from the Ledger, so every
@@ -187,83 +106,13 @@ pub(crate) fn is_out_of_date(unit: &UnitRow, updates: Option<Updates>, now: Date
         .is_some_and(|price| now - price.written_at > interval * 2)
 }
 
-/// What a request was for: every Unit it asks the price of, one, or several in a batch, and the
-/// source settings it went out on.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct InFlight {
-    pub units: Vec<UnitCall>,
-    pub settings: SourceSettings,
-}
-
-/// One Unit a request asks for: the Unit and its link as they were when it was asked, so a
-/// response for a Unit relinked since writes nothing, and the price path filled for that link.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct UnitCall {
-    pub unit: UnitId,
-    pub link: PriceLink,
-    pub price_path: String,
-}
-
-/// Which window and `Retry-After` a call counts against: its source, `None` for a test of a
-/// source not saved yet.
-type Lane = Option<PriceSourceId>;
-
-/// A call waiting its turn: it goes out once its lane's window has room and no `Retry-After`
-/// holds it, a call a person asked for ahead of a scheduled one.
-struct Queued {
-    id: RequestId,
-    lane: Lane,
-    rate: CallRate,
-    asked: bool,
-    request: PriceRequest,
-}
-
-/// Names one round: the requests sent to one source together, written in one commit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct RoundId(u64);
-
-/// One source's round in flight: the requests still out and the responses held until the last
-/// lands, so the round writes once.
-struct Round {
-    source: PriceSourceId,
-    settings: SourceSettings,
-    /// Whether a person asked for it (fetch now), so its outcome is told; a scheduled round is
-    /// silent.
-    asked: bool,
-    /// Every Unit sent into the round, until it lands.
-    units: HashSet<UnitId>,
-    /// Its calls queued or out: a round is in flight from its first call joining the queue.
-    pending: HashSet<RequestId>,
-    landed: Vec<PriceResponse>,
-}
-
-/// A round whose every response has come back, ready to be written in one commit.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Landed {
-    /// The source and its settings when the round went out; `None` for a response for no round.
-    pub source: Option<(PriceSourceId, SourceSettings)>,
-    pub asked: bool,
-    pub responses: Vec<PriceResponse>,
-}
-
 /// The fetching state one Client keeps per open Ledger, beside its ports, and drops when the
 /// Ledger closes: never persisted (ADR-0062). The requests and rounds in flight, and each source's
 /// and Unit's last fetch with its back-off, so closing the Ledger clears every failure.
 pub struct PriceFetching {
-    transport: Rc<dyn PriceTransport>,
-    next: u64,
-    /// Every round's call queued or out, by request.
-    in_flight: HashMap<RequestId, InFlight>,
-    /// The calls, round and test alike, waiting their turn, oldest first.
-    queue: Vec<Queued>,
-    /// When each lane's calls in the last [`CallRate::WINDOW`] went out, oldest first.
-    windows: HashMap<Lane, VecDeque<DateTime<Utc>>>,
-    /// Until when each lane waits out a `Retry-After`.
-    holds: HashMap<Lane, DateTime<Utc>>,
-    next_round: u64,
-    rounds: HashMap<RoundId, Round>,
-    units: HashMap<UnitId, UnitRecord>,
-    sources: HashMap<PriceSourceId, SourceRecord>,
+    calls: CallQueue,
+    rounds: Rounds,
+    last: LastFetches,
     /// Tests out, by request: never part of a round, so they write nothing when they land.
     tests: HashMap<RequestId, TestInFlight>,
     /// Tests landed for a form that hasn't read them yet, dropped with the form.
@@ -283,9 +132,6 @@ pub struct PriceFetching {
     /// The weeks each Unit's provider answered with nothing, on the link it answered for: not
     /// asked again until the Ledger reopens or the link changes.
     empty_weeks: HashMap<UnitId, (PriceLink, HashSet<NaiveDate>)>,
-    /// Sources a history request found offline or rate limited, backed off for everyone until
-    /// then without touching their Last fetch.
-    quiet_back_off: HashMap<PriceSourceId, (SourceSettings, DateTime<Utc>)>,
     /// The Unit prices view's Daily and Hourly Price requests queued or out, by request.
     fine_out: HashMap<RequestId, FineCall>,
     /// Daily and Hourly Price requests waiting for their source's round to land, oldest first.
@@ -468,16 +314,9 @@ pub type SharedFetching = Rc<RefCell<PriceFetching>>;
 impl PriceFetching {
     pub fn new(transport: Rc<dyn PriceTransport>) -> Self {
         Self {
-            transport,
-            next: 0,
-            in_flight: HashMap::new(),
-            queue: Vec::new(),
-            windows: HashMap::new(),
-            holds: HashMap::new(),
-            next_round: 0,
-            rounds: HashMap::new(),
-            units: HashMap::new(),
-            sources: HashMap::new(),
+            calls: CallQueue::new(transport),
+            rounds: Rounds::default(),
+            last: LastFetches::default(),
             tests: HashMap::new(),
             test_results: HashMap::new(),
             dropped: HashSet::new(),
@@ -486,7 +325,6 @@ impl PriceFetching {
             history_queue: HashMap::new(),
             history_failures: HashMap::new(),
             empty_weeks: HashMap::new(),
-            quiet_back_off: HashMap::new(),
             fine_out: HashMap::new(),
             fine_parked: Vec::new(),
             fine_cache: HashMap::new(),
@@ -501,40 +339,34 @@ impl PriceFetching {
 
     /// How many of the rounds' requests are queued or out.
     pub fn in_flight(&self) -> usize {
-        self.in_flight.len()
+        self.rounds.in_flight()
     }
 
     /// Whether request `id` is still queued or out.
     pub(crate) fn in_flight_request(&self, id: RequestId) -> bool {
-        self.in_flight.contains_key(&id)
+        self.rounds.in_flight_request(id)
     }
 
     /// Whether a request for `unit` is queued or out.
     pub fn fetching(&self, unit: UnitId) -> bool {
-        self.in_flight
-            .values()
-            .any(|sent| sent.units.iter().any(|call| call.unit == unit))
+        self.rounds.fetching(unit)
     }
 
     /// Whether `source` has a round queued or out, which a scheduled check leaves alone.
     pub(crate) fn source_in_flight(&self, source: PriceSourceId) -> bool {
-        self.rounds.values().any(|round| round.source == source)
+        self.rounds.source_in_flight(source)
     }
 
     /// Whether `unit` is in a round a person asked for that is still out, which its row shows as
     /// *Fetching…*.
     pub fn unit_asked_for(&self, unit: UnitId) -> bool {
-        self.rounds
-            .values()
-            .any(|round| round.asked && round.units.contains(&unit))
+        self.rounds.unit_asked_for(unit)
     }
 
     /// Whether `source` has a round a person asked for still out, which its row shows as
     /// *Fetching…*.
     pub fn source_asked_for(&self, source: PriceSourceId) -> bool {
-        self.rounds
-            .values()
-            .any(|round| round.asked && round.source == source)
+        self.rounds.source_asked_for(source)
     }
 
     /// Queues a test's `request` at `now`, remembering what it asked until it lands. Never in a
@@ -546,29 +378,10 @@ impl PriceFetching {
         asked: TestInFlight,
         now: DateTime<Utc>,
     ) -> RequestId {
-        let id = self.next_request();
-        let lane = asked.source;
+        let id = self.calls.enqueue(asked.source, true, request);
         self.tests.insert(id, asked);
-        self.enqueue(id, lane, true, request);
         self.release(now);
         id
-    }
-
-    fn next_request(&mut self) -> RequestId {
-        let id = RequestId(self.next);
-        self.next += 1;
-        id
-    }
-
-    fn enqueue(&mut self, id: RequestId, lane: Lane, asked: bool, request: PriceRequest) {
-        let rate = CallRate::of(lane, request.key.is_some());
-        self.queue.push(Queued {
-            id,
-            lane,
-            rate,
-            asked,
-            request,
-        });
     }
 
     /// Sends every queued call its lane allows at `now`: the asked-for first, then the scheduled,
@@ -576,72 +389,28 @@ impl PriceFetching {
     /// A lane that can't send one call sends none after it, so no call overtakes another on its
     /// lane but an asked-for one. Returns how many went out.
     pub(crate) fn release(&mut self, now: DateTime<Utc>) -> usize {
-        self.holds.retain(|_, until| now < *until);
-        let mut order: Vec<usize> = (0..self.queue.len()).collect();
-        order.sort_by_key(|&index| !self.queue[index].asked);
-        let mut blocked: HashSet<Lane> = HashSet::new();
-        let mut going: Vec<usize> = Vec::new();
-        for index in order {
-            let call = &self.queue[index];
-            if blocked.contains(&call.lane) {
-                continue;
-            }
-            let window = self.windows.entry(call.lane).or_default();
-            while window
-                .front()
-                .is_some_and(|sent| now - *sent >= CallRate::WINDOW)
-            {
-                window.pop_front();
-            }
-            if self.holds.contains_key(&call.lane) || window.len() >= call.rate.calls {
-                blocked.insert(call.lane);
-                continue;
-            }
-            window.push_back(now);
-            going.push(index);
-        }
-        let mut queue: Vec<Option<Queued>> = std::mem::take(&mut self.queue)
-            .into_iter()
-            .map(Some)
-            .collect();
-        let sent = going.len();
-        for index in going {
-            let Some(call) = queue[index].take() else {
-                continue;
-            };
-            if let Some(test) = self.tests.get_mut(&call.id) {
+        let sent = self.calls.release(now);
+        for id in &sent {
+            if let Some(test) = self.tests.get_mut(id) {
                 // A test times its answer from when it went out, not from when it queued.
                 test.sent_at = now;
             }
-            self.transport.send(call.id, call.request);
         }
-        self.queue = queue.into_iter().flatten().collect();
-        if !self.queue.is_empty() {
-            tracing::debug!(queued = self.queue.len(), "Price requests wait their turn");
-        }
-        sent
+        sent.len()
     }
 
     /// The source a call a person asked for waits on, and the whole seconds left of its
     /// `Retry-After` at `now`, rounded up. `None` while no such call is held, a queued one only
     /// waiting its call rate included.
     pub(crate) fn waiting(&self, now: DateTime<Utc>) -> Option<(PriceSourceId, i64)> {
-        self.queue
-            .iter()
-            .filter(|call| call.asked && !self.tests.contains_key(&call.id))
-            .find_map(|call| {
-                let source = call.lane?;
-                let until = self.holds.get(&call.lane)?;
-                let left = (*until - now).num_milliseconds();
-                (left > 0).then_some((source, (left + 999) / 1000))
-            })
+        self.calls.waiting(now, |id| self.tests.contains_key(&id))
     }
 
     /// [`Self::waiting`] the first time it is asked of a hold, `None` after: a wait is announced
     /// once as it begins, never counted down.
     pub(crate) fn wait_begun(&mut self, now: DateTime<Utc>) -> Option<(PriceSourceId, i64)> {
         let (source, seconds) = self.waiting(now)?;
-        let until = *self.holds.get(&Some(source))?;
+        let until = self.calls.held_until(Some(source))?;
         if self.announced_wait == Some((source, until)) {
             return None;
         }
@@ -716,9 +485,8 @@ impl PriceFetching {
             history.range,
             asked.key.clone(),
         );
-        let id = self.next_request();
+        let id = self.calls.enqueue(asked.source, true, request);
         self.test_histories.insert(id, (test, history));
-        self.enqueue(id, asked.source, true, request);
         self.release(now);
     }
 
@@ -801,20 +569,8 @@ impl PriceFetching {
     /// Starts a round on `source`, `asked` when a person asked for it. Every request sent into it
     /// is held until the last lands; a round sent nothing never lands, so open one only to send.
     pub(crate) fn open_round(&mut self, source: &PriceSource<'_>, asked: bool) -> RoundId {
-        let id = RoundId(self.next_round);
-        self.next_round += 1;
-        self.rounds.insert(
-            id,
-            Round {
-                source: source.id,
-                settings: SourceSettings::of(source),
-                asked,
-                units: HashSet::new(),
-                pending: HashSet::new(),
-                landed: Vec::new(),
-            },
-        );
-        id
+        self.rounds
+            .open(source.id, SourceSettings::of(source), asked)
     }
 
     /// Queues `request` for `sent` in `round`, remembering it until its response comes back, and
@@ -826,17 +582,12 @@ impl PriceFetching {
         sent: InFlight,
         now: DateTime<Utc>,
     ) -> RequestId {
-        let id = self.next_request();
-        let mut lane = None;
-        let mut asked = false;
-        if let Some(round) = self.rounds.get_mut(&round) {
-            round.units.extend(sent.units.iter().map(|call| call.unit));
-            round.pending.insert(id);
-            lane = Some(round.source);
-            asked = round.asked;
-        }
-        self.in_flight.insert(id, sent);
-        self.enqueue(id, lane, asked, request);
+        let (lane, asked) = match self.rounds.source_of(round) {
+            Some((source, asked)) => (Some(source), asked),
+            None => (None, false),
+        };
+        let id = self.calls.enqueue(lane, asked, request);
+        self.rounds.sent(round, id, sent);
         self.release(now);
         id
     }
@@ -846,112 +597,59 @@ impl PriceFetching {
     /// calls already out have. A 429 also holds the source until its `Retry-After`, read at `now`.
     /// A response for no round in flight lands alone, for the writer to drop.
     pub(crate) fn land(&mut self, response: PriceResponse, now: DateTime<Utc>) -> Option<Landed> {
-        let Self {
-            rounds,
-            queue,
-            in_flight,
-            holds,
-            ..
-        } = self;
-        let Some((&id, round)) = rounds
-            .iter_mut()
-            .find(|(_, round)| round.pending.contains(&response.request))
-        else {
+        let Some((round, source)) = self.rounds.round_of(response.request) else {
             return Some(Landed {
                 source: None,
                 asked: false,
                 responses: vec![response],
             });
         };
-        round.pending.remove(&response.request);
-        if let Some(failure) = round_failure(&response.outcome) {
-            if let TransportOutcome::Answered { retry_after, .. } = &response.outcome
-                && failure == FetchFailure::RateLimited
-            {
-                let until = now + retry_after_wait(retry_after.as_deref(), now);
-                tracing::warn!(price_source_id = %round.source, %until, "A price source asked to wait");
-                holds.insert(Some(round.source), until);
-            }
-            // The round's calls still queued never go; what is left pending is out already.
-            let dropped: HashSet<RequestId> = queue
-                .iter()
-                .filter(|call| round.pending.contains(&call.id))
-                .map(|call| call.id)
-                .collect();
-            if !dropped.is_empty() {
-                tracing::warn!(
-                    price_source_id = %round.source,
-                    dropped = dropped.len(),
-                    ?failure,
-                    "Stopped a price round before its queued calls went out"
-                );
-                queue.retain(|call| !dropped.contains(&call.id));
-                for id in &dropped {
-                    for call in in_flight
-                        .remove(id)
-                        .map(|sent| sent.units)
-                        .unwrap_or_default()
-                    {
-                        round.units.remove(&call.unit);
-                    }
-                }
-                round.pending.retain(|id| !dropped.contains(id));
-            }
+        let failure = round_failure(&response.outcome);
+        if failure == Some(FetchFailure::RateLimited)
+            && let TransportOutcome::Answered { retry_after, .. } = &response.outcome
+        {
+            let until = now + retry_after_wait(retry_after.as_deref(), now);
+            tracing::warn!(price_source_id = %source, %until, "A price source asked to wait");
+            self.calls.hold(Some(source), until);
         }
-        round.landed.push(response);
-        if !round.pending.is_empty() {
-            return None;
+        let pending = self.rounds.land(round, response, failure.is_some());
+        // The round's calls still queued never go; what is left pending is out already.
+        let dropped = self.calls.remove(&pending);
+        if !dropped.is_empty() {
+            tracing::warn!(
+                price_source_id = %source,
+                dropped = dropped.len(),
+                ?failure,
+                "Stopped a price round before its queued calls went out"
+            );
+            self.rounds.forget(round, &dropped);
         }
-        let round = self.rounds.remove(&id)?;
-        self.release_parked(round.source, now);
-        Some(Landed {
-            source: Some((round.source, round.settings)),
-            asked: round.asked,
-            responses: round.landed,
-        })
+        let landed = self.rounds.finish(round)?;
+        self.release_parked(source, now);
+        Some(landed)
     }
 
     /// What request `id` was for, forgetting it: `None` for one this Ledger never sent.
     pub(crate) fn take(&mut self, id: RequestId) -> Option<InFlight> {
-        self.in_flight.remove(&id)
+        self.rounds.take(id)
     }
 
     /// `unit`'s last fetch on `source` while it still holds: the Unit is active and neither its
     /// link nor its source's settings changed since. Editing either, or deactivating the Unit,
     /// drops it.
     pub fn unit_fetch(&self, unit: &UnitRow, source: &PriceSource<'_>) -> Option<&LastFetch> {
-        let record = self.units.get(&unit.id)?;
-        (unit.is_active
-            && source.id == unit.link.source_id
-            && record.link == unit.link
-            && record.settings == SourceSettings::of(source))
-        .then_some(&record.last)
+        self.last.unit_fetch(unit, source)
     }
 
     /// `source`'s last round while it still holds: its settings haven't changed since.
     pub fn source_fetch(&self, source: &PriceSource<'_>) -> Option<&LastFetch> {
-        let record = self.sources.get(&source.id)?;
-        (record.settings == SourceSettings::of(source)).then_some(&record.last)
+        self.last.source_fetch(source)
     }
 
     /// A key was stored or replaced for `source`: its Key missing and Key rejected failures, and
     /// its Units', clear, so the next check tries it again.
     pub fn key_stored(&mut self, source: PriceSourceId) {
-        let keyed = |last: &LastFetch| {
-            matches!(
-                last.failure(),
-                Some(FetchFailure::KeyMissing | FetchFailure::KeyRejected)
-            )
-        };
-        if self
-            .sources
-            .get(&source)
-            .is_some_and(|record| keyed(&record.last))
-        {
-            self.sources.remove(&source);
-        }
-        self.units
-            .retain(|_, record| record.link.source_id != source || !keyed(&record.last));
+        self.last.key_stored(source);
     }
 
     /// Asks for a series as the Unit prices view wants it, at `now`: a person's call, so it skips
@@ -978,11 +676,10 @@ impl PriceFetching {
         let Some(request) = call.request.take() else {
             return;
         };
-        let id = self.next_request();
         let source = call.source();
         tracing::debug!(price_source_id = %source, unit_id = %call.key.unit, grain = ?call.key.grain, "Asking a price source for finer prices");
+        let id = self.calls.enqueue(Some(source), true, request);
         self.fine_out.insert(id, call);
-        self.enqueue(id, Some(source), true, request);
         self.release(now);
     }
 
@@ -1041,7 +738,7 @@ impl PriceFetching {
                 ..
             } => {
                 let until = now + retry_after_wait(retry_after.as_deref(), now);
-                self.holds.insert(Some(call.source()), until);
+                self.calls.hold(Some(call.source()), until);
                 Some(until)
             }
             _ => None,
@@ -1069,8 +766,8 @@ impl PriceFetching {
                 if matches!(reason, FetchFailure::Offline | FetchFailure::RateLimited) {
                     let backed = now + back_off(call.settings.updates);
                     let until = hold.map_or(backed, |until| until.max(backed));
-                    self.quiet_back_off
-                        .insert(call.source(), (call.settings.clone(), until));
+                    self.last
+                        .back_off_quietly(call.source(), call.settings.clone(), until);
                 }
                 self.fine_failed.insert(call.key, (call.link, reason));
             }
@@ -1097,15 +794,10 @@ impl PriceFetching {
                 .fine_out
                 .iter()
                 .find(|(_, call)| call.key == key)
-                .and_then(|(id, call)| {
-                    self.queue
-                        .iter()
-                        .any(|queued| queued.id == *id)
-                        .then_some(call)
-                })
-                .and_then(|call| self.holds.get(&Some(call.source())))
+                .and_then(|(id, call)| self.calls.queued(*id).then_some(call))
+                .and_then(|call| self.calls.held_until(Some(call.source())))
                 .map_or(0, |until| {
-                    let left = (*until - now).num_milliseconds();
+                    let left = (until - now).num_milliseconds();
                     if left > 0 { (left + 999) / 1000 } else { 0 }
                 });
             return FineState::Fetching { waiting };
@@ -1126,16 +818,7 @@ impl PriceFetching {
     /// Whether `source` failed a round, or a history request found it offline or rate limited,
     /// and is still backing off at `now`.
     pub(crate) fn source_backing_off(&self, source: &PriceSource<'_>, now: DateTime<Utc>) -> bool {
-        let quiet = self
-            .quiet_back_off
-            .get(&source.id)
-            .is_some_and(|(settings, until)| {
-                *settings == SourceSettings::of(source) && now < *until
-            });
-        quiet
-            || self
-                .source_fetch(source)
-                .is_some_and(|last| last.backing_off(now))
+        self.last.source_backing_off(source, now)
     }
 
     /// Queues `call` behind its source's history requests, oldest gap first, and sends the next
@@ -1171,16 +854,14 @@ impl PriceFetching {
         let Some(request) = call.request.take() else {
             return;
         };
-        let id = self.next_request();
         tracing::debug!(
             price_source_id = %source,
             unit_id = %call.unit,
             weeks = call.weeks.len(),
             "Asking a price source for a Unit's history"
         );
-        let asked = call.asked;
+        let id = self.calls.enqueue(Some(source), call.asked, request);
         self.history_out.insert(id, call);
-        self.enqueue(id, Some(source), asked, request);
         self.release(now);
     }
 
@@ -1204,7 +885,7 @@ impl PriceFetching {
         } = &response.outcome
         {
             let until = now + retry_after_wait(retry_after.as_deref(), now);
-            self.holds.insert(Some(call.source), until);
+            self.calls.hold(Some(call.source), until);
         }
         Some(call)
     }
@@ -1219,7 +900,7 @@ impl PriceFetching {
         at: DateTime<Utc>,
     ) {
         tracing::warn!(unit_id = %call.unit, price_source_id = %call.source, ?reason, "A Unit's history request failed");
-        let hold = self.holds.get(&Some(call.source)).copied();
+        let hold = self.calls.held_until(Some(call.source));
         let retry_at = hold.map_or(at + HISTORY_RETRY, |until| until.max(at + HISTORY_RETRY));
         let mut failed = vec![(call.unit, call.link.clone(), call.settings.clone())];
         if reason.is_round() {
@@ -1227,8 +908,8 @@ impl PriceFetching {
                 let until = hold.map_or(at + back_off(call.settings.updates), |until| {
                     until.max(at + back_off(call.settings.updates))
                 });
-                self.quiet_back_off
-                    .insert(call.source, (call.settings.clone(), until));
+                self.last
+                    .back_off_quietly(call.source, call.settings.clone(), until);
             }
             for waiting in self.history_queue.remove(&call.source).unwrap_or_default() {
                 failed.push((waiting.unit, waiting.link, waiting.settings));
@@ -1326,16 +1007,13 @@ impl PriceFetching {
         source: &PriceSource<'_>,
         now: DateTime<Utc>,
     ) -> bool {
-        self.unit_fetch(unit, source)
-            .is_some_and(|last| last.backing_off(now))
+        self.last.unit_backing_off(unit, source, now)
     }
 
     /// Whether this Client fetched `unit` on another link than it has now: editing its source,
     /// symbol or quote makes it due straight away.
     pub(crate) fn relinked(&self, unit: &UnitRow) -> bool {
-        self.units
-            .get(&unit.id)
-            .is_some_and(|record| record.link != unit.link)
+        self.last.relinked(unit)
     }
 
     /// Notes how `unit`'s fetch on `link` went at `at`, backing it off on a failure.
@@ -1347,15 +1025,7 @@ impl PriceFetching {
         at: DateTime<Utc>,
         failure: Option<FetchFailure>,
     ) {
-        let last = Self::last(settings, at, failure);
-        self.units.insert(
-            unit,
-            UnitRecord {
-                last,
-                link,
-                settings: settings.clone(),
-            },
-        );
+        self.last.record_unit(unit, link, settings, at, failure);
     }
 
     /// Notes how `source`'s round went at `at`: failed on a round failure, which backs it off, or
@@ -1367,40 +1037,8 @@ impl PriceFetching {
         at: DateTime<Utc>,
         failure: Option<FetchFailure>,
     ) {
-        let mut last = Self::last(settings, at, failure);
-        // A 429 backs off for the longer of the usual rule and its `Retry-After`.
-        if let (
-            Some(FetchFailure::RateLimited),
-            Some(until),
-            FetchOutcome::Failed { retry_at, .. },
-        ) = (failure, self.holds.get(&Some(source)), &mut last.outcome)
-        {
-            *retry_at = (*retry_at).max(*until);
-        }
-        self.sources.insert(
-            source,
-            SourceRecord {
-                last,
-                settings: settings.clone(),
-            },
-        );
-    }
-
-    fn last(
-        settings: &SourceSettings,
-        at: DateTime<Utc>,
-        failure: Option<FetchFailure>,
-    ) -> LastFetch {
-        LastFetch {
-            at,
-            outcome: match failure {
-                None => FetchOutcome::Fetched,
-                Some(reason) => FetchOutcome::Failed {
-                    reason,
-                    retry_at: at + back_off(settings.updates),
-                },
-            },
-        }
+        let hold = self.calls.held_until(Some(source));
+        self.last.record_source(source, settings, at, failure, hold);
     }
 }
 
@@ -1408,156 +1046,6 @@ impl PriceFetching {
 mod tests {
     use super::*;
     use crate::FRANKFURTER;
-
-    mod pacing {
-        use std::rc::Rc;
-
-        use super::*;
-        use crate::fake::FakeTransport;
-        use crate::{COINGECKO, FRANKFURTER, YAHOO_FINANCE, built_in};
-
-        fn at(seconds: i64) -> DateTime<Utc> {
-            NaiveDate::from_ymd_opt(2026, 10, 21)
-                .and_then(|day| day.and_hms_opt(9, 0, 0))
-                .expect("a real time")
-                .and_utc()
-                + Duration::seconds(seconds)
-        }
-
-        struct Client {
-            transport: FakeTransport,
-            fetching: PriceFetching,
-        }
-
-        fn client() -> Client {
-            let transport = FakeTransport::default();
-            Client {
-                fetching: PriceFetching::new(Rc::new(transport.clone())),
-                transport,
-            }
-        }
-
-        fn source(id: PriceSourceId) -> PriceSource<'static> {
-            let built_in = built_in(id).expect("a built-in");
-            PriceSource {
-                id,
-                name: built_in.name,
-                origin: crate::SourceOrigin::BuiltIn(built_in),
-                updates: built_in.updates,
-            }
-        }
-
-        impl Client {
-            /// Starts a round on `source` for `symbol`, `asked` or scheduled, at `now`.
-            fn round(&mut self, id: PriceSourceId, symbol: &str, asked: bool, now: DateTime<Utc>) {
-                let source = source(id);
-                let endpoint = source.endpoint().expect("fetching");
-                let (request, price_path) = price_request(endpoint, symbol, "AUD", None);
-                let round = self.fetching.open_round(&source, asked);
-                self.fetching.send(
-                    round,
-                    request,
-                    InFlight {
-                        units: vec![UnitCall {
-                            unit: UnitId::new(),
-                            link: PriceLink {
-                                source_id: id,
-                                symbol: symbol.into(),
-                                quote: UnitId::SEED_AUD,
-                            },
-                            price_path,
-                        }],
-                        settings: SourceSettings::of(&source),
-                    },
-                    now,
-                );
-            }
-
-            fn sent(&self) -> usize {
-                self.transport.requests().len()
-            }
-        }
-
-        #[test]
-        fn each_source_has_its_call_rate_and_coingeckos_rises_with_a_demo_key() {
-            let custom = Some(PriceSourceId::new());
-            assert_eq!(CallRate::of(Some(COINGECKO), false).calls, 5);
-            assert_eq!(CallRate::of(Some(COINGECKO), true).calls, 30);
-            assert_eq!(CallRate::of(Some(YAHOO_FINANCE), false).calls, 30);
-            assert_eq!(CallRate::of(Some(FRANKFURTER), false).calls, 60);
-            assert_eq!(CallRate::of(custom, true).calls, 30);
-            assert_eq!(CallRate::of(None, false).calls, 30);
-        }
-
-        #[test]
-        fn a_burst_within_the_rate_goes_at_once_and_the_rest_wait_for_the_window_to_slide() {
-            let mut client = client();
-            for index in 0..62 {
-                client.round(FRANKFURTER, &format!("C{index:02}"), false, at(0));
-            }
-            assert_eq!(client.sent(), 60, "Frankfurter takes 60 a minute");
-
-            client.fetching.release(at(59));
-            assert_eq!(client.sent(), 60, "never more than 60 in any 60 seconds");
-
-            client.fetching.release(at(60));
-            assert_eq!(client.sent(), 62);
-        }
-
-        #[test]
-        fn the_window_slides_so_only_calls_older_than_a_minute_make_room() {
-            let mut client = client();
-            client.round(COINGECKO, "a", false, at(0));
-            for symbol in ["b", "c", "d", "e"] {
-                client.round(COINGECKO, symbol, false, at(30));
-            }
-            client.round(COINGECKO, "f", false, at(31));
-            client.round(COINGECKO, "g", false, at(31));
-            assert_eq!(client.sent(), 5);
-
-            client.fetching.release(at(60));
-            assert_eq!(client.sent(), 6, "a's slot is free, b to e's aren't yet");
-            client.fetching.release(at(90));
-            assert_eq!(client.sent(), 7);
-        }
-
-        #[test]
-        fn an_asked_for_call_goes_ahead_of_a_scheduled_one_queued_before_it() {
-            let mut client = client();
-            for symbol in ["a", "b", "c", "d", "e"] {
-                client.round(COINGECKO, symbol, true, at(0));
-            }
-            client.round(COINGECKO, "scheduled", false, at(1));
-            client.round(COINGECKO, "asked", true, at(2));
-            assert_eq!(client.sent(), 5, "the window is full");
-
-            client.fetching.release(at(60));
-
-            let urls = client.transport.urls();
-            assert_eq!(urls.len(), 7);
-            assert!(urls[5].contains("ids=asked&"), "{urls:?}");
-            assert!(urls[6].contains("ids=scheduled&"), "{urls:?}");
-        }
-
-        #[test]
-        fn each_source_counts_its_own_calls() {
-            let mut client = client();
-            for symbol in ["a", "b", "c", "d", "e", "f"] {
-                client.round(COINGECKO, symbol, true, at(0));
-            }
-            client.round(FRANKFURTER, "EUR", false, at(0));
-
-            assert_eq!(client.sent(), 6, "five CoinGecko and Frankfurter's one");
-        }
-    }
-
-    #[test]
-    fn a_failure_backs_off_for_its_sources_interval_and_never_under_15_minutes() {
-        assert_eq!(back_off(Updates::Every15Minutes), Duration::minutes(15));
-        assert_eq!(back_off(Updates::Hourly), Duration::hours(1));
-        assert_eq!(back_off(Updates::Daily), Duration::hours(24));
-        assert_eq!(back_off(Updates::ManualOnly), MIN_BACK_OFF);
-    }
 
     mod out_of_date {
         use chrono::Duration;
