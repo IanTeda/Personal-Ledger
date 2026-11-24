@@ -50,6 +50,8 @@ impl Backfill {
         };
         let last_week = WeeklyPrice::week_of(self.today) - Duration::weeks(1);
         let mut calls: Vec<HistoryCall> = Vec::new();
+        // Each source's key, opened once however many of its Units want history.
+        let mut keys = std::collections::HashMap::new();
         for unit in units_by_code(&units) {
             if only.is_some_and(|ids| !ids.contains(&unit.id)) {
                 continue;
@@ -87,7 +89,10 @@ impl Backfill {
                 continue;
             };
             let settings = SourceSettings::of(&source);
-            let key = ports.keys().key(source.id);
+            let key = keys
+                .entry(source.id)
+                .or_insert_with(|| ports.keys().key(source.id))
+                .clone();
             let mut call = HistoryCall {
                 unit: unit.id,
                 code: unit.code.clone(),

@@ -378,10 +378,11 @@ impl UnitsPagePresenter {
         }
     }
 
-    /// The page fetching prices through `fetching`, the Client's for its open Ledger.
+    /// The page fetching prices through `fetching`, the Client's for its open Ledger; `None` for a
+    /// Client with no price feed.
     #[must_use]
-    pub fn with_fetching(mut self, fetching: SharedFetching) -> Self {
-        self.fetching = Some(fetching);
+    pub fn with_fetching(mut self, fetching: Option<SharedFetching>) -> Self {
+        self.fetching = fetching;
         self
     }
 
@@ -955,14 +956,7 @@ impl UnitsPagePresenter {
         if self.fetching.is_none() {
             return;
         }
-        let first = {
-            let ports = self.ports.borrow();
-            let units = ports.units().units();
-            units_by_code(&units)
-                .into_iter()
-                .find(|unit| unit.link.source_id == id)
-                .cloned()
-        };
+        let first = super::first_linked(&*self.ports.borrow(), id);
         match first {
             Some(unit) => self.test_link(&unit, router),
             None => self.open(UnitsDialog::EditPriceSource(id), router),
@@ -1086,9 +1080,6 @@ impl UnitsPagePresenter {
         alone: bool,
         router: &mut dyn UnitsRouter,
     ) {
-        if self.fetching.is_none() {
-            return;
-        }
         let ports = self.ports.borrow();
         let catalogue = ports.source_catalogue();
         let name = |id| {
@@ -2538,7 +2529,7 @@ mod tests {
             let transport = FakeTransport::default();
             let fetching = PriceFetching::shared(Rc::new(transport.clone()));
             let presenter = UnitsPagePresenter::new(shared, clock(), &KeyBindingConfig::default())
-                .with_fetching(fetching.clone());
+                .with_fetching(Some(fetching.clone()));
             Fetching {
                 page: Page {
                     ports,

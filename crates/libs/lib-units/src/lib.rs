@@ -35,7 +35,7 @@ pub use entity::{
 };
 pub use error::{Error, Result};
 pub use fetching::{
-    CallRate, FINE_FRESH, FetchFailure, FetchOutcome, Grain, LastFetch, MIN_BACK_OFF, Method,
+    CallRate, FINE_FRESH, FetchFailure, FetchOutcome, Grain, LastFetch, MIN_BACK_OFF,
     PriceFetching, PriceRequest, PriceResponse, PriceTransport, RETRY_AFTER_DEFAULT, RequestId,
     RequestKey, SharedFetching, TransportError, TransportOutcome,
 };

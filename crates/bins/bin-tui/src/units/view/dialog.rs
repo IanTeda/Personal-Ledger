@@ -88,10 +88,8 @@ impl Dialog {
         now: &lib_units::presenter::Clock,
         fetching: Option<&SharedFetching>,
     ) -> Option<Self> {
-        let testing = |form: PriceSourceFormPresenter| match fetching {
-            Some(fetching) => form.with_testing(fetching.clone(), now.clone()),
-            None => form,
-        };
+        let testing =
+            |form: PriceSourceFormPresenter| form.with_testing(fetching.cloned(), now.clone());
         let ports = ports.clone();
         // The TUI's footer reads its own hints from the keymap, so the Presenters' stay empty.
         let keys = DialogKeys::default();
@@ -507,48 +505,14 @@ fn price_source_event(
         KeyCode::Right => return Some(PriceSourceFormEvent::Step(1)),
         _ => {}
     }
-    if view.name.focused {
-        return edited(&view.name.text, key)
-            .map(|text| PriceSourceFormEvent::Text(PriceSourceField::Name, text));
-    }
-    if api_key_view.is_some_and(|key| key.field.focused && key.enabled) {
+    if view.focused == PriceSourceField::ApiKey {
+        api_key_view.filter(|key| key.enabled)?;
         let typed = edited(api_key.expose_secret(), key)?;
         *api_key = SecretString::from(typed);
         return Some(PriceSourceFormEvent::ApiKey(api_key.clone()));
     }
-    if let Some(symbol) = view
-        .test
-        .as_ref()
-        .and_then(|test| test.symbol.as_ref())
-        .filter(|symbol| symbol.focused)
-    {
-        return edited(&symbol.text, key)
-            .map(|text| PriceSourceFormEvent::Text(PriceSourceField::Symbol, text));
-    }
-    let endpoint = view.endpoint?;
-    let fields = [
-        (Some(endpoint.address), PriceSourceField::Address),
-        (Some(endpoint.request), PriceSourceField::Request),
-        (Some(endpoint.price_path), PriceSourceField::PricePath),
-        (Some(endpoint.headers), PriceSourceField::Headers),
-        (endpoint.key_param, PriceSourceField::KeyParam),
-        (
-            Some(endpoint.history.request),
-            PriceSourceField::HistoryRequest,
-        ),
-        (
-            Some(endpoint.history.series_path),
-            PriceSourceField::SeriesPath,
-        ),
-        (Some(endpoint.history.date_path), PriceSourceField::DatePath),
-        (
-            Some(endpoint.history.price_path),
-            PriceSourceField::HistoryPricePath,
-        ),
-    ];
-    let (text, field) = fields
-        .into_iter()
-        .find_map(|(view, field)| view.filter(|view| view.focused).map(|view| (view, field)))?;
+    let field = view.focused;
+    let text = view.text_field(field)?;
     edited(&text.text, key).map(|text| PriceSourceFormEvent::Text(field, text))
 }
 

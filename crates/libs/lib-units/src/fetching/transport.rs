@@ -9,16 +9,10 @@ use crate::KeyPlacement;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RequestId(pub u64);
 
-/// The HTTP method a request goes by. Every provider answers a price on a GET.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Method {
-    Get,
-}
-
 /// One request for a price, built in full here so the transport knows nothing about providers.
+/// Every provider answers a price on a GET, so the request carries no method.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PriceRequest {
-    pub method: Method,
     /// Never holds the key, so the request can be printed and traced.
     pub url: String,
     /// Header names and values, in the order sent.

@@ -5,7 +5,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::UnitId;
 use secrecy::SecretString;
 
-use super::{InFlight, Method, PriceRequest, RequestKey, SourceSettings, UnitCall};
+use super::{InFlight, PriceRequest, RequestKey, SourceSettings, UnitCall};
 use crate::{Endpoint, PriceLink, PriceSourceAuth, UnitRow, Updates, WeeklyPrice};
 
 /// Whether `endpoint` needs an API key and `key`, the one this Client reads for its source, is
@@ -37,8 +37,10 @@ pub(crate) fn is_due(
         return false;
     };
     let week = WeeklyPrice::week_of(today);
+    // The current week, when it has a price, is the newest: prices are kept oldest week first.
     unit.prices
         .iter()
+        .rev()
         .find(|price| price.week == week)
         .is_none_or(|current| now - current.written_at >= interval)
 }
@@ -90,6 +92,19 @@ pub(crate) struct Wanted {
     pub quote: String,
 }
 
+impl Wanted {
+    /// `unit` as a round wants it, its quote Unit found among `units`: `None` when that Unit is
+    /// gone.
+    pub(crate) fn of(unit: &UnitRow, units: &[UnitRow]) -> Option<Self> {
+        let quote = units.iter().find(|quote| quote.id == unit.link.quote)?;
+        Some(Self {
+            unit: unit.id,
+            link: unit.link.clone(),
+            quote: quote.code.clone(),
+        })
+    }
+}
+
 /// The calls a round on `endpoint` makes for `wanted`, in order: one per Unit, or, for a source
 /// with a batch request, one per chunk of at most its `max_symbols` distinct symbols, each asking
 /// every quote its Units need. Each Unit's price is read at its own filled price path.
@@ -108,8 +123,8 @@ pub(crate) fn round_calls(
         return wanted
             .iter()
             .map(|one| {
-                let (request, _) =
-                    price_request(endpoint, &one.link.symbol, &one.quote, key.cloned());
+                let path_and_query = fill(&endpoint.request, &one.link.symbol, &one.quote);
+                let request = request(endpoint, &path_and_query, key.cloned());
                 let sent = InFlight {
                     units: vec![call(one)],
                     settings: settings.clone(),
@@ -118,12 +133,7 @@ pub(crate) fn round_calls(
             })
             .collect();
     };
-    let mut symbols: Vec<&str> = Vec::new();
-    for one in wanted {
-        if !symbols.contains(&one.link.symbol.as_str()) {
-            symbols.push(&one.link.symbol);
-        }
-    }
+    let symbols = distinct(wanted.iter().map(|one| one.link.symbol.as_str()));
     symbols
         .chunks(batch.max_symbols.max(1))
         .map(|chunk| {
@@ -131,12 +141,7 @@ pub(crate) fn round_calls(
                 .iter()
                 .filter(|one| chunk.contains(&one.link.symbol.as_str()))
                 .collect();
-            let mut quotes: Vec<&str> = Vec::new();
-            for one in &units {
-                if !quotes.contains(&one.quote.as_str()) {
-                    quotes.push(&one.quote);
-                }
-            }
+            let quotes = distinct(units.iter().map(|one| one.quote.as_str()));
             let request = request(
                 endpoint,
                 &fill_lists(&batch.request, chunk, &quotes),
@@ -149,6 +154,17 @@ pub(crate) fn round_calls(
             (request, sent)
         })
         .collect()
+}
+
+/// `items` in their first-seen order, each once.
+fn distinct<'a>(items: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
+    let mut seen = Vec::new();
+    for item in items {
+        if !seen.contains(&item) {
+            seen.push(item);
+        }
+    }
+    seen
 }
 
 /// A GET of `path_and_query` on `endpoint`'s address with its fixed headers, and `key` where its
@@ -172,7 +188,6 @@ pub(crate) fn request(
         (PriceSourceAuth::None, _) | (PriceSourceAuth::ApiKey { .. }, None) => None,
     };
     PriceRequest {
-        method: Method::Get,
         url: format!(
             "{}{}",
             endpoint.address.trim_end_matches('/'),
@@ -203,7 +218,6 @@ mod tests {
         assert_eq!(
             request,
             PriceRequest {
-                method: Method::Get,
                 url: "https://api.frankfurter.dev/v2/rate/EUR/AUD".into(),
                 headers: Vec::new(),
                 key: None,
@@ -221,7 +235,6 @@ mod tests {
         assert_eq!(
             request,
             PriceRequest {
-                method: Method::Get,
                 url: "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=aud"
                     .into(),
                 headers: Vec::new(),

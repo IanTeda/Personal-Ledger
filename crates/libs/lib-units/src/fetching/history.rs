@@ -138,17 +138,7 @@ pub(crate) fn read_history(
             let (date, price) = (path(&history.date_path), path(&history.price_path));
             points
                 .iter()
-                .filter_map(|point| {
-                    let stamp = point.pointer(&date)?;
-                    Some(Point {
-                        day: day_of(stamp, 0)?,
-                        at: instant_of(stamp),
-                        close: money(point.pointer(&price)?)?,
-                        open: None,
-                        high: None,
-                        low: None,
-                    })
-                })
+                .filter_map(|point| close_point(point.pointer(&date)?, point.pointer(&price)?))
                 .collect()
         }
         SeriesShape::Keyed => {
@@ -165,14 +155,7 @@ pub(crate) fn read_history(
                     } else {
                         point.pointer(&date)?
                     };
-                    Some(Point {
-                        day: day_of(stamp, 0)?,
-                        at: instant_of(stamp),
-                        close: money(point.pointer(&price)?)?,
-                        open: None,
-                        high: None,
-                        low: None,
-                    })
+                    close_point(stamp, point.pointer(&price)?)
                 })
                 .collect()
         }
@@ -217,19 +200,25 @@ pub(crate) fn read_history(
     HistoryReading::Points(points)
 }
 
+/// A point carrying only a close, stamped `stamp`, as a Points or Keyed series holds one.
+fn close_point(stamp: &Value, price: &Value) -> Option<Point> {
+    Some(Point {
+        day: day_of(stamp, 0)?,
+        at: instant_of(stamp),
+        close: money(price)?,
+        open: None,
+        high: None,
+        low: None,
+    })
+}
+
 /// A point's day: an ISO date or datetime's date part, or a number of Unix seconds, or
 /// milliseconds above 10¹¹, moved by `offset` seconds to the provider's trading day.
 fn day_of(value: &Value, offset: i64) -> Option<NaiveDate> {
     match value {
         Value::String(text) => text.get(..10)?.parse().ok(),
         Value::Number(number) => {
-            let raw = number.as_f64()?;
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "a timestamp's fraction of a second never moves its day"
-            )]
-            let seconds = if raw > 1e11 { raw / 1000.0 } else { raw } as i64;
-            DateTime::<Utc>::from_timestamp(seconds.checked_add(offset)?, 0)
+            DateTime::<Utc>::from_timestamp(unix_seconds(number)?.checked_add(offset)?, 0)
                 .map(|at| at.date_naive())
         }
         _ => None,
@@ -243,22 +232,24 @@ fn instant_of(value: &Value) -> Option<DateTime<Utc>> {
         Value::String(text) => DateTime::parse_from_rfc3339(text.trim())
             .ok()
             .map(|at| at.with_timezone(&Utc)),
-        Value::Number(number) => {
-            let raw = number.as_f64()?;
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "a timestamp's fraction of a second never moves its hour"
-            )]
-            let seconds = if raw > 1e11 { raw / 1000.0 } else { raw } as i64;
-            DateTime::<Utc>::from_timestamp(seconds, 0)
-        }
+        Value::Number(number) => DateTime::<Utc>::from_timestamp(unix_seconds(number)?, 0),
         _ => None,
     }
 }
 
+/// A timestamp's whole Unix seconds: `number` itself, or milliseconds above 10¹¹.
+fn unix_seconds(number: &serde_json::Number) -> Option<i64> {
+    let raw = number.as_f64()?;
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a timestamp's fraction of a second never moves its day or hour"
+    )]
+    Some(if raw > 1e11 { raw / 1000.0 } else { raw } as i64)
+}
+
 /// A price in a reply: a number, or a string holding one. `None` for anything else, such as the
 /// `null` a market holiday leaves in a column.
-fn money(value: &Value) -> Option<Money> {
+pub(super) fn money(value: &Value) -> Option<Money> {
     match value {
         Value::Number(number) => number.to_string().parse().ok(),
         Value::String(text) => text.trim().parse().ok(),
@@ -310,7 +301,7 @@ mod tests {
     use lib_core::{UnitId, UnitKind};
 
     use super::*;
-    use crate::{COINGECKO, FRANKFURTER, Method, Precision, PriceLink, YAHOO_FINANCE, built_in};
+    use crate::{COINGECKO, FRANKFURTER, Precision, PriceLink, YAHOO_FINANCE, built_in};
 
     fn day(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
@@ -380,7 +371,6 @@ mod tests {
             None,
         );
 
-        assert_eq!(request.method, Method::Get);
         assert_eq!(
             request.url,
             "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=aud&from=2026-09-28&to=2026-10-18&interval=daily"

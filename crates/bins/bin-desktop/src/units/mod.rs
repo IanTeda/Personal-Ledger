@@ -81,11 +81,8 @@ impl UnitsSetup {
         clock: lib_core::Clock,
         config: &lib_config::KeyBindingConfig,
     ) -> (UnitsPagePresenter, Self) {
-        let presenter = UnitsPagePresenter::new(ports.clone(), now_of(&clock), config);
-        let presenter = match fetching.clone() {
-            Some(fetching) => presenter.with_fetching(fetching),
-            None => presenter,
-        };
+        let presenter = UnitsPagePresenter::new(ports.clone(), now_of(&clock), config)
+            .with_fetching(fetching.clone());
         let setup = Self {
             ports,
             deletion,

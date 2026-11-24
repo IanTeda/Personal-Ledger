@@ -19,11 +19,10 @@ use super::Root;
 #[doc(hidden)]
 pub const PRICE_RESPONSE_POLL: Duration = Duration::from_millis(250);
 
-/// How often the Open Ledger checks for Units due a price, after the check it makes on opening
-/// (ADR-0043's "where and when fetching runs"). Public so the headless tests advance past exactly
-/// this.
+/// How often the Open Ledger checks for Units due a price. Public so the headless tests advance
+/// past exactly this.
 #[doc(hidden)]
-pub const PRICE_CHECK: Duration = Duration::from_secs(60);
+pub use lib_units::presenter::PRICE_CHECK;
 
 impl Root {
     /// Polls `responses` for as long as the returned task is held, sending each as an input, then

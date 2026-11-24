@@ -829,7 +829,7 @@ fn a_built_ins_edit_dialog_tests_its_first_unit_inline() {
 
     let tested = screen(&mut shell);
     assert!(
-        tested.contains("History · 1 point · newest 2026-10-20 · 92000"),
+        tested.contains("History · 1 point · newest Oct 20, 2026 · 92,000.00 AUD"),
         "{tested}"
     );
     assert!(tested.contains("Price found"), "{tested}");
@@ -1023,7 +1023,7 @@ fn a_custom_sources_history_request_is_typed_and_tested_after_its_price() {
     let frame = common::screen_sized(&mut shell, 220, 80);
     assert!(frame.contains("Price found"), "{frame}");
     assert!(
-        frame.contains("History · 2 points · newest 2026-11-20 · 1.2345"),
+        frame.contains("History · 2 points · newest Nov 20, 2026 · 1.23 AUD"),
         "{frame}"
     );
 }

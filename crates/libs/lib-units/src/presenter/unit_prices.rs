@@ -124,6 +124,24 @@ pub struct PriceColumns {
     pub change: String,
 }
 
+impl PriceColumns {
+    /// The columns of a table of `grain` prices.
+    pub(super) fn of(grain: Grain) -> Self {
+        Self {
+            week: match grain {
+                Grain::Week => msg::units_prices_column_week(),
+                Grain::Day => msg::units_prices_column_day(),
+                Grain::Hour => msg::units_prices_column_hour(),
+            },
+            open: msg::units_prices_column_open(),
+            high: msg::units_prices_column_high(),
+            low: msg::units_prices_column_low(),
+            close: msg::units_prices_column_close(),
+            change: msg::units_prices_column_change(),
+        }
+    }
+}
+
 /// One row of the table, each price at the quote Unit's Precision, — where it has none.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PriceRow {
@@ -357,18 +375,7 @@ impl Presenter for UnitPricesPresenter {
                 Grain::Day | Grain::Hour => self.fine_back > 0,
             },
             chart,
-            columns: PriceColumns {
-                week: match self.grain {
-                    Grain::Week => msg::units_prices_column_week(),
-                    Grain::Day => msg::units_prices_column_day(),
-                    Grain::Hour => msg::units_prices_column_hour(),
-                },
-                open: msg::units_prices_column_open(),
-                high: msg::units_prices_column_high(),
-                low: msg::units_prices_column_low(),
-                close: msg::units_prices_column_close(),
-                change: msg::units_prices_column_change(),
-            },
+            columns: PriceColumns::of(self.grain),
             rows,
             empty,
             hints: self.hints(unit.is_some_and(manual), offered.len() > 1),

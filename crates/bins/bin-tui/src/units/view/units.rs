@@ -128,11 +128,8 @@ impl UnitsView {
     /// age is the same on every run.
     pub fn with_now(setup: &UnitsSetup, now: lib_units::presenter::Clock) -> Self {
         let shared: SharedPorts = setup.ports.clone();
-        let presenter = UnitsPagePresenter::new(shared, now.clone(), &setup.config);
-        let presenter = match &setup.fetching {
-            Some(fetching) => presenter.with_fetching(fetching.clone()),
-            None => presenter,
-        };
+        let presenter = UnitsPagePresenter::new(shared, now.clone(), &setup.config)
+            .with_fetching(setup.fetching.clone());
         Self {
             presenter,
             now,
@@ -445,7 +442,7 @@ fn render_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str, c: 
 }
 
 /// The first row `visible` rows can start at and still show row `selected`.
-fn scroll_offset(selected: Option<usize>, visible: usize) -> usize {
+pub(super) fn scroll_offset(selected: Option<usize>, visible: usize) -> usize {
     match selected {
         Some(index) if visible > 0 && index >= visible => index + 1 - visible,
         _ => 0,

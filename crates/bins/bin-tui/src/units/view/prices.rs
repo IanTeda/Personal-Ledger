@@ -204,10 +204,7 @@ fn table(frame: &mut Frame<'_>, area: Rect, view: &UnitPricesViewModel, c: &Colo
 
     let visible = usize::from(body.height);
     let selected = view.rows.iter().position(|row| row.selected);
-    let offset = match selected {
-        Some(index) if visible > 0 && index >= visible => index + 1 - visible,
-        _ => 0,
-    };
+    let offset = super::units::scroll_offset(selected, visible);
     for (index, row) in view.rows.iter().skip(offset).take(visible).enumerate() {
         let area = Rect {
             y: body.y + u16::try_from(index).unwrap_or(0),

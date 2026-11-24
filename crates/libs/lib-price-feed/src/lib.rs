@@ -15,7 +15,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
 use lib_units::{
-    KeyPlacement, Method, PriceRequest, PriceResponse, PriceTransport, RequestId, RequestKey,
+    KeyPlacement, PriceRequest, PriceResponse, PriceTransport, RequestId, RequestKey,
     TransportError, TransportOutcome,
 };
 use secrecy::ExposeSecret as _;
@@ -80,10 +80,7 @@ pub fn open(runtime: Handle) -> Option<Feed> {
 
 impl PriceTransport for PriceFeed {
     fn send(&self, id: RequestId, request: PriceRequest) {
-        let method = match request.method {
-            Method::Get => reqwest::Method::GET,
-        };
-        let mut builder = self.client.request(method, &request.url);
+        let mut builder = self.client.get(&request.url);
         for (name, value) in &request.headers {
             builder = builder.header(name, value);
         }
@@ -177,7 +174,6 @@ mod tests {
 
     fn get(url: String) -> PriceRequest {
         PriceRequest {
-            method: Method::Get,
             url,
             headers: vec![("user-agent".into(), "Personal-Ledger/test".into())],
             key: None,

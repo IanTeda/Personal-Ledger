@@ -101,6 +101,9 @@ impl CallQueue {
     /// lane but an asked-for one. Returns the ids that went out, in the order sent.
     pub(super) fn release(&mut self, now: DateTime<Utc>) -> Vec<RequestId> {
         self.holds.retain(|_, until| now < *until);
+        if self.queue.is_empty() {
+            return Vec::new();
+        }
         let mut order: Vec<usize> = (0..self.queue.len()).collect();
         order.sort_by_key(|&index| !self.queue[index].asked);
         let mut blocked: HashSet<Lane> = HashSet::new();
@@ -123,6 +126,10 @@ impl CallQueue {
             }
             window.push_back(now);
             going.push(index);
+        }
+        // Released on every poll, so a queue that sends nothing is left as it is, and unlogged.
+        if going.is_empty() {
+            return Vec::new();
         }
         let mut queue: Vec<Option<Queued>> = std::mem::take(&mut self.queue)
             .into_iter()

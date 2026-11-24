@@ -156,14 +156,7 @@ pub(super) fn price_history(input: &HistoryInput<'_>, unit: &UnitRow) -> PriceHi
         .filter(|text| !text.is_empty())
         .map(|text| msg::units_history_warning(&text)),
         open_hint: msg::units_history_hint_open(input.open_chord),
-        columns: PriceColumns {
-            week: msg::units_prices_column_week(),
-            open: msg::units_prices_column_open(),
-            high: msg::units_prices_column_high(),
-            low: msg::units_prices_column_low(),
-            close: msg::units_prices_column_close(),
-            change: msg::units_prices_column_change(),
-        },
+        columns: PriceColumns::of(crate::Grain::Week),
         count: priced.then(|| msg::units_history_count(&rows.len().to_string(), weeks)),
         pane_hint: priced.then(|| msg::units_history_pane_hint(input.open_chord, weeks)),
         sparkline: unit

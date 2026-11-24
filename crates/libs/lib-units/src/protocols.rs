@@ -26,6 +26,8 @@ pub trait UnitRepository {
         self.units().len()
     }
 
+    /// The Unit `id`. The default clones every row to find it, so a store that holds the rows
+    /// overrides it.
     fn unit(&self, id: UnitId) -> Option<UnitRow> {
         self.units().into_iter().find(|unit| unit.id == id)
     }

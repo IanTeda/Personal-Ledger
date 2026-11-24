@@ -195,7 +195,7 @@ impl Backfill {
         (unit.is_active
             && source.id == unit.link.source_id
             && failure.link == unit.link
-            && failure.settings == SourceSettings::of(source))
+            && failure.settings.matches(source))
         .then_some((failure.reason, failure.retry_at))
     }
 

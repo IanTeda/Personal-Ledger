@@ -574,7 +574,7 @@ fn the_menus_test_entry_tests_the_source_and_its_edit_dialogs_button_tests_inlin
     ui.advance_clock(bin_desktop::shell::router::PRICE_RESPONSE_POLL);
     assert_eq!(
         ui.dialog_value("test_history").as_deref(),
-        Some("History \u{b7} 1 point \u{b7} newest 2026-06-12 \u{b7} 92000")
+        Some("History \u{b7} 1 point \u{b7} newest Jun 12, 2026 \u{b7} 92,000.00 AUD")
     );
     assert_eq!(
         ui.dialog_value("test_heading").as_deref(),

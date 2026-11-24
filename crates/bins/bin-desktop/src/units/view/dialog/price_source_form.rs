@@ -75,7 +75,7 @@ impl DialogView for PriceSourceFormPresenter {
         clicks: &Clicks,
         cx: &App,
     ) -> AnyElement {
-        let field = focused(view);
+        let field = Some(view.focused);
         // The form opens at its top; only a move of focus scrolls.
         if widgets.opened
             && field != widgets.followed
@@ -95,77 +95,6 @@ impl DialogView for PriceSourceFormPresenter {
     fn hints(view: &PriceSourceFormViewModel) -> Vec<Hint> {
         view.hints.clone()
     }
-}
-
-/// The field with focus, as the view model draws it.
-fn focused(view: &PriceSourceFormViewModel) -> Option<PriceSourceField> {
-    let text_focus = |field: &TextFieldView| field.focused;
-    if view.name.focused {
-        return Some(PriceSourceField::Name);
-    }
-    if view.updates.focused {
-        return Some(PriceSourceField::Updates);
-    }
-    if let Some(api_key) = &view.api_key {
-        if api_key.field.focused {
-            return Some(PriceSourceField::ApiKey);
-        }
-        if api_key.remove_focused {
-            return Some(PriceSourceField::RemoveKey);
-        }
-    }
-    if let Some(test) = &view.test {
-        if test.focused {
-            return Some(PriceSourceField::Test);
-        }
-        if test.symbol.as_ref().is_some_and(text_focus) {
-            return Some(PriceSourceField::Symbol);
-        }
-        let response = test
-            .result
-            .as_ref()
-            .and_then(|result| result.response.as_ref());
-        if response.is_some_and(|response| response.focused) {
-            return Some(PriceSourceField::Response);
-        }
-    }
-    let endpoint = view.endpoint.as_ref()?;
-    [
-        (text_focus(&endpoint.address), PriceSourceField::Address),
-        (text_focus(&endpoint.request), PriceSourceField::Request),
-        (
-            text_focus(&endpoint.price_path),
-            PriceSourceField::PricePath,
-        ),
-        (text_focus(&endpoint.headers), PriceSourceField::Headers),
-        (endpoint.auth.focused, PriceSourceField::Auth),
-        (
-            endpoint.key_param.as_ref().is_some_and(text_focus),
-            PriceSourceField::KeyParam,
-        ),
-        (
-            text_focus(&endpoint.history.request),
-            PriceSourceField::HistoryRequest,
-        ),
-        (
-            endpoint.history.shape.focused,
-            PriceSourceField::SeriesShape,
-        ),
-        (
-            text_focus(&endpoint.history.series_path),
-            PriceSourceField::SeriesPath,
-        ),
-        (
-            text_focus(&endpoint.history.date_path),
-            PriceSourceField::DatePath,
-        ),
-        (
-            text_focus(&endpoint.history.price_path),
-            PriceSourceField::HistoryPricePath,
-        ),
-    ]
-    .into_iter()
-    .find_map(|(is_focused, field)| is_focused.then_some(field))
 }
 
 /// Which of a Custom source's body groups, in [`render_custom`]'s order, draws `field`; `None`
@@ -938,12 +867,7 @@ fn readback(view: &PriceSourceFormViewModel) -> Vec<(&'static str, String)> {
                 .map(|key| key.note.clone())
                 .unwrap_or_default(),
         ),
-        (
-            "field",
-            focused(view)
-                .map(|field| format!("{field:?}"))
-                .unwrap_or_default(),
-        ),
+        ("field", format!("{:?}", view.focused)),
         ("usage", view.usage.clone().unwrap_or_default()),
         ("refusal", view.refusal.clone().unwrap_or_default()),
     ]

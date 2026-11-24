@@ -13,8 +13,8 @@ use lib_units::{
 };
 use secrecy::SecretString;
 
-use crate::ApiKeySecret;
 use crate::adapter::store::{SharedPriceSourceKeysStore, SharedUnitsStore, StoredUnitReads};
+use crate::{ApiKeySecret, SealedKey};
 
 /// The shared Units store with the usage its writes are lent beside, borrowed for each call: the
 /// store's guard can't be lent out of its `RefCell`, so each of the three repositories borrows it
@@ -43,6 +43,10 @@ impl UnitRepository for Units {
 
     fn unit_count(&self) -> usize {
         self.0.store.borrow().units().unit_count()
+    }
+
+    fn unit(&self, id: UnitId) -> Option<UnitRow> {
+        self.0.store.borrow().units().unit(id)
     }
 
     fn upsert_unit(&mut self, unit: UnitRow) {
@@ -108,30 +112,32 @@ impl StoredPriceSourceKeys {
         let sealer = self.secret.sealer()?;
         Some(rows.iter().all(|row| row.key_check == sealer.check()))
     }
+
+    /// `source`'s sealed row, if it has one.
+    fn sealed_row(&self, source: PriceSourceId) -> Option<SealedKey> {
+        self.rows
+            .borrow()
+            .sealed()
+            .into_iter()
+            .find(|row| row.source == source)
+    }
+
+    /// `row`'s key, opened with this device's secret: `None` when the secret can't open it.
+    fn open(&self, row: &SealedKey) -> Option<SecretString> {
+        self.secret.sealer()?.open(row)
+    }
 }
 
 impl PriceSourceKeys for StoredPriceSourceKeys {
     fn key(&self, source: PriceSourceId) -> Option<SecretString> {
-        let row = self
-            .rows
-            .borrow()
-            .sealed()
-            .into_iter()
-            .find(|row| row.source == source)?;
-        self.secret.sealer()?.open(&row)
+        self.open(&self.sealed_row(source)?)
     }
 
     fn key_state(&self, source: PriceSourceId) -> KeyState {
-        let saved = self
-            .rows
-            .borrow()
-            .sealed()
-            .iter()
-            .any(|row| row.source == source);
-        match (saved, self.key(source).is_some()) {
-            (false, _) => KeyState::NotSet,
-            (true, true) => KeyState::Saved,
-            (true, false) => KeyState::Unreadable,
+        match self.sealed_row(source) {
+            None => KeyState::NotSet,
+            Some(row) if self.open(&row).is_some() => KeyState::Saved,
+            Some(_) => KeyState::Unreadable,
         }
     }
 

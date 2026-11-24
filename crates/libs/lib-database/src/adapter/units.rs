@@ -191,6 +191,10 @@ impl UnitRepository for StoredUnits {
         self.rows.len()
     }
 
+    fn unit(&self, id: UnitId) -> Option<UnitRow> {
+        self.rows.iter().find(|unit| unit.id == id).cloned()
+    }
+
     /// A new Unit is stamped with today's UTC date as it is first stored, the `created_on` the
     /// file gives it, so memory matches the file without a reload; a stored one keeps its own.
     fn upsert_unit(&mut self, mut unit: UnitRow) {

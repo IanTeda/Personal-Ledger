@@ -54,7 +54,7 @@ pub(crate) use request::{Wanted, fill, is_due, key_missing, price_request, reque
 use rounds::Rounds;
 pub(crate) use rounds::{InFlight, Landed, RoundId, UnitCall};
 pub use transport::{
-    Method, PriceRequest, PriceResponse, PriceTransport, RequestId, RequestKey, TransportError,
+    PriceRequest, PriceResponse, PriceTransport, RequestId, RequestKey, TransportError,
     TransportOutcome,
 };
 
@@ -102,6 +102,12 @@ impl SourceSettings {
             endpoint: source.endpoint().cloned(),
             updates: source.updates,
         }
+    }
+
+    /// Whether these are still `source`'s settings, compared in place rather than by cloning its
+    /// endpoint into a second [`SourceSettings`].
+    pub(crate) fn matches(&self, source: &PriceSource<'_>) -> bool {
+        self.updates == source.updates && self.endpoint.as_ref() == source.endpoint()
     }
 }
 
@@ -298,6 +304,43 @@ impl PriceFetching {
             .open(source.id, SourceSettings::of(source), asked)
     }
 
+    /// Starts a round on `source` for `wanted`, `asked` when a person asked for it, sending its
+    /// calls at `now`, and hands back their ids: none, opening no round, when the source makes no
+    /// call for them. A source needing a key `key` doesn't supply sends nothing: the source and
+    /// each wanted Unit fail Key missing instead.
+    ///
+    /// # Errors
+    /// [`crate::Error::KeyMissing`] for a missing key, [`crate::Error::NotFetched`] for a source
+    /// that doesn't fetch.
+    pub(crate) fn start_round(
+        &mut self,
+        source: &PriceSource<'_>,
+        wanted: &[Wanted],
+        key: Option<&secrecy::SecretString>,
+        asked: bool,
+        now: DateTime<Utc>,
+    ) -> crate::Result<Vec<RequestId>> {
+        let endpoint = source.endpoint().ok_or(crate::Error::NotFetched)?;
+        let settings = SourceSettings::of(source);
+        if key_missing(endpoint, key) {
+            let failure = Some(FetchFailure::KeyMissing);
+            self.record_source(source.id, &settings, now, failure);
+            for one in wanted {
+                self.record_unit(one.unit, one.link.clone(), &settings, now, failure);
+            }
+            return Err(crate::Error::KeyMissing);
+        }
+        let calls = round_calls(endpoint, wanted, key, &settings);
+        if calls.is_empty() {
+            return Ok(Vec::new());
+        }
+        let round = self.open_round(source, asked);
+        Ok(calls
+            .into_iter()
+            .map(|(request, sent)| self.send(round, request, sent, now))
+            .collect())
+    }
+
     /// Queues `request` for `sent` in `round`, remembering it until its response comes back, and
     /// sends what the call rate allows at `now`.
     pub(crate) fn send(
@@ -330,12 +373,8 @@ impl PriceFetching {
             });
         };
         let failure = round_failure(&response.outcome);
-        if failure == Some(FetchFailure::RateLimited)
-            && let TransportOutcome::Answered { retry_after, .. } = &response.outcome
-        {
-            let until = now + retry_after_wait(retry_after.as_deref(), now);
+        if let Some(until) = self.hold_on_429(source, &response.outcome, now) {
             tracing::warn!(price_source_id = %source, %until, "A price source asked to wait");
-            self.calls.hold(Some(source), until);
         }
         let pending = self.rounds.land(round, response, failure.is_some());
         // The round's calls still queued never go; what is left pending is out already.
@@ -418,11 +457,6 @@ impl PriceFetching {
         self.fine.refused(key, link, reason);
     }
 
-    /// Whether the series `key` is queued, out or waiting for a round.
-    pub(crate) fn fine_asked(&self, key: FineKey) -> bool {
-        self.fine.asked(key)
-    }
-
     /// Whether `source` has a finer prices request waiting or out, which a scheduled check counts
     /// as in flight.
     pub(crate) fn fine_in_flight(&self, source: PriceSourceId) -> bool {
@@ -447,18 +481,7 @@ impl PriceFetching {
         let Some(source) = self.fine.source_of(response.request) else {
             return;
         };
-        let hold = match &response.outcome {
-            TransportOutcome::Answered {
-                status: 429,
-                retry_after,
-                ..
-            } => {
-                let until = now + retry_after_wait(retry_after.as_deref(), now);
-                self.calls.hold(Some(source), until);
-                Some(until)
-            }
-            _ => None,
-        };
+        let hold = self.hold_on_429(source, &response.outcome, now);
         if let Some((settings, until)) = self.fine.land(response, now, today, zone, hold) {
             self.last.back_off_quietly(source, settings, until);
         }
@@ -532,16 +555,29 @@ impl PriceFetching {
         now: DateTime<Utc>,
     ) -> Option<HistoryCall> {
         let call = self.backfill.land(response.request)?;
-        if let TransportOutcome::Answered {
+        self.hold_on_429(call.source, &response.outcome, now);
+        Some(call)
+    }
+
+    /// Holds `source` until its `Retry-After`, read at `now`, when `outcome` is a 429, whatever
+    /// kind of request it answers. The hold's end, or `None` for any other outcome.
+    fn hold_on_429(
+        &mut self,
+        source: PriceSourceId,
+        outcome: &TransportOutcome,
+        now: DateTime<Utc>,
+    ) -> Option<DateTime<Utc>> {
+        let TransportOutcome::Answered {
             status: 429,
             retry_after,
             ..
-        } = &response.outcome
-        {
-            let until = now + retry_after_wait(retry_after.as_deref(), now);
-            self.calls.hold(Some(call.source), until);
-        }
-        Some(call)
+        } = outcome
+        else {
+            return None;
+        };
+        let until = now + retry_after_wait(retry_after.as_deref(), now);
+        self.calls.hold(Some(source), until);
+        Some(until)
     }
 
     /// Notes that `call` failed for `reason` at `at`: it is tried again after [`HISTORY_RETRY`],

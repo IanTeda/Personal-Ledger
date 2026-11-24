@@ -72,12 +72,7 @@ pub(crate) fn read(outcome: &TransportOutcome, price_path: &str) -> Reading {
 /// body that isn't JSON or has no price there.
 pub(crate) fn parse_price(body: &str, path: &str) -> Option<Money> {
     let json: serde_json::Value = serde_json::from_str(body).ok()?;
-    let text = match json.pointer(path)? {
-        serde_json::Value::Number(number) => number.to_string(),
-        serde_json::Value::String(text) => text.clone(),
-        _ => return None,
-    };
-    text.trim().parse().ok()
+    super::history::money(json.pointer(path)?)
 }
 
 #[cfg(test)]

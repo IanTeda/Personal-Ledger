@@ -32,8 +32,10 @@ impl RecordPriceHistory {
             }
         };
         let mut written = 0;
+        let mut priced: std::collections::HashSet<_> =
+            unit.prices.iter().map(|price| price.week).collect();
         for week in self.weeks {
-            if unit.prices.iter().any(|price| price.week == week.week) {
+            if !priced.insert(week.week) {
                 continue;
             }
             unit.prices.push(week);

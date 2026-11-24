@@ -1,11 +1,9 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::PriceSourceId;
 
-use crate::fetching::{
-    FetchFailure, PriceFetching, SourceSettings, Wanted, is_due, key_missing, round_calls,
-};
+use crate::fetching::{PriceFetching, Wanted, is_due};
 use crate::protocols::UnitsPorts;
-use crate::units_by_code;
+use crate::{Error, units_by_code};
 
 /// The scheduled check (ADR-0043's "where and when fetching runs"): fetch every due Unit, one
 /// round per source. Run on Ledger open and every minute after. Only sends: each round is written
@@ -36,37 +34,22 @@ impl FetchDue {
             let Some(listed) = catalogue.source(source) else {
                 continue;
             };
-            let Some(endpoint) = listed.endpoint() else {
-                continue;
-            };
-            let settings = SourceSettings::of(&listed);
             let key = ports.keys().key(source);
-            if key_missing(endpoint, key.as_ref()) {
-                tracing::warn!(price_source_id = %source, "A price source needs an API key this Client doesn't have");
-                fetching.record_source(source, &settings, self.now, Some(FetchFailure::KeyMissing));
-                for one in wanted {
-                    fetching.record_unit(
-                        one.unit,
-                        one.link,
-                        &settings,
-                        self.now,
-                        Some(FetchFailure::KeyMissing),
+            match fetching.start_round(&listed, &wanted, key.as_ref(), false, self.now) {
+                Ok(calls) => {
+                    tracing::info!(
+                        price_source_id = %source,
+                        units = wanted.len(),
+                        calls = calls.len(),
+                        "Fetching due Units' prices"
                     );
+                    started.push(source);
                 }
-                continue;
+                Err(Error::KeyMissing) => {
+                    tracing::warn!(price_source_id = %source, "A price source needs an API key this Client doesn't have");
+                }
+                Err(_) => {}
             }
-            let requests = round_calls(endpoint, &wanted, key.as_ref(), &settings);
-            tracing::info!(
-                price_source_id = %source,
-                units = wanted.len(),
-                calls = requests.len(),
-                "Fetching due Units' prices"
-            );
-            let round = fetching.open_round(&listed, false);
-            for (request, sent) in requests {
-                fetching.send(round, request, sent, self.now);
-            }
-            started.push(source);
         }
         if started.is_empty() {
             tracing::debug!("No Unit's price is due");
@@ -100,14 +83,9 @@ impl FetchDue {
             {
                 continue;
             }
-            let Some(quote) = units.iter().find(|quote| quote.id == unit.link.quote) else {
+            let Some(wanted) = Wanted::of(unit, &units) else {
                 tracing::warn!(unit_id = %unit.id, "Skipped a due Unit whose quote Unit is gone");
                 continue;
-            };
-            let wanted = Wanted {
-                unit: unit.id,
-                link: unit.link.clone(),
-                quote: quote.code.clone(),
             };
             match rounds.iter_mut().find(|(id, _)| *id == source.id) {
                 Some((_, due)) => due.push(wanted),

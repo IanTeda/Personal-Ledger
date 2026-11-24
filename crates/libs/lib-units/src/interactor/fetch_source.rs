@@ -1,9 +1,7 @@
 use chrono::{DateTime, Utc};
 use lib_core::PriceSourceId;
 
-use crate::fetching::{
-    FetchFailure, PriceFetching, SourceSettings, Wanted, key_missing, round_calls,
-};
+use crate::fetching::{PriceFetching, Wanted};
 use crate::protocols::UnitsPorts;
 use crate::{Error, Result, units_by_code};
 
@@ -52,52 +50,33 @@ impl FetchSource {
     ) -> Result<usize> {
         let catalogue = ports.source_catalogue();
         let source = catalogue.source(self.id).ok_or(Error::PriceSourceGone)?;
-        let endpoint = source.endpoint().ok_or(Error::NotFetched)?;
+        if source.endpoint().is_none() {
+            return Err(Error::NotFetched);
+        }
         if fetching.source_in_flight(self.id) {
             return Err(Error::AlreadyFetching);
         }
         let base = ports.base_unit().base_unit();
         let units = ports.units().units();
-        let settings = SourceSettings::of(&source);
-        let wanted: Vec<_> = units_by_code(&units)
-            .into_iter()
-            .filter(|unit| unit.is_active && unit.id != base && unit.link.source_id == self.id)
-            .collect();
-        if wanted.is_empty() {
-            return Ok(0);
-        }
-        let key = ports.keys().key(self.id);
-        if key_missing(endpoint, key.as_ref()) {
-            let failure = Some(FetchFailure::KeyMissing);
-            fetching.record_source(self.id, &settings, now, failure);
-            for unit in wanted {
-                fetching.record_unit(unit.id, unit.link.clone(), &settings, now, failure);
-            }
-            return Err(Error::KeyMissing);
-        }
-        let mut asked = Vec::with_capacity(wanted.len());
-        for unit in wanted {
-            let Some(quote) = units.iter().find(|quote| quote.id == unit.link.quote) else {
-                tracing::warn!(unit_id = %unit.id, "Skipped a Unit whose quote Unit is gone");
+        let mut asked = Vec::new();
+        for unit in units_by_code(&units) {
+            if !unit.is_active || unit.id == base || unit.link.source_id != self.id {
                 continue;
-            };
-            asked.push(Wanted {
-                unit: unit.id,
-                link: unit.link.clone(),
-                quote: quote.code.clone(),
-            });
+            }
+            match Wanted::of(unit, &units) {
+                Some(wanted) => asked.push(wanted),
+                None => {
+                    tracing::warn!(unit_id = %unit.id, "Skipped a Unit whose quote Unit is gone");
+                }
+            }
         }
-        let requests = round_calls(endpoint, &asked, key.as_ref(), &settings);
-        if requests.is_empty() {
+        if asked.is_empty() {
             return Ok(0);
         }
         // Asked for, so its outcome is told.
-        let round = fetching.open_round(&source, true);
-        let count = requests.len();
-        for (request, sent) in requests {
-            fetching.send(round, request, sent, now);
-        }
-        Ok(count)
+        let key = ports.keys().key(self.id);
+        let sent = fetching.start_round(&source, &asked, key.as_ref(), true, now)?;
+        Ok(sent.len())
     }
 }
 

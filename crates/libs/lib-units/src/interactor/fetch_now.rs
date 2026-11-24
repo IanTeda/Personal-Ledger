@@ -1,8 +1,6 @@
 use lib_core::UnitId;
 
-use crate::fetching::{
-    FetchFailure, PriceFetching, RequestId, SourceSettings, Wanted, key_missing, round_calls,
-};
+use crate::fetching::{PriceFetching, RequestId, Wanted};
 use crate::protocols::UnitsPorts;
 use crate::{Error, Result};
 
@@ -52,30 +50,26 @@ impl FetchNow {
         let source = catalogue
             .source(unit.link.source_id)
             .ok_or(Error::PriceSourceGone)?;
-        let endpoint = source.endpoint().ok_or(Error::NotFetched)?;
+        if source.endpoint().is_none() {
+            return Err(Error::NotFetched);
+        }
         let quote = ports
             .units()
             .unit(unit.link.quote)
             .ok_or(Error::QuoteGone)?;
-        let settings = SourceSettings::of(&source);
-        let key = ports.keys().key(source.id);
-        if key_missing(endpoint, key.as_ref()) {
-            let failure = Some(FetchFailure::KeyMissing);
-            fetching.record_source(source.id, &settings, now, failure);
-            fetching.record_unit(unit.id, unit.link, &settings, now, failure);
-            return Err(Error::KeyMissing);
-        }
         let wanted = [Wanted {
             unit: unit.id,
             link: unit.link,
             quote: quote.code,
         }];
-        let mut calls = round_calls(endpoint, &wanted, key.as_ref(), &settings).into_iter();
-        let (request, sent) = calls.next().ok_or(Error::NotFetched)?;
         // A round of one, asked for, so its outcome is told; a source with a batch request asks
         // through it, as a batch of one.
-        let round = fetching.open_round(&source, true);
-        Ok(fetching.send(round, request, sent, now))
+        let key = ports.keys().key(source.id);
+        fetching
+            .start_round(&source, &wanted, key.as_ref(), true, now)?
+            .into_iter()
+            .next()
+            .ok_or(Error::NotFetched)
     }
 }
 

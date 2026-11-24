@@ -2573,7 +2573,7 @@ fn a_custom_sources_history_request_is_typed_and_tested_after_its_price(app: &mu
     );
     assert_eq!(
         ui.dialog_value("test_history").as_deref(),
-        Some("History \u{b7} 2 points \u{b7} newest 2026-06-09 \u{b7} 1.2345")
+        Some("History \u{b7} 2 points \u{b7} newest Jun 9, 2026 \u{b7} 1.23 AUD")
     );
     assert_eq!(
         ui.dialog_value("history_response").as_deref(),

@@ -104,14 +104,14 @@ impl LastFetches {
         (unit.is_active
             && source.id == unit.link.source_id
             && record.link == unit.link
-            && record.settings == SourceSettings::of(source))
+            && record.settings.matches(source))
         .then_some(&record.last)
     }
 
     /// `source`'s last round while it still holds: its settings haven't changed since.
     pub(super) fn source_fetch(&self, source: &PriceSource<'_>) -> Option<&LastFetch> {
         let record = self.sources.get(&source.id)?;
-        (record.settings == SourceSettings::of(source)).then_some(&record.last)
+        record.settings.matches(source).then_some(&record.last)
     }
 
     /// Clears `source`'s Key missing and Key rejected failures, and its Units'.
@@ -139,9 +139,7 @@ impl LastFetches {
         let quiet = self
             .quiet_back_off
             .get(&source.id)
-            .is_some_and(|(settings, until)| {
-                *settings == SourceSettings::of(source) && now < *until
-            });
+            .is_some_and(|(settings, until)| settings.matches(source) && now < *until);
         quiet
             || self
                 .source_fetch(source)

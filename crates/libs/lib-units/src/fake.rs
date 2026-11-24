@@ -31,6 +31,10 @@ impl UnitRepository for InMemoryUnits {
         self.units.clone()
     }
 
+    fn unit(&self, id: UnitId) -> Option<UnitRow> {
+        self.units.iter().find(|unit| unit.id == id).cloned()
+    }
+
     fn upsert_unit(&mut self, unit: UnitRow) {
         match self.units.iter_mut().find(|row| row.id == unit.id) {
             Some(row) => *row = unit,

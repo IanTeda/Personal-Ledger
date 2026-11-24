@@ -37,7 +37,7 @@ use crate::interactor::{
 use crate::protocols::SharedPorts;
 use crate::{
     Endpoint, Error, HistoryEndpoint, HistoryRef, KeyPlacement, KeyState, PriceSourceAuth,
-    RequestHeader, SeriesShape, SourceOrigin, Updates, msg, units_by_code,
+    RequestHeader, SeriesShape, SourceOrigin, Updates, msg,
 };
 
 /// The Authentication control's value: whether the source needs a key.
@@ -177,9 +177,39 @@ pub struct PriceSourceFormViewModel {
     pub test: Option<TestView>,
     /// The fields on screen, in `Tab` order.
     pub fields: Vec<PriceSourceField>,
+    /// The field with focus, so a Client never works it out from the fields' own flags.
+    pub focused: PriceSourceField,
     pub refusal: Option<String>,
     /// The status line's legend while the Dialog is open.
     pub hints: Vec<Hint>,
+}
+
+impl PriceSourceFormViewModel {
+    /// `field`'s text field, while it shows; `None` for a select, a button, the Response or the
+    /// API key, whose text a Client holds as a secret.
+    pub fn text_field(&self, field: PriceSourceField) -> Option<&TextFieldView> {
+        let endpoint = self.endpoint.as_ref();
+        match field {
+            PriceSourceField::Name => Some(&self.name),
+            PriceSourceField::Symbol => self.test.as_ref()?.symbol.as_ref(),
+            PriceSourceField::Address => Some(&endpoint?.address),
+            PriceSourceField::Request => Some(&endpoint?.request),
+            PriceSourceField::PricePath => Some(&endpoint?.price_path),
+            PriceSourceField::Headers => Some(&endpoint?.headers),
+            PriceSourceField::KeyParam => endpoint?.key_param.as_ref(),
+            PriceSourceField::HistoryRequest => Some(&endpoint?.history.request),
+            PriceSourceField::SeriesPath => Some(&endpoint?.history.series_path),
+            PriceSourceField::DatePath => Some(&endpoint?.history.date_path),
+            PriceSourceField::HistoryPricePath => Some(&endpoint?.history.price_path),
+            PriceSourceField::Updates
+            | PriceSourceField::Auth
+            | PriceSourceField::ApiKey
+            | PriceSourceField::RemoveKey
+            | PriceSourceField::SeriesShape
+            | PriceSourceField::Test
+            | PriceSourceField::Response => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -273,7 +303,7 @@ pub struct TestResultView {
     pub history: Option<TestHistoryView>,
 }
 
-/// *History · 10 points · newest 2026-11-20 · 1.2345*, or the reason it failed.
+/// *History · 10 points · newest Nov 20, 2026 · 1.23 AUD*, or the reason it failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestHistoryView {
     /// Found or Failed; an empty series is Failed, No price.
@@ -335,6 +365,16 @@ enum Mode {
     AddCustom,
     EditCustom(PriceSourceId),
     EditBuiltIn(PriceSourceId),
+}
+
+impl Mode {
+    /// The source edited, `None` while adding one.
+    fn id(self) -> Option<PriceSourceId> {
+        match self {
+            Self::AddCustom => None,
+            Self::EditCustom(id) | Self::EditBuiltIn(id) => Some(id),
+        }
+    }
 }
 
 pub struct PriceSourceFormPresenter {
@@ -427,9 +467,11 @@ impl PriceSourceFormPresenter {
         }
     }
 
-    /// The form testing through `fetching`, the Client's for its open Ledger, timed by `clock`.
-    pub fn with_testing(mut self, fetching: SharedFetching, clock: Clock) -> Self {
-        self.testing = Some((fetching, clock));
+    /// The form testing through `fetching`, the Client's for its open Ledger, timed by `clock`;
+    /// `None` for a Client with no price feed.
+    #[must_use]
+    pub fn with_testing(mut self, fetching: Option<SharedFetching>, clock: Clock) -> Self {
+        self.testing = fetching.map(|fetching| (fetching, clock));
         self
     }
 
@@ -473,11 +515,7 @@ impl PriceSourceFormPresenter {
                         SeriesShape::Points | SeriesShape::Columns { .. } => HistoryShape::Points,
                     };
                 }
-                form.opened = Some(Opened {
-                    name: form.name.clone(),
-                    updates: form.updates,
-                    endpoint: form.endpoint(),
-                });
+                form.opened = Some(form.snapshot());
             }
         }
         drop(ports);
@@ -681,6 +719,7 @@ impl Presenter for PriceSourceFormPresenter {
                 .copied()
                 .filter(|field| self.focusable(*field))
                 .collect(),
+            focused: self.focused,
             refusal: self.refusal.clone(),
         }
     }
@@ -944,23 +983,48 @@ impl PriceSourceFormPresenter {
         if !self.is_custom() {
             return true;
         }
-        if ![&self.address, &self.request, &self.price_path]
-            .into_iter()
-            .all(filled)
-        {
-            return false;
-        }
-        if parse_headers(&self.headers).is_none() || self.history_needs().is_some() {
+        if self.endpoint_problem().is_some() {
             return false;
         }
         match self.auth {
             AuthChoice::None => true,
             AuthChoice::ApiKey => {
-                filled(&self.key_param)
-                    && (matches!(self.mode, Mode::EditCustom(_))
-                        || !self.keys_writable
-                        || !self.api_key.expose_secret().trim().is_empty())
+                matches!(self.mode, Mode::EditCustom(_))
+                    || !self.keys_writable
+                    || !self.api_key.expose_secret().trim().is_empty()
             }
+        }
+    }
+
+    /// The first field, in the order they show, a Custom source's endpoint still lacks or must
+    /// fix: its Address, Request and Price path, the Key parameter with API key authentication,
+    /// well formed Headers and any history request's paths.
+    fn endpoint_problem(&self) -> Option<TestOff> {
+        let blank = |text: &String| text.trim().is_empty();
+        let mut needed = vec![
+            (PriceSourceField::Address, &self.address),
+            (PriceSourceField::Request, &self.request),
+            (PriceSourceField::PricePath, &self.price_path),
+        ];
+        if self.auth == AuthChoice::ApiKey {
+            needed.push((PriceSourceField::KeyParam, &self.key_param));
+        }
+        if let Some((field, _)) = needed.into_iter().find(|(_, text)| blank(text)) {
+            return Some(TestOff::NeedsField(field));
+        }
+        if parse_headers(&self.headers).is_none() {
+            return Some(TestOff::FixField(PriceSourceField::Headers));
+        }
+        self.history_needs().map(TestOff::NeedsField)
+    }
+
+    /// The name, update interval and endpoint as the fields hold them, to tell an edit from the
+    /// source as opened.
+    fn snapshot(&self) -> Opened {
+        Opened {
+            name: self.name.clone(),
+            updates: self.updates,
+            endpoint: self.endpoint(),
         }
     }
 
@@ -1028,10 +1092,7 @@ impl PriceSourceFormPresenter {
 
     /// The Units an edited source values, by code.
     fn usage(&self) -> Option<String> {
-        let id = match self.mode {
-            Mode::AddCustom => return None,
-            Mode::EditCustom(id) | Mode::EditBuiltIn(id) => id,
-        };
+        let id = self.mode.id()?;
         let codes = super::linked_codes(&*self.ports.borrow(), id);
         Some(msg::units_price_source_usage(
             count(codes.len()),
@@ -1045,10 +1106,7 @@ impl PriceSourceFormPresenter {
         if !typed.is_empty() {
             return Some(SecretString::from(typed.to_string()));
         }
-        let id = match self.mode {
-            Mode::AddCustom => return None,
-            Mode::EditCustom(id) | Mode::EditBuiltIn(id) => id,
-        };
+        let id = self.mode.id()?;
         (!self.remove_key)
             .then(|| self.ports.borrow().keys().key(id))
             .flatten()
@@ -1070,12 +1128,7 @@ impl PriceSourceFormPresenter {
                 let Some(built_in) = crate::built_in(id) else {
                     return Readiness::Off(TestOff::NoUnits);
                 };
-                let units = ports.units().units();
-                let Some(first) = units_by_code(&units)
-                    .into_iter()
-                    .find(|unit| unit.link.source_id == id)
-                    .cloned()
-                else {
+                let Some(first) = super::first_linked(&*ports, id) else {
                     return Readiness::Off(TestOff::NoUnits);
                 };
                 (
@@ -1086,22 +1139,8 @@ impl PriceSourceFormPresenter {
                 )
             }
             Mode::AddCustom | Mode::EditCustom(_) => {
-                let mut needed = vec![
-                    (PriceSourceField::Address, &self.address),
-                    (PriceSourceField::Request, &self.request),
-                    (PriceSourceField::PricePath, &self.price_path),
-                ];
-                if self.auth == AuthChoice::ApiKey {
-                    needed.push((PriceSourceField::KeyParam, &self.key_param));
-                }
-                if let Some((field, _)) = needed.into_iter().find(|(_, text)| blank(text)) {
-                    return Readiness::Off(TestOff::NeedsField(field));
-                }
-                if parse_headers(&self.headers).is_none() {
-                    return Readiness::Off(TestOff::FixField(PriceSourceField::Headers));
-                }
-                if let Some(field) = self.history_needs() {
-                    return Readiness::Off(TestOff::NeedsField(field));
+                if let Some(off) = self.endpoint_problem() {
+                    return Readiness::Off(off);
                 }
                 if blank(&self.symbol) {
                     return Readiness::Off(TestOff::NeedsSymbol);
@@ -1125,13 +1164,7 @@ impl PriceSourceFormPresenter {
         }
         let quote_code = self.unit_code(quote);
         let unsaved = self.opened.as_ref().is_some_and(|opened| {
-            *opened
-                != Opened {
-                    name: self.name.clone(),
-                    updates: self.updates,
-                    endpoint: self.endpoint(),
-                }
-                || !self.api_key.expose_secret().trim().is_empty()
+            *opened != self.snapshot() || !self.api_key.expose_secret().trim().is_empty()
         });
         Readiness::Ready(Box::new(TestPriceSource {
             source,
@@ -1257,12 +1290,8 @@ impl PriceSourceFormPresenter {
                 msg::units_price_source_test_quoted(&self.unit_code(base))
             }
             Mode::EditBuiltIn(id) => {
-                let ports = self.ports.borrow();
-                let units = ports.units().units();
-                let first = units_by_code(&units)
-                    .into_iter()
-                    .find(|unit| unit.link.source_id == id)
-                    .map(|unit| unit.code.clone())
+                let first = super::first_linked(&*self.ports.borrow(), id)
+                    .map(|unit| unit.code)
                     .unwrap_or_default();
                 msg::units_price_source_test_first_unit(&first)
             }
@@ -1318,7 +1347,7 @@ impl PriceSourceFormPresenter {
                     history: result
                         .history
                         .as_ref()
-                        .map(|history| test_history_view(&result, history)),
+                        .map(|history| test_history_view(&result, history, quote.as_ref())),
                 }
             })
         };
@@ -1421,8 +1450,12 @@ fn pretty(body: String) -> String {
         .unwrap_or(body)
 }
 
-/// A test's history line: *History · 10 points · newest 2026-11-20 · 1.2345*, or the reason.
-fn test_history_view(result: &TestResult, history: &HistoryTestResult) -> TestHistoryView {
+/// A test's history line: *History · 10 points · newest Nov 20, 2026 · 1.23 AUD*, or the reason.
+fn test_history_view(
+    result: &TestResult,
+    history: &HistoryTestResult,
+    quote: Option<&crate::UnitRow>,
+) -> TestHistoryView {
     match &history.outcome {
         HistoryTestOutcome::Points {
             count: points,
@@ -1432,8 +1465,8 @@ fn test_history_view(result: &TestResult, history: &HistoryTestResult) -> TestHi
             state: TestState::Found,
             text: msg::units_price_source_test_history_found(
                 count(*points),
-                &newest.format("%Y-%m-%d").to_string(),
-                &close.to_string(),
+                &lib_locale::format::format_date(*newest, None),
+                &super::units_pane::amount(close, quote),
             ),
         },
         HistoryTestOutcome::Failed(reason) => {
@@ -2219,13 +2252,13 @@ mod tests {
         impl Tested {
             fn add(&self) -> PriceSourceFormPresenter {
                 PriceSourceFormPresenter::add(self.shared.clone(), DialogKeys::default())
-                    .with_testing(self.fetching.clone(), clock())
+                    .with_testing(Some(self.fetching.clone()), clock())
             }
 
             fn edit(&self, id: PriceSourceId) -> PriceSourceFormPresenter {
                 PriceSourceFormPresenter::edit(self.shared.clone(), id, DialogKeys::default())
                     .expect("an editable source")
-                    .with_testing(self.fetching.clone(), clock())
+                    .with_testing(Some(self.fetching.clone()), clock())
             }
 
             /// Lands `response` as the Client's input door does.
@@ -2536,7 +2569,7 @@ mod tests {
             assert_eq!(history.state, TestState::Found);
             assert_eq!(
                 history.text,
-                "History · 2 points · newest 2026-10-20 · 1.2345"
+                "History · 2 points · newest Oct 20, 2026 · 1.23 AUD"
             );
             let response = result.response.expect("a Custom source's");
             assert!(!response.open, "nothing failed");
@@ -2617,7 +2650,7 @@ mod tests {
             let result = test_view(&form).result.expect("landed");
             assert_eq!(
                 result.history.map(|history| history.text).as_deref(),
-                Some("History · 1 point · newest 2026-10-20 · 2")
+                Some("History · 1 point · newest Oct 20, 2026 · 2.00 AUD")
             );
             assert_eq!(result.response, None, "a built-in's paths are code");
         }

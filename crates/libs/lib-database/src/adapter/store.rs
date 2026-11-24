@@ -514,6 +514,10 @@ impl UnitRepository for RecordingUnits<'_> {
         self.units.unit_count()
     }
 
+    fn unit(&self, id: UnitId) -> Option<lib_units::UnitRow> {
+        self.units.unit(id)
+    }
+
     fn upsert_unit(&mut self, unit: lib_units::UnitRow) {
         let before = self.units.unit(unit.id);
         self.journal.record_upsert(before, unit.clone());

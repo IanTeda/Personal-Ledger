@@ -11,7 +11,7 @@
 //! commit. A backfill never toasts, and nothing here touches the status line (ADR-0048): a fetch now's
 //! history shows in the Weekly Prices table.
 
-use chrono::Local;
+use chrono::{DateTime, Local, NaiveDate, Utc};
 use lib_toast::{Notice, Notify, ToastKind};
 
 use super::Clock;
@@ -43,6 +43,14 @@ impl FetchedPricesPresenter {
         }
     }
 
+    /// What a Client runs as a Ledger opens (app start, `:open`, `:new`): the scheduled check,
+    /// then the backfill, once. The Client then runs [`Self::fetch_due`] every [`PRICE_CHECK`]
+    /// while the Ledger stays open.
+    pub fn opened(&mut self) {
+        self.fetch_due();
+        self.backfill();
+    }
+
     /// Releases the queued calls at the Clock's now: sends what each source's call rate and any
     /// `Retry-After` allow, raising one *Waiting for CoinGecko, 40 s…* Info Toast as a call a
     /// person asked for begins to wait, unless the page already did. Each Client calls it from its
@@ -61,7 +69,7 @@ impl FetchedPricesPresenter {
     /// history request again once its wait is over. It never starts a backfill of its own.
     pub fn fetch_due(&mut self) {
         let now = (self.clock)();
-        let today = now.with_timezone(&Local).date_naive();
+        let today = local_day(now);
         FetchDue { today, now }.run(&*self.ports.borrow(), &mut self.fetching.borrow_mut());
         let retries = self.fetching.borrow().history_retries(now);
         if !retries.is_empty() {
@@ -81,7 +89,7 @@ impl FetchedPricesPresenter {
         let now = (self.clock)();
         Backfill {
             units: BackfillUnits::Every,
-            today: now.with_timezone(&Local).date_naive(),
+            today: local_day(now),
             now,
         }
         .run(&*self.ports.borrow(), &mut self.fetching.borrow_mut());
@@ -107,9 +115,9 @@ impl FetchedPricesPresenter {
             return;
         }
         let now = (self.clock)();
+        let today = local_day(now);
         if self.fetching.borrow().is_fine(&response) {
             // Shown in place by the Unit prices view and never written, so nothing to tell.
-            let today = now.with_timezone(&Local).date_naive();
             self.fetching
                 .borrow_mut()
                 .land_fine(&response, now, today, &Local);
@@ -128,7 +136,7 @@ impl FetchedPricesPresenter {
             RecordFetchedPrices { landed }.run(
                 ports.split_mut().units,
                 &mut self.fetching.borrow_mut(),
-                now.with_timezone(&Local).date_naive(),
+                today,
                 now,
             )
         };
@@ -139,7 +147,7 @@ impl FetchedPricesPresenter {
             if !priced.is_empty() {
                 Backfill {
                     units: BackfillUnits::Asked(priced),
-                    today: now.with_timezone(&Local).date_naive(),
+                    today,
                     now,
                 }
                 .run(&*self.ports.borrow(), &mut self.fetching.borrow_mut());
@@ -163,14 +171,17 @@ impl FetchedPricesPresenter {
         );
         match reading {
             HistoryReading::Points(points) => {
+                let asked: std::collections::HashSet<_> = call.weeks.iter().copied().collect();
                 let weeks: Vec<_> = fold(points, now)
                     .into_iter()
-                    .filter(|week| call.weeks.contains(&week.week))
+                    .filter(|week| asked.contains(&week.week))
                     .collect();
+                let answered: std::collections::HashSet<_> =
+                    weeks.iter().map(|week| week.week).collect();
                 let missing: Vec<_> = call
                     .weeks
                     .iter()
-                    .filter(|asked| !weeks.iter().any(|week| week.week == **asked))
+                    .filter(|week| !answered.contains(*week))
                     .copied()
                     .collect();
                 self.fetching.borrow_mut().history_empty(&call, missing);
@@ -261,6 +272,15 @@ impl FetchedPricesPresenter {
     }
 }
 
+/// How often a Client runs the scheduled check while a Ledger stays open, after the one it runs
+/// on opening (ADR-0043's "where and when fetching runs").
+pub const PRICE_CHECK: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The day `now` falls on here, which every week a fetch writes or asks for is counted from.
+fn local_day(now: DateTime<Utc>) -> NaiveDate {
+    now.with_timezone(&Local).date_naive()
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -277,7 +297,7 @@ mod tests {
     use crate::{FRANKFURTER, Precision, PriceLink, UnitRow, WeeklyPrice};
 
     fn now() -> DateTime<Utc> {
-        chrono::NaiveDate::from_ymd_opt(2026, 10, 21)
+        NaiveDate::from_ymd_opt(2026, 10, 21)
             .and_then(|day| day.and_hms_opt(9, 0, 0))
             .expect("a real time")
             .and_utc()

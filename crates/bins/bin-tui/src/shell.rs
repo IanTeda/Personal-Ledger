@@ -19,6 +19,7 @@ use lib_shell::WindowSize;
 use lib_shell::window_size::{MIN_COLUMNS, MIN_ROWS};
 use lib_toast::{Display, Notice, ToastKind, Toasts};
 use lib_tracing::{LOG_CAPACITY, LogBuffer};
+use lib_units::presenter::PRICE_CHECK;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout},
@@ -81,10 +82,6 @@ use crate::{
 
 /// How often an [`Action::Tick`] fires in the absence of input.
 const TICK_RATE: Duration = Duration::from_millis(250);
-
-/// How often the Open Ledger checks for Units due a price, after the check it makes on opening
-/// (ADR-0043's "where and when fetching runs"), counted in ticks.
-const PRICE_CHECK: Duration = Duration::from_secs(60);
 
 /// The command names the Ledger file messages point to. Command syntax the user types, so passed
 /// into the Messages rather than translated (`popup::command::commands::ledger`).
@@ -420,10 +417,7 @@ impl Shell {
                 fetching,
                 Rc::new(chrono::Utc::now),
             );
-            // Fetch every due Unit as the Ledger opens, then every minute while it stays open, and
-            // fill each Unit's empty past weeks from its source's history, once, as it opens.
-            presenter.fetch_due();
-            presenter.backfill();
+            presenter.opened();
             (presenter, feed.responses)
         });
         OpenLedger {

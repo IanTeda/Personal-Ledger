@@ -73,12 +73,10 @@ impl UnitsRouter for PageRouter<'_, '_, UnitsPagePresenter> {
 
 /// `form` testing through the Open Ledger's fetching, when it has a price feed.
 fn testing(form: PriceSourceFormPresenter, setup: &UnitsSetup) -> PriceSourceFormPresenter {
-    match &setup.fetching {
-        Some(fetching) => {
-            form.with_testing(fetching.clone(), super::view::page::now_of(&setup.clock))
-        }
-        None => form,
-    }
+    form.with_testing(
+        setup.fetching.clone(),
+        super::view::page::now_of(&setup.clock),
+    )
 }
 
 /// The Units module's entry point: its Settings page, `presenter` routed over `setup`, which the

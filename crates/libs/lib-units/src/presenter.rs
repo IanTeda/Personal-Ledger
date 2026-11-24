@@ -37,7 +37,7 @@ pub use delete_unit::{
     DeleteUnitEvent, DeleteUnitPresenter, DeleteUnitViewModel, InUseView, NewBaseView,
     active_unit_choices, confirms_delete, delete_refusal,
 };
-pub use fetched_prices::FetchedPricesPresenter;
+pub use fetched_prices::{FetchedPricesPresenter, PRICE_CHECK};
 pub use price_history::{HISTORY_WEEKS, HistoryRow, PriceHistory, Trend};
 pub use price_source_form::{
     ApiKeyView, AuthChoice, HistoryFields, HistoryResponseView, HistoryShape, PriceSourceField,
@@ -168,6 +168,15 @@ fn linked_codes(ports: &dyn UnitsPorts, id: PriceSourceId) -> Vec<String> {
         .filter(|unit| unit.link.source_id == id)
         .map(|unit| unit.code)
         .collect()
+}
+
+/// The first Unit, by code, source `id` prices: the one a test of the source asks for.
+fn first_linked(ports: &dyn UnitsPorts, id: PriceSourceId) -> Option<crate::UnitRow> {
+    let units = ports.units().units();
+    crate::units_by_code(&units)
+        .into_iter()
+        .find(|unit| unit.link.source_id == id)
+        .cloned()
 }
 
 /// What names the Unit, as one phrase: `2 accounts, 1 bill plan, 3 budgets, 1 location`.
