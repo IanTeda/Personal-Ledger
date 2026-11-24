@@ -317,7 +317,7 @@ pub(crate) mod test_support {
     use lib_viper::dialog::{DialogKeys, dialog_keymap};
     use lib_viper::keymap::KeyBindingConfig;
 
-    use crate::fake::InMemoryPorts;
+    use crate::fake::{InMemoryPorts, LedgerPricesFixture};
     use crate::protocols::SharedPorts;
 
     /// Composes this crate's layer into the process Locale, which every test that reads text
@@ -364,6 +364,13 @@ pub(crate) mod test_support {
     pub fn sample() -> (Rc<RefCell<InMemoryPorts>>, SharedPorts) {
         locale();
         InMemoryPorts::sample(now()).shared()
+    }
+
+    /// The sample seed's price fetching on the tests' clock: the fixture every price-fetching
+    /// Presenter test starts from.
+    pub fn prices() -> LedgerPricesFixture {
+        locale();
+        LedgerPricesFixture::new(InMemoryPorts::sample(now()), now())
     }
 
     /// Prices every other sample Unit in itself, so nothing is quoted in aud and the base can be

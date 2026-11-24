@@ -1,19 +1,24 @@
 //! In-memory ports and the sample seed, for tests and UI-first work. Each holds its rows in a plain
 //! field so a test can set up or read state directly. [`RecordingRouter`] is a Router that only
-//! records what it was asked. [`FakeTransport`] records each price request and answers it on cue.
+//! records what it was asked. [`FakeTransport`] records each price request and answers it on cue,
+//! and [`LedgerPricesFixture`] is where every price-fetching test starts.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use lib_core::{PriceSourceId, UnitId};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 use secrecy::{ExposeSecret as _, SecretString};
 
-use crate::fetching::{PriceRequest, PriceResponse, PriceTransport, RequestId, TransportOutcome};
+use crate::fetching::{
+    PriceFetching, PriceRequest, PriceResponse, PriceTransport, RequestId, SharedFetching,
+    TransportOutcome,
+};
+use crate::presenter::{Clock, FetchedPricesPresenter};
 use crate::protocols::{PortsMut, SharedPorts, UnitsDialog, UnitsOutcome, UnitsPorts, UnitsRouter};
 use crate::{
     BaseUnitRepository, Error, Holding, KeyState, PriceSourceKeys, PriceSourceRecord,
@@ -433,6 +438,115 @@ impl PriceTransport for FakeTransport {
     }
 }
 
+/// An Open Ledger's price fetching as a test drives it: the fake Units ports, a [`FakeTransport`],
+/// a clock the test sets, the shared fetching, and the fetched-prices Presenter every response
+/// lands through, collecting the Notices each landing raises. It wraps today's
+/// [`FetchedPricesPresenter`] under the name the Ledger prices module will take, so the tests that
+/// build on it move with that rename rather than each rebuilding this setup.
+pub struct LedgerPricesFixture {
+    ports: Rc<RefCell<InMemoryPorts>>,
+    shared: SharedPorts,
+    transport: FakeTransport,
+    fetching: SharedFetching,
+    at: Rc<Cell<DateTime<Utc>>>,
+    prices: FetchedPricesPresenter,
+    notices: Vec<Notice>,
+}
+
+impl LedgerPricesFixture {
+    /// `ports` with fetching over a fresh [`FakeTransport`], the clock reading `now`.
+    pub fn new(ports: InMemoryPorts, now: DateTime<Utc>) -> Self {
+        let (ports, shared) = ports.shared();
+        let transport = FakeTransport::default();
+        let fetching = PriceFetching::shared(Rc::new(transport.clone()));
+        let at = Rc::new(Cell::new(now));
+        let clock: Clock = {
+            let at = at.clone();
+            Rc::new(move || at.get())
+        };
+        Self {
+            prices: FetchedPricesPresenter::new(shared.clone(), fetching.clone(), clock),
+            ports,
+            shared,
+            transport,
+            fetching,
+            at,
+            notices: Vec::new(),
+        }
+    }
+
+    /// The ports, for a test to arrange or read back.
+    pub fn ports(&self) -> &Rc<RefCell<InMemoryPorts>> {
+        &self.ports
+    }
+
+    /// The same ports as the Presenters share them.
+    pub fn shared(&self) -> SharedPorts {
+        self.shared.clone()
+    }
+
+    pub fn transport(&self) -> &FakeTransport {
+        &self.transport
+    }
+
+    /// The fetching every Presenter on this Ledger shares.
+    pub fn fetching(&self) -> &SharedFetching {
+        &self.fetching
+    }
+
+    /// A clock reading what [`Self::set_now`] and [`Self::later`] last set.
+    pub fn clock(&self) -> Clock {
+        let at = self.at.clone();
+        Rc::new(move || at.get())
+    }
+
+    pub fn now(&self) -> DateTime<Utc> {
+        self.at.get()
+    }
+
+    pub fn set_now(&self, now: DateTime<Utc>) {
+        self.at.set(now);
+    }
+
+    /// Moves the clock on `by`.
+    pub fn later(&self, by: Duration) {
+        self.at.set(self.at.get() + by);
+    }
+
+    /// The fetched-prices Presenter, for its scheduled check and backfill.
+    pub fn prices(&mut self) -> &mut FetchedPricesPresenter {
+        &mut self.prices
+    }
+
+    /// Lands `response` as a Client's input door does, returning the Notices it raised; they are
+    /// collected in [`Self::notices`] too.
+    pub fn land(&mut self, response: PriceResponse) -> Vec<Notice> {
+        let mut raised = Vec::new();
+        self.prices.handle(response, &mut raised);
+        self.notices.extend(raised.iter().cloned());
+        raised
+    }
+
+    /// Releases the queued calls as a Client's response poll does, returning the Notices it
+    /// raised; they are collected in [`Self::notices`] too.
+    pub fn pump(&mut self) -> Vec<Notice> {
+        let mut raised = Vec::new();
+        self.prices.pump(&mut raised);
+        self.notices.extend(raised.iter().cloned());
+        raised
+    }
+
+    /// Every Notice raised since the fixture was built or last emptied.
+    pub fn notices(&self) -> &[Notice] {
+        &self.notices
+    }
+
+    /// Empties the collected Notices, returning them.
+    pub fn take_notices(&mut self) -> Vec<Notice> {
+        std::mem::take(&mut self.notices)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -474,6 +588,38 @@ mod tests {
 
         units.delete_unit(UnitId::SEED_BTC);
         assert_eq!(units.unit(UnitId::SEED_BTC), None);
+    }
+
+    #[test]
+    fn the_prices_fixture_lands_a_fetch_now_and_collects_its_toast() {
+        let mut prices = crate::presenter::test_support::prices();
+        crate::interactor::FetchNow {
+            id: UnitId::SEED_BTC,
+        }
+        .run(
+            &*prices.ports().borrow(),
+            &mut prices.fetching().borrow_mut(),
+            prices.now(),
+        )
+        .expect("sent");
+        prices.later(Duration::seconds(1));
+
+        let raised = prices.land(
+            prices
+                .transport()
+                .answer_last(200, r#"{"bitcoin":{"aud":92568}}"#),
+        );
+
+        assert_eq!(
+            raised,
+            [Notice::Toast(
+                lib_toast::ToastKind::Success,
+                "Fetched BTC at 92,568.00 AUD".into()
+            )]
+        );
+        assert_eq!(prices.notices(), raised.as_slice());
+        assert_eq!(prices.take_notices(), raised);
+        assert!(prices.notices().is_empty());
     }
 
     #[test]

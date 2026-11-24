@@ -2491,28 +2491,24 @@ mod tests {
 
     /// Fetch now on the page, through the fake transport: no HTTP in `lib-units`.
     mod fetch_now {
-        use std::rc::Rc;
-
         use lib_toast::{Notice, ToastKind};
 
         use super::*;
-        use crate::fake::FakeTransport;
-        use crate::fetching::{PriceFetching, SharedFetching};
-        use crate::presenter::FetchedPricesPresenter;
+        use crate::fake::LedgerPricesFixture;
+        use crate::presenter::test_support::prices;
         use crate::{Precision, PriceLink, UnitKind};
 
         const BODY: &str = r#"{"date":"2026-10-21","base":"EUR","quote":"AUD","rate":1.6512}"#;
 
         struct Fetching {
             page: Page,
-            transport: FakeTransport,
-            fetching: SharedFetching,
+            prices: LedgerPricesFixture,
             eur: UnitId,
         }
 
         /// The sample with EUR on Frankfurter, quoted in aud, on a page that fetches.
         fn fetching() -> Fetching {
-            let (ports, shared) = sample();
+            let prices = prices();
             let unit = UnitRow::new(
                 "EUR".into(),
                 "Euro".into(),
@@ -2525,19 +2521,20 @@ mod tests {
                 },
             );
             let eur = unit.id;
-            ports.borrow_mut().units.units.push(unit);
-            let transport = FakeTransport::default();
-            let fetching = PriceFetching::shared(Rc::new(transport.clone()));
-            let presenter = UnitsPagePresenter::new(shared, clock(), &KeyBindingConfig::default())
-                .with_fetching(Some(fetching.clone()));
+            prices.ports().borrow_mut().units.units.push(unit);
+            let presenter = UnitsPagePresenter::new(
+                prices.shared(),
+                prices.clock(),
+                &KeyBindingConfig::default(),
+            )
+            .with_fetching(Some(prices.fetching().clone()));
             Fetching {
                 page: Page {
-                    ports,
+                    ports: prices.ports().clone(),
                     presenter,
                     router: RecordingRouter::default(),
                 },
-                transport,
-                fetching,
+                prices,
                 eur,
             }
         }
@@ -2557,14 +2554,11 @@ mod tests {
 
             assert_eq!(on.page.send(UnitsPageEvent::FetchNow), vec![]);
             assert_eq!(
-                on.transport.urls(),
+                on.prices.transport().urls(),
                 ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
             );
 
-            let mut responses =
-                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
-            let mut notices: Vec<Notice> = Vec::new();
-            responses.handle(on.transport.answer_last(200, BODY), &mut notices);
+            let notices = on.prices.land(on.prices.transport().answer_last(200, BODY));
 
             assert_eq!(
                 notices,
@@ -2581,7 +2575,7 @@ mod tests {
                 .find(|unit| unit.code == "EUR")
                 .expect("EUR is listed");
             assert_eq!(line.last_price, "1.65 AUD");
-            assert_eq!(on.fetching.borrow().in_flight(), 0);
+            assert_eq!(on.prices.fetching().borrow().in_flight(), 0);
         }
 
         /// Adds an active `code` on `link`, presses `f` on it, answers the one request sent with
@@ -2605,14 +2599,11 @@ mod tests {
             on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(id)));
             assert!(offers_fetch(&on.page), "{code}");
             on.page.send(UnitsPageEvent::FetchNow);
-            let requests = on.transport.requests();
+            let requests = on.prices.transport().requests();
             let [(_, request)] = requests.as_slice() else {
                 panic!("one request for {code}, not {requests:?}");
             };
-            let mut responses =
-                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
-            let mut notices: Vec<Notice> = Vec::new();
-            responses.handle(on.transport.answer_last(200, body), &mut notices);
+            on.prices.land(on.prices.transport().answer_last(200, body));
             let line = on
                 .page
                 .view()
@@ -2734,7 +2725,7 @@ mod tests {
             assert!(!offers_fetch(&on.page));
             on.page.send(UnitsPageEvent::FetchNow);
 
-            assert!(on.transport.requests().is_empty());
+            assert!(on.prices.transport().requests().is_empty());
         }
 
         fn notices(calls: Vec<RouterCall>) -> Vec<Notice> {
@@ -2762,7 +2753,7 @@ mod tests {
 
             assert_eq!(told, [info("Fetching prices from Frankfurter\u{2026}")]);
             assert_eq!(
-                on.transport.urls(),
+                on.prices.transport().urls(),
                 ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
             );
             assert_eq!(
@@ -2782,7 +2773,7 @@ mod tests {
             let told = notices(on.page.send(UnitsPageEvent::FetchNow));
 
             assert_eq!(told, [info("Already fetching prices from Frankfurter")]);
-            assert_eq!(on.transport.requests().len(), 1);
+            assert_eq!(on.prices.transport().requests().len(), 1);
         }
 
         #[test]
@@ -2803,24 +2794,17 @@ mod tests {
             on.page
                 .send(UnitsPageEvent::Select(UnitsRow::Source(FRANKFURTER)));
             on.page.send(UnitsPageEvent::FetchNow);
-            let mut responses =
-                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
-            let mut notices: Vec<Notice> = Vec::new();
-
-            responses.handle(on.transport.answer_last(200, BODY), &mut notices);
+            let mut notices = on.prices.land(on.prices.transport().answer_last(200, BODY));
             assert_eq!(notices, [], "the round is held until its last response");
-            let first = on.transport.requests()[0].0;
-            responses.handle(
-                on.transport.answer(
-                    first,
-                    crate::TransportOutcome::Answered {
-                        status: 200,
-                        body: BODY.into(),
-                        retry_after: None,
-                    },
-                ),
-                &mut notices,
-            );
+            let first = on.prices.transport().requests()[0].0;
+            notices.extend(on.prices.land(on.prices.transport().answer(
+                first,
+                crate::TransportOutcome::Answered {
+                    status: 200,
+                    body: BODY.into(),
+                    retry_after: None,
+                },
+            )));
 
             assert_eq!(
                 notices,
@@ -2851,10 +2835,7 @@ mod tests {
                     info("Fetching prices from Frankfurter\u{2026}"),
                 ]
             );
-            let mut responses =
-                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
-            let mut after: Vec<Notice> = Vec::new();
-            responses.handle(on.transport.answer_last(200, BODY), &mut after);
+            let after = on.prices.land(on.prices.transport().answer_last(200, BODY));
             assert!(
                 !after
                     .iter()
@@ -2867,7 +2848,7 @@ mod tests {
         fn fetch_all_while_every_round_is_out_only_gives_info_toasts() {
             let mut on = fetching();
             on.page.send(UnitsPageEvent::FetchAll);
-            let sent = on.transport.requests().len();
+            let sent = on.prices.transport().requests().len();
 
             let told = notices(on.page.send(UnitsPageEvent::FetchAll));
 
@@ -2876,7 +2857,7 @@ mod tests {
                     .all(|notice| matches!(notice, Notice::Toast(ToastKind::Info, _))),
                 "{told:?}"
             );
-            assert_eq!(on.transport.requests().len(), sent);
+            assert_eq!(on.prices.transport().requests().len(), sent);
         }
 
         #[test]
@@ -2961,11 +2942,8 @@ mod tests {
         fn fetch_eur(on: &mut Fetching, status: u16, body: &str) -> Vec<Notice> {
             on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(on.eur)));
             on.page.send(UnitsPageEvent::FetchNow);
-            let mut responses =
-                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
-            let mut notices: Vec<Notice> = Vec::new();
-            responses.handle(on.transport.answer_last(status, body), &mut notices);
-            notices
+            on.prices
+                .land(on.prices.transport().answer_last(status, body))
         }
 
         #[test]
@@ -2973,17 +2951,11 @@ mod tests {
             let mut on = fetching();
             on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(on.eur)));
             on.page.send(UnitsPageEvent::FetchNow);
-            let mut responses =
-                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
-            let mut ignored: Vec<Notice> = Vec::new();
-            responses.handle(
-                on.transport.answer_last_with(429, "", Some("40")),
-                &mut ignored,
-            );
+            on.prices
+                .land(on.prices.transport().answer_last_with(429, "", Some("40")));
 
             let told = notices(on.page.send(UnitsPageEvent::FetchNow));
-            let mut pumped: Vec<Notice> = Vec::new();
-            responses.pump(&mut pumped);
+            let pumped = on.prices.pump();
 
             assert_eq!(told, [info("Waiting for Frankfurter, 40 s\u{2026}")]);
             assert_eq!(pumped, [], "the page already said so");
@@ -3016,10 +2988,7 @@ mod tests {
                 "a backfill never toasts"
             );
 
-            let mut responses =
-                FetchedPricesPresenter::new(on.page.ports.clone(), on.fetching.clone(), clock());
-            let mut notices: Vec<Notice> = Vec::new();
-            responses.handle(on.transport.answer_last(503, ""), &mut notices);
+            let notices = on.prices.land(on.prices.transport().answer_last(503, ""));
 
             assert_eq!(
                 backfill(&on.page).as_deref(),
@@ -3178,7 +3147,7 @@ mod tests {
 
             let calls = on.page.send(UnitsPageEvent::FetchNow);
 
-            assert!(on.transport.requests().is_empty());
+            assert!(on.prices.transport().requests().is_empty());
             assert_eq!(
                 calls,
                 [RouterCall::Notice(Notice::Toast(
@@ -3207,15 +3176,9 @@ mod tests {
 
             /// Hands the newest request's answer to the fetched-prices Presenter, returning what
             /// it raised.
-            fn answer(on: &Fetching, status: u16, body: &str) -> Vec<Notice> {
-                let mut responses = FetchedPricesPresenter::new(
-                    on.page.ports.clone(),
-                    on.fetching.clone(),
-                    clock(),
-                );
-                let mut notices: Vec<Notice> = Vec::new();
-                responses.handle(on.transport.answer_last(status, body), &mut notices);
-                notices
+            fn answer(on: &mut Fetching, status: u16, body: &str) -> Vec<Notice> {
+                on.prices
+                    .land(on.prices.transport().answer_last(status, body))
             }
 
             /// Whether the test left any trace: a price on EUR, or a fetch held for it or
@@ -3226,7 +3189,7 @@ mod tests {
                 let records = ports.price_sources.records.clone();
                 let source =
                     price_source(&records, "Manual entry", FRANKFURTER).expect("a built-in");
-                let fetching = on.fetching.borrow();
+                let fetching = on.prices.fetching().borrow();
                 eur.is_some_and(|eur| eur.prices.is_empty())
                     && fetching.source_fetch(&source).is_none()
                     && eur.is_some_and(|eur| fetching.unit_fetch(eur, &source).is_none())
@@ -3241,7 +3204,7 @@ mod tests {
 
                 assert_eq!(on.page.send(UnitsPageEvent::Test), vec![]);
                 assert_eq!(
-                    on.transport.urls(),
+                    on.prices.transport().urls(),
                     ["https://api.frankfurter.dev/v2/rate/EUR/AUD"]
                 );
                 assert!(
@@ -3254,7 +3217,7 @@ mod tests {
                 );
 
                 assert_eq!(
-                    answer(&on, 200, BODY),
+                    answer(&mut on, 200, BODY),
                     [Notice::Toast(
                         ToastKind::Info,
                         "Frankfurter works: EUR · 1.65 AUD · 0 ms".into()
@@ -3271,7 +3234,7 @@ mod tests {
                 on.page.send(UnitsPageEvent::Test);
 
                 assert_eq!(
-                    answer(&on, 429, ""),
+                    answer(&mut on, 429, ""),
                     [Notice::Toast(
                         ToastKind::Warning,
                         "Frankfurter test: Rate limited · Frankfurter asked to be called less often"
@@ -3294,7 +3257,7 @@ mod tests {
                         "Already testing Frankfurter".into()
                     ))]
                 );
-                assert_eq!(on.transport.requests().len(), 1);
+                assert_eq!(on.prices.transport().requests().len(), 1);
             }
 
             #[test]
@@ -3320,7 +3283,7 @@ mod tests {
                 on.page
                     .send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_AUD)));
                 assert_eq!(on.page.send(UnitsPageEvent::Test), vec![]);
-                assert!(on.transport.requests().is_empty());
+                assert!(on.prices.transport().requests().is_empty());
             }
         }
     }

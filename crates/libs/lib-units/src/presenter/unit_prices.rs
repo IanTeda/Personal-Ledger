@@ -1031,33 +1031,23 @@ mod tests {
     }
 
     mod finer {
-        use std::cell::{Cell, RefCell};
-        use std::rc::Rc;
-
         use lib_toast::Notice;
 
         use super::*;
-        use crate::fake::FakeTransport;
-        use crate::fetching::PriceFetching;
+        use crate::fake::LedgerPricesFixture;
         use crate::interactor::FetchDue;
-        use crate::presenter::FetchedPricesPresenter;
         use crate::protocols::UnitsPorts as _;
         use crate::{
             COINGECKO, FRANKFURTER, Precision, PriceLink, TransportError, TransportOutcome,
             UnitKind,
         };
 
-        /// The Unit prices view fetching through a fake transport, its responses landing through the
-        /// Client's fetched-prices Presenter, on a Clock a test moves.
+        /// The Unit prices view on the fixture's fetching, its responses landing through the
+        /// fixture on a Clock a test moves.
         struct Finer {
-            ports: Rc<RefCell<InMemoryPorts>>,
-            fetching: SharedFetching,
-            transport: FakeTransport,
-            at: Rc<Cell<DateTime<Utc>>>,
+            prices: LedgerPricesFixture,
             presenter: UnitPricesPresenter,
-            landing: FetchedPricesPresenter,
             router: RecordingRouter,
-            notices: Vec<Notice>,
         }
 
         impl Finer {
@@ -1066,30 +1056,18 @@ mod tests {
             }
 
             fn with(unit: UnitId, arrange: impl FnOnce(&mut InMemoryPorts)) -> Self {
-                let (ports, shared) = sample();
-                arrange(&mut ports.borrow_mut());
-                let transport = FakeTransport::default();
-                let fetching = PriceFetching::shared(Rc::new(transport.clone()));
-                let at = Rc::new(Cell::new(super::super::super::test_support::now()));
-                let clock: Clock = {
-                    let at = at.clone();
-                    Rc::new(move || at.get())
-                };
+                let prices = super::super::super::test_support::prices();
+                arrange(&mut prices.ports().borrow_mut());
                 Self {
                     presenter: UnitPricesPresenter::new(
-                        shared.clone(),
-                        clock.clone(),
+                        prices.shared(),
+                        prices.clock(),
                         unit_prices_keymap(&KeyBindingConfig::default()),
                         unit,
                     )
-                    .with_fetching(Some(fetching.clone())),
-                    landing: FetchedPricesPresenter::new(shared, fetching.clone(), clock),
-                    ports,
-                    fetching,
-                    transport,
-                    at,
+                    .with_fetching(Some(prices.fetching().clone())),
+                    prices,
                     router: RecordingRouter::default(),
-                    notices: Vec::new(),
                 }
             }
 
@@ -1102,35 +1080,41 @@ mod tests {
             }
 
             fn answer(&mut self, status: u16, body: &str) {
-                let response = self.transport.answer_last(status, body);
-                self.landing.handle(response, &mut self.notices);
+                let response = self.prices.transport().answer_last(status, body);
+                self.prices.land(response);
             }
 
             fn answer_with(&mut self, outcome: TransportOutcome) {
                 let (id, _) = self
-                    .transport
+                    .prices
+                    .transport()
                     .requests()
                     .last()
                     .cloned()
                     .expect("a request");
-                let response = self.transport.answer(id, outcome);
-                self.landing.handle(response, &mut self.notices);
+                let response = self.prices.transport().answer(id, outcome);
+                self.prices.land(response);
             }
 
             fn sent(&self) -> usize {
-                self.transport.urls().len()
+                self.prices.transport().urls().len()
             }
 
             fn last_url(&self) -> String {
-                self.transport.urls().last().cloned().unwrap_or_default()
+                self.prices
+                    .transport()
+                    .urls()
+                    .last()
+                    .cloned()
+                    .unwrap_or_default()
             }
 
             fn later(&self, by: Duration) {
-                self.at.set(self.at.get() + by);
+                self.prices.later(by);
             }
 
             fn today(&self) -> NaiveDate {
-                self.at.get().with_timezone(&Local).date_naive()
+                self.prices.now().with_timezone(&Local).date_naive()
             }
         }
 
@@ -1244,7 +1228,7 @@ mod tests {
                 unit_prices_keymap(&KeyBindingConfig::default()),
                 eur_id.expect("added"),
             )
-            .with_fetching(Some(eur.fetching.clone()));
+            .with_fetching(Some(eur.prices.fetching().clone()));
             assert_eq!(
                 grains(&eur.view()),
                 [(Grain::Week, true), (Grain::Day, false)]
@@ -1273,7 +1257,8 @@ mod tests {
          {
             let mut btc = Finer::of(UnitId::SEED_BTC);
             let weeks_before = btc
-                .ports
+                .prices
+                .ports()
                 .borrow()
                 .units
                 .unit(UnitId::SEED_BTC)
@@ -1294,9 +1279,10 @@ mod tests {
             assert!(view.rows[0].selected);
             assert_eq!(view.chart.len(), 2);
             assert!(!view.chart[0].candle, "a close-only day is a tick");
-            assert_eq!(btc.notices, [], "no Toast");
+            assert_eq!(btc.prices.notices(), [], "no Toast");
             assert_eq!(
-                btc.ports
+                btc.prices
+                    .ports()
                     .borrow()
                     .units
                     .unit(UnitId::SEED_BTC)
@@ -1433,15 +1419,15 @@ mod tests {
                     "Couldn't fetch: CoinGecko has no bitcoin in AUD. Press z to go back to weekly."
                 )
             );
-            assert_eq!(btc.notices, []);
-            let ports = btc.ports.borrow();
+            assert_eq!(btc.prices.notices(), []);
+            let ports = btc.prices.ports().borrow();
             let catalogue = ports.source_catalogue();
             let coingecko = catalogue.source(COINGECKO).expect("built in");
             let unit = ports.units.unit(UnitId::SEED_BTC).expect("btc");
-            let fetching = btc.fetching.borrow();
+            let fetching = btc.prices.fetching().borrow();
             assert_eq!(fetching.unit_fetch(&unit, &coingecko), None);
             assert_eq!(fetching.source_fetch(&coingecko), None);
-            assert!(!fetching.source_backing_off(&coingecko, btc.at.get()));
+            assert!(!fetching.source_backing_off(&coingecko, btc.prices.now()));
             drop((fetching, catalogue, ports));
 
             let sent = btc.sent();
@@ -1462,24 +1448,31 @@ mod tests {
                 btc.view().empty.as_deref(),
                 Some("Couldn't fetch: couldn't reach CoinGecko. Press z to go back to weekly.")
             );
-            let ports = btc.ports.borrow();
+            let ports = btc.prices.ports().borrow();
             let catalogue = ports.source_catalogue();
             let coingecko = catalogue.source(COINGECKO).expect("built in");
             assert!(
-                btc.fetching
+                btc.prices
+                    .fetching()
                     .borrow()
-                    .source_backing_off(&coingecko, btc.at.get())
+                    .source_backing_off(&coingecko, btc.prices.now())
             );
-            assert_eq!(btc.fetching.borrow().source_fetch(&coingecko), None);
-            assert_eq!(btc.notices, []);
+            assert_eq!(
+                btc.prices.fetching().borrow().source_fetch(&coingecko),
+                None
+            );
+            assert_eq!(btc.prices.notices(), []);
         }
 
         #[test]
         fn a_retry_after_is_waited_out_in_place_and_back_off_is_ignored() {
             let mut btc = Finer::of(UnitId::SEED_BTC);
             btc.press(UnitPricesEvent::SetGrain(Grain::Day));
-            let response = btc.transport.answer_last_with(429, "{}", Some("40"));
-            btc.landing.handle(response, &mut btc.notices);
+            let response = btc
+                .prices
+                .transport()
+                .answer_last_with(429, "{}", Some("40"));
+            btc.prices.land(response);
             assert!(
                 btc.view()
                     .empty
@@ -1496,7 +1489,7 @@ mod tests {
                 Some("Waiting for CoinGecko, 40 s…")
             );
             btc.later(Duration::seconds(41));
-            btc.landing.pump(&mut btc.notices);
+            btc.prices.pump();
             assert_eq!(btc.sent(), sent + 1);
             assert_eq!(
                 btc.view().empty.as_deref(),
@@ -1510,9 +1503,11 @@ mod tests {
             // Past CoinGecko's 15 minutes, so btc is due.
             btc.later(Duration::hours(1));
             let today = btc.today();
-            let now = btc.at.get();
-            let started =
-                FetchDue { today, now }.run(&*btc.ports.borrow(), &mut btc.fetching.borrow_mut());
+            let now = btc.prices.now();
+            let started = FetchDue { today, now }.run(
+                &*btc.prices.ports().borrow(),
+                &mut btc.prices.fetching().borrow_mut(),
+            );
             assert_eq!(started, [COINGECKO]);
             let round = btc.sent();
 
@@ -1529,9 +1524,12 @@ mod tests {
             btc.later(Duration::hours(2));
             let started = FetchDue {
                 today,
-                now: btc.at.get(),
+                now: btc.prices.now(),
             }
-            .run(&*btc.ports.borrow(), &mut btc.fetching.borrow_mut());
+            .run(
+                &*btc.prices.ports().borrow(),
+                &mut btc.prices.fetching().borrow_mut(),
+            );
             assert!(started.is_empty(), "the daily request counts as in flight");
         }
 
@@ -1580,7 +1578,7 @@ mod tests {
                 unit_prices_keymap(&KeyBindingConfig::default()),
                 bhp.expect("added"),
             )
-            .with_fetching(Some(view.fetching.clone()));
+            .with_fetching(Some(view.prices.fetching().clone()));
             view.press(UnitPricesEvent::SetGrain(Grain::Hour));
             assert!(
                 view.last_url().starts_with(
@@ -1610,13 +1608,14 @@ mod tests {
             assert_eq!(btc.view().rows.len(), 1);
 
             let mut unit = btc
-                .ports
+                .prices
+                .ports()
                 .borrow()
                 .units
                 .unit(UnitId::SEED_BTC)
                 .expect("btc");
             unit.link.symbol = "wrapped-bitcoin".into();
-            btc.ports.borrow_mut().units.upsert_unit(unit);
+            btc.prices.ports().borrow_mut().units.upsert_unit(unit);
             assert!(
                 btc.view().rows.is_empty(),
                 "the old link's series no longer shows"

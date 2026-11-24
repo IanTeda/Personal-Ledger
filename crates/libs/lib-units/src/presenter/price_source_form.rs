@@ -2223,56 +2223,37 @@ mod tests {
     /// Test with symbol and Test price source, through a fake transport.
     mod testing {
         use super::*;
-        use crate::fake::FakeTransport;
-        use crate::fetching::{PriceFetching, PriceResponse, SharedFetching};
-        use crate::presenter::FetchedPricesPresenter;
-        use crate::presenter::test_support::{clock, now};
+        use crate::fake::LedgerPricesFixture;
+        use crate::presenter::test_support::{now, prices};
         use crate::protocols::UnitsPorts as _;
-        use lib_toast::Notice;
 
-        struct Tested {
-            ports: Rc<RefCell<InMemoryPorts>>,
-            shared: SharedPorts,
-            transport: FakeTransport,
-            fetching: SharedFetching,
+        fn tested() -> LedgerPricesFixture {
+            prices()
         }
 
-        fn tested() -> Tested {
-            let (ports, shared) = sample();
-            let transport = FakeTransport::default();
-            let fetching = PriceFetching::shared(Rc::new(transport.clone()));
-            Tested {
-                ports,
-                shared,
-                transport,
-                fetching,
-            }
+        /// What these tests ask of the fixture beyond its own interface.
+        trait Tested {
+            fn add(&self) -> PriceSourceFormPresenter;
+            fn edit(&self, id: PriceSourceId) -> PriceSourceFormPresenter;
+            /// No source, key, price or fetch failure was written.
+            fn wrote_nothing(&self) -> bool;
         }
 
-        impl Tested {
+        impl Tested for LedgerPricesFixture {
             fn add(&self) -> PriceSourceFormPresenter {
-                PriceSourceFormPresenter::add(self.shared.clone(), DialogKeys::default())
-                    .with_testing(Some(self.fetching.clone()), clock())
+                PriceSourceFormPresenter::add(self.shared(), DialogKeys::default())
+                    .with_testing(Some(self.fetching().clone()), self.clock())
             }
 
             fn edit(&self, id: PriceSourceId) -> PriceSourceFormPresenter {
-                PriceSourceFormPresenter::edit(self.shared.clone(), id, DialogKeys::default())
+                PriceSourceFormPresenter::edit(self.shared(), id, DialogKeys::default())
                     .expect("an editable source")
-                    .with_testing(Some(self.fetching.clone()), clock())
+                    .with_testing(Some(self.fetching().clone()), self.clock())
             }
 
-            /// Lands `response` as the Client's input door does.
-            fn land(&self, response: PriceResponse) -> Vec<Notice> {
-                let mut notices = Vec::new();
-                FetchedPricesPresenter::new(self.shared.clone(), self.fetching.clone(), clock())
-                    .handle(response, &mut notices);
-                notices
-            }
-
-            /// No source, key, price or fetch failure was written.
             fn wrote_nothing(&self) -> bool {
-                let ports = self.ports.borrow();
-                let fetching = self.fetching.borrow();
+                let ports = self.ports().borrow();
+                let fetching = self.fetching().borrow();
                 let catalogue = ports.source_catalogue();
                 ports.price_sources.records.is_empty()
                     && ports.keys.keys.is_empty()
@@ -2318,14 +2299,14 @@ mod tests {
 
             send(&mut form, vec![PriceSourceFormEvent::Test]);
             assert!(
-                on.transport.requests().is_empty(),
+                on.transport().requests().is_empty(),
                 "nothing is sent while off"
             );
         }
 
         #[test]
         fn an_unsaved_custom_source_is_tested_in_the_base_unit_and_writes_nothing() {
-            let on = tested();
+            let mut on = tested();
             let mut form = on.add();
             let mut events = filled();
             events.extend([
@@ -2346,7 +2327,7 @@ mod tests {
                     PriceSourceFormEvent::Input(DialogInput::Select),
                 ],
             );
-            let requests = on.transport.requests();
+            let requests = on.transport().requests();
             let [(_, request)] = requests.as_slice() else {
                 panic!("one test request, not {requests:?}");
             };
@@ -2363,7 +2344,7 @@ mod tests {
             );
 
             let notices = on.land(
-                on.transport
+                on.transport()
                     .answer_last(200, r#"{"Global Quote":{"05. price":"101.8400"}}"#),
             );
             assert!(notices.is_empty(), "a form's test raises no Toast");
@@ -2385,7 +2366,7 @@ mod tests {
 
         #[test]
         fn no_price_opens_the_response_by_itself_with_the_keys_echo_masked() {
-            let on = tested();
+            let mut on = tested();
             let mut form = on.add();
             let mut events = filled();
             events.extend([
@@ -2396,7 +2377,7 @@ mod tests {
                 PriceSourceFormEvent::Test,
             ]);
             send(&mut form, events);
-            on.land(on.transport.answer_last(
+            on.land(on.transport().answer_last(
                 200,
                 r#"{"Global Quote":{"5. price":"101.84"},"apikey":"s3cr3t"}"#,
             ));
@@ -2422,7 +2403,7 @@ mod tests {
 
         #[test]
         fn an_unparseable_body_is_shown_as_text() {
-            let on = tested();
+            let mut on = tested();
             let mut form = on.add();
             let mut events = filled();
             events.extend([
@@ -2430,7 +2411,7 @@ mod tests {
                 PriceSourceFormEvent::Test,
             ]);
             send(&mut form, events);
-            on.land(on.transport.answer_last(502, "<html>Bad Gateway</html>"));
+            on.land(on.transport().answer_last(502, "<html>Bad Gateway</html>"));
 
             let result = test_view(&form).result.expect("landed");
             assert_eq!(result.heading, "Source error");
@@ -2442,8 +2423,8 @@ mod tests {
 
         #[test]
         fn an_edited_source_is_tested_with_its_stored_key_and_tagged_with_unsaved_changes() {
-            let on = tested();
-            let id = keyed_source(&on.ports, &on.shared);
+            let mut on = tested();
+            let id = keyed_source(on.ports(), &on.shared());
             let mut form = on.edit(id);
             send(
                 &mut form,
@@ -2453,11 +2434,11 @@ mod tests {
                 ],
             );
             on.land(
-                on.transport
+                on.transport()
                     .answer_last(200, r#"{"Global Quote":{"05. price":"1"}}"#),
             );
             assert_eq!(test_view(&form).result.unwrap().unsaved, None, "as saved");
-            let requests = on.transport.requests();
+            let requests = on.transport().requests();
             assert_eq!(
                 requests[0]
                     .1
@@ -2476,7 +2457,7 @@ mod tests {
                 ],
             );
             on.land(
-                on.transport
+                on.transport()
                     .answer_last(200, r#"{"Global Quote":{"5. price":"1"}}"#),
             );
             assert_eq!(
@@ -2484,7 +2465,7 @@ mod tests {
                 Some("with unsaved changes")
             );
             assert_eq!(
-                custom_records(&on.ports.borrow())[0]
+                custom_records(&on.ports().borrow())[0]
                     .endpoint
                     .price_path
                     .as_ref(),
@@ -2495,7 +2476,7 @@ mod tests {
 
         #[test]
         fn a_built_ins_test_prices_the_first_unit_it_values_and_shows_no_response() {
-            let on = tested();
+            let mut on = tested();
             let mut form = on.edit(COINGECKO);
             let view = test_view(&form);
             assert_eq!(view.button, "Test price source");
@@ -2505,10 +2486,10 @@ mod tests {
 
             send(&mut form, vec![PriceSourceFormEvent::Test]);
             assert_eq!(
-                on.transport.urls(),
+                on.transport().urls(),
                 ["https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=aud"]
             );
-            on.land(on.transport.answer_last(404, "{}"));
+            on.land(on.transport().answer_last(404, "{}"));
             let result = test_view(&form).result.expect("landed");
             assert_eq!(result.heading, "Not found");
             assert_eq!(result.response, None, "a built-in's path is code");
@@ -2523,7 +2504,7 @@ mod tests {
         }
 
         /// A new Custom source with a list-of-points history, ready to test VAS.AX.
-        fn with_history(on: &Tested) -> PriceSourceFormPresenter {
+        fn with_history(on: &LedgerPricesFixture) -> PriceSourceFormPresenter {
             let mut form = on.add();
             let mut events = filled();
             events.extend([
@@ -2544,13 +2525,13 @@ mod tests {
 
         #[test]
         fn once_the_price_passes_the_test_asks_14_days_of_history_and_shows_its_line() {
-            let on = tested();
+            let mut on = tested();
             let mut form = with_history(&on);
             send(&mut form, vec![PriceSourceFormEvent::Test]);
-            on.land(on.transport.answer_last(200, PRICED));
+            on.land(on.transport().answer_last(200, PRICED));
 
             assert_eq!(
-                on.transport.urls()[1],
+                on.transport().urls()[1],
                 "https://www.alphavantage.co/history?symbol=VAS.AX&from=2026-10-08&to=2026-10-21"
             );
             assert_eq!(
@@ -2559,7 +2540,7 @@ mod tests {
                 "out until its history lands"
             );
 
-            on.land(on.transport.answer_last(
+            on.land(on.transport().answer_last(
                 200,
                 r#"{"data":[{"date":"2026-10-19","close":1.2},{"date":"2026-10-20","close":"1.2345"}]}"#,
             ));
@@ -2581,11 +2562,11 @@ mod tests {
 
         #[test]
         fn an_empty_history_reads_no_price_and_opens_the_response_by_itself() {
-            let on = tested();
+            let mut on = tested();
             let mut form = with_history(&on);
             send(&mut form, vec![PriceSourceFormEvent::Test]);
-            on.land(on.transport.answer_last(200, PRICED));
-            on.land(on.transport.answer_last(200, r#"{"data":[]}"#));
+            on.land(on.transport().answer_last(200, PRICED));
+            on.land(on.transport().answer_last(200, r#"{"data":[]}"#));
 
             let result = test_view(&form).result.expect("landed");
             assert_eq!(result.state, TestState::Found, "the price passed");
@@ -2605,11 +2586,11 @@ mod tests {
 
         #[test]
         fn a_failed_price_asks_no_history_and_a_source_without_one_shows_no_line() {
-            let on = tested();
+            let mut on = tested();
             let mut form = with_history(&on);
             send(&mut form, vec![PriceSourceFormEvent::Test]);
-            on.land(on.transport.answer_last(404, "{}"));
-            assert_eq!(on.transport.requests().len(), 1);
+            on.land(on.transport().answer_last(404, "{}"));
+            assert_eq!(on.transport().requests().len(), 1);
             assert_eq!(test_view(&form).result.expect("landed").history, None);
 
             let mut plain = on.add();
@@ -2619,9 +2600,9 @@ mod tests {
                 PriceSourceFormEvent::Test,
             ]);
             send(&mut plain, events);
-            on.land(on.transport.answer_last(200, PRICED));
+            on.land(on.transport().answer_last(200, PRICED));
             assert_eq!(
-                on.transport.requests().len(),
+                on.transport().requests().len(),
                 2,
                 "no history request to ask"
             );
@@ -2632,18 +2613,18 @@ mod tests {
 
         #[test]
         fn a_built_ins_test_asks_its_history_too_and_shows_only_its_line() {
-            let on = tested();
+            let mut on = tested();
             let mut form = on.edit(COINGECKO);
             send(&mut form, vec![PriceSourceFormEvent::Test]);
-            on.land(on.transport.answer_last(200, r#"{"bitcoin":{"aud":1}}"#));
+            on.land(on.transport().answer_last(200, r#"{"bitcoin":{"aud":1}}"#));
             assert!(
-                on.transport.urls()[1].contains("/coins/bitcoin/market_chart/range?"),
+                on.transport().urls()[1].contains("/coins/bitcoin/market_chart/range?"),
                 "{:?}",
-                on.transport.urls()
+                on.transport().urls()
             );
             // 20 October 2026, in milliseconds.
             on.land(
-                on.transport
+                on.transport()
                     .answer_last(200, r#"{"prices":[[1792454400000,2]]}"#),
             );
 
@@ -2657,14 +2638,14 @@ mod tests {
 
         #[test]
         fn closing_the_form_drops_a_test_still_out() {
-            let on = tested();
+            let mut on = tested();
             let mut form = on.edit(COINGECKO);
             send(&mut form, vec![PriceSourceFormEvent::Test]);
             send(&mut form, vec![PriceSourceFormEvent::Cancel]);
             drop(form);
 
             assert!(
-                on.land(on.transport.answer_last(200, r#"{"bitcoin":{"aud":1}}"#))
+                on.land(on.transport().answer_last(200, r#"{"bitcoin":{"aud":1}}"#))
                     .is_empty()
             );
             assert!(on.wrote_nothing());
