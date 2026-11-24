@@ -957,6 +957,7 @@ impl Shell {
             CommandId::UnitNew => Some(Action::OpenNewUnitPopup),
             CommandId::UnitEdit => Some(Action::OpenEditUnitPopup),
             CommandId::UnitDelete => Some(Action::OpenDeleteUnitPopup),
+            CommandId::UnitsFetchAll => Some(Action::FetchAllUnits),
             CommandId::Dashboard => Some(Action::OpenDashboard),
             CommandId::LedgerOpen => Some(Action::OpenLedger(path())),
             CommandId::LedgerNew => Some(Action::NewLedger(path())),
@@ -1744,7 +1745,10 @@ impl Shell {
                     self.view = previous;
                 }
             }
-            Action::OpenNewUnitPopup | Action::OpenEditUnitPopup | Action::OpenDeleteUnitPopup => {
+            Action::OpenNewUnitPopup
+            | Action::OpenEditUnitPopup
+            | Action::OpenDeleteUnitPopup
+            | Action::FetchAllUnits => {
                 if let Some(ledger) = &self.ledger {
                     self.open(UnitsView::new(&ledger.units));
                     self.view.update(&action);
@@ -3458,6 +3462,7 @@ mod tests {
             (CommandId::UnitNew, Action::OpenNewUnitPopup),
             (CommandId::UnitEdit, Action::OpenEditUnitPopup),
             (CommandId::UnitDelete, Action::OpenDeleteUnitPopup),
+            (CommandId::UnitsFetchAll, Action::FetchAllUnits),
             (CommandId::Dashboard, Action::OpenDashboard),
             (CommandId::Settings, Action::OpenSettings),
             (CommandId::Category, Action::OpenCategories),

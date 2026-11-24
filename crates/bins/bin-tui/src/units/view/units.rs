@@ -273,12 +273,13 @@ impl View for UnitsView {
     }
 
     /// The command window's `unit new`, `unit edit` and `unit delete` act on the page as its
-    /// `n`, `e` and `d` do.
+    /// `n`, `e` and `d` do, and `units fetch-all` as `UnitsPageEvent::FetchAll`.
     fn update(&mut self, action: &Action) {
         let event = match action {
             Action::OpenNewUnitPopup => UnitsPageEvent::NewUnit,
             Action::OpenEditUnitPopup => UnitsPageEvent::Edit,
             Action::OpenDeleteUnitPopup => UnitsPageEvent::Delete,
+            Action::FetchAllUnits => UnitsPageEvent::FetchAll,
             _ => return,
         };
         self.send(event);

@@ -45,4 +45,11 @@ pub const COMMANDS: &[Command] = &[
             preview: crate::msg::tui_command_preview_unit_delete,
         }],
     },
+    Command {
+        id: CommandId::UnitsFetchAll,
+        name: "units fetch-all",
+        chord: Chord::NONE,
+        description: crate::msg::tui_command_units_fetch_all_description,
+        args: &[],
+    },
 ];

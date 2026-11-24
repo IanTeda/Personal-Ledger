@@ -1202,3 +1202,38 @@ fn a_failed_daily_request_says_why_in_place_without_a_toast() {
     );
     assert!(!frame.contains("Couldn't fetch BTC"), "no Toast:\n{frame}");
 }
+
+#[test]
+fn units_fetch_all_from_the_palette_fetches_every_source_and_clears_the_status_line() {
+    let (transport, responses) = lib_units::fake::FakeTransport::channel();
+    let mut shell = common::fetching_shell(transport.clone(), responses);
+
+    common::run_command(&mut shell, "units fetch-all");
+
+    assert_eq!(
+        transport.urls(),
+        [
+            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=aud",
+            "https://api.frankfurter.dev/v2/rate/EUR/AUD"
+        ]
+    );
+    let started = screen(&mut shell);
+    assert!(started.contains("Fetching"), "{started}");
+
+    let coingecko = transport.requests()[0].0;
+    transport.answer(
+        coingecko,
+        lib_units::TransportOutcome::Answered {
+            status: 200,
+            body: r#"{"bitcoin":{"aud":92568}}"#.to_string(),
+            retry_after: None,
+        },
+    );
+    transport.answer_last(200, r#"{"base":"EUR","quote":"AUD","rate":1.6512}"#);
+    shell.handle_event(Event::Tick);
+
+    let frame = screen(&mut shell);
+    assert!(frame.contains("Fetched BTC at 92,568.00 AUD"), "{frame}");
+    assert!(frame.contains("Fetched EUR at 1.65 AUD"), "{frame}");
+    assert!(!frame.contains("Fetching\u{2026}"), "{frame}");
+}

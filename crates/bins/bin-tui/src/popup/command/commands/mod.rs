@@ -161,6 +161,7 @@ pub enum CommandId {
     UnitNew,
     UnitEdit,
     UnitDelete,
+    UnitsFetchAll,
 }
 
 /// One command: its stable id, its `:name` (excluding the leading `:`, added when rendering), its eventual

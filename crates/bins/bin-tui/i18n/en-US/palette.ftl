@@ -136,6 +136,7 @@ tui-command-unit-description = Units screen with details, summary and prices
 tui-command-unit-new-description = add a unit — code is permanent
 tui-command-unit-edit-description = edit the highlighted unit
 tui-command-unit-delete-description = delete — units in use can't be removed
+tui-command-units-fetch-all-description = fetch the latest price of every Unit with a price source
 
 ## Argument previews: the fixed example shown beside an argument's own token in the popup's info
 ## row. Three are shared by several commands.
