@@ -5,9 +5,8 @@
 -- renamed or retimed, and Manual entry never has one. That is why units.price_source_id has no
 -- foreign key here.
 --
--- No column holds an API key: a key is each Client's own, kept in the OS keychain, and never
--- syncs (ADR-0043's amendment). Only key_placement and key_name, which say where a key goes in
--- the request, are stored. A Custom source declares no Unit Kinds (lib-units offers it for
+-- No column holds an API key: a key is in price_source_keys, encrypted (#1391), never here. Only
+-- key_placement and key_name, which say where a key goes in the request, are stored. A Custom source declares no Unit Kinds (lib-units offers it for
 -- every Kind), so there is no column for them.
 
 CREATE TABLE IF NOT EXISTS price_sources (
