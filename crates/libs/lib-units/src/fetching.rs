@@ -42,23 +42,22 @@ impl CallRate {
     /// The sliding window the calls are counted over.
     pub const WINDOW: Duration = Duration::seconds(60);
 
-    /// The rate of `source`, `keyed` when the call carries an API key: CoinGecko takes 5 a minute
-    /// keyless and 30 with a Demo key, Yahoo Finance 30, Frankfurter 60 and a Custom source, or
-    /// one not yet saved (`None`), 30.
-    pub fn of(source: Option<PriceSourceId>, keyed: bool) -> Self {
-        let calls = match source {
-            Some(id) if id == crate::COINGECKO => {
-                if keyed {
-                    30
-                } else {
-                    5
-                }
-            }
-            Some(id) if id == crate::FRANKFURTER => 60,
-            Some(id) if id == crate::YAHOO_FINANCE => 30,
-            Some(_) | None => 30,
-        };
+    /// A rate of `calls` a minute, as a built-in source declares it.
+    pub const fn per_minute(calls: usize) -> Self {
         Self { calls }
+    }
+
+    /// The rate of `source`, `keyed` when the call carries an API key: its built-in's
+    /// `keyed_call_rate` where it has one, else its `call_rate`. A Custom source, or one not yet
+    /// saved (`None`), is 30.
+    pub fn of(source: Option<PriceSourceId>, keyed: bool) -> Self {
+        let Some(built_in) = source.and_then(crate::built_in) else {
+            return Self::per_minute(30);
+        };
+        match built_in.keyed_call_rate {
+            Some(rate) if keyed => rate,
+            _ => built_in.call_rate,
+        }
     }
 }
 

@@ -15,10 +15,7 @@ use super::units_page::{ActivityLine, MenuAction, Row, SourceKind, UnitsPageEven
 use super::{ago, joined, updates_label};
 use crate::fetching::PriceFetching;
 use crate::protocols::{KeyState, UnitsPorts};
-use crate::{
-    COINGECKO, MANUAL_ENTRY, PriceSource, PriceSourceAuth, SourceOrigin, UnitRow, YAHOO_FINANCE,
-    last_fetched, msg,
-};
+use crate::{MANUAL_ENTRY, PriceSource, PriceSourceAuth, SourceOrigin, UnitRow, last_fetched, msg};
 
 /// The ✗ before LAST UPDATED for a source that hasn't fetched yet. A glyph, not a Message; both
 /// Clients draw it from here.
@@ -510,11 +507,8 @@ fn source_group(input: &PaneInput<'_>, source: &PriceSource<'_>) -> SourceGroup 
 /// prices, Yahoo Finance's unofficial note on its own pane (`own_pane`) only.
 fn attribution(source: &PriceSource<'_>, own_pane: bool) -> Option<String> {
     match source.origin {
-        SourceOrigin::BuiltIn(built_in) if built_in.id == COINGECKO => {
-            Some(msg::units_pane_powered_by_coingecko())
-        }
-        SourceOrigin::BuiltIn(built_in) if built_in.id == YAHOO_FINANCE && own_pane => {
-            Some(msg::units_pane_yahoo_unofficial())
+        SourceOrigin::BuiltIn(built_in) if built_in.attribution_everywhere || own_pane => {
+            built_in.attribution.map(|text| text())
         }
         SourceOrigin::BuiltIn(_) | SourceOrigin::Custom(_) | SourceOrigin::ManualEntry => None,
     }

@@ -12,6 +12,7 @@ use chrono::{DateTime, Utc};
 use lib_core::{PriceSourceId, UnitKind};
 
 use crate::UnitRow;
+use crate::fetching::CallRate;
 use crate::fine::Grain;
 
 /// Manual entry's id. These ids are fixed for good, not sample seeds: a Ledger refers to Manual
@@ -188,7 +189,7 @@ pub struct BatchRequest {
 const YAHOO_USER_AGENT: &str = concat!("Personal-Ledger/", env!("CARGO_PKG_VERSION"));
 
 /// A source shipped in code.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct BuiltInSource {
     pub id: PriceSourceId,
     /// The provider's own name, which is not translated.
@@ -206,7 +207,37 @@ pub struct BuiltInSource {
     pub hourly: Option<&'static HistoryEndpoint>,
     /// How many days back its hourly request reaches; `None` for no limit.
     pub hourly_depth: Option<u32>,
+    /// How many calls a minute this Client sends it, from what the provider allows.
+    pub call_rate: CallRate,
+    /// The rate with an API key, where the provider raises it; `None` when a key changes nothing.
+    pub keyed_call_rate: Option<CallRate>,
+    /// The credit its provider asks shown with its prices, `None` for none.
+    pub attribution: Option<fn() -> String>,
+    /// Whether `attribution` shows on every Unit the source prices, rather than only on its own
+    /// pane.
+    pub attribution_everywhere: bool,
 }
+
+// Hand-written so `attribution` compares the text it renders, not the fn pointer: the compiler
+// warns that fn pointers have no stable address to compare.
+impl PartialEq for BuiltInSource {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.name == other.name
+            && self.endpoint == other.endpoint
+            && self.updates == other.updates
+            && self.kinds == other.kinds
+            && self.history_depth == other.history_depth
+            && self.hourly == other.hourly
+            && self.hourly_depth == other.hourly_depth
+            && self.call_rate == other.call_rate
+            && self.keyed_call_rate == other.keyed_call_rate
+            && self.attribution.map(|text| text()) == other.attribution.map(|text| text())
+            && self.attribution_everywhere == other.attribution_everywhere
+    }
+}
+
+impl Eq for BuiltInSource {}
 
 /// The built-in sources, always listed.
 pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
@@ -256,6 +287,11 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
             shape: SeriesShape::Points,
         }),
         hourly_depth: Some(90),
+        // Keyless by default; a Demo key raises it.
+        call_rate: CallRate::per_minute(5),
+        keyed_call_rate: Some(CallRate::per_minute(30)),
+        attribution: Some(crate::msg::units_pane_powered_by_coingecko),
+        attribution_everywhere: true,
     },
     BuiltInSource {
         id: YAHOO_FINANCE,
@@ -307,6 +343,10 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
         }),
         // Yahoo keeps hourly bars for about the last 730 days.
         hourly_depth: Some(730),
+        call_rate: CallRate::per_minute(30),
+        keyed_call_rate: None,
+        attribution: Some(crate::msg::units_pane_yahoo_unofficial),
+        attribution_everywhere: false,
     },
     BuiltInSource {
         id: FRANKFURTER,
@@ -336,6 +376,10 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
         history_depth: None,
         hourly: None,
         hourly_depth: None,
+        call_rate: CallRate::per_minute(60),
+        keyed_call_rate: None,
+        attribution: None,
+        attribution_everywhere: false,
     },
 ];
 
