@@ -76,7 +76,7 @@ pub use adapter::payees::PayeesAdapter;
 pub use adapter::price_source_keys::{
     ApiKeySecret, InMemorySealedKeys, PriceSourceKeysAdapter, PriceSourceKeysStore, SealedKey,
 };
-pub(crate) use adapter::settings::{LedgerPreferencesAdapter, StoredSettingsReads};
+pub(crate) use adapter::settings::{ApiKeysAdapter, LedgerPreferencesAdapter, StoredSettingsReads};
 pub use adapter::store::{
     AccountsStore, BillsStore, BudgetsStore, CategoriesStore, CountingCommit, DocumentsStore,
     FakeStores, InstitutionsStore, InventoryStore, LedgerStore, PayeesStore, Recorded,

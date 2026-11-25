@@ -52,6 +52,7 @@ pub(crate) use inventory::StoredInventoryPorts;
 pub(crate) use payees::StoredPayeesPorts;
 pub(crate) use tags::StoredTagsPorts;
 pub(crate) use transactions::StoredTransactionsPorts;
+#[cfg(test)]
 pub(crate) use units::StoredPriceSourceKeys;
 pub(crate) use units::StoredUnitsPorts;
 
@@ -70,9 +71,10 @@ use crate::adapter::store::{
 };
 use crate::reversal::{Journal, LedgerReversal};
 use crate::{
-    AccountDeletionAdapter, BillPaymentsAdapter, CategoryDeletionAdapter, Commit, Domain,
-    LedgerPreferencesAdapter, Result, SharedLedger, StoredCategoryRows, StoredSettingsReads,
-    Stores, TagRemovalAdapter, TransactionImportAdapter, UnitDeletionAdapter, WriteFailure,
+    AccountDeletionAdapter, ApiKeysAdapter, BillPaymentsAdapter, CategoryDeletionAdapter, Commit,
+    Domain, LedgerPreferencesAdapter, Result, SharedLedger, StoredCategoryRows,
+    StoredSettingsReads, Stores, TagRemovalAdapter, TransactionImportAdapter, UnitDeletionAdapter,
+    WriteFailure,
 };
 use lib_shell::Step;
 
@@ -146,7 +148,7 @@ pub struct LedgerPorts {
     /// The Settings › Ledger page's base Unit write ([`LedgerPreferencesAdapter`]).
     ledger_preferences: Rc<LedgerPreferencesAdapter>,
     /// Settings › Data & backup's fingerprint and Remove all API keys ([`lib_settings::ApiKeys`]).
-    api_keys: Rc<StoredPriceSourceKeys>,
+    api_keys: Rc<ApiKeysAdapter>,
     /// The Dashboard's Bills and Budgets reads ([`StoredDashboardReads`]).
     dashboard_reads: Rc<StoredDashboardReads>,
     /// The Shell's rail-count reads ([`StoredShellReads`]).
@@ -243,7 +245,7 @@ impl LedgerPorts {
                 stores.units.clone(),
                 stores.ledger.clone(),
             )),
-            api_keys: Rc::new(StoredPriceSourceKeys::new(
+            api_keys: Rc::new(ApiKeysAdapter::new(
                 stores.price_source_keys.clone(),
                 secret.clone(),
             )),

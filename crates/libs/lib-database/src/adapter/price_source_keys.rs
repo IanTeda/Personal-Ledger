@@ -767,6 +767,7 @@ mod tests {
 
     #[test]
     fn remove_all_deletes_every_key_row_and_the_sources_read_as_not_set() {
+        use crate::adapter::settings::ApiKeysAdapter;
         use lib_settings::ApiKeys as _;
 
         let rows: SharedPriceSourceKeysStore = Rc::new(RefCell::new(InMemorySealedKeys::default()));
@@ -779,7 +780,7 @@ mod tests {
             .expect("the key is sealed");
         assert_eq!(rows.borrow().sealed().len(), 2);
 
-        keys.remove_all();
+        ApiKeysAdapter::new(rows.clone(), secret.clone()).remove_all();
 
         assert!(rows.borrow().sealed().is_empty());
         assert_eq!(keys.key_state(lib_units::COINGECKO), KeyState::NotSet);

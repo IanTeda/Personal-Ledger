@@ -4,19 +4,21 @@
 //! still the Units page's Set base unit Dialog's rule, so the write reuses its Interactor rather
 //! than moving it here: a Unit that is gone or inactive is refused as it is there.
 
-use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId, UnitRef};
+use lib_core::{FinancialYearStart, LedgerName, Owner, PriceSourceId, UnitId, UnitRef};
 use lib_settings::{
-    HeadlineAmount, LedgerCounts, LedgerFigures, LedgerPreferences, LedgerReads, LedgerSummaries,
+    ApiKeys, HeadlineAmount, LedgerCounts, LedgerFigures, LedgerPreferences, LedgerReads,
+    LedgerSummaries,
 };
 use lib_units::interactor::SetBaseUnit;
 use lib_units::{UnitUse, units_by_code};
 
 use super::store::{
     SharedAccountsStore, SharedCategoriesStore, SharedDocumentsStore, SharedInstitutionsStore,
-    SharedInventoryStore, SharedLedgerStore, SharedPayeesStore, SharedStores, SharedTagsStore,
-    SharedTransactionsStore, SharedUnitsStore, StoredTagReads,
+    SharedInventoryStore, SharedLedgerStore, SharedPayeesStore, SharedPriceSourceKeysStore,
+    SharedStores, SharedTagsStore, SharedTransactionsStore, SharedUnitsStore, StoredTagReads,
 };
 use super::units;
+use crate::ApiKeySecret;
 
 /// `lib-settings`' read ports answered by the stores, each borrowed for the one read: the Units
 /// the Ledger page offers, and the counts the Settings index's detail pane quotes (#1109), which
@@ -190,6 +192,41 @@ impl LedgerPreferences for LedgerPreferencesAdapter {
     }
 }
 
+/// `lib-settings`' view of the Price Source API keys over the sealed rows and the device's secret:
+/// the secret's fingerprint, and the way out when the secret is lost, deleting every row, which
+/// syncs as deletes (ADR-0043). Settings owns this port, so it is not the Units port's job.
+pub(crate) struct ApiKeysAdapter {
+    rows: SharedPriceSourceKeysStore,
+    secret: ApiKeySecret,
+}
+
+impl ApiKeysAdapter {
+    pub fn new(rows: SharedPriceSourceKeysStore, secret: ApiKeySecret) -> Self {
+        Self { rows, secret }
+    }
+}
+
+impl ApiKeys for ApiKeysAdapter {
+    fn fingerprint(&self) -> Option<String> {
+        self.secret.fingerprint()
+    }
+
+    fn remove_all(&self) {
+        let sources: Vec<PriceSourceId> = self
+            .rows
+            .borrow()
+            .sealed()
+            .iter()
+            .map(|row| row.source())
+            .collect();
+        tracing::debug!(keys = sources.len(), "Removing every Price Source API key");
+        let mut rows = self.rows.borrow_mut();
+        for source in sources {
+            rows.delete(source);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -284,6 +321,27 @@ mod tests {
         );
         assert!(counts.units > 0 && counts.institutions > 0 && counts.payees > 0);
         assert!(counts.locations > 0 && counts.items > 0 && counts.document_types > 0);
+    }
+
+    #[test]
+    fn the_api_keys_report_the_secrets_fingerprint_and_remove_all_empties_the_store() {
+        use crate::adapter::price_source_keys::InMemorySealedKeys;
+
+        let secret = ApiKeySecret::in_memory(Some("one device's secret".into()));
+        let rows: SharedPriceSourceKeysStore = Rc::new(RefCell::new(InMemorySealedKeys::default()));
+        let sealer = secret.sealer().expect("the secret is set");
+        for source in [lib_units::COINGECKO, PriceSourceId::new()] {
+            let key = secrecy::SecretString::from("a key");
+            rows.borrow_mut()
+                .seal(sealer.seal(source, &key).expect("the key seals"));
+        }
+        assert_eq!(rows.borrow().sealed().len(), 2);
+        let keys = ApiKeysAdapter::new(rows.clone(), secret.clone());
+
+        assert_eq!(keys.fingerprint(), secret.fingerprint());
+        keys.remove_all();
+
+        assert!(rows.borrow().sealed().is_empty());
     }
 
     #[test]

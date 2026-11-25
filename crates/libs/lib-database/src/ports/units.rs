@@ -177,29 +177,6 @@ impl PriceSourceKeys for StoredPriceSourceKeys {
     }
 }
 
-/// Settings › Data & backup's view of the keys: the secret's fingerprint, and the way out when the
-/// secret is lost, deleting every row, which syncs as deletes (ADR-0043).
-impl lib_settings::ApiKeys for StoredPriceSourceKeys {
-    fn fingerprint(&self) -> Option<String> {
-        self.secret.fingerprint()
-    }
-
-    fn remove_all(&self) {
-        let sources: Vec<PriceSourceId> = self
-            .rows
-            .borrow()
-            .sealed()
-            .iter()
-            .map(|row| row.source())
-            .collect();
-        tracing::debug!(keys = sources.len(), "Removing every Price Source API key");
-        let mut rows = self.rows.borrow_mut();
-        for source in sources {
-            rows.delete(source);
-        }
-    }
-}
-
 /// [`lib_units::UnitsPorts`] over the shared Units store, and the usage and holdings read from the
 /// stores of the domains that name a Unit. A write is lent the same reads as its usage, so no write
 /// passes a stand-in usage to reach the store.
