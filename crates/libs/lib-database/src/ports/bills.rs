@@ -1,6 +1,6 @@
 //! `lib-bills`' ports answered over the stores: the Bill Plans and Bill Schedule from the Bills
 //! store, the Payees, Accounts, Categories and Splits a Bill reads through [`StoredBillReads`]
-//! (#831, #853, #858, #926), its Unit codes through [`StoredBillUnits`] (#993, #1084), and the
+//! (#831, #853, #858, #926), its Unit codes through [`StoredBillReads`] (#993, #1084), and the
 //! Financial year start from the Ledger store (#1355).
 
 use lib_bills::{
@@ -10,9 +10,7 @@ use lib_bills::{
 };
 use lib_core::FinancialYearStart;
 
-use crate::adapter::store::{
-    SharedBillsStore, SharedLedgerStore, StoredBillReads, StoredBillUnits,
-};
+use crate::adapter::store::{SharedBillsStore, SharedLedgerStore, StoredBillReads};
 
 /// The Ledger store's Financial year start, borrowed for each read so an edit in Settings and its
 /// Undo reach the next Bills view model.
@@ -55,21 +53,14 @@ impl BillScheduleRepository for Bills {
 pub(crate) struct StoredBillsPorts {
     bills: Bills,
     reads: StoredBillReads,
-    units: StoredBillUnits,
     ledger: Ledger,
 }
 
 impl StoredBillsPorts {
-    pub fn new(
-        bills: SharedBillsStore,
-        reads: StoredBillReads,
-        units: StoredBillUnits,
-        ledger: SharedLedgerStore,
-    ) -> Self {
+    pub fn new(bills: SharedBillsStore, reads: StoredBillReads, ledger: SharedLedgerStore) -> Self {
         Self {
             bills: Bills(bills),
             reads,
-            units,
             ledger: Ledger(ledger),
         }
     }
@@ -97,7 +88,7 @@ impl BillsPorts for StoredBillsPorts {
     }
 
     fn units(&self) -> &dyn BillUnits {
-        &self.units
+        &self.reads
     }
 
     fn financial_year(&self) -> &dyn BillFinancialYear {

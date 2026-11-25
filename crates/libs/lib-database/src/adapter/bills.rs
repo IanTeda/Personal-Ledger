@@ -582,6 +582,9 @@ mod tests {
                 transactions: Rc::new(RefCell::new(
                     TransactionsAdapter::load(pending.clone()).expect("the Transactions load"),
                 )),
+                units: Rc::new(RefCell::new(
+                    crate::UnitsAdapter::load(pending.clone()).expect("the Units load"),
+                )),
             }
         }
 

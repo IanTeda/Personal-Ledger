@@ -62,7 +62,7 @@ use std::sync::mpsc;
 use lib_core::Clock;
 
 use crate::adapter::store::{
-    SharedStores, StoredAccountReads, StoredBillReads, StoredBillUnits, StoredBudgetReads,
+    SharedStores, StoredAccountReads, StoredBillReads, StoredBudgetReads,
     StoredCategoryBudgetMonths, StoredCategoryDeletionReads, StoredDashboardReads,
     StoredDocumentReads, StoredImportReads, StoredInstitutionReads, StoredInventoryReads,
     StoredPayeeReads, StoredShellReads, StoredTagReads, StoredTagRemovalReads,
@@ -185,9 +185,18 @@ impl LedgerPorts {
             commit,
             failures,
         } = shared;
+        let budget_reads = Rc::new(StoredBudgetReads {
+            categories: stores.categories.clone(),
+            accounts: stores.accounts.clone(),
+            transactions: stores.transactions.clone(),
+            bills: stores.bills.clone(),
+            units: stores.units.clone(),
+            payees: stores.payees.clone(),
+        });
         let category_save = StoredCategoriesPorts::new(
             stores.categories.clone(),
             stores.budgets.clone(),
+            (*budget_reads).clone(),
             StoredCategoryRows {
                 transactions: stores.transactions.clone(),
                 bills: stores.bills.clone(),
@@ -199,14 +208,6 @@ impl LedgerPorts {
             stores.payees.clone(),
             stores.transactions.clone(),
         )));
-        let budget_reads = Rc::new(StoredBudgetReads {
-            categories: stores.categories.clone(),
-            accounts: stores.accounts.clone(),
-            transactions: stores.transactions.clone(),
-            bills: stores.bills.clone(),
-            units: stores.units.clone(),
-            payees: stores.payees.clone(),
-        });
         let account_reads = Rc::new(StoredAccountReads {
             transactions: stores.transactions.clone(),
             budgets: stores.budgets.clone(),
@@ -297,8 +298,6 @@ impl LedgerPorts {
                     accounts: stores.accounts.clone(),
                     categories: stores.categories.clone(),
                     transactions: stores.transactions.clone(),
-                },
-                StoredBillUnits {
                     units: stores.units.clone(),
                 },
                 stores.ledger.clone(),

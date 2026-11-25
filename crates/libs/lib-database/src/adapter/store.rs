@@ -1902,20 +1902,6 @@ impl BudgetsStore for InMemoryBudgets {
     }
 }
 
-/// `lib-budgets`' `BudgetCategories` answered by the Categories store alone, borrowed for the one
-/// read (#994): the Categories Monthly budget's save reads the tree before the six-port
-/// [`StoredBudgetReads`] is needed.
-#[derive(Clone)]
-pub(crate) struct StoredBudgetCategories {
-    pub categories: SharedCategoriesStore,
-}
-
-impl BudgetCategories for StoredBudgetCategories {
-    fn budget_categories(&self) -> Vec<CategoryRef> {
-        categories::category_refs(&self.categories.borrow().categories().categories())
-    }
-}
-
 /// `lib-tags`' [`TagUsage`] answered from the shared stores of the domains that carry a Tag: the
 /// Splits from the Transactions, and the Unit each Split's Account holds from the Accounts and
 /// Units, each borrowed for the one read (#994). A figure only the page shows, so a Split whose
@@ -2276,6 +2262,7 @@ pub(crate) struct StoredBillReads {
     pub accounts: SharedAccountsStore,
     pub categories: SharedCategoriesStore,
     pub transactions: SharedTransactionsStore,
+    pub units: SharedUnitsStore,
 }
 
 impl BillPayees for StoredBillReads {
@@ -2287,6 +2274,16 @@ impl BillPayees for StoredBillReads {
 impl BillAccounts for StoredBillReads {
     fn bill_accounts(&self) -> Vec<AccountRef> {
         accounts::account_refs(&self.accounts.borrow().accounts().accounts())
+    }
+}
+
+impl BillUnits for StoredBillReads {
+    fn bill_unit_code(&self, id: UnitId) -> Option<String> {
+        self.units.borrow().unit_code(id)
+    }
+
+    fn bill_base_unit(&self) -> Option<UnitId> {
+        Some(self.units.borrow().base_unit().base_unit())
     }
 }
 
@@ -2498,22 +2495,6 @@ impl UnitOpenings for StoredUnitReads {
     /// Every Account in the Unit counts, a deactivated one too: its history still matters.
     fn earliest_opened(&self, id: UnitId) -> Option<NaiveDate> {
         accounts::earliest_opened(&self.accounts.borrow().accounts().accounts(), id)
-    }
-}
-
-/// `lib-bills`' `BillUnits` answered by the Units store, borrowed for the one read (#993).
-#[derive(Clone)]
-pub(crate) struct StoredBillUnits {
-    pub units: SharedUnitsStore,
-}
-
-impl BillUnits for StoredBillUnits {
-    fn bill_unit_code(&self, id: UnitId) -> Option<String> {
-        self.units.borrow().unit_code(id)
-    }
-
-    fn bill_base_unit(&self) -> Option<UnitId> {
-        Some(self.units.borrow().base_unit().base_unit())
     }
 }
 
@@ -3188,6 +3169,7 @@ mod tests {
             accounts: accounts.clone(),
             categories: categories.clone(),
             transactions: transactions.clone(),
+            units: sample_units(),
         };
         assert_eq!(bills.bill_accounts().len(), stored_accounts.len());
         assert_eq!(bills.bill_categories().len(), stored_categories.len());
@@ -3230,9 +3212,6 @@ mod tests {
             .institution_usage(institution),
             InstitutionUse::default()
         );
-
-        let tree = StoredBudgetCategories { categories }.budget_categories();
-        assert_eq!(tree.len(), stored_categories.len());
     }
 
     /// The sample Units, base Unit and Price Sources as an in-memory Units store.
@@ -3507,10 +3486,14 @@ mod tests {
 
     /// Bills read a Unit's code and the base Unit from the Units store.
     #[test]
-    fn stored_bill_units_read_the_units_store() {
-        let units: SharedUnitsStore =
-            Rc::new(RefCell::new(InMemoryPorts::sample(chrono::Utc::now())));
-        let reads = StoredBillUnits { units };
+    fn stored_bill_reads_read_the_units_store() {
+        let reads = StoredBillReads {
+            payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::sample())),
+            accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::sample())),
+            categories: Rc::new(RefCell::new(InMemoryCategories::sample())),
+            transactions: in_memory_sample_stores().1,
+            units: sample_units(),
+        };
         assert_eq!(
             reads.bill_unit_code(UnitId::SEED_AUD).as_deref(),
             Some("AUD")

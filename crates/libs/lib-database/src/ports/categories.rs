@@ -16,7 +16,7 @@ use lib_core::{CategoryId, Clock, Money};
 
 use crate::StoredCategoryRows;
 use crate::adapter::categories::category_refs;
-use crate::adapter::store::{SharedBudgetsStore, SharedCategoriesStore, StoredBudgetCategories};
+use crate::adapter::store::{SharedBudgetsStore, SharedCategoriesStore, StoredBudgetReads};
 
 /// [`lib_categories`]' repository, usage, budget and handover ports over the shared Categories and
 /// Budgets stores and the rows naming a Category, each borrowed for one call. A write reaches the
@@ -29,6 +29,7 @@ use crate::adapter::store::{SharedBudgetsStore, SharedCategoriesStore, StoredBud
 pub(crate) struct StoredCategoriesPorts {
     categories: SharedCategoriesStore,
     budgets: SharedBudgetsStore,
+    tree: StoredBudgetReads,
     rows: StoredCategoryRows,
     clock: Clock,
 }
@@ -37,12 +38,14 @@ impl StoredCategoriesPorts {
     pub fn new(
         categories: SharedCategoriesStore,
         budgets: SharedBudgetsStore,
+        tree: StoredBudgetReads,
         rows: StoredCategoryRows,
         clock: Clock,
     ) -> Self {
         Self {
             categories,
             budgets,
+            tree,
             rows,
             clock,
         }
@@ -54,10 +57,8 @@ impl StoredCategoriesPorts {
     }
 
     /// The Categories store's tree as the Budgets rules read it.
-    fn tree(&self) -> StoredBudgetCategories {
-        StoredBudgetCategories {
-            categories: self.categories.clone(),
-        }
+    fn tree(&self) -> StoredBudgetReads {
+        self.tree.clone()
     }
 }
 
