@@ -59,7 +59,7 @@ env = { SQLX_OFFLINE = "true" }
 run = [
   "cargo fmt --check",
   "cargo clippy --workspace --all-targets -- -D warnings",
-  "cargo test --package lib_database --test error_convention --test viper_dependencies",
+  "cargo test --package lib_database --test error_convention --test viper_dependencies --test tracing_convention",
 ]
 
 # Headless Desktop UI integration tests (ADR-0030). `bin_desktop`'s self dev-dependency already

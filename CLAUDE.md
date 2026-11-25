@@ -35,7 +35,7 @@ cargo test --package lib_config parse_with_explicit_config_file  # one test
 mise run end-to-end-ui <view>                  # Desktop UI tests for one View, e.g. settings_inventory
 bacon ui -- <view>                             # the same, re-run on each save
 
-mise run lint           # exactly what CI runs: fmt --check + SQLX_OFFLINE clippy -D warnings + the error_convention and viper_dependencies tests
+mise run lint           # exactly what CI runs: fmt --check + SQLX_OFFLINE clippy -D warnings + the error_convention, viper_dependencies and tracing_convention tests
 mise run lint-fix       # cargo fmt + clippy's machine-applicable fixes
 mise run deny           # cargo-deny (deny.toml)
 mise run docs-build     # rustdoc + mdBook; docs-serve serves on :8001
