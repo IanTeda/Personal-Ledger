@@ -23,7 +23,8 @@ pub fn device_status<T>(answer: &DeviceAnswer<T>, key: ConfigKey) -> String {
             lib_locale::msg::settings_device_shadowed(name, source)
         }
         DeviceAnswer::Refused(Error::NoFile) => lib_locale::msg::settings_device_no_file(name),
-        DeviceAnswer::Refused(Error::WriteFailed) => {
+        // A base Unit refusal never answers a device write; read it as the write failing.
+        DeviceAnswer::Refused(Error::WriteFailed | Error::BaseUnitRefused) => {
             lib_locale::msg::settings_device_write_failed(name)
         }
     }

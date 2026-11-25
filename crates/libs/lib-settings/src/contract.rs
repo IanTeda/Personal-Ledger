@@ -22,7 +22,7 @@ use crate::error::Error;
 use crate::fake::StoredDevice;
 use crate::interactor::{RemoveSetting, WriteSetting};
 use crate::log::LogLevel;
-use crate::protocols::{BaseUnitAnswer, DeviceAnswer, LedgerPreferences, LedgerReads, TracingLog};
+use crate::protocols::{DeviceAnswer, LedgerPreferences, LedgerReads, TracingLog};
 
 /// Builds the raw file a [`DeviceFile`] contract check runs on, each on a file of its own.
 pub trait DeviceFileFactory {
@@ -509,10 +509,7 @@ pub fn the_choices_are_the_active_units_by_code(factory: &mut impl LedgerFactory
 pub fn a_saved_base_unit_reads_back(factory: &mut impl LedgerFactory) {
     let (reads, writes) = factory.create(&[]);
 
-    assert_eq!(
-        writes.set_base_unit(UnitId::SEED_BTC),
-        BaseUnitAnswer::Saved
-    );
+    assert_eq!(writes.set_base_unit(UnitId::SEED_BTC), Ok(()));
 
     assert_eq!(reads.ledger_base_unit(), Some(UnitId::SEED_BTC));
     assert_eq!(
@@ -526,10 +523,13 @@ pub fn a_saved_base_unit_reads_back(factory: &mut impl LedgerFactory) {
 pub fn a_unit_that_is_gone_or_inactive_is_refused(factory: &mut impl LedgerFactory) {
     let (reads, writes) = factory.create(&[UnitId::SEED_VAS]);
 
-    assert_eq!(writes.set_base_unit(UnitId::new()), BaseUnitAnswer::Refused);
+    assert_eq!(
+        writes.set_base_unit(UnitId::new()),
+        Err(Error::BaseUnitRefused)
+    );
     assert_eq!(
         writes.set_base_unit(UnitId::SEED_VAS),
-        BaseUnitAnswer::Refused
+        Err(Error::BaseUnitRefused)
     );
     assert_eq!(reads.ledger_base_unit(), Some(UnitId::SEED_AUD));
 }

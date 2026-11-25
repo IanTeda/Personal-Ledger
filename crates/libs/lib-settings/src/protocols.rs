@@ -258,18 +258,11 @@ pub trait LedgerReads {
     fn ledger_financial_year_start(&self) -> FinancialYearStart;
 }
 
-/// How a write of the base Unit went.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BaseUnitAnswer {
-    Saved,
-    /// The Unit was removed or deactivated under the select, which repaints without it.
-    Refused,
-}
-
 /// Writes the Ledger's Preferences: its base Unit, name, Owner and Financial year start. The last
 /// three are not refusable, since their value types have already checked the value.
 pub trait LedgerPreferences {
-    fn set_base_unit(&self, id: UnitId) -> BaseUnitAnswer;
+    /// Refuses with [`Error::BaseUnitRefused`] when the Unit is gone or inactive.
+    fn set_base_unit(&self, id: UnitId) -> crate::Result<()>;
 
     fn set_name(&self, name: LedgerName);
 

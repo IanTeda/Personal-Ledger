@@ -17,11 +17,10 @@ use crate::error::{Error, Result};
 use crate::log::{LogLevel, LogLine};
 use crate::page::SettingsPage;
 use crate::presenter::{ClearLogsPresenter, DisplayOutput, LogListChange, LogScroll};
-use crate::protocols::{
-    BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerReads, LedgerRouter,
-    LedgerSummaries,
-};
 use crate::protocols::{DeviceRouter, DeviceSnapshot, SettingsRouter, TracingLog, TracingRouter};
+use crate::protocols::{
+    HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerReads, LedgerRouter, LedgerSummaries,
+};
 
 /// One thing a Presenter asked of the Shell, in the order asked.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -278,7 +277,7 @@ impl LedgerReads for InMemoryLedgerUnits {
 }
 
 impl LedgerPreferences for InMemoryLedgerUnits {
-    fn set_base_unit(&self, id: UnitId) -> BaseUnitAnswer {
+    fn set_base_unit(&self, id: UnitId) -> Result<()> {
         let mut rows = self.rows.borrow_mut();
         if rows
             .units
@@ -286,9 +285,9 @@ impl LedgerPreferences for InMemoryLedgerUnits {
             .any(|unit| unit.id == id && unit.is_active)
         {
             rows.base = id;
-            BaseUnitAnswer::Saved
+            Ok(())
         } else {
-            BaseUnitAnswer::Refused
+            Err(Error::BaseUnitRefused)
         }
     }
 

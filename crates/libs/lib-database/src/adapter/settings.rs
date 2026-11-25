@@ -6,8 +6,7 @@
 
 use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId, UnitRef};
 use lib_settings::{
-    BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerFigures, LedgerPreferences, LedgerReads,
-    LedgerSummaries,
+    HeadlineAmount, LedgerCounts, LedgerFigures, LedgerPreferences, LedgerReads, LedgerSummaries,
 };
 use lib_units::interactor::SetBaseUnit;
 use lib_units::{UnitUse, units_by_code};
@@ -166,16 +165,15 @@ impl LedgerPreferencesAdapter {
 }
 
 impl LedgerPreferences for LedgerPreferencesAdapter {
-    fn set_base_unit(&self, id: UnitId) -> BaseUnitAnswer {
+    fn set_base_unit(&self, id: UnitId) -> lib_settings::Result<()> {
         let mut store = self.units.borrow_mut();
         // The usage `split_mut` lends beside the write ports goes unread: setting the base checks
         // only that the Unit exists and is active.
         let unread = UnitUse::default();
         store.split_write(&unread, |ports| {
-            match SetBaseUnit(id).run(&*ports.units, ports.base_unit) {
-                Ok(()) => BaseUnitAnswer::Saved,
-                Err(_) => BaseUnitAnswer::Refused,
-            }
+            let result = SetBaseUnit(id).run(&*ports.units, ports.base_unit);
+            tracing::debug!(?result, "Ran the base Unit rule");
+            result.map_err(|_| lib_settings::Error::BaseUnitRefused)
         })
     }
 

@@ -25,11 +25,9 @@ use lib_viper::view::{Choice, Hint, SelectView, TextFieldView};
 
 use lib_locale::format::format_count;
 
-use crate::interactor::{RenameLedger, SetFinancialYearStart, SetLedgerOwner};
+use crate::interactor::{ChooseBaseUnit, RenameLedger, SetFinancialYearStart, SetLedgerOwner};
 use crate::msg;
-use crate::protocols::{
-    BaseUnitAnswer, LedgerPreferences, LedgerReads, LedgerRouter, LedgerSummaries,
-};
+use crate::protocols::{LedgerPreferences, LedgerReads, LedgerRouter, LedgerSummaries};
 
 /// One of the page's fields, top to bottom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -383,7 +381,10 @@ impl LedgerPresenter {
         if self.units.ledger_base_unit() == Some(id) {
             return;
         }
-        if self.preferences.set_base_unit(id) == BaseUnitAnswer::Saved {
+        if (ChooseBaseUnit { id })
+            .run(self.preferences.as_ref())
+            .is_ok()
+        {
             let code = self
                 .units
                 .ledger_choices()

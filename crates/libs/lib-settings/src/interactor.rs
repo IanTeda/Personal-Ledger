@@ -8,8 +8,10 @@
 //!
 //! The This Ledger Interactors ([`RenameLedger`], [`SetLedgerOwner`], [`SetFinancialYearStart`])
 //! take the [`LedgerPreferences`](crate::protocols::LedgerPreferences) port instead. Their value
-//! types have already checked the value, so nothing refuses them (ADR-0061).
+//! types have already checked the value, so nothing refuses them (ADR-0061). [`ChooseBaseUnit`]
+//! can, as [`Error::BaseUnitRefused`].
 
+mod choose_base_unit;
 mod remove_api_keys;
 mod remove_setting;
 mod rename_ledger;
@@ -18,6 +20,7 @@ mod set_financial_year_start;
 mod set_ledger_owner;
 mod write_setting;
 
+pub use choose_base_unit::ChooseBaseUnit;
 pub use remove_api_keys::RemoveApiKeys;
 pub use remove_setting::RemoveSetting;
 pub use rename_ledger::RenameLedger;
@@ -83,6 +86,6 @@ fn outcome<T>(answer: &DeviceAnswer<T>) -> &'static str {
         DeviceAnswer::Saved { .. } => "saved",
         DeviceAnswer::Shadowed { .. } => "shadowed",
         DeviceAnswer::Refused(Error::NoFile) => "no file",
-        DeviceAnswer::Refused(Error::WriteFailed) => "write failed",
+        DeviceAnswer::Refused(Error::WriteFailed | Error::BaseUnitRefused) => "write failed",
     }
 }

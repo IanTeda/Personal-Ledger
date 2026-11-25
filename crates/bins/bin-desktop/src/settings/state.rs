@@ -666,7 +666,7 @@ fn refused(
             lib_shell::Error::ConfigurationShadowed { key, source }
         }
         DeviceAnswer::Refused(Error::NoFile) => lib_shell::Error::ConfigurationNoFile { key },
-        DeviceAnswer::Refused(Error::WriteFailed) => {
+        DeviceAnswer::Refused(Error::WriteFailed | Error::BaseUnitRefused) => {
             lib_shell::Error::ConfigurationNotWritten { key }
         }
     };
