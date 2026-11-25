@@ -69,8 +69,6 @@ impl PriceFetching {
                 Err(Error::KeyMissing) => {
                     tracing::warn!(price_source_id = %source, "A price source needs an API key this Client doesn't have");
                 }
-                // `NotFetched` can't reach this arm: `due` keeps only Units whose source has an
-                // endpoint, so `start_round` never refuses a due round with it.
                 Err(
                     error @ (Error::UnitGone
                     | Error::PriceSourceGone
@@ -86,6 +84,8 @@ impl PriceFetching {
                     | Error::ChangeManualEntry
                     | Error::BuiltInEndpoint
                     | Error::PricedBySource
+                    // `NotFetched` can't reach this arm: `due` keeps only Units whose source has an
+                    // endpoint, so `start_round` never refuses a due round with it.
                     | Error::NotFetched
                     | Error::AlreadyFetching
                     | Error::KeysLocked

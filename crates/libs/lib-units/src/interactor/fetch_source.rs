@@ -84,11 +84,11 @@ impl FetchSource {
 mod tests {
     use std::rc::Rc;
 
-    use chrono::Utc;
     use lib_core::UnitId;
 
     use super::*;
     use crate::fake::{FakeTransport, InMemoryPorts};
+    use crate::presenter::test_support::now;
     use crate::{
         BuiltInOverride, COINGECKO, FRANKFURTER, MANUAL_ENTRY, Precision, PriceLink,
         PriceSourceRecord, UnitKind, UnitRow, Updates,
@@ -115,7 +115,7 @@ mod tests {
     }
 
     fn on(units: Vec<UnitRow>) -> Ask {
-        let mut ports = InMemoryPorts::sample(Utc::now());
+        let mut ports = InMemoryPorts::sample(now());
         ports.units.units.extend(units);
         let transport = FakeTransport::default();
         let fetching = PriceFetching::new(Rc::new(transport.clone()));
@@ -128,7 +128,7 @@ mod tests {
 
     impl Ask {
         fn run(&mut self, id: PriceSourceId) -> Result<usize> {
-            FetchSource { id }.run(&self.ports, &mut self.fetching, Utc::now())
+            FetchSource { id }.run(&self.ports, &mut self.fetching, now())
         }
     }
 
@@ -159,7 +159,7 @@ mod tests {
         eur.record_price(
             "1.65".parse().expect("a decimal"),
             chrono::NaiveDate::from_ymd_opt(2026, 10, 21).expect("a real date"),
-            Utc::now(),
+            now(),
         );
         let mut ask = on(vec![eur]);
         ask.ports

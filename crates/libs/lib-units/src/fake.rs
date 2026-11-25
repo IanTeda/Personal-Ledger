@@ -442,10 +442,10 @@ impl PriceTransport for FakeTransport {
     }
 }
 
-/// An Open Ledger's prices as a test drives it: the fake Units ports, a [`FakeTransport`], a
-/// clock whose day and time the test sets, and the [`LedgerPrices`] every response lands through, on a channel the
-/// fixture feeds, collecting the Notices each landing raises. It is built before the open check,
-/// so a test arranges the Ledger first and runs [`LedgerPrices`]' open check itself.
+/// An Open Ledger's prices as a test drives it: the fake Units ports, a [`FakeTransport`], a clock
+/// whose day and time the test sets, and the [`LedgerPrices`] every response lands through, on a
+/// channel the fixture feeds, collecting the Notices each landing raises. It is built before the
+/// open check, so a test arranges the Ledger first and runs [`LedgerPrices`]' open check itself.
 pub struct LedgerPricesFixture {
     ports: Rc<RefCell<InMemoryPorts>>,
     shared: SharedPorts,
