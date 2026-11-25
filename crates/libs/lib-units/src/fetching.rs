@@ -185,13 +185,17 @@ impl PriceFetching {
     }
 
     /// Sends a Price Source test at `now`, remembering what it asked until it lands: builds the
-    /// price request, the history test (the last 14 days to the local day of `now`, only for a
-    /// form's test of an endpoint with a history request) and the record of what is in flight from
-    /// the test's facts. Never in a round, so it neither waits for nor holds up a fetch's
-    /// response, but it is a call a person asked for, paced like any other. The caller refuses a
-    /// Key missing first.
-    pub(crate) fn send_test(&mut self, ask: TestAsk, now: DateTime<Utc>) -> RequestId {
-        let (request, asked) = ask.build(now);
+    /// price request, the history test (the last 14 days to `today`, only for a form's test of an
+    /// endpoint with a history request) and the record of what is in flight from the test's
+    /// facts. Never in a round, so it neither waits for nor holds up a fetch's response, but it is
+    /// a call a person asked for, paced like any other. The caller refuses a Key missing first.
+    pub(crate) fn send_test(
+        &mut self,
+        ask: TestAsk,
+        today: NaiveDate,
+        now: DateTime<Utc>,
+    ) -> RequestId {
+        let (request, asked) = ask.build(today, now);
         let id = self.calls.enqueue(asked.source, true, request);
         self.tests.sent(id, asked);
         self.release(now);

@@ -13,6 +13,7 @@ use lib_viper::view::count;
 
 use super::Clock;
 use super::fetch_text::{Asked, failure_detail, failure_name};
+use super::ledger_prices::local_day;
 use super::units_pane::amount;
 use crate::fetching::{
     FetchFailure, HistoryTestOutcome, HistoryTestResult, RequestId, SharedFetching, TestOutcome,
@@ -125,7 +126,8 @@ impl PriceSourceTest {
         self.response_open = None;
         test.toast = false;
         // A form sends only a test its readiness found a key for, so no refusal is left.
-        self.last = test.run(&mut fetching, (self.clock)()).ok();
+        let now = (self.clock)();
+        self.last = test.run(&mut fetching, local_day(now), now).ok();
     }
 
     /// Opens or closes the Response, once one came back.
@@ -241,7 +243,8 @@ impl PriceSourceTest {
             toast: true,
             unsaved: false,
         };
-        let refused = test.run(&mut fetching.borrow_mut(), clock());
+        let now = clock();
+        let refused = test.run(&mut fetching.borrow_mut(), local_day(now), now);
         matches!(refused, Err(Error::KeyMissing)).then(|| {
             test_failed_toast(
                 FetchFailure::KeyMissing,

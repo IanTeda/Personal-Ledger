@@ -741,7 +741,15 @@ mod tests {
                 "btc, priced five minutes ago, isn't due"
             );
             assert_eq!(check.fetching.in_flight(), 1);
-            assert!(check.fetching.fetching(check.ports.units.units[3].id));
+            let sol = check
+                .ports
+                .units
+                .units
+                .iter()
+                .find(|unit| unit.code == "SOL")
+                .expect("the Unit added under SOL")
+                .id;
+            assert!(check.fetching.fetching(sol));
         }
 
         #[test]

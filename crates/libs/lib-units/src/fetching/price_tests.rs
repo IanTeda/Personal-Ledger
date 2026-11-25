@@ -34,10 +34,13 @@ pub(crate) struct TestAsk {
 
 impl TestAsk {
     /// The price request and what is in flight once it is sent at `now`: the history test is the
-    /// last 14 days to the local day of `now`, only when the endpoint has a history request and
-    /// the test is a form's, not a row's Toast.
-    pub(super) fn build(self, now: DateTime<Utc>) -> (PriceRequest, TestInFlight) {
-        let today = now.with_timezone(&chrono::Local).date_naive();
+    /// last 14 days to `today`, only when the endpoint has a history request and the test is a
+    /// form's, not a row's Toast.
+    pub(super) fn build(
+        self,
+        today: NaiveDate,
+        now: DateTime<Utc>,
+    ) -> (PriceRequest, TestInFlight) {
         let history = self
             .endpoint
             .history

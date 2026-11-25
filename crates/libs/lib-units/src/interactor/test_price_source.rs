@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::{PriceSourceId, UnitId};
 use secrecy::SecretString;
 
@@ -32,7 +32,12 @@ impl TestPriceSource {
     /// Returns the test's request, queued as a call a person asked for: it waits out the source's
     /// call rate and any unexpired `Retry-After`, never its back-off. Refused with [`Error::KeyMissing`], sending nothing, when the
     /// endpoint needs a key and there is none.
-    pub fn run(self, fetching: &mut PriceFetching, now: DateTime<Utc>) -> Result<RequestId> {
+    pub fn run(
+        self,
+        fetching: &mut PriceFetching,
+        today: NaiveDate,
+        now: DateTime<Utc>,
+    ) -> Result<RequestId> {
         let source_id = self.source.map(|id| id.to_string()).unwrap_or_default();
         if self.endpoint.needs_key() && self.key.is_none() {
             tracing::info!(
@@ -54,6 +59,7 @@ impl TestPriceSource {
                 toast: self.toast,
                 unsaved: self.unsaved,
             },
+            today,
             now,
         );
         tracing::debug!(price_source_id = %source_id, request = id.0, "Testing a Price Source");
@@ -71,10 +77,14 @@ mod tests {
     use crate::{KeyPlacement, PriceSourceAuth, TransportOutcome};
 
     fn now() -> DateTime<Utc> {
-        chrono::NaiveDate::from_ymd_opt(2026, 10, 21)
+        NaiveDate::from_ymd_opt(2026, 10, 21)
             .and_then(|day| day.and_hms_opt(9, 0, 0))
             .expect("a real time")
             .and_utc()
+    }
+
+    fn today() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 10, 21).expect("a real date")
     }
 
     fn keyed() -> Endpoint {
@@ -125,7 +135,7 @@ mod tests {
         let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
 
         let id = test(Some("s3cr3t"))
-            .run(&mut fetching, now())
+            .run(&mut fetching, today(), now())
             .expect("sent");
 
         assert_eq!(transport.urls(), ["https://prices.example/q?s=ABC&in=AUD"]);
@@ -172,7 +182,9 @@ mod tests {
     fn once_the_price_passes_a_test_asks_the_last_14_days_of_history_and_counts_its_points() {
         let transport = FakeTransport::default();
         let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
-        let id = with_history().run(&mut fetching, now()).expect("sent");
+        let id = with_history()
+            .run(&mut fetching, today(), now())
+            .expect("sent");
 
         let price = transport.answer_last(200, r#"{"price":1.25}"#);
         assert!(matches!(
@@ -204,7 +216,7 @@ mod tests {
             landed.outcome,
             HistoryTestOutcome::Points {
                 count: 2,
-                newest: chrono::NaiveDate::from_ymd_opt(2026, 10, 20).expect("a real date"),
+                newest: NaiveDate::from_ymd_opt(2026, 10, 20).expect("a real date"),
                 close: "1.2345".parse().expect("decimal"),
             }
         );
@@ -215,10 +227,35 @@ mod tests {
     }
 
     #[test]
+    fn the_history_range_ends_on_the_day_handed_in_not_on_the_zone_of_now() {
+        let transport = FakeTransport::default();
+        let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
+        // Three days before `now`'s UTC date, a day no time zone gives for `now`.
+        let handed = NaiveDate::from_ymd_opt(2026, 10, 18).expect("a real date");
+        with_history()
+            .run(&mut fetching, handed, now())
+            .expect("sent");
+
+        land(
+            &mut fetching,
+            transport.answer_last(200, r#"{"price":1.25}"#),
+            now(),
+        );
+
+        assert_eq!(
+            transport.urls()[1],
+            "https://prices.example/h/ABC?from=2026-10-05&to=2026-10-18",
+            "the range is (today - 13 days, today)"
+        );
+    }
+
+    #[test]
     fn an_empty_history_reads_no_price_and_a_failed_price_asks_no_history() {
         let transport = FakeTransport::default();
         let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
-        let id = with_history().run(&mut fetching, now()).expect("sent");
+        let id = with_history()
+            .run(&mut fetching, today(), now())
+            .expect("sent");
         land(
             &mut fetching,
             transport.answer_last(200, r#"{"price":1}"#),
@@ -239,7 +276,9 @@ mod tests {
             ))
         );
 
-        let failed = with_history().run(&mut fetching, now()).expect("sent");
+        let failed = with_history()
+            .run(&mut fetching, today(), now())
+            .expect("sent");
         land(
             &mut fetching,
             transport.answer_last(200, r#"{"nothing":1}"#),
@@ -262,7 +301,9 @@ mod tests {
     fn a_dropped_tests_history_lands_as_no_ones() {
         let transport = FakeTransport::default();
         let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
-        let id = with_history().run(&mut fetching, now()).expect("sent");
+        let id = with_history()
+            .run(&mut fetching, today(), now())
+            .expect("sent");
         land(
             &mut fetching,
             transport.answer_last(200, r#"{"price":1}"#),
@@ -285,7 +326,10 @@ mod tests {
         let transport = FakeTransport::default();
         let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
 
-        assert_eq!(test(None).run(&mut fetching, now()), Err(Error::KeyMissing));
+        assert_eq!(
+            test(None).run(&mut fetching, today(), now()),
+            Err(Error::KeyMissing)
+        );
         assert!(transport.requests().is_empty());
     }
 
@@ -293,7 +337,9 @@ mod tests {
     fn a_dropped_test_lands_as_no_ones() {
         let transport = FakeTransport::default();
         let mut fetching = PriceFetching::new(Rc::new(transport.clone()));
-        let id = test(Some("k")).run(&mut fetching, now()).expect("sent");
+        let id = test(Some("k"))
+            .run(&mut fetching, today(), now())
+            .expect("sent");
 
         fetching.drop_test(id);
         let response = transport.answer_last(200, r#"{"price":1}"#);

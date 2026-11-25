@@ -871,7 +871,11 @@ mod tests {
         };
 
         test(true)
-            .run(&mut ledger.fetching().borrow_mut(), ledger.now())
+            .run(
+                &mut ledger.fetching().borrow_mut(),
+                ledger.now().date_naive(),
+                ledger.now(),
+            )
             .expect("sent");
         let landing = answer_last(&ledger, answered(200, r#"{"rate":1.6}"#, None));
         assert!(
@@ -880,7 +884,11 @@ mod tests {
         );
 
         let form = test(false)
-            .run(&mut ledger.fetching().borrow_mut(), ledger.now())
+            .run(
+                &mut ledger.fetching().borrow_mut(),
+                ledger.now().date_naive(),
+                ledger.now(),
+            )
             .expect("sent");
         let landing = answer_last(&ledger, answered(200, r#"{"rate":1.6}"#, None));
         assert!(matches!(landing, Landing::Nothing));

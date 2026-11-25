@@ -283,7 +283,7 @@ pub(crate) fn write_landing(
 pub const PRICE_CHECK: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// The day `now` falls on here, which every week a fetch writes or asks for is counted from.
-fn local_day(now: DateTime<Utc>) -> NaiveDate {
+pub(super) fn local_day(now: DateTime<Utc>) -> NaiveDate {
     now.with_timezone(&Local).date_naive()
 }
 
