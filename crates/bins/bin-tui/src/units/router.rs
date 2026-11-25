@@ -9,6 +9,7 @@ use lib_units::presenter::UnitsOutcome;
 use lib_units::{SharedPorts, UnitsDialog as Which, UnitsRouter};
 use lib_viper::dialog::DialogRouter;
 
+use super::UnitsSetup;
 use super::view::dialog::Dialog;
 
 pub struct Router<'a> {
@@ -25,27 +26,18 @@ pub struct Router<'a> {
 }
 
 impl<'a> Router<'a> {
-    /// A Router whose Dialogs read the day and the time from `clock`, the Open Ledger's, as the
-    /// Units View it runs in does.
-    pub fn with_clock(
-        ports: SharedPorts,
-        toasts: &'a mut Vec<(ToastKind, String)>,
-        clock: lib_core::Clock,
-    ) -> Self {
+    /// The Router for a Units page or Dialog on the Open Ledger's `setup`: its Dialogs read the day
+    /// and the time from the Open Ledger's Clock, and open price source forms that test through its
+    /// price fetching.
+    pub fn on(setup: &UnitsSetup, toasts: &'a mut Vec<(ToastKind, String)>) -> Self {
         Self {
-            ports,
-            clock,
-            fetching: None,
+            ports: setup.ports.clone(),
+            clock: setup.clock.clone(),
+            fetching: setup.fetching.clone(),
             toasts,
             opened: None,
             closed: None,
         }
-    }
-
-    /// The Router opening price source forms that test through `fetching`.
-    pub fn with_fetching(mut self, fetching: Option<lib_units::SharedFetching>) -> Self {
-        self.fetching = fetching;
-        self
     }
 }
 

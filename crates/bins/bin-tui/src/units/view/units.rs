@@ -43,11 +43,11 @@ use ratatui::{
 
 use crate::colours::Colours;
 use crate::msg;
+use crate::units::UnitsSetup;
 use crate::units::router::Router;
 use crate::units::view::dialog::Dialog;
 use crate::units::view::pane::{self, PaneKeys};
 use crate::units::view::prices;
-use crate::units::{TuiPorts, UnitsSetup};
 use crate::view::{Action, View, ViewId};
 
 /// Width of the left column: the two tables and the summary. Widened past §4a's own "~36 cols"
@@ -105,13 +105,10 @@ pub(super) const HINT_SEPARATOR: &str = "  \u{b7}  ";
 /// The Units page: its Presenter on the shared ports, and the Dialog open over it.
 pub struct UnitsView {
     presenter: UnitsPagePresenter,
-    ports: TuiPorts,
     /// What ends each input: the Units, its stores and the commit, as the Open Ledger holds them.
     setup: UnitsSetup,
     dialog_keymap: Keymap<DialogCommand>,
     dialog: Option<Dialog>,
-    /// Where the Presenters read the day and the time from.
-    clock: lib_core::Clock,
     /// Raised by the Presenters since `Shell` last took them.
     toasts: Vec<(ToastKind, String)>,
     /// Whether the page was last told it is docked: the one place the Window Size is remembered,
@@ -120,21 +117,14 @@ pub struct UnitsView {
 }
 
 impl UnitsView {
-    /// The View on the Open Ledger's Clock.
+    /// The View on the Open Ledger's `setup`, whose Clock its Presenters and Dialogs read the day
+    /// and the time from.
     pub fn new(setup: &UnitsSetup) -> Self {
-        Self::with_clock(setup, setup.clock.clone())
-    }
-
-    /// The View with its Presenters reading the day and the time from `clock`, which a test fixes
-    /// so a price's age is the same on every run.
-    pub fn with_clock(setup: &UnitsSetup, clock: lib_core::Clock) -> Self {
         let shared: SharedPorts = setup.ports.clone();
-        let presenter = UnitsPagePresenter::new(shared, clock.clone(), &setup.config)
+        let presenter = UnitsPagePresenter::new(shared, setup.clock.clone(), &setup.config)
             .with_fetching(setup.fetching.clone());
         Self {
             presenter,
-            clock,
-            ports: setup.ports.clone(),
             setup: setup.clone(),
             dialog_keymap: setup.dialog_keymap.clone(),
             dialog: None,
@@ -161,9 +151,7 @@ impl UnitsView {
     /// Sends `event` to the page Presenter, which holds the prices view and hands it its events,
     /// hosts any Dialog it asked for, and commits whatever it wrote as one transaction.
     fn send(&mut self, event: UnitsPageEvent) {
-        let mut router =
-            Router::with_clock(self.ports.clone(), &mut self.toasts, self.clock.clone())
-                .with_fetching(self.setup.fetching.clone());
+        let mut router = Router::on(&self.setup, &mut self.toasts);
         self.presenter.handle(event, &mut router);
         let opened = router.opened.take();
         self.setup.commit();
@@ -201,9 +189,7 @@ impl UnitsView {
         let Some(dialog) = &mut self.dialog else {
             return;
         };
-        let mut router =
-            Router::with_clock(self.ports.clone(), &mut self.toasts, self.clock.clone())
-                .with_fetching(self.setup.fetching.clone());
+        let mut router = Router::on(&self.setup, &mut self.toasts);
         dialog.handle_key(key, &self.dialog_keymap, &mut router);
         let closed = router.closed.take();
         self.setup.commit();
@@ -999,10 +985,9 @@ mod tests {
         crate::locale::init_for_tests();
         let today = chrono::Local::now().date_naive();
         let at = lib_database::seed::sample_priced_at(today);
-        UnitsView::with_clock(
-            &UnitsSetup::sample(&KeyBindingConfig::default()),
-            lib_core::Clock::with_time(move || today, move || at),
-        )
+        let mut setup = UnitsSetup::sample(&KeyBindingConfig::default());
+        setup.clock = lib_core::Clock::with_time(move || today, move || at);
+        UnitsView::new(&setup)
     }
 
     fn key(code: KeyCode) -> KeyEvent {

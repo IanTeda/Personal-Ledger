@@ -14,7 +14,6 @@
 //! yet, so those stay worked examples, each marked `// wireframe:`.
 
 use lib_core::UnitId;
-use lib_units::SharedPorts;
 use lib_units::presenter::{SetBaseUnitEvent, SetBaseUnitPresenter};
 use lib_viper::dialog::DialogKeys;
 use lib_viper::presenter::Presenter as _;
@@ -29,8 +28,8 @@ use ratatui::{
 use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
+use crate::units::UnitsSetup;
 use crate::units::router::Router;
-use crate::units::{TuiPorts, UnitsSetup};
 
 /// The popup's width: 78% of the reference terminal, the command popup's.
 const POPUP_WIDTH: u16 = REFERENCE_TERMINAL_WIDTH * 78 / 100;
@@ -60,11 +59,10 @@ pub enum Confirmed {
 
 /// The guard on moving the base from `from` to `to`, the Unit codes.
 pub struct BaseUnitGuardPopup {
-    ports: TuiPorts,
-    /// The Open Ledger's Clock, which the Router hands any Dialog it opens.
-    clock: lib_core::Clock,
-    /// What ends the confirm's input.
-    commit: std::rc::Rc<dyn lib_database::Commit>,
+    /// The Open Ledger's Units, which the Router the guard builds reads its ports, Clock and price
+    /// fetching from, and whose commit ends the confirm's input. Boxed: the Units setup is larger
+    /// than the popup enum allows inline.
+    units: Box<UnitsSetup>,
     /// Boxed: the Presenter holds the Dialog keys, which would make the popup enum large.
     presenter: Box<SetBaseUnitPresenter>,
     from: String,
@@ -79,8 +77,7 @@ impl BaseUnitGuardPopup {
     /// The guard on making the Unit coded `to` the base, chosen on the Presenter. `None` when `to`
     /// is the base already, or isn't one the Presenter offers.
     pub fn open(units: &UnitsSetup, to: &str) -> Option<Self> {
-        let shared: SharedPorts = units.ports.clone();
-        let mut presenter = SetBaseUnitPresenter::new(shared.clone(), DialogKeys::default());
+        let mut presenter = SetBaseUnitPresenter::new(units.ports.clone(), DialogKeys::default());
         let (from, to_id, transactions, accounts, already) = {
             let held = units.ports.borrow();
             let code = |id: UnitId| held.units().unit(id).map(|unit| unit.code);
@@ -111,12 +108,10 @@ impl BaseUnitGuardPopup {
         let mut toasts = Vec::new();
         presenter.handle(
             SetBaseUnitEvent::Choose(to_id),
-            &mut Router::with_clock(shared, &mut toasts, units.clock.clone()),
+            &mut Router::on(units, &mut toasts),
         );
         Some(Self {
-            ports: units.ports.clone(),
-            clock: units.clock.clone(),
-            commit: units.commit.clone(),
+            units: Box::new(units.clone()),
             presenter: Box::new(presenter),
             from,
             to: to.to_string(),
@@ -148,13 +143,12 @@ impl BaseUnitGuardPopup {
         }
         let mut toasts = Vec::new();
         let closed = {
-            let mut router =
-                Router::with_clock(self.ports.clone(), &mut toasts, self.clock.clone());
+            let mut router = Router::on(&self.units, &mut toasts);
             self.presenter
                 .handle(SetBaseUnitEvent::Confirm, &mut router);
             router.closed.take()
         };
-        self.commit.commit();
+        self.units.commit();
         match closed {
             Some(Some(_)) => Confirmed::Set(self.to.clone()),
             _ => Confirmed::Refused,
