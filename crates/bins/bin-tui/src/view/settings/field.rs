@@ -206,7 +206,7 @@ pub fn save_ledger_preference(
             Ok(name) if name == reads.ledger_name() => LedgerSave::Unchanged,
             Ok(name) => {
                 let said = msg::tui_settings_ledger_changed(&field.label(), name.as_str());
-                preferences.set_name(name);
+                lib_settings::RenameLedger { name }.run(&**preferences);
                 LedgerSave::Saved(said)
             }
             Err(error) => LedgerSave::Refused(lib_locale::format::ledger_name_error_message(error)),
@@ -220,7 +220,7 @@ pub fn save_ledger_preference(
                     Some(owner) => msg::tui_settings_ledger_changed(&field.label(), owner.as_str()),
                     None => msg::tui_settings_ledger_owner_cleared(),
                 };
-                preferences.set_owner(owner);
+                lib_settings::SetLedgerOwner { owner }.run(&**preferences);
                 LedgerSave::Saved(said)
             }
         }
@@ -234,7 +234,7 @@ pub fn save_ledger_preference(
             if start == reads.ledger_financial_year_start() {
                 LedgerSave::Unchanged
             } else {
-                preferences.set_financial_year_start(start);
+                lib_settings::SetFinancialYearStart { start }.run(&**preferences);
                 LedgerSave::Saved(msg::tui_settings_ledger_changed(
                     &field.label(),
                     &month_label(start),
