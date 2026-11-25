@@ -269,8 +269,8 @@ mod tests {
     use crate::fake::{
         LedgerPricesFixture, answered, currency, missing, offline, priced, rates, throttled,
     };
-    use crate::fetching::{FetchOutcome, FineCall, FineKey, Grain, SourceSettings};
-    use crate::fetching::{TransportError, TransportOutcome, history_request, window};
+    use crate::fetching::{FetchOutcome, FineKey, FineState, Grain};
+    use crate::fetching::{TransportError, TransportOutcome, window};
     use crate::interactor::TestPriceSource;
     use crate::presenter::ledger_prices::write_landing;
     use crate::protocols::UnitsPorts;
@@ -367,34 +367,12 @@ mod tests {
     /// Asks for `code`'s Daily Prices in this week's window, as the Unit prices view does.
     fn ask_daily(ledger: &LedgerPricesFixture, code: &str) {
         let unit = ledger.unit(code);
+        let window = window(Grain::Day, ledger.now().date_naive(), 0);
         let ports = ledger.ports().borrow();
-        let catalogue = ports.source_catalogue();
-        let source = catalogue.source(unit.link.source_id).expect("listed");
-        let endpoint = source.endpoint().expect("fetches");
-        let history = source.fine_history(Grain::Day).expect("has history");
-        let (first, last) = window(Grain::Day, ledger.now().date_naive(), 0);
-        let request = history_request(
-            endpoint,
-            history,
-            &unit.link.symbol,
-            "AUD",
-            (first, last),
-            None,
-        );
-        let call = FineCall {
-            key: FineKey {
-                unit: unit.id,
-                grain: Grain::Day,
-                first,
-            },
-            last,
-            link: unit.link.clone(),
-            settings: SourceSettings::of(&source),
-            history: history.clone(),
-            quote: "AUD".into(),
-            request: Some(request),
-        };
-        ledger.fetching().borrow_mut().ask_fine(call, ledger.now());
+        ledger
+            .fetching()
+            .borrow_mut()
+            .ask_fine(unit.id, Grain::Day, window, &*ports, ledger.now());
     }
 
     /// The round's one landing that isn't [`Landing::Nothing`]: its prices and outcome.
@@ -633,6 +611,80 @@ mod tests {
             "the parked request goes out: {}",
             urls[1]
         );
+    }
+
+    #[test]
+    fn a_finer_prices_ask_on_a_source_needing_a_key_fails_key_missing_unsent() {
+        use crate::{
+            CustomSource, Endpoint, HistoryEndpoint, KeyPlacement, PriceSourceAuth,
+            PriceSourceRecord, SeriesShape,
+        };
+
+        let id = PriceSourceId::new();
+        let mut eur = currency("EUR");
+        eur.link.source_id = id;
+        let ledger = sample_with(vec![eur]);
+        ledger
+            .ports()
+            .borrow_mut()
+            .price_sources
+            .records
+            .push(PriceSourceRecord::Custom(CustomSource {
+                id,
+                name: "Rates".into(),
+                endpoint: Endpoint {
+                    address: "https://rates.example".into(),
+                    request: "/{symbol}".into(),
+                    price_path: "/rate".into(),
+                    auth: PriceSourceAuth::ApiKey {
+                        placement: KeyPlacement::Header,
+                        name: "x-key".into(),
+                        optional: false,
+                    },
+                    headers: Vec::new().into(),
+                    batch: None,
+                    history: Some(
+                        HistoryEndpoint {
+                            request: "/h/{symbol}".into(),
+                            series_path: "/rates".into(),
+                            date_path: "".into(),
+                            price_path: "/{quote}".into(),
+                            shape: SeriesShape::Keyed,
+                        }
+                        .into(),
+                    ),
+                },
+                updates: Updates::Hourly,
+            }));
+
+        ask_daily(&ledger, "EUR");
+
+        assert_eq!(ledger.sent(), 0, "nothing is sent without the key");
+        let unit = ledger.unit("EUR");
+        let (first, _) = window(Grain::Day, ledger.now().date_naive(), 0);
+        let key = FineKey {
+            unit: unit.id,
+            grain: Grain::Day,
+            first,
+        };
+        assert_eq!(
+            ledger
+                .fetching()
+                .borrow()
+                .fine_state(key, &unit.link, ledger.now()),
+            FineState::Failed(FetchFailure::KeyMissing)
+        );
+    }
+
+    #[test]
+    fn a_landed_fresh_series_is_not_asked_again() {
+        let ledger = sample_with(vec![currency("EUR")]);
+        ask_daily(&ledger, "EUR");
+        assert_eq!(ledger.sent(), 1);
+        answer_last(&ledger, rates());
+
+        ask_daily(&ledger, "EUR");
+        assert_eq!(ledger.sent(), 1, "the fresh series asks nothing");
     }
 
     #[test]

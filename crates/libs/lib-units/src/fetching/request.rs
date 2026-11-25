@@ -8,20 +8,6 @@ use secrecy::SecretString;
 use super::{InFlight, PriceRequest, RequestKey, SourceSettings, UnitCall};
 use crate::{Endpoint, PriceLink, PriceSourceAuth, UnitRow, Updates, WeeklyPrice};
 
-/// Whether `endpoint` needs an API key and `key`, the one this Client reads for its source, is
-/// none: a missing key or one that won't decrypt here. A source whose key is optional, as
-/// CoinGecko's is, is asked keyless instead.
-pub(crate) fn key_missing(endpoint: &Endpoint, key: Option<&SecretString>) -> bool {
-    key.is_none()
-        && matches!(
-            endpoint.auth,
-            PriceSourceAuth::ApiKey {
-                optional: false,
-                ..
-            }
-        )
-}
-
 /// Whether `unit`, on a source that updates every `updates`, is due a scheduled fetch on `today`
 /// at `now`: it has no Weekly Price for the current week, or that price was written at least the
 /// interval ago. The current week's price, not the newest written, decides, since a backfilled
@@ -351,31 +337,6 @@ mod tests {
             ]
         );
         assert_eq!(path, "/abc");
-    }
-
-    #[test]
-    fn a_required_key_is_missing_but_an_optional_one_is_not() {
-        let keyed = |optional| Endpoint {
-            address: "https://prices.example".to_string().into(),
-            request: "/{symbol}".to_string().into(),
-            price_path: "/price".to_string().into(),
-            auth: PriceSourceAuth::ApiKey {
-                placement: KeyPlacement::Header,
-                name: "x-api-key".to_string().into(),
-                optional,
-            },
-            headers: Vec::new().into(),
-            batch: None,
-            history: None,
-        };
-        let key = SecretString::from("k3y");
-        assert!(key_missing(&keyed(false), None));
-        assert!(!key_missing(&keyed(false), Some(&key)));
-        assert!(!key_missing(&keyed(true), None));
-        assert!(!key_missing(
-            &built_in(COINGECKO).expect("a built-in").endpoint,
-            None
-        ));
     }
 
     mod due {

@@ -129,6 +129,20 @@ pub enum HistoryRef {
     Custom(Box<HistoryEndpoint>),
 }
 
+impl Endpoint {
+    /// Whether the endpoint requires an API key: `ApiKey` with `optional: false`. An optional key,
+    /// as CoinGecko's is, is asked without one.
+    pub(crate) fn needs_key(&self) -> bool {
+        matches!(
+            self.auth,
+            PriceSourceAuth::ApiKey {
+                optional: false,
+                ..
+            }
+        )
+    }
+}
+
 impl std::ops::Deref for HistoryRef {
     type Target = HistoryEndpoint;
 
@@ -680,6 +694,26 @@ mod tests {
             batch: None,
             history: None,
         }
+    }
+
+    #[test]
+    fn a_required_key_is_needed_but_an_optional_one_is_not() {
+        let keyed = |optional| Endpoint {
+            auth: PriceSourceAuth::ApiKey {
+                placement: KeyPlacement::Header,
+                name: "x-api-key".to_string().into(),
+                optional,
+            },
+            ..endpoint()
+        };
+        assert!(keyed(false).needs_key());
+        assert!(!keyed(true).needs_key());
+        assert!(
+            !built_in(COINGECKO)
+                .expect("a built-in")
+                .endpoint
+                .needs_key()
+        );
     }
 
     fn names(sources: &[PriceSource<'_>]) -> Vec<String> {

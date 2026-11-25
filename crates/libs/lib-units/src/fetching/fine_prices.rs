@@ -14,7 +14,7 @@ use crate::{HistoryEndpoint, PriceLink};
 
 /// One request for a Unit's Daily or Hourly Prices in one window, as the Unit prices view asked.
 #[derive(Debug, Clone)]
-pub(crate) struct FineCall {
+pub(super) struct FineCall {
     pub key: FineKey,
     pub last: NaiveDate,
     pub link: PriceLink,

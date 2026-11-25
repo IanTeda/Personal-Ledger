@@ -27,7 +27,7 @@ use secrecy::{ExposeSecret as _, SecretString};
 
 use super::price_source_test::{PriceSourceTest, TestResultView};
 use super::{Clock, UnitsOutcome, cycle, step, updates_choices};
-use crate::fetching::{SharedFetching, key_missing};
+use crate::fetching::SharedFetching;
 use crate::interactor::{
     AddPriceSource, EditPriceSource, KeyChange, SavePriceSourceKey, TestPriceSource,
 };
@@ -1084,7 +1084,7 @@ impl PriceSourceFormPresenter {
         };
         drop(ports);
         let key = self.test_key();
-        if key_missing(&endpoint, key.as_ref()) {
+        if endpoint.needs_key() && key.is_none() {
             return Readiness::Off(TestOff::NeedsKey);
         }
         let quote_code = self.unit_code(quote);

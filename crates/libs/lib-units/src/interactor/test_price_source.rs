@@ -2,9 +2,7 @@ use chrono::{DateTime, Utc};
 use lib_core::{PriceSourceId, UnitId};
 use secrecy::SecretString;
 
-use crate::fetching::{
-    PriceFetching, RequestId, TestHistory, TestInFlight, key_missing, price_request,
-};
+use crate::fetching::{PriceFetching, RequestId, TestHistory, TestInFlight, price_request};
 use crate::{Endpoint, Error, Result};
 
 /// Test a Price Source (`GLOSSARY.md`): ask `endpoint` for one symbol's price and show it, writing
@@ -36,7 +34,7 @@ impl TestPriceSource {
     /// endpoint needs a key and there is none.
     pub fn run(self, fetching: &mut PriceFetching, now: DateTime<Utc>) -> Result<RequestId> {
         let source_id = self.source.map(|id| id.to_string()).unwrap_or_default();
-        if key_missing(&self.endpoint, self.key.as_ref()) {
+        if self.endpoint.needs_key() && self.key.is_none() {
             tracing::info!(
                 price_source_id = %source_id,
                 refusal = %Error::KeyMissing,

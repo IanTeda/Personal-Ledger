@@ -11,7 +11,7 @@ use lib_core::{PriceSourceId, UnitId};
 
 use super::history::{floor, gaps, history_request, wanted_weeks};
 use super::request::is_due;
-use super::{FetchFailure, HistoryCall, PriceFetching, SourceSettings, Wanted, key_missing};
+use super::{FetchFailure, HistoryCall, PriceFetching, SourceSettings, Wanted};
 use crate::protocols::UnitsPorts;
 use crate::{Error, PriceSource, UnitRow, Updates, WeeklyPrice, units_by_code};
 
@@ -221,7 +221,7 @@ impl PriceFetching {
                 asked,
                 request: None,
             };
-            if key_missing(endpoint, key.as_ref()) {
+            if endpoint.needs_key() && key.is_none() {
                 tracing::warn!(price_source_id = %source.id, unit_id = %unit.id, "A Unit's history needs an API key this Client doesn't have");
                 // Failed Key missing, tried again after `HISTORY_RETRY` as a sent one that failed would.
                 self.history_failed(&call, FetchFailure::KeyMissing, now);

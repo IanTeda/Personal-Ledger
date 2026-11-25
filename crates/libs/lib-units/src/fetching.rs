@@ -12,8 +12,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::{PriceSourceId, UnitId};
+
+use crate::protocols::UnitsPorts;
 
 mod backfill;
 mod call_queue;
@@ -36,10 +38,10 @@ use call_queue::CallQueue;
 pub use call_queue::CallRate;
 pub use fine::{FINE_FRESH, Grain};
 pub(crate) use fine::{FineKey, FinePrice, fine_prices, window};
+use fine_prices::FineCall;
 use fine_prices::FinePrices;
-pub(crate) use fine_prices::{FineCall, FineState};
-pub(crate) use history::history_request;
-use history::{HistoryReading, read_history};
+pub(crate) use fine_prices::FineState;
+use history::{HistoryReading, history_request, read_history};
 pub(crate) use landing::Landing;
 pub(crate) use landing::{FetchedPrice, RoundOutcome};
 use last_fetch::LastFetches;
@@ -53,7 +55,7 @@ pub(crate) use price_tests::{
 pub use reading::RETRY_AFTER_DEFAULT;
 use reading::round_failure;
 pub(crate) use reading::{Reading, read, retry_after_wait};
-pub(crate) use request::{Wanted, fill, key_missing, price_request, request, round_calls};
+pub(crate) use request::{Wanted, fill, price_request, request, round_calls};
 use rounds::Landed;
 use rounds::Rounds;
 pub(crate) use rounds::{InFlight, RoundId, UnitCall};
@@ -296,7 +298,7 @@ impl PriceFetching {
     ) -> crate::Result<Vec<RequestId>> {
         let endpoint = source.endpoint().ok_or(crate::Error::NotFetched)?;
         let settings = SourceSettings::of(source);
-        if key_missing(endpoint, key) {
+        if endpoint.needs_key() && key.is_none() {
             let failure = Some(FetchFailure::KeyMissing);
             self.record_source(source.id, &settings, now, failure);
             for one in wanted {
@@ -352,11 +354,61 @@ impl PriceFetching {
         self.last.key_stored(source);
     }
 
-    /// Asks for a series as the Unit prices view wants it, at `now`: a person's call, so it skips
-    /// the source's back-off but waits out a `Retry-After`, and waits behind a round on its source
-    /// already in flight rather than being refused. Forgets the series' last failure and any series
-    /// the Unit fetched on another link. Asks nothing while the same series is already asked.
-    pub(crate) fn ask_fine(&mut self, call: FineCall, now: DateTime<Utc>) {
+    /// Asks for the series `unit`'s Unit prices view shows at `grain` over `window`, at `now`: a
+    /// person's call, so it skips the source's back-off but waits out a `Retry-After`, and waits
+    /// behind a round on its source already in flight rather than being refused. The view hands
+    /// over only the Unit, grain and window; this builds the request. Asks nothing while the
+    /// series is cached fresh or already asked, or when the Unit's source has no history at
+    /// `grain`. A source needing a key this Client lacks fails Key missing in place, sending
+    /// nothing. Forgets the series' last failure and any series the Unit fetched on another link.
+    pub(crate) fn ask_fine(
+        &mut self,
+        unit: UnitId,
+        grain: Grain,
+        (first, last): (NaiveDate, NaiveDate),
+        ports: &dyn UnitsPorts,
+        now: DateTime<Utc>,
+    ) {
+        let key = FineKey { unit, grain, first };
+        let Some(row) = ports.units().unit(unit) else {
+            return;
+        };
+        if self.fine_fresh(key, &row.link, now) {
+            return;
+        }
+        let catalogue = ports.source_catalogue();
+        let Some(source) = catalogue.source(row.link.source_id) else {
+            return;
+        };
+        let (Some(endpoint), Some(history)) = (source.endpoint(), source.fine_history(grain))
+        else {
+            return;
+        };
+        let Some(quote) = ports.units().unit(row.link.quote) else {
+            return;
+        };
+        let secret = ports.keys().key(source.id);
+        if endpoint.needs_key() && secret.is_none() {
+            self.fine_refused(key, row.link.clone(), FetchFailure::KeyMissing);
+            return;
+        }
+        let request = history_request(
+            endpoint,
+            history,
+            &row.link.symbol,
+            &quote.code,
+            (first, last),
+            secret,
+        );
+        let call = FineCall {
+            key,
+            last,
+            link: row.link.clone(),
+            settings: SourceSettings::of(&source),
+            history: history.clone(),
+            quote: quote.code,
+            request: Some(request),
+        };
         self.fine.forget(&call);
         if self.fine.asked(call.key) {
             return;
@@ -389,7 +441,7 @@ impl PriceFetching {
 
     /// Notes that a series couldn't be asked for `reason` without sending, as a key this Client
     /// doesn't have.
-    pub(crate) fn fine_refused(&mut self, key: FineKey, link: PriceLink, reason: FetchFailure) {
+    fn fine_refused(&mut self, key: FineKey, link: PriceLink, reason: FetchFailure) {
         self.fine.refused(key, link, reason);
     }
 
@@ -401,7 +453,7 @@ impl PriceFetching {
 
     /// Whether the series `key` is cached on `link` and still fresh at `now`: a past window for the
     /// session, one holding today for [`FINE_FRESH`].
-    pub(crate) fn fine_fresh(&self, key: FineKey, link: &PriceLink, now: DateTime<Utc>) -> bool {
+    fn fine_fresh(&self, key: FineKey, link: &PriceLink, now: DateTime<Utc>) -> bool {
         self.fine.fresh(key, link, now)
     }
 

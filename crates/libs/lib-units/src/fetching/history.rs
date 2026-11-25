@@ -85,7 +85,7 @@ pub(crate) fn gaps(
 /// request does. `{from}` and `{to}` fill as ISO dates, and `{from_unix}` and `{to_unix}` as Unix
 /// seconds from a day before `from` to the end of `to`: a market east of UTC stamps a day's bar on
 /// the UTC day before. The points outside the asked weeks are dropped when folded.
-pub(crate) fn history_request(
+pub(super) fn history_request(
     endpoint: &Endpoint,
     history: &HistoryEndpoint,
     symbol: &str,

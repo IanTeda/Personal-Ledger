@@ -25,11 +25,10 @@ use lib_viper::view::Hint;
 use super::fetch_text::{Asked, failure_detail};
 use super::units_pane::{Fact, amount};
 use super::{Clock, ago};
-use crate::fetching::{FineCall, FineState, SharedFetching, SourceSettings, key_missing};
-use crate::fetching::{FineKey, FinePrice, history_request, window as fine_window};
+use crate::fetching::{FineKey, FinePrice, FineState, SharedFetching, window as fine_window};
 use crate::keymap::{EARLIER, GRAIN, LATER, SET_PRICE};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
-use crate::{FetchFailure, Grain, MANUAL_ENTRY, UnitRow, WeeklyPrice, msg};
+use crate::{Grain, MANUAL_ENTRY, UnitRow, WeeklyPrice, msg};
 
 /// The weeks a window holds: a year of them, ending with the window's last week.
 const WINDOW_WEEKS: i64 = 52;
@@ -496,58 +495,18 @@ impl UnitPricesPresenter {
         }
     }
 
-    /// Asks the Unit's source for the finer window showing, unless it is cached fresh or already
-    /// asked. A source needing a key this Client doesn't have fails in place without sending.
+    /// Asks the Unit's source for the finer window showing: fetching builds the request and
+    /// fails Key missing in place without sending.
     fn ask(&self) {
-        if self.grain == Grain::Week {
-            return;
-        }
-        let (Some(fetching), Some(unit)) = (&self.fetching, self.unit_row()) else {
+        let Some(fetching) = &self.fetching else {
             return;
         };
-        let now = self.now();
-        let key = self.fine_key();
-        let mut fetching = fetching.borrow_mut();
-        if fetching.fine_fresh(key, &unit.link, now) {
-            return;
-        }
-        let ports = self.ports.borrow();
-        let catalogue = ports.source_catalogue();
-        let Some(source) = catalogue.source(unit.link.source_id) else {
-            return;
-        };
-        let (Some(endpoint), Some(history)) = (source.endpoint(), source.fine_history(self.grain))
-        else {
-            return;
-        };
-        let Some(quote) = ports.units().unit(unit.link.quote) else {
-            return;
-        };
-        let secret = ports.keys().key(source.id);
-        if key_missing(endpoint, secret.as_ref()) {
-            fetching.fine_refused(key, unit.link.clone(), FetchFailure::KeyMissing);
-            return;
-        }
-        let (first, last) = self.window();
-        let request = history_request(
-            endpoint,
-            history,
-            &unit.link.symbol,
-            &quote.code,
-            (first, last),
-            secret,
-        );
-        fetching.ask_fine(
-            FineCall {
-                key,
-                last,
-                link: unit.link.clone(),
-                settings: SourceSettings::of(&source),
-                history: history.clone(),
-                quote: quote.code,
-                request: Some(request),
-            },
-            now,
+        fetching.borrow_mut().ask_fine(
+            self.unit,
+            self.grain,
+            self.window(),
+            &*self.ports.borrow(),
+            self.now(),
         );
     }
 
