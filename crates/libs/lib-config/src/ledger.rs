@@ -1443,7 +1443,7 @@ mod tests {
             // `super_key` and the ten command bindings match the built-in defaults, so they
             // cannot discriminate -- but the file must at least not define an invalid
             // modifier or bind two commands to one key.
-            config.keybindings.validate().unwrap();
+            crate::keybindings::validate(&config.keybindings).unwrap();
         });
     }
 
@@ -1575,7 +1575,7 @@ mod tests {
                 "a Theme example is invalid: {:?}",
                 config.theme.invalid
             );
-            config.keybindings.validate().unwrap();
+            crate::keybindings::validate(&config.keybindings).unwrap();
             assert_eq!(config.general.resolved_locale().0, "en-AU");
         });
     }

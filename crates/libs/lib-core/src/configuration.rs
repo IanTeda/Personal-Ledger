@@ -9,6 +9,8 @@
 
 use std::path::PathBuf;
 
+pub use crate::key_binding_config::KeyBindingConfig;
+
 use crate::{ColourAppearance, DateStyle, Levels, OnStart, RowDensity, StartView, StatusGlyphs};
 
 /// The sections Settings writes, one per THIS DEVICE page with keys (ADR-0057). `[Theme*]`,

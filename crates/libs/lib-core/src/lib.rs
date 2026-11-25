@@ -168,3 +168,6 @@ pub use levels::{Levels, ParseLevelError};
 /// The Configuration key catalogue Settings writes (ADR-0058): its keys, their sections and typed
 /// values, shared by `lib-config` and `lib-settings`.
 pub mod configuration;
+
+/// The `[keybindings]` payload, re-exported from `configuration` (ADR-0058).
+mod key_binding_config;

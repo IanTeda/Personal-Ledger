@@ -13,7 +13,7 @@
 
 /// Re-exported so a module builds its keymap from `[keybindings]` without depending on
 /// `lib-config` itself, which `lib-settings` may not.
-pub use lib_config::KeyBindingConfig;
+pub use lib_core::configuration::KeyBindingConfig;
 
 use std::fmt;
 use std::sync::Arc;

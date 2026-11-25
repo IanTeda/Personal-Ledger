@@ -5249,7 +5249,6 @@ dependencies = [
 name = "lib_viper"
 version = "0.1.0"
 dependencies = [
- "lib_config",
  "lib_core",
  "lib_toast",
  "thiserror 2.0.20",

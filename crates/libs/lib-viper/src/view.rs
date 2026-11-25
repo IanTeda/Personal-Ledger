@@ -227,7 +227,7 @@ impl DialogHint {
 
 #[cfg(test)]
 mod tests {
-    use lib_config::KeyBindingConfig;
+    use lib_core::configuration::KeyBindingConfig;
 
     use super::*;
     use crate::keymap::{BACK, BACK_DEFAULT, Binding, SELECT_NEXT, SELECT_PREVIOUS};

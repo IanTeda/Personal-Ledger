@@ -40,7 +40,7 @@ mod cli;
 mod display;
 mod error;
 mod general;
-mod keybindings;
+pub mod keybindings;
 mod keys;
 mod ledger;
 mod logs;
@@ -89,7 +89,7 @@ pub use secrets::SecretsConfig;
 pub use sync_server::SyncServerConfig;
 
 /// Keyboard shortcut configuration, read by the TUI/Desktop Clients.
-pub use keybindings::KeyBindingConfig;
+pub use lib_core::configuration::KeyBindingConfig;
 
 /// Shared `--config`/`-c` CLI argument, flattened into each binary's own `clap::Parser`.
 pub use cli::ConfigArgs;

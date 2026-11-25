@@ -13,7 +13,7 @@ doctest = false
 [features]
 # Test-only constructors (`KeyBindingConfig::overriding`). A crate's tests enable it from their
 # `[dev-dependencies]`, so shipped builds never compile them.
-test-support = []
+test-support = ["lib_core/test-support"]
 
 [dependencies]
 ## -- Internal Dependencies --
