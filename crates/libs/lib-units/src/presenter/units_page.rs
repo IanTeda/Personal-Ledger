@@ -14,15 +14,14 @@ use lib_viper::keymap::{
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
-use super::fetch_text::{
-    Asked, failure_name, retry_text, round_failed_toast, test_failed_toast, wait_begun_toast,
-};
+use super::fetch_text::{failure_name, retry_text, round_failed_toast, wait_begun_toast};
 use super::price_history::{HistoryInput, PriceHistory, price_history};
+use super::price_source_test::PriceSourceTest;
 use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
 use crate::fetching::{FetchFailure, PriceFetching, SharedFetching, is_out_of_date};
-use crate::interactor::{FetchAll, FetchNow, FetchSource, ReactivateUnit, TestPriceSource};
+use crate::interactor::{FetchAll, FetchNow, FetchSource, ReactivateUnit};
 use crate::keymap::{FETCH_NOW, NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE, unit_prices_keymap};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
 use crate::{
@@ -970,43 +969,10 @@ impl UnitsPagePresenter {
         let Some(fetching) = &self.fetching else {
             return;
         };
-        let ports = self.ports.borrow();
-        let catalogue = ports.source_catalogue();
-        let Some(source) = catalogue.source(unit.link.source_id) else {
-            return;
-        };
-        let (Some(endpoint), Some(quote)) =
-            (source.endpoint(), ports.units().unit(unit.link.quote))
-        else {
-            return;
-        };
-        if fetching.borrow().source_testing(source.id) {
-            router.notify(Notice::Toast(
-                ToastKind::Info,
-                msg::units_toast_already_testing(source.name),
-            ));
-            return;
-        }
-        let test = TestPriceSource {
-            source: Some(source.id),
-            source_name: source.name.to_string(),
-            endpoint: endpoint.clone(),
-            symbol: unit.link.symbol.clone(),
-            quote: quote.id,
-            quote_code: quote.code.clone(),
-            key: ports.keys().key(source.id),
-            toast: true,
-            unsaved: false,
-        };
-        if let Err(Error::KeyMissing) = test.run(&mut fetching.borrow_mut(), (self.clock)()) {
-            router.notify(test_failed_toast(
-                FetchFailure::KeyMissing,
-                source.name,
-                Asked {
-                    symbol: &unit.link.symbol,
-                    quote: &quote.code,
-                },
-            ));
+        let refusal =
+            PriceSourceTest::in_background(fetching, &self.clock, &*self.ports.borrow(), unit);
+        if let Some(refusal) = refusal {
+            router.notify(refusal);
         }
     }
 
@@ -3224,40 +3190,6 @@ mod tests {
                     )]
                 );
                 assert!(wrote_nothing(&on));
-            }
-
-            #[test]
-            fn t_on_a_unit_tests_its_link_and_a_failure_warns_with_its_reason_holding_no_back_off()
-            {
-                let mut on = fetching();
-                on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(on.eur)));
-                on.page.send(UnitsPageEvent::Test);
-
-                assert_eq!(
-                    answer(&mut on, 429, ""),
-                    [Notice::Toast(
-                        ToastKind::Warning,
-                        "Frankfurter test: Rate limited · Frankfurter asked to be called less often"
-                            .into()
-                    )]
-                );
-                assert!(wrote_nothing(&on), "no failure or back-off is held");
-            }
-
-            #[test]
-            fn a_second_t_while_the_test_is_out_says_so_and_sends_nothing() {
-                let mut on = fetching();
-                on.page.send(UnitsPageEvent::Select(UnitsRow::Unit(on.eur)));
-                on.page.send(UnitsPageEvent::Test);
-
-                assert_eq!(
-                    on.page.send(UnitsPageEvent::Test),
-                    [RouterCall::Notice(Notice::Toast(
-                        ToastKind::Info,
-                        "Already testing Frankfurter".into()
-                    ))]
-                );
-                assert_eq!(on.prices.transport().requests().len(), 1);
             }
 
             #[test]

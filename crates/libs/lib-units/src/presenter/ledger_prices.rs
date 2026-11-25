@@ -20,9 +20,10 @@ use lib_toast::{Notice, Notify, ToastKind};
 
 use super::Clock;
 use super::fetch_text::{
-    Asked, round_failed_toast, round_stopped_toast, some_failed_toast, test_toast,
-    unit_failed_toast, wait_begun_toast,
+    Asked, round_failed_toast, round_stopped_toast, some_failed_toast, unit_failed_toast,
+    wait_begun_toast,
 };
+use super::price_source_test::PriceSourceTest;
 use super::units_pane::amount;
 use crate::fetching::{
     BackfillUnits, Landing, PriceFetching, PriceResponse, PriceTransport, SharedFetching,
@@ -161,8 +162,10 @@ impl LedgerPrices {
         match landing {
             Landing::Nothing => {}
             Landing::Test(result) => {
-                let quote = self.ports.borrow().units().unit(result.asked.quote);
-                router.notify(test_toast(&result, quote.as_ref()));
+                router.notify(PriceSourceTest::landed_toast(
+                    &result,
+                    &*self.ports.borrow(),
+                ));
             }
             Landing::Prices {
                 prices,
@@ -408,7 +411,8 @@ mod tests {
     mod dispatch {
         use super::*;
         use crate::fake::InMemoryPorts;
-        use crate::interactor::{FetchNow, TestPriceSource};
+        use crate::interactor::FetchNow;
+        use crate::presenter::price_source_test::{FormTest, PriceSourceTest};
         use crate::protocols::UnitsPorts;
 
         const FRANKFURTER_RATES: &str =
@@ -438,8 +442,8 @@ mod tests {
                 .expect("listed")
         }
 
-        /// Tests Frankfurter for EUR, `toast` as `t` on a row does, else as a form does.
-        fn test(client: &LedgerPricesFixture, toast: bool) -> crate::fetching::RequestId {
+        /// Tests Frankfurter for EUR as a form does, holding the test so its result stays.
+        fn form_test(client: &LedgerPricesFixture) -> PriceSourceTest {
             let endpoint = {
                 let ports = client.ports().borrow();
                 let catalogue = ports.source_catalogue();
@@ -448,7 +452,8 @@ mod tests {
                     .and_then(|source| source.endpoint().cloned())
                     .expect("frankfurter fetches")
             };
-            TestPriceSource {
+            let mut test = PriceSourceTest::new(client.fetching().clone(), client.clock());
+            test.run(FormTest {
                 source: Some(FRANKFURTER),
                 source_name: "Frankfurter".into(),
                 endpoint,
@@ -456,18 +461,16 @@ mod tests {
                 quote: UnitId::SEED_AUD,
                 quote_code: "AUD".into(),
                 key: None,
-                toast,
                 unsaved: false,
-            }
-            .run(&mut client.fetching().borrow_mut(), client.now())
-            .expect("sent")
+            });
+            test
         }
 
         #[test]
         fn nothing_writes_and_tells_nothing() {
             let mut client = client();
             let before = client.ports().borrow().clone();
-            let form = test(&client, false);
+            let form = form_test(&client);
 
             let response = client.transport().answer_last(200, r#"{"rate":1.6}"#);
             client.land(response);
@@ -475,7 +478,7 @@ mod tests {
             assert!(client.notices().is_empty());
             assert_eq!(*client.ports().borrow(), before);
             assert!(
-                client.fetching().borrow().test_result(form).is_some(),
+                form.view(&*client.ports().borrow(), None).is_some(),
                 "held for the form"
             );
         }
@@ -483,7 +486,14 @@ mod tests {
         #[test]
         fn a_test_raises_its_one_toast() {
             let mut client = client();
-            test(&client, true);
+            let eur = eur(&client);
+            let refused = PriceSourceTest::in_background(
+                client.fetching(),
+                &client.clock(),
+                &*client.ports().borrow(),
+                &eur,
+            );
+            assert_eq!(refused, None);
 
             let response = client.transport().answer_last(200, r#"{"rate":1.6}"#);
             client.land(response);

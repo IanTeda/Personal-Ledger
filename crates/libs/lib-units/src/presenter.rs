@@ -14,6 +14,7 @@ mod fetch_text;
 mod ledger_prices;
 mod price_history;
 mod price_source_form;
+mod price_source_test;
 mod set_base_unit;
 mod set_price;
 mod unit_form;
@@ -40,9 +41,11 @@ pub use delete_unit::{
 pub use ledger_prices::{LedgerPrices, PRICE_CHECK, Received};
 pub use price_history::{HISTORY_WEEKS, HistoryRow, PriceHistory, Trend};
 pub use price_source_form::{
-    ApiKeyView, AuthChoice, HistoryFields, HistoryResponseView, HistoryShape, PriceSourceField,
-    PriceSourceFormEvent, PriceSourceFormPresenter, PriceSourceFormViewModel, ResponseView,
-    TestHistoryView, TestResultView, TestState, TestView,
+    ApiKeyView, AuthChoice, HistoryFields, HistoryShape, PriceSourceField, PriceSourceFormEvent,
+    PriceSourceFormPresenter, PriceSourceFormViewModel, TestView,
+};
+pub use price_source_test::{
+    HistoryResponseView, ResponseView, TestHistoryView, TestResultView, TestState,
 };
 pub use set_base_unit::{SetBaseUnitEvent, SetBaseUnitPresenter, SetBaseUnitViewModel};
 pub use set_price::{SetPriceEvent, SetPriceField, SetPricePresenter, SetPriceViewModel};

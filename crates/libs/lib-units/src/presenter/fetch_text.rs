@@ -2,16 +2,11 @@
 //! and the Warning Toast a Fetch now that failed raises. Shared by the page, its pane and the
 //! fetched-prices Presenter so every place says the same thing.
 
-use chrono::{DateTime, Local, Utc};
-use lib_locale::format::format_time_minutes;
+use chrono::{DateTime, Utc};
 use lib_toast::{Notice, ToastKind};
 
 use super::ago;
-use super::units_pane::amount;
-use crate::UnitRow;
-use crate::fetching::{
-    FetchFailure, FetchOutcome, LastFetch, PriceFetching, TestOutcome, TestResult,
-};
+use crate::fetching::{FetchFailure, FetchOutcome, LastFetch, PriceFetching};
 use crate::msg;
 use crate::protocols::UnitsPorts;
 
@@ -145,72 +140,6 @@ pub(super) fn last_fetch_text(
             &retry_text(retry_at, now),
         ),
     }
-}
-
-/// How long a test's answer took, in whole milliseconds.
-fn millis(result: &TestResult) -> String {
-    result.elapsed.num_milliseconds().max(0).to_string()
-}
-
-/// What the test asked, for a failure's detail.
-fn test_asked(result: &TestResult) -> Asked<'_> {
-    Asked {
-        symbol: &result.asked.symbol,
-        quote: &result.asked.quote_code,
-    }
-}
-
-/// A landed test as its form shows it: `Price found · 412 ms` over `VAS.AX · 101.84 AUD · tested
-/// 14:36`, or a reason's name over its detail. `quote` is the quote Unit, for the price's places.
-pub(super) fn test_lines(result: &TestResult, quote: Option<&UnitRow>) -> (String, String) {
-    match &result.outcome {
-        TestOutcome::Priced(price) => (
-            msg::units_price_source_test_found(&millis(result)),
-            msg::units_price_source_test_found_detail(
-                &result.asked.symbol,
-                &amount(price, quote),
-                &format_time_minutes(result.at.with_timezone(&Local).time()),
-            ),
-        ),
-        TestOutcome::Failed(reason) => failure_lines(*reason, result),
-    }
-}
-
-/// A test's failure `reason` as its name and detail, naming what the test asked.
-pub(super) fn failure_lines(reason: FetchFailure, result: &TestResult) -> (String, String) {
-    (
-        failure_name(reason),
-        failure_detail(reason, &result.asked.source_name, Some(test_asked(result))),
-    )
-}
-
-/// The one Toast `t` on a row answers with: Info on a price, Warning naming the reason.
-pub(super) fn test_toast(result: &TestResult, quote: Option<&UnitRow>) -> Notice {
-    let source = &result.asked.source_name;
-    match &result.outcome {
-        TestOutcome::Priced(price) => Notice::Toast(
-            ToastKind::Info,
-            msg::units_toast_test_found(
-                source,
-                &result.asked.symbol,
-                &amount(price, quote),
-                &millis(result),
-            ),
-        ),
-        TestOutcome::Failed(reason) => test_failed_toast(*reason, source, test_asked(result)),
-    }
-}
-
-/// `CoinGecko test: Not found · CoinGecko has no bitcon in AUD`.
-pub(super) fn test_failed_toast(reason: FetchFailure, source: &str, asked: Asked<'_>) -> Notice {
-    Notice::Toast(
-        ToastKind::Warning,
-        msg::units_toast_test_failed(
-            source,
-            &failure_name(reason),
-            &failure_detail(reason, source, Some(asked)),
-        ),
-    )
 }
 
 /// When a backed-off fetch is tried again: `tries again in 11 minutes`, rounded up.

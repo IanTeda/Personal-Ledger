@@ -25,15 +25,10 @@ use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView, count};
 use secrecy::{ExposeSecret as _, SecretString};
 
-use super::fetch_text::{failure_lines, test_lines};
+use super::price_source_test::{FormTest, PriceSourceTest, TestResultView};
 use super::{Clock, UnitsOutcome, cycle, step, updates_choices};
-use crate::fetching::{
-    FetchFailure, HistoryTestOutcome, HistoryTestResult, RequestId, SharedFetching, TestOutcome,
-    TestResult, key_missing,
-};
-use crate::interactor::{
-    AddPriceSource, EditPriceSource, KeyChange, SavePriceSourceKey, TestPriceSource,
-};
+use crate::fetching::{SharedFetching, key_missing};
+use crate::interactor::{AddPriceSource, EditPriceSource, KeyChange, SavePriceSourceKey};
 use crate::protocols::SharedPorts;
 use crate::{
     Endpoint, Error, HistoryEndpoint, HistoryRef, KeyPlacement, KeyState, PriceSourceAuth,
@@ -278,64 +273,9 @@ pub struct TestView {
     pub note: String,
 }
 
-/// How the last test went.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TestState {
-    Testing,
-    Found,
-    Failed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestResultView {
-    pub state: TestState,
-    /// *Price found · 412 ms*, *Testing…* or a reason's name.
-    pub heading: String,
-    /// `VAS.AX · 101.84 AUD · tested 14:36`, or the reason's detail.
-    pub detail: String,
-    /// *with unsaved changes*, when an edited source was tested with fields not yet saved.
-    pub unsaved: Option<String>,
-    /// A Custom source's response; `None` for a built-in, whose price path is code, and when
-    /// nothing came back.
-    pub response: Option<ResponseView>,
-    /// The history the test asked once the price passed; `None` for a source with no history
-    /// request, and when the price failed.
-    pub history: Option<TestHistoryView>,
-}
-
-/// *History · 10 points · newest Nov 20, 2026 · 1.23 AUD*, or the reason it failed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestHistoryView {
-    /// Found or Failed; an empty series is Failed, No price.
-    pub state: TestState,
-    pub text: String,
-}
-
-/// The collapsed *Response · HTTP n* disclosure.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResponseView {
-    pub label: String,
-    /// The body, indented when it is JSON, as text when it isn't, any echo of the key masked.
-    pub body: String,
-    /// Open by itself on a price reason that helps fix the Price path, or on a failed history.
-    pub open: bool,
-    pub focused: bool,
-    /// The history's response, under the price's, once a history came back.
-    pub history: Option<HistoryResponseView>,
-}
-
-/// The history's part of the Response disclosure.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HistoryResponseView {
-    /// `History response · HTTP 200`.
-    pub label: String,
-    /// The body, indented when it is JSON, any echo of the key masked.
-    pub body: String,
-}
-
 /// Why the test is off, or the test ready to send.
 enum Readiness {
-    Ready(Box<TestPriceSource>),
+    Ready(Box<FormTest>),
     Off(TestOff),
 }
 
@@ -407,26 +347,11 @@ pub struct PriceSourceFormPresenter {
     placement: KeyPlacement,
     focused: PriceSourceField,
     refusal: Option<String>,
-    /// The Client's fetching and Clock, which a test goes through; `None` offers no test.
-    testing: Option<(SharedFetching, Clock)>,
+    /// The test through the Client's fetching; `None` offers no test.
+    test: Option<PriceSourceTest>,
     symbol: String,
-    /// The last test sent, whose result the form shows.
-    test: Option<RequestId>,
-    /// The person's choice to open or close the Response; `None` leaves it to the reason.
-    response_open: Option<bool>,
     /// An edited Custom source as stored.
     opened: Option<Opened>,
-}
-
-/// Closing the form drops a test still out, so its response lands as no one's.
-impl Drop for PriceSourceFormPresenter {
-    fn drop(&mut self) {
-        if let (Some(id), Some((fetching, _))) = (self.test, &self.testing)
-            && let Ok(mut fetching) = fetching.try_borrow_mut()
-        {
-            fetching.drop_test(id);
-        }
-    }
 }
 
 impl PriceSourceFormPresenter {
@@ -459,10 +384,8 @@ impl PriceSourceFormPresenter {
             placement: KeyPlacement::Param,
             focused: PriceSourceField::Name,
             refusal: None,
-            testing: None,
-            symbol: String::new(),
             test: None,
-            response_open: None,
+            symbol: String::new(),
             opened: None,
         }
     }
@@ -471,7 +394,7 @@ impl PriceSourceFormPresenter {
     /// `None` for a Client with no price feed.
     #[must_use]
     pub fn with_testing(mut self, fetching: Option<SharedFetching>, clock: Clock) -> Self {
-        self.testing = fetching.map(|fetching| (fetching, clock));
+        self.test = fetching.map(|fetching| PriceSourceTest::new(fetching, clock));
         self
     }
 
@@ -849,7 +772,7 @@ impl PriceSourceFormPresenter {
             PriceSourceField::KeyParam => self.auth == AuthChoice::ApiKey,
             PriceSourceField::ApiKey => self.keyed(),
             PriceSourceField::RemoveKey => self.keyed() && self.key_kept(),
-            PriceSourceField::Symbol | PriceSourceField::Test => self.testing.is_some(),
+            PriceSourceField::Symbol | PriceSourceField::Test => self.test.is_some(),
             PriceSourceField::Response => self.response().is_some(),
             _ => true,
         }
@@ -1115,10 +1038,10 @@ impl PriceSourceFormPresenter {
     /// The test the form would send now, or why it can't: what it lacks, in the order the fields
     /// show.
     fn readiness(&self) -> Readiness {
-        let Some((fetching, _)) = &self.testing else {
+        let Some(test) = &self.test else {
             return Readiness::Off(TestOff::NoFeed);
         };
-        if self.test.is_some_and(|id| fetching.borrow().testing(id)) {
+        if test.testing() {
             return Readiness::Off(TestOff::Testing);
         }
         let ports = self.ports.borrow();
@@ -1166,7 +1089,7 @@ impl PriceSourceFormPresenter {
         let unsaved = self.opened.as_ref().is_some_and(|opened| {
             *opened != self.snapshot() || !self.api_key.expose_secret().trim().is_empty()
         });
-        Readiness::Ready(Box::new(TestPriceSource {
+        Readiness::Ready(Box::new(FormTest {
             source,
             source_name: self.source_name(),
             endpoint,
@@ -1174,7 +1097,6 @@ impl PriceSourceFormPresenter {
             quote,
             quote_code,
             key,
-            toast: false,
             unsaved,
         }))
     }
@@ -1198,22 +1120,15 @@ impl PriceSourceFormPresenter {
         }
     }
 
-    /// Sends the test, dropping the last one, while it can run. Writes nothing.
+    /// Hands the module the test, while it can run. Writes nothing.
     fn run_test(&mut self) {
-        let Readiness::Ready(test) = self.readiness() else {
+        let Readiness::Ready(ready) = self.readiness() else {
             return;
         };
-        let Some((fetching, clock)) = &self.testing else {
+        let Some(test) = &mut self.test else {
             return;
         };
-        let mut fetching = fetching.borrow_mut();
-        if let Some(last) = self.test.take() {
-            fetching.drop_test(last);
-        }
-        self.response_open = None;
-        // Ready checked the key, so no refusal is left.
-        self.test = test.run(&mut fetching, clock()).ok();
-        drop(fetching);
+        test.run(*ready);
         if !self.focusable(self.focused) {
             self.focused = if self.is_custom() {
                 PriceSourceField::Symbol
@@ -1224,53 +1139,26 @@ impl PriceSourceFormPresenter {
     }
 
     fn toggle_response(&mut self) {
-        if let Some(open) = self.response().map(|response| response.open) {
-            self.response_open = Some(!open);
+        if !self.is_custom() {
+            return;
+        }
+        if let Some(test) = &mut self.test {
+            test.toggle_response();
         }
     }
 
-    /// The last test's result, once it has landed.
-    fn result(&self) -> Option<TestResult> {
-        let (fetching, _) = self.testing.as_ref()?;
-        fetching.borrow().test_result(self.test?).cloned()
-    }
-
-    /// A Custom source's last response, open by itself on No price, Not found and Key rejected,
-    /// and on a failed history, whose response is its second part.
-    fn response(&self) -> Option<ResponseView> {
+    /// A Custom source's last response; a built-in's price path is code, so it shows none.
+    fn response(&self) -> Option<super::price_source_test::ResponseView> {
         if !self.is_custom() {
             return None;
         }
-        let result = self.result()?;
-        let (status, body) = result.response?;
-        let history_failed = result
-            .history
-            .as_ref()
-            .is_some_and(|history| matches!(history.outcome, HistoryTestOutcome::Failed(_)));
-        let auto = history_failed
-            || matches!(
-                result.outcome,
-                TestOutcome::Failed(
-                    FetchFailure::NoPrice | FetchFailure::NotFound | FetchFailure::KeyRejected
-                )
-            );
-        Some(ResponseView {
-            label: msg::units_price_source_test_response(&status.to_string()),
-            body: pretty(body),
-            open: self.response_open.unwrap_or(auto),
-            focused: self.focused == PriceSourceField::Response,
-            history: result
-                .history
-                .and_then(|history| history.response)
-                .map(|(status, body)| HistoryResponseView {
-                    label: msg::units_price_source_test_history_response(&status.to_string()),
-                    body: pretty(body),
-                }),
-        })
+        self.test
+            .as_ref()?
+            .response(self.focused == PriceSourceField::Response)
     }
 
     fn test_view(&self) -> Option<TestView> {
-        self.testing.as_ref()?;
+        let test = self.test.as_ref()?;
         let readiness = self.readiness();
         let testing = matches!(readiness, Readiness::Off(TestOff::Testing));
         let label = |field: PriceSourceField| match field {
@@ -1319,38 +1207,7 @@ impl PriceSourceFormPresenter {
         } else {
             msg::units_price_source_test()
         };
-        let result = if testing {
-            Some(TestResultView {
-                state: TestState::Testing,
-                heading: msg::units_price_source_testing(),
-                detail: String::new(),
-                unsaved: None,
-                response: None,
-                history: None,
-            })
-        } else {
-            self.result().map(|result| {
-                let quote = self.ports.borrow().units().unit(result.asked.quote);
-                let (heading, detail) = test_lines(&result, quote.as_ref());
-                TestResultView {
-                    state: match result.outcome {
-                        TestOutcome::Priced(_) => TestState::Found,
-                        TestOutcome::Failed(_) => TestState::Failed,
-                    },
-                    heading,
-                    detail,
-                    unsaved: result
-                        .asked
-                        .unsaved
-                        .then(msg::units_price_source_test_unsaved),
-                    response: self.response(),
-                    history: result
-                        .history
-                        .as_ref()
-                        .map(|history| test_history_view(&result, history, quote.as_ref())),
-                }
-            })
-        };
+        let result: Option<TestResultView> = test.view(&*self.ports.borrow(), self.response());
         Some(TestView {
             button,
             enabled: matches!(readiness, Readiness::Ready(_)),
@@ -1439,43 +1296,6 @@ impl PriceSourceFormPresenter {
                 Some(msg::units_refusal_price_source_gone())
             }
         };
-    }
-}
-
-/// `body` indented when it is JSON, else as it came.
-fn pretty(body: String) -> String {
-    serde_json::from_str::<serde_json::Value>(&body)
-        .ok()
-        .and_then(|json| serde_json::to_string_pretty(&json).ok())
-        .unwrap_or(body)
-}
-
-/// A test's history line: *History · 10 points · newest Nov 20, 2026 · 1.23 AUD*, or the reason.
-fn test_history_view(
-    result: &TestResult,
-    history: &HistoryTestResult,
-    quote: Option<&crate::UnitRow>,
-) -> TestHistoryView {
-    match &history.outcome {
-        HistoryTestOutcome::Points {
-            count: points,
-            newest,
-            close,
-        } => TestHistoryView {
-            state: TestState::Found,
-            text: msg::units_price_source_test_history_found(
-                count(*points),
-                &lib_locale::format::format_date(*newest, None),
-                &super::units_pane::amount(close, quote),
-            ),
-        },
-        HistoryTestOutcome::Failed(reason) => {
-            let (name, detail) = failure_lines(*reason, result);
-            TestHistoryView {
-                state: TestState::Failed,
-                text: msg::units_price_source_test_history_failed(&name, &detail),
-            }
-        }
     }
 }
 
@@ -2224,6 +2044,7 @@ mod tests {
     mod testing {
         use super::*;
         use crate::fake::LedgerPricesFixture;
+        use crate::presenter::TestState;
         use crate::presenter::test_support::{now, prices};
         use crate::protocols::UnitsPorts as _;
 
@@ -2305,7 +2126,7 @@ mod tests {
         }
 
         #[test]
-        fn an_unsaved_custom_source_is_tested_in_the_base_unit_and_writes_nothing() {
+        fn test_hands_the_forms_unsaved_values_to_the_test_and_shows_its_result() {
             let mut on = tested();
             let mut form = on.add();
             let mut events = filled();
@@ -2350,75 +2171,11 @@ mod tests {
             assert!(notices.is_empty(), "a form's test raises no Toast");
             let result = test_view(&form).result.expect("landed");
             assert_eq!(result.state, TestState::Found);
-            assert_eq!(result.heading, "Price found · 0 ms");
-            assert!(
-                result.detail.starts_with("VAS.AX · 101.84 AUD · tested "),
-                "{}",
-                result.detail
-            );
             assert_eq!(
                 result.unsaved, None,
                 "a new source has nothing saved to differ from"
             );
-            assert!(!result.response.expect("a Custom source's").open);
             assert!(on.wrote_nothing());
-        }
-
-        #[test]
-        fn no_price_opens_the_response_by_itself_with_the_keys_echo_masked() {
-            let mut on = tested();
-            let mut form = on.add();
-            let mut events = filled();
-            events.extend([
-                typed(PriceSourceField::Symbol, "VAS.AX"),
-                PriceSourceFormEvent::Auth(AuthChoice::ApiKey),
-                typed(PriceSourceField::KeyParam, "apikey"),
-                PriceSourceFormEvent::ApiKey("s3cr3t".into()),
-                PriceSourceFormEvent::Test,
-            ]);
-            send(&mut form, events);
-            on.land(on.transport().answer_last(
-                200,
-                r#"{"Global Quote":{"5. price":"101.84"},"apikey":"s3cr3t"}"#,
-            ));
-
-            let result = test_view(&form).result.expect("landed");
-            assert_eq!(
-                (result.state, result.heading.as_str()),
-                (TestState::Failed, "No price")
-            );
-            assert_eq!(
-                result.detail,
-                "Alpha Vantage gave no price for VAS.AX in AUD"
-            );
-            let response = result.response.expect("shown");
-            assert_eq!(response.label, "Response · HTTP 200");
-            assert!(response.open, "No price opens it by itself");
-            assert!(response.body.contains("\"5. price\""));
-            assert!(!response.body.contains("s3cr3t"), "{}", response.body);
-
-            send(&mut form, vec![PriceSourceFormEvent::ToggleResponse]);
-            assert!(!test_view(&form).result.unwrap().response.unwrap().open);
-        }
-
-        #[test]
-        fn an_unparseable_body_is_shown_as_text() {
-            let mut on = tested();
-            let mut form = on.add();
-            let mut events = filled();
-            events.extend([
-                typed(PriceSourceField::Symbol, "VAS.AX"),
-                PriceSourceFormEvent::Test,
-            ]);
-            send(&mut form, events);
-            on.land(on.transport().answer_last(502, "<html>Bad Gateway</html>"));
-
-            let result = test_view(&form).result.expect("landed");
-            assert_eq!(result.heading, "Source error");
-            let response = result.response.expect("shown");
-            assert_eq!(response.label, "Response · HTTP 502");
-            assert_eq!(response.body, "<html>Bad Gateway</html>");
-            assert!(!response.open);
         }
 
         #[test]
@@ -2501,154 +2258,6 @@ mod tests {
                 yahoo.help,
                 "Yahoo Finance values no unit, so there is nothing to test."
             );
-        }
-
-        /// A new Custom source with a list-of-points history, ready to test VAS.AX.
-        fn with_history(on: &LedgerPricesFixture) -> PriceSourceFormPresenter {
-            let mut form = on.add();
-            let mut events = filled();
-            events.extend([
-                typed(
-                    PriceSourceField::HistoryRequest,
-                    "/history?symbol={symbol}&from={from}&to={to}",
-                ),
-                typed(PriceSourceField::SeriesPath, "/data"),
-                typed(PriceSourceField::DatePath, "/date"),
-                typed(PriceSourceField::HistoryPricePath, "/close"),
-                typed(PriceSourceField::Symbol, "VAS.AX"),
-            ]);
-            send(&mut form, events);
-            form
-        }
-
-        const PRICED: &str = r#"{"Global Quote":{"05. price":"101.84"}}"#;
-
-        #[test]
-        fn once_the_price_passes_the_test_asks_14_days_of_history_and_shows_its_line() {
-            let mut on = tested();
-            let mut form = with_history(&on);
-            send(&mut form, vec![PriceSourceFormEvent::Test]);
-            on.land(on.transport().answer_last(200, PRICED));
-
-            assert_eq!(
-                on.transport().urls()[1],
-                "https://www.alphavantage.co/history?symbol=VAS.AX&from=2026-10-08&to=2026-10-21"
-            );
-            assert_eq!(
-                test_view(&form).button,
-                "Testing…",
-                "out until its history lands"
-            );
-
-            on.land(on.transport().answer_last(
-                200,
-                r#"{"data":[{"date":"2026-10-19","close":1.2},{"date":"2026-10-20","close":"1.2345"}]}"#,
-            ));
-            let result = test_view(&form).result.expect("landed");
-            assert_eq!(result.heading, "Price found · 0 ms");
-            let history = result.history.expect("the history ran");
-            assert_eq!(history.state, TestState::Found);
-            assert_eq!(
-                history.text,
-                "History · 2 points · newest Oct 20, 2026 · 1.23 AUD"
-            );
-            let response = result.response.expect("a Custom source's");
-            assert!(!response.open, "nothing failed");
-            let part = response.history.expect("the history's part");
-            assert_eq!(part.label, "History response · HTTP 200");
-            assert!(part.body.contains("\"1.2345\""), "{}", part.body);
-            assert!(on.wrote_nothing());
-        }
-
-        #[test]
-        fn an_empty_history_reads_no_price_and_opens_the_response_by_itself() {
-            let mut on = tested();
-            let mut form = with_history(&on);
-            send(&mut form, vec![PriceSourceFormEvent::Test]);
-            on.land(on.transport().answer_last(200, PRICED));
-            on.land(on.transport().answer_last(200, r#"{"data":[]}"#));
-
-            let result = test_view(&form).result.expect("landed");
-            assert_eq!(result.state, TestState::Found, "the price passed");
-            let history = result.history.expect("the history ran");
-            assert_eq!(
-                (history.state, history.text.as_str()),
-                (
-                    TestState::Failed,
-                    "History · No price · Alpha Vantage gave no price for VAS.AX in AUD"
-                )
-            );
-            assert!(
-                result.response.expect("shown").open,
-                "a failed history opens it"
-            );
-        }
-
-        #[test]
-        fn a_failed_price_asks_no_history_and_a_source_without_one_shows_no_line() {
-            let mut on = tested();
-            let mut form = with_history(&on);
-            send(&mut form, vec![PriceSourceFormEvent::Test]);
-            on.land(on.transport().answer_last(404, "{}"));
-            assert_eq!(on.transport().requests().len(), 1);
-            assert_eq!(test_view(&form).result.expect("landed").history, None);
-
-            let mut plain = on.add();
-            let mut events = filled();
-            events.extend([
-                typed(PriceSourceField::Symbol, "VAS.AX"),
-                PriceSourceFormEvent::Test,
-            ]);
-            send(&mut plain, events);
-            on.land(on.transport().answer_last(200, PRICED));
-            assert_eq!(
-                on.transport().requests().len(),
-                2,
-                "no history request to ask"
-            );
-            let result = test_view(&plain).result.expect("landed");
-            assert_eq!(result.history, None);
-            assert_eq!(result.response.expect("shown").history, None);
-        }
-
-        #[test]
-        fn a_built_ins_test_asks_its_history_too_and_shows_only_its_line() {
-            let mut on = tested();
-            let mut form = on.edit(COINGECKO);
-            send(&mut form, vec![PriceSourceFormEvent::Test]);
-            on.land(on.transport().answer_last(200, r#"{"bitcoin":{"aud":1}}"#));
-            assert!(
-                on.transport().urls()[1].contains("/coins/bitcoin/market_chart/range?"),
-                "{:?}",
-                on.transport().urls()
-            );
-            // 20 October 2026, in milliseconds.
-            on.land(
-                on.transport()
-                    .answer_last(200, r#"{"prices":[[1792454400000,2]]}"#),
-            );
-
-            let result = test_view(&form).result.expect("landed");
-            assert_eq!(
-                result.history.map(|history| history.text).as_deref(),
-                Some("History · 1 point · newest Oct 20, 2026 · 2.00 AUD")
-            );
-            assert_eq!(result.response, None, "a built-in's paths are code");
-        }
-
-        #[test]
-        fn closing_the_form_drops_a_test_still_out() {
-            let mut on = tested();
-            let mut form = on.edit(COINGECKO);
-            send(&mut form, vec![PriceSourceFormEvent::Test]);
-            send(&mut form, vec![PriceSourceFormEvent::Cancel]);
-            drop(form);
-
-            assert!(
-                on.land(on.transport().answer_last(200, r#"{"bitcoin":{"aud":1}}"#))
-                    .is_empty()
-            );
-            assert!(on.wrote_nothing());
         }
 
         #[test]
