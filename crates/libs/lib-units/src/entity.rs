@@ -132,7 +132,7 @@ impl UnitRow {
     /// `now` (`GLOSSARY.md`): written more than twice the interval ago. Never for Manual only, a
     /// Unit with no price or (with no `updates`) one on Manual entry. Worked out from the Ledger,
     /// so every Client agrees.
-    pub fn is_out_of_date(&self, updates: Option<Updates>, now: DateTime<Utc>) -> bool {
+    pub(crate) fn is_out_of_date(&self, updates: Option<Updates>, now: DateTime<Utc>) -> bool {
         let Some(interval) = updates.and_then(Updates::interval) else {
             return false;
         };

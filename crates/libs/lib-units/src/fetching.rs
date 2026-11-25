@@ -100,13 +100,13 @@ impl FetchFailure {
 /// What of a source a failure was against: editing any of it clears the failure, since the edit
 /// may be the fix.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SourceSettings {
+struct SourceSettings {
     endpoint: Option<Endpoint>,
     updates: Updates,
 }
 
 impl SourceSettings {
-    pub(crate) fn of(source: &PriceSource<'_>) -> Self {
+    fn of(source: &PriceSource<'_>) -> Self {
         Self {
             endpoint: source.endpoint().cloned(),
             updates: source.updates,
@@ -115,7 +115,7 @@ impl SourceSettings {
 
     /// Whether these are still `source`'s settings, compared in place rather than by cloning its
     /// endpoint into a second [`SourceSettings`].
-    pub(crate) fn matches(&self, source: &PriceSource<'_>) -> bool {
+    fn matches(&self, source: &PriceSource<'_>) -> bool {
         self.updates == source.updates && self.endpoint.as_ref() == source.endpoint()
     }
 }
@@ -288,7 +288,7 @@ impl PriceFetching {
     /// # Errors
     /// [`crate::Error::KeyMissing`] for a missing key, [`crate::Error::NotFetched`] for a source
     /// that doesn't fetch.
-    pub(super) fn start_round(
+    fn start_round(
         &mut self,
         source: &PriceSource<'_>,
         wanted: &[Wanted],

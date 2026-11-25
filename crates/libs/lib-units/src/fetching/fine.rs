@@ -52,10 +52,10 @@ pub(crate) struct FinePrice {
 
 /// Names one cached series: a Unit's prices at a grain in the window starting `first`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct FineKey {
-    pub unit: UnitId,
-    pub grain: Grain,
-    pub first: NaiveDate,
+pub(super) struct FineKey {
+    pub(super) unit: UnitId,
+    pub(super) grain: Grain,
+    pub(super) first: NaiveDate,
 }
 
 /// The first and last day of the Day or Hour window `steps` steps before the one ending `today`:
