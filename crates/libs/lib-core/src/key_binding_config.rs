@@ -1,6 +1,11 @@
 //! The Key Binding Configuration (ADR-0058): the plain `[keybindings]` payload, here so `lib-viper`
 //! and the feature crates behind it name it without depending on `lib-config`, which reads and
 //! validates it (`lib_config::keybindings::validate`).
+//!
+//! `quit` is deliberately **not** one of the configurable commands: `docs/navigation-design.md`'s
+//! own "Quit" section explains why. `bin-tui` has three separate, non-configurable quit
+//! mechanisms (`Ctrl+C` hard-quit, `Q`/`q` graceful quit, the `:quit` command), and none of them
+//! read this config, so `DEFAULT_BINDINGS` leaves it out.
 
 use std::collections::BTreeMap;
 

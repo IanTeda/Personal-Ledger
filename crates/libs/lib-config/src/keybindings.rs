@@ -7,7 +7,8 @@
 //!
 //! ## Configuration Structure
 //!
-//! `KeyBindingConfig` (defined in `lib-core`, so feature crates needn't depend on this one; ADR-0058) has one fixed field, `super_key` -- the modifier held down for global
+//! `KeyBindingConfig` (defined in `lib-core`, so feature crates needn't depend on this one;
+//! ADR-0058) has one fixed field, `super_key` -- the modifier held down for global
 //! shortcuts (mirroring a window manager's `$mainMod`/prefix key, e.g. Hyprland's `$mainMod`)
 //! -- plus a flattened map of command name -> key for everything else. Commands are open-ended
 //! (new screens add new ones over time) and INI naturally represents an arbitrary
@@ -36,9 +37,8 @@
 //! `toast_history` has no default key -- it opens with the `toasts` command -- so it only binds
 //! when a configuration source sets it.
 //!
-//! `quit` is deliberately **not** one of these -- `docs/navigation-design.md`'s own "Quit" section
-//! explains why: `bin-tui` has three separate, non-configurable quit mechanisms (`Ctrl+C`
-//! hard-quit, `Q`/`q` graceful quit, the `:quit` command), and none of them read this config.
+//! `quit` is deliberately **not** one of these; `lib_core::configuration::KeyBindingConfig`'s
+//! module doc says why.
 //!
 //! ## Environment Variables
 //!
