@@ -11,7 +11,7 @@
 mod delete_price_source;
 mod delete_unit;
 mod fetch_text;
-mod ledger_prices;
+pub(crate) mod ledger_prices;
 mod price_history;
 mod price_source_form;
 mod price_source_test;

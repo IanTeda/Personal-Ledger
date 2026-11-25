@@ -25,10 +25,12 @@ use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView, count};
 use secrecy::{ExposeSecret as _, SecretString};
 
-use super::price_source_test::{FormTest, PriceSourceTest, TestResultView};
+use super::price_source_test::{PriceSourceTest, TestResultView};
 use super::{Clock, UnitsOutcome, cycle, step, updates_choices};
 use crate::fetching::{SharedFetching, key_missing};
-use crate::interactor::{AddPriceSource, EditPriceSource, KeyChange, SavePriceSourceKey};
+use crate::interactor::{
+    AddPriceSource, EditPriceSource, KeyChange, SavePriceSourceKey, TestPriceSource,
+};
 use crate::protocols::SharedPorts;
 use crate::{
     Endpoint, Error, HistoryEndpoint, HistoryRef, KeyPlacement, KeyState, PriceSourceAuth,
@@ -275,7 +277,7 @@ pub struct TestView {
 
 /// Why the test is off, or the test ready to send.
 enum Readiness {
-    Ready(Box<FormTest>),
+    Ready(Box<TestPriceSource>),
     Off(TestOff),
 }
 
@@ -1089,7 +1091,7 @@ impl PriceSourceFormPresenter {
         let unsaved = self.opened.as_ref().is_some_and(|opened| {
             *opened != self.snapshot() || !self.api_key.expose_secret().trim().is_empty()
         });
-        Readiness::Ready(Box::new(FormTest {
+        Readiness::Ready(Box::new(TestPriceSource {
             source,
             source_name: self.source_name(),
             endpoint,
@@ -1097,6 +1099,7 @@ impl PriceSourceFormPresenter {
             quote,
             quote_code,
             key,
+            toast: false,
             unsaved,
         }))
     }
@@ -2048,10 +2051,6 @@ mod tests {
         use crate::presenter::test_support::{now, prices};
         use crate::protocols::UnitsPorts as _;
 
-        fn tested() -> LedgerPricesFixture {
-            prices()
-        }
-
         /// What these tests ask of the fixture beyond its own interface.
         trait Tested {
             fn add(&self) -> PriceSourceFormPresenter;
@@ -2094,7 +2093,7 @@ mod tests {
 
         #[test]
         fn test_with_symbol_waits_for_the_fields_it_needs_and_says_which() {
-            let on = tested();
+            let on = prices();
             let mut form = on.add();
             let view = test_view(&form);
             assert_eq!(view.button, "Test with symbol");
@@ -2127,7 +2126,7 @@ mod tests {
 
         #[test]
         fn test_hands_the_forms_unsaved_values_to_the_test_and_shows_its_result() {
-            let mut on = tested();
+            let mut on = prices();
             let mut form = on.add();
             let mut events = filled();
             events.extend([
@@ -2180,7 +2179,7 @@ mod tests {
 
         #[test]
         fn an_edited_source_is_tested_with_its_stored_key_and_tagged_with_unsaved_changes() {
-            let mut on = tested();
+            let mut on = prices();
             let id = keyed_source(on.ports(), &on.shared());
             let mut form = on.edit(id);
             send(
@@ -2233,7 +2232,7 @@ mod tests {
 
         #[test]
         fn a_built_ins_test_prices_the_first_unit_it_values_and_shows_no_response() {
-            let mut on = tested();
+            let mut on = prices();
             let mut form = on.edit(COINGECKO);
             let view = test_view(&form);
             assert_eq!(view.button, "Test price source");

@@ -8,13 +8,13 @@ use chrono::{DateTime, Duration, NaiveDate, Utc};
 use lib_core::UnitId;
 
 use super::history::{floor, gaps, history_request, wanted_weeks};
-use super::{HistoryCall, PriceFetching, SourceSettings, key_missing};
+use super::{FetchFailure, HistoryCall, PriceFetching, SourceSettings, key_missing};
 use crate::protocols::UnitsPorts;
 use crate::{UnitRow, Updates, WeeklyPrice, units_by_code};
 
 /// Which Units a backfill asks history for.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BackfillUnits {
+pub(crate) enum BackfillUnits {
     /// Every Unit wanting history, as the Ledger opens: never one on a Manual only source.
     Every,
     /// The Units a person's fetch now just priced, a Manual only source's included.
@@ -36,7 +36,7 @@ impl PriceFetching {
     /// with the oldest gap first, each paced by the source's call rate behind the calls a person
     /// asked for. A source needing a key this Client doesn't have fails the Unit's history Key
     /// missing unsent.
-    pub fn backfill(
+    pub(crate) fn backfill(
         &mut self,
         units: BackfillUnits,
         ports: &dyn UnitsPorts,
@@ -47,7 +47,7 @@ impl PriceFetching {
             BackfillUnits::Every => (None, false, false),
             BackfillUnits::Asked(ids) => (Some(ids), true, false),
             BackfillUnits::Due => {
-                let due = self.history_retries(now);
+                let due = self.backfill.retries(now);
                 if due.is_empty() {
                     return 0;
                 }
@@ -67,9 +67,9 @@ impl PriceFetching {
             }
             if retrying {
                 // Tried again or not, the failure is spent: one that fails again is noted anew.
-                self.clear_history_failure(unit.id);
+                self.backfill.clear_failure(unit.id);
             }
-            if !unit.is_active || unit.id == base || self.history_wanted(unit.id) {
+            if !unit.is_active || unit.id == base || self.backfill.wanted(unit.id) {
                 continue;
             }
             let Some(source) = catalogue.source(unit.link.source_id) else {
@@ -115,7 +115,8 @@ impl PriceFetching {
             };
             if key_missing(endpoint, key.as_ref()) {
                 tracing::warn!(price_source_id = %source.id, unit_id = %unit.id, "A Unit's history needs an API key this Client doesn't have");
-                self.history_key_missing(&call, now);
+                // Failed Key missing, tried again after `HISTORY_RETRY` as a sent one that failed would.
+                self.history_failed(&call, FetchFailure::KeyMissing, now);
                 continue;
             }
             call.request = Some(history_request(
@@ -153,28 +154,20 @@ impl PriceFetching {
     ) -> Option<Vec<NaiveDate>> {
         let floor = floor(unit, ports.openings().earliest_opened(unit.id))?;
         let wanted = wanted_weeks(floor, today, depth)?;
-        let weeks = gaps(unit, wanted, &self.empty_weeks(unit));
+        let weeks = gaps(unit, wanted, &self.backfill.empty_weeks(unit));
         (!weeks.is_empty()).then_some(weeks)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
-
-    use chrono::Utc;
     use lib_core::UnitKind;
 
     use super::*;
-    use crate::fake::{FakeTransport, InMemoryPorts};
-    use crate::fetching::{Landing, TransportOutcome};
-    use crate::interactor::{FetchNow, RecordFetchedPrices, RecordPriceHistory};
-    use crate::{
-        BuiltInOverride, COINGECKO, FRANKFURTER, Precision, PriceLink, PriceSourceRecord,
-        YAHOO_FINANCE,
-    };
-
-    const FRANKFURTER_RATES: &str = include_str!("../../fixtures/history/frankfurter_rates.json");
+    use crate::fake::{LedgerPricesFixture, answered, currency, rates};
+    use crate::fetching::TransportOutcome;
+    use crate::interactor::FetchNow;
+    use crate::{BuiltInOverride, COINGECKO, PriceLink, PriceSourceRecord, YAHOO_FINANCE};
 
     fn now() -> DateTime<Utc> {
         day(2026, 10, 21)
@@ -187,20 +180,6 @@ mod tests {
         NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
     }
 
-    fn currency(code: &str) -> UnitRow {
-        UnitRow::new(
-            code.into(),
-            code.into(),
-            UnitKind::Currency,
-            Precision::of_kind(UnitKind::Currency),
-            PriceLink {
-                source_id: FRANKFURTER,
-                symbol: code.into(),
-                quote: UnitId::SEED_AUD,
-            },
-        )
-    }
-
     fn on(source: lib_core::PriceSourceId, code: &str, symbol: &str) -> UnitRow {
         let mut unit = currency(code);
         unit.link.source_id = source;
@@ -208,148 +187,47 @@ mod tests {
         unit
     }
 
-    fn answered(body: &str) -> TransportOutcome {
-        TransportOutcome::Answered {
-            status: 200,
-            body: body.into(),
-            retry_after: None,
-        }
+    fn ok(body: &str) -> TransportOutcome {
+        answered(200, body, None)
     }
 
-    fn rates() -> TransportOutcome {
-        answered(FRANKFURTER_RATES)
+    /// One Open Ledger's prices over the sample with `units` added, landing every response as the
+    /// Client does, a fetch now's priced Units backfilled.
+    fn ledger(units: Vec<UnitRow>) -> LedgerPricesFixture {
+        crate::presenter::test_support::locale();
+        LedgerPricesFixture::with_units(units, now())
     }
 
-    /// One Open Ledger's fetching over the sample with `units` added, writing what lands through
-    /// the writing Interactors and backfilling a fetch now's priced Units, as the Presenter does.
-    struct Ledger {
-        ports: InMemoryPorts,
-        transport: FakeTransport,
-        fetching: PriceFetching,
+    /// Backfills every Unit wanting history, returning how many Units' history was queued.
+    fn backfill(ledger: &LedgerPricesFixture) -> usize {
+        ledger.fetching().borrow_mut().backfill(
+            BackfillUnits::Every,
+            &*ledger.ports().borrow(),
+            now().date_naive(),
+            now(),
+        )
     }
 
-    fn ledger(units: Vec<UnitRow>) -> Ledger {
-        let mut ports = InMemoryPorts::sample(now());
-        ports.units.units.extend(units);
-        let transport = FakeTransport::default();
-        let fetching = PriceFetching::new(Rc::new(transport.clone()));
-        Ledger {
-            ports,
-            transport,
-            fetching,
-        }
-    }
-
-    impl Ledger {
-        fn today(&self) -> NaiveDate {
-            now().date_naive()
-        }
-
-        fn backfill(&mut self) -> usize {
-            let today = self.today();
-            self.fetching
-                .backfill(BackfillUnits::Every, &self.ports, today, now())
-        }
-
-        /// Accounts in the Unit `code`, the earliest opened on `on`.
-        fn opened(&mut self, code: &str, on: NaiveDate) {
-            let id = self.unit(code).id;
-            self.ports.openings.by_unit.insert(id, on);
-        }
-
-        fn unit(&self, code: &str) -> UnitRow {
-            self.ports
-                .units
-                .units
-                .iter()
-                .find(|unit| unit.code == code)
-                .cloned()
-                .expect("listed")
-        }
-
-        fn edit(&mut self, code: &str, edit: impl FnOnce(&mut UnitRow)) {
-            edit(
-                self.ports
-                    .units
-                    .units
-                    .iter_mut()
-                    .find(|unit| unit.code == code)
-                    .expect("listed"),
-            );
-        }
-
-        fn urls(&self) -> Vec<String> {
-            self.transport.urls()
-        }
-
-        fn weeks(&self, code: &str) -> Vec<NaiveDate> {
-            self.unit(code)
-                .prices
-                .iter()
-                .map(|price| price.week)
-                .collect()
-        }
-
-        /// Answers request `id` with `outcome` and writes what lands.
-        fn answer_id(&mut self, id: crate::fetching::RequestId, outcome: TransportOutcome) {
-            let response = self.transport.answer(id, outcome);
-            let today = self.today();
-            let landing = self
-                .fetching
-                .land(response, now(), today, &Utc, &self.ports.units);
-            match landing {
-                Landing::Prices {
-                    prices, backfill, ..
-                } => {
-                    RecordFetchedPrices {
-                        prices,
-                        today,
-                        at: now(),
-                    }
-                    .run(&mut self.ports.units);
-                    if !backfill.is_empty() {
-                        self.fetching.backfill(
-                            BackfillUnits::Asked(backfill),
-                            &self.ports,
-                            today,
-                            now(),
-                        );
-                    }
-                }
-                Landing::History { unit, link, weeks } => {
-                    RecordPriceHistory { unit, link, weeks }.run(&mut self.ports.units);
-                }
-                Landing::Nothing | Landing::Test(_) => {}
-            }
-        }
-
-        /// Answers the newest request with `outcome`.
-        fn answer(&mut self, outcome: TransportOutcome) {
-            let (id, _) = self.transport.requests().pop().expect("a request out");
-            self.answer_id(id, outcome);
-        }
-
-        /// Adds a Custom source with `history`, returning its id.
-        fn custom_source(
-            &mut self,
-            history: Option<crate::HistoryEndpoint>,
-        ) -> lib_core::PriceSourceId {
-            crate::add_custom_source(
-                &mut self.ports.price_sources.records,
-                "Rates".into(),
-                crate::Endpoint {
-                    address: "https://rates.example".to_string().into(),
-                    request: "/{symbol}".to_string().into(),
-                    price_path: "/price".to_string().into(),
-                    auth: crate::PriceSourceAuth::None,
-                    headers: Vec::new().into(),
-                    batch: None,
-                    history: history.map(crate::HistoryRef::from),
-                },
-                Updates::Daily,
-            )
-            .id
-        }
+    /// Adds a Custom source with `history`, returning its id.
+    fn custom_source(
+        ledger: &LedgerPricesFixture,
+        history: Option<crate::HistoryEndpoint>,
+    ) -> lib_core::PriceSourceId {
+        crate::add_custom_source(
+            &mut ledger.ports().borrow_mut().price_sources.records,
+            "Rates".into(),
+            crate::Endpoint {
+                address: "https://rates.example".to_string().into(),
+                request: "/{symbol}".to_string().into(),
+                price_path: "/price".to_string().into(),
+                auth: crate::PriceSourceAuth::None,
+                headers: Vec::new().into(),
+                batch: None,
+                history: history.map(crate::HistoryRef::from),
+            },
+            Updates::Daily,
+        )
+        .id
     }
 
     #[test]
@@ -357,7 +235,7 @@ mod tests {
         let mut ledger = ledger(vec![currency("EUR")]);
         ledger.opened("EUR", day(2019, 6, 5));
 
-        assert_eq!(ledger.backfill(), 1);
+        assert_eq!(backfill(&ledger), 1);
 
         assert_eq!(
             ledger.urls(),
@@ -366,7 +244,7 @@ mod tests {
             ],
             "from the week of the first Opened date to the end of last week"
         );
-        ledger.answer(rates());
+        ledger.answer_last(rates());
 
         assert_eq!(
             ledger.weeks("EUR"),
@@ -378,45 +256,52 @@ mod tests {
             "each week closes on its last day's rate"
         );
 
-        ledger.backfill();
+        backfill(&ledger);
         assert_eq!(
             ledger.urls().len(),
             1,
             "the weeks that came back empty aren't asked again until the link changes"
         );
-        ledger.edit("EUR", |eur| eur.link.symbol = "eur".into());
-        ledger.backfill();
+        ledger.edit_unit("EUR", |eur| eur.link.symbol = "eur".into());
+        backfill(&ledger);
         assert_eq!(ledger.urls().len(), 2, "a relinked Unit asks again");
     }
 
     #[test]
     fn a_custom_source_backfills_from_a_list_of_points_or_a_series_keyed_by_date() {
         let mut ledger = ledger(Vec::new());
-        let points = ledger.custom_source(Some(crate::HistoryEndpoint {
-            request: "/points/{symbol}?from={from_unix}&to={to_unix}"
-                .to_string()
-                .into(),
-            series_path: "/prices".to_string().into(),
-            date_path: "/0".to_string().into(),
-            price_path: "/1".to_string().into(),
-            shape: crate::SeriesShape::Points,
-        }));
-        let keyed = ledger.custom_source(Some(crate::HistoryEndpoint {
-            request: "/keyed/{symbol}?from={from}&to={to}".to_string().into(),
-            series_path: "/rates".to_string().into(),
-            date_path: "".into(),
-            price_path: "/{quote}".to_string().into(),
-            shape: crate::SeriesShape::Keyed,
-        }));
+        let points = custom_source(
+            &ledger,
+            Some(crate::HistoryEndpoint {
+                request: "/points/{symbol}?from={from_unix}&to={to_unix}"
+                    .to_string()
+                    .into(),
+                series_path: "/prices".to_string().into(),
+                date_path: "/0".to_string().into(),
+                price_path: "/1".to_string().into(),
+                shape: crate::SeriesShape::Points,
+            }),
+        );
+        let keyed = custom_source(
+            &ledger,
+            Some(crate::HistoryEndpoint {
+                request: "/keyed/{symbol}?from={from}&to={to}".to_string().into(),
+                series_path: "/rates".to_string().into(),
+                date_path: "".into(),
+                price_path: "/{quote}".to_string().into(),
+                shape: crate::SeriesShape::Keyed,
+            }),
+        );
         ledger
-            .ports
+            .ports()
+            .borrow_mut()
             .units
             .units
             .extend([on(points, "EUR", "EUR"), on(keyed, "USD", "USD")]);
-        ledger.edit("EUR", |eur| eur.created_on = Some(day(2026, 10, 7)));
-        ledger.edit("USD", |usd| usd.created_on = Some(day(2026, 10, 7)));
+        ledger.edit_unit("EUR", |eur| eur.created_on = Some(day(2026, 10, 7)));
+        ledger.edit_unit("USD", |usd| usd.created_on = Some(day(2026, 10, 7)));
 
-        ledger.backfill();
+        backfill(&ledger);
         let urls = ledger.urls();
         assert!(
             urls.contains(
@@ -430,14 +315,14 @@ mod tests {
             ),
             "{urls:?}"
         );
-        for (id, request) in ledger.transport.requests() {
+        for (id, request) in ledger.transport().requests() {
             let body = if request.url.contains("/points/") {
                 // 6 and 13 October 2026, in milliseconds.
                 r#"{"prices":[[1791244800000,1.61],[1791849600000,1.62]]}"#
             } else {
                 r#"{"rates":{"2026-10-06":{"AUD":1.51},"2026-10-13T00:00:00Z":{"AUD":"1.52"}}}"#
             };
-            ledger.answer_id(id, answered(body));
+            ledger.land(ledger.transport().answer(id, ok(body)));
         }
 
         assert_eq!(ledger.weeks("EUR"), [day(2026, 10, 5), day(2026, 10, 12)]);
@@ -450,23 +335,33 @@ mod tests {
 
     #[test]
     fn a_custom_source_with_no_history_request_never_backfills() {
-        let mut ledger = ledger(Vec::new());
-        let plain = ledger.custom_source(None);
-        ledger.ports.units.units.push(on(plain, "EUR", "EUR"));
-        ledger.edit("EUR", |eur| eur.created_on = Some(day(2026, 9, 30)));
+        let ledger = ledger(Vec::new());
+        let plain = custom_source(&ledger, None);
+        ledger
+            .ports()
+            .borrow_mut()
+            .units
+            .units
+            .push(on(plain, "EUR", "EUR"));
+        ledger.edit_unit("EUR", |eur| eur.created_on = Some(day(2026, 9, 30)));
 
-        assert_eq!(ledger.backfill(), 0);
+        assert_eq!(backfill(&ledger), 0);
 
         assert!(ledger.urls().is_empty());
-        assert!(!ledger.fetching.history_fetching(ledger.unit("EUR").id));
+        assert!(
+            !ledger
+                .fetching()
+                .borrow()
+                .history_fetching(ledger.unit("EUR").id)
+        );
     }
 
     #[test]
     fn with_no_accounts_the_floor_is_the_units_creation_and_with_neither_nothing_is_asked() {
-        let mut ledger = ledger(vec![currency("EUR"), currency("USD")]);
-        ledger.edit("EUR", |eur| eur.created_on = Some(day(2026, 9, 30)));
+        let ledger = ledger(vec![currency("EUR"), currency("USD")]);
+        ledger.edit_unit("EUR", |eur| eur.created_on = Some(day(2026, 9, 30)));
 
-        ledger.backfill();
+        backfill(&ledger);
 
         assert_eq!(
             ledger.urls(),
@@ -489,9 +384,9 @@ mod tests {
             low: None,
             written_at: now() - Duration::days(20),
         };
-        ledger.edit("EUR", |eur| eur.prices.push(hand_set.clone()));
+        ledger.edit_unit("EUR", |eur| eur.prices.push(hand_set.clone()));
 
-        ledger.backfill();
+        backfill(&ledger);
         assert_eq!(
             ledger.urls(),
             [
@@ -504,8 +399,8 @@ mod tests {
             close: "8.88".parse().expect("a decimal"),
             ..hand_set.clone()
         };
-        ledger.edit("EUR", |eur| eur.prices.push(synced.clone()));
-        ledger.answer(rates());
+        ledger.edit_unit("EUR", |eur| eur.prices.push(synced.clone()));
+        ledger.answer_last(rates());
 
         let eur = ledger.unit("EUR");
         assert_eq!(eur.prices.len(), 3);
@@ -520,10 +415,10 @@ mod tests {
     fn coingecko_asks_only_as_far_back_as_its_history_depth() {
         let mut eth = on(COINGECKO, "ETH", "ethereum");
         eth.kind = UnitKind::Crypto;
-        let mut ledger = ledger(vec![eth]);
+        let ledger = ledger(vec![eth]);
         ledger.opened("ETH", day(2019, 6, 5));
 
-        ledger.backfill();
+        backfill(&ledger);
 
         let urls = ledger.urls();
         let eth: Vec<_> = urls.iter().filter(|url| url.contains("ethereum")).collect();
@@ -546,7 +441,8 @@ mod tests {
             ledger.opened(code, day(2026, 9, 28));
         }
         ledger
-            .ports
+            .ports()
+            .borrow_mut()
             .price_sources
             .records
             .push(PriceSourceRecord::BuiltIn(BuiltInOverride {
@@ -555,17 +451,19 @@ mod tests {
                 updates: Updates::ManualOnly,
             }));
 
-        ledger.backfill();
+        backfill(&ledger);
         assert_eq!(ledger.urls(), Vec::<String>::new());
 
         FetchNow {
             id: ledger.unit("BHP").id,
         }
-        .run(&ledger.ports, &mut ledger.fetching, now())
+        .run(
+            &*ledger.ports().borrow(),
+            &mut ledger.fetching().borrow_mut(),
+            now(),
+        )
         .expect("sent");
-        ledger.answer(answered(include_str!(
-            "../../fixtures/prices/yahoo_chart.json"
-        )));
+        ledger.answer_last(ok(include_str!("../../fixtures/prices/yahoo_chart.json")));
         assert!(
             ledger
                 .urls()
@@ -586,16 +484,21 @@ mod tests {
         ledger.opened("USD", day(2026, 9, 14));
         ledger.opened("ETH", day(2026, 9, 28));
 
-        assert_eq!(ledger.backfill(), 3);
+        assert_eq!(backfill(&ledger), 3);
 
         let urls = ledger.urls();
         assert_eq!(urls.len(), 2, "one to Frankfurter, one to CoinGecko");
         assert!(urls[0].contains("base=USD"), "usd's gap is the oldest");
         assert!(urls[1].contains("ethereum"), "sources run side by side");
-        assert!(ledger.fetching.history_fetching(ledger.unit("USD").id));
+        assert!(
+            ledger
+                .fetching()
+                .borrow()
+                .history_fetching(ledger.unit("USD").id)
+        );
 
-        let (usd, _) = ledger.transport.requests()[0].clone();
-        ledger.answer_id(usd, rates());
+        let (usd, _) = ledger.transport().requests()[0].clone();
+        ledger.land(ledger.transport().answer(usd, rates()));
         assert!(ledger.urls()[2].contains("base=EUR"), "then eur's");
     }
 }

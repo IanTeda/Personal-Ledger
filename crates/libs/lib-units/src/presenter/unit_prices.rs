@@ -1085,19 +1085,11 @@ mod tests {
             }
 
             fn answer_with(&mut self, outcome: TransportOutcome) {
-                let (id, _) = self
-                    .prices
-                    .transport()
-                    .requests()
-                    .last()
-                    .cloned()
-                    .expect("a request");
-                let response = self.prices.transport().answer(id, outcome);
-                self.prices.land(response);
+                self.prices.answer_last(outcome);
             }
 
             fn sent(&self) -> usize {
-                self.prices.transport().urls().len()
+                self.prices.sent()
             }
 
             fn last_url(&self) -> String {

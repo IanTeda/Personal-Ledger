@@ -26,11 +26,12 @@ use super::fetch_text::{
 use super::price_source_test::PriceSourceTest;
 use super::units_pane::amount;
 use crate::fetching::{
-    BackfillUnits, Landing, PriceFetching, PriceResponse, PriceTransport, SharedFetching,
+    BackfillUnits, Landing, PriceFetching, PriceResponse, PriceTransport, RoundOutcome,
+    SharedFetching,
 };
-use crate::interactor::{FetchDue, RecordFetchedPrices, RecordPriceHistory, RoundOutcome};
-use crate::msg;
-use crate::protocols::SharedPorts;
+use crate::interactor::{FetchDue, RecordFetchedPrices, RecordPriceHistory};
+use crate::protocols::{SharedPorts, UnitRepository};
+use crate::{UnitId, msg};
 
 /// What [`LedgerPrices::land_next`] found on the feed's channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,7 +63,8 @@ impl LedgerPrices {
         clock: Clock,
     ) -> Self {
         let mut prices = Self::unopened(ports, transport, responses, clock);
-        prices.opened();
+        prices.check();
+        prices.backfill();
         prices
     }
 
@@ -81,16 +83,15 @@ impl LedgerPrices {
         }
     }
 
-    /// The open check and backfill [`Self::open`] runs.
-    pub(crate) fn opened(&mut self) {
-        self.check();
-        self.backfill();
-    }
-
     /// The fetching every Units Presenter on this Ledger shares, for the Units page to fetch now,
     /// test and ask finer prices through.
     pub fn fetching(&self) -> SharedFetching {
         self.fetching.clone()
+    }
+
+    /// [`Self::fetching`] without the clone, for a test's fixture to lend out.
+    pub(crate) fn shared_fetching(&self) -> &SharedFetching {
+        &self.fetching
     }
 
     /// Lands at most one response waiting on the feed's channel, raising what it tells on
@@ -159,8 +160,13 @@ impl LedgerPrices {
                 .borrow_mut()
                 .land(response, now, today, &Local, ports.units())
         };
+        let backfill = write_landing(
+            &landing,
+            self.ports.borrow_mut().split_mut().units,
+            today,
+            now,
+        );
         match landing {
-            Landing::Nothing => {}
             Landing::Test(result) => {
                 router.notify(PriceSourceTest::landed_toast(
                     &result,
@@ -168,34 +174,20 @@ impl LedgerPrices {
                 ));
             }
             Landing::Prices {
-                prices,
-                outcome,
-                backfill,
-            } => {
-                RecordFetchedPrices {
-                    prices,
-                    today,
-                    at: now,
-                }
-                .run(self.ports.borrow_mut().split_mut().units);
-                if let Some(outcome) = outcome {
-                    self.tell(&outcome, router);
-                }
-                // A fetch now goes on to fill the past weeks of each Unit it priced.
-                if !backfill.is_empty() {
-                    self.fetching.borrow_mut().backfill(
-                        BackfillUnits::Asked(backfill),
-                        &*self.ports.borrow(),
-                        today,
-                        now,
-                    );
-                }
-            }
-            Landing::History { unit, link, weeks } => {
-                // Never a Toast: the Weekly Prices table shows a fetch now's history in place.
-                RecordPriceHistory { unit, link, weeks }
-                    .run(self.ports.borrow_mut().split_mut().units);
-            }
+                outcome: Some(outcome),
+                ..
+            } => self.tell(&outcome, router),
+            // Never a Toast for a scheduled round, nor for a history, whose weeks the Weekly
+            // Prices table shows in place.
+            Landing::Nothing | Landing::Prices { outcome: None, .. } | Landing::History { .. } => {}
+        }
+        if !backfill.is_empty() {
+            self.fetching.borrow_mut().backfill(
+                BackfillUnits::Asked(backfill),
+                &*self.ports.borrow(),
+                today,
+                now,
+            );
         }
     }
 
@@ -269,6 +261,42 @@ impl LedgerPrices {
     }
 }
 
+/// Writes what `landing` carries through the writing Interactors, on `today` at `at`: a round's
+/// prices or a Unit's backfilled weeks. Returns the Units a Fetch now priced, whose past weeks are
+/// filled next; a scheduled round, having no outcome, backfills none.
+pub(crate) fn write_landing(
+    landing: &Landing,
+    units: &mut dyn UnitRepository,
+    today: NaiveDate,
+    at: DateTime<Utc>,
+) -> Vec<UnitId> {
+    match landing {
+        Landing::Prices { prices, outcome } => {
+            RecordFetchedPrices {
+                prices: prices.clone(),
+                today,
+                at,
+            }
+            .run(units);
+            if outcome.is_some() {
+                prices.iter().map(|price| price.unit).collect()
+            } else {
+                Vec::new()
+            }
+        }
+        Landing::History { unit, link, weeks } => {
+            RecordPriceHistory {
+                unit: *unit,
+                link: link.clone(),
+                weeks: weeks.clone(),
+            }
+            .run(units);
+            Vec::new()
+        }
+        Landing::Nothing | Landing::Test(_) => Vec::new(),
+    }
+}
+
 /// How often a Client runs the scheduled check while a Ledger stays open, after the one it runs
 /// on opening (ADR-0043's "where and when fetching runs").
 pub const PRICE_CHECK: std::time::Duration = std::time::Duration::from_secs(60);
@@ -281,12 +309,14 @@ fn local_day(now: DateTime<Utc>) -> NaiveDate {
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, Utc};
-    use lib_core::{UnitId, UnitKind};
+    use lib_core::UnitId;
     use lib_toast::Notice;
 
     use super::*;
-    use crate::fake::{FakeTransport, InMemoryPorts, LedgerPricesFixture};
-    use crate::{FRANKFURTER, Precision, PriceLink, UnitRow, WeeklyPrice};
+    use crate::fake::{
+        InMemoryPorts, LedgerPricesFixture, currency, missing, offline, priced, rates, throttled,
+    };
+    use crate::{FRANKFURTER, UnitRow, WeeklyPrice};
 
     fn now() -> DateTime<Utc> {
         NaiveDate::from_ymd_opt(2026, 10, 21)
@@ -295,18 +325,10 @@ mod tests {
             .and_utc()
     }
 
-    fn currency(code: &str) -> UnitRow {
-        UnitRow::new(
-            code.into(),
-            code.into(),
-            UnitKind::Currency,
-            Precision::of_kind(UnitKind::Currency),
-            PriceLink {
-                source_id: FRANKFURTER,
-                symbol: code.into(),
-                quote: UnitId::SEED_AUD,
-            },
-        )
+    /// The sample with `units` added, on the fixture's clock and fetching.
+    fn client(units: Vec<UnitRow>) -> LedgerPricesFixture {
+        crate::presenter::test_support::locale();
+        LedgerPricesFixture::with_units(units, now())
     }
 
     #[test]
@@ -366,22 +388,20 @@ mod tests {
         use super::*;
         use crate::presenter::Received;
 
-        fn client() -> LedgerPricesFixture {
-            let mut sample = InMemoryPorts::sample(now());
-            sample.units.units.push(currency("EUR"));
-            LedgerPricesFixture::new(sample, now())
+        fn eur() -> LedgerPricesFixture {
+            client(vec![currency("EUR")])
         }
 
         #[test]
         fn an_empty_feed_lands_nothing() {
-            let mut client = client();
+            let mut client = eur();
 
             assert_eq!(client.land_next().0, Received::Empty);
         }
 
         #[test]
         fn a_waiting_response_lands_once_and_leaves_the_feed_empty() {
-            let mut client = client();
+            let mut client = eur();
             client.prices().check();
             let eur = client.transport().answer_last(200, r#"{"rate":1.65}"#);
             client.land(eur);
@@ -400,7 +420,7 @@ mod tests {
 
         #[test]
         fn a_feed_that_has_gone_says_so() {
-            let mut client = client();
+            let mut client = eur();
             client.hang_up();
 
             assert_eq!(client.land_next().0, Received::Gone);
@@ -410,15 +430,12 @@ mod tests {
     /// One test per [`Landing`] variant: `land_next` writes, tells and backfills as it asks.
     mod dispatch {
         use super::*;
-        use crate::fake::InMemoryPorts;
         use crate::interactor::FetchNow;
-        use crate::presenter::price_source_test::{FormTest, PriceSourceTest};
+        use crate::interactor::TestPriceSource;
+        use crate::presenter::price_source_test::PriceSourceTest;
         use crate::protocols::UnitsPorts;
 
-        const FRANKFURTER_RATES: &str =
-            include_str!("../../fixtures/history/frankfurter_rates.json");
-
-        fn client() -> LedgerPricesFixture {
+        fn eur_opened() -> LedgerPricesFixture {
             crate::presenter::test_support::locale();
             let mut sample = InMemoryPorts::sample(now());
             let eur = currency("EUR");
@@ -428,18 +445,6 @@ mod tests {
             );
             sample.units.units.push(eur);
             LedgerPricesFixture::new(sample, now())
-        }
-
-        fn eur(client: &LedgerPricesFixture) -> UnitRow {
-            client
-                .ports()
-                .borrow()
-                .units
-                .units
-                .iter()
-                .find(|unit| unit.code == "EUR")
-                .cloned()
-                .expect("listed")
         }
 
         /// Tests Frankfurter for EUR as a form does, holding the test so its result stays.
@@ -453,7 +458,7 @@ mod tests {
                     .expect("frankfurter fetches")
             };
             let mut test = PriceSourceTest::new(client.fetching().clone(), client.clock());
-            test.run(FormTest {
+            test.run(TestPriceSource {
                 source: Some(FRANKFURTER),
                 source_name: "Frankfurter".into(),
                 endpoint,
@@ -461,6 +466,7 @@ mod tests {
                 quote: UnitId::SEED_AUD,
                 quote_code: "AUD".into(),
                 key: None,
+                toast: false,
                 unsaved: false,
             });
             test
@@ -468,7 +474,7 @@ mod tests {
 
         #[test]
         fn nothing_writes_and_tells_nothing() {
-            let mut client = client();
+            let mut client = eur_opened();
             let before = client.ports().borrow().clone();
             let form = form_test(&client);
 
@@ -485,8 +491,8 @@ mod tests {
 
         #[test]
         fn a_test_raises_its_one_toast() {
-            let mut client = client();
-            let eur = eur(&client);
+            let mut client = eur_opened();
+            let eur = client.unit("EUR");
             let refused = PriceSourceTest::in_background(
                 client.fetching(),
                 &client.clock(),
@@ -507,9 +513,9 @@ mod tests {
 
         #[test]
         fn prices_are_written_told_and_backfilled() {
-            let mut client = client();
+            let mut client = eur_opened();
             FetchNow {
-                id: eur(&client).id,
+                id: client.unit("EUR").id,
             }
             .run(
                 &*client.ports().borrow(),
@@ -521,7 +527,7 @@ mod tests {
             let response = client.transport().answer_last(200, r#"{"rate":1.6}"#);
             client.land(response);
 
-            assert_eq!(eur(&client).prices.len(), 1, "written");
+            assert_eq!(client.unit("EUR").prices.len(), 1, "written");
             assert_eq!(
                 client.notices(),
                 [Notice::Toast(
@@ -542,13 +548,12 @@ mod tests {
 
         #[test]
         fn history_is_written_silently() {
-            let mut client = client();
+            let mut client = eur_opened();
             client.prices().backfill();
 
-            let response = client.transport().answer_last(200, FRANKFURTER_RATES);
-            client.land(response);
+            client.answer_last(rates());
 
-            assert_eq!(eur(&client).prices.len(), 3, "its three past weeks");
+            assert_eq!(client.unit("EUR").prices.len(), 3, "its three past weeks");
             assert!(client.notices().is_empty());
         }
     }
@@ -557,159 +562,11 @@ mod tests {
         use chrono::Duration;
 
         use super::*;
-        use crate::fake::InMemoryPorts;
-        use crate::protocols::UnitsPorts;
         use crate::{
-            BuiltInOverride, CustomSource, Endpoint, FetchFailure, KeyPlacement, PriceSourceAuth,
-            PriceSourceId, PriceSourceRecord, TransportError, TransportOutcome, Updates,
+            CustomSource, Endpoint, FetchFailure, KeyPlacement, PriceSourceAuth, PriceSourceId,
+            PriceSourceRecord, TransportOutcome, Updates,
         };
         use secrecy::ExposeSecret as _;
-
-        /// The sample with `units` added, on the fixture's clock and fetching.
-        fn client(units: Vec<UnitRow>) -> LedgerPricesFixture {
-            crate::presenter::test_support::locale();
-            let mut sample = InMemoryPorts::sample(now());
-            sample.units.units.extend(units);
-            LedgerPricesFixture::new(sample, now())
-        }
-
-        /// What these tests ask of the fixture beyond its own interface.
-        trait Client {
-            /// Runs the scheduled check and returns how many requests it sent to Frankfurter (the
-            /// sample's btc comes due on CoinGecko too).
-            fn check(&mut self) -> usize;
-            /// Answers every request still out, oldest first, each with `outcome(url)`.
-            fn answer(&mut self, outcome: impl Fn(&str) -> TransportOutcome);
-            fn fetch_now(&mut self, code: &str);
-            fn fetch_source(&mut self, id: PriceSourceId) -> crate::Result<usize>;
-            fn sent(&self) -> usize;
-            fn unit(&self, code: &str) -> UnitRow;
-            fn unit_failure(&self, code: &str) -> Option<FetchFailure>;
-            fn source_failure(&self, id: PriceSourceId) -> Option<FetchFailure>;
-            fn retime(&mut self, updates: Updates);
-        }
-
-        impl Client for LedgerPricesFixture {
-            fn check(&mut self) -> usize {
-                let frankfurter = |transport: &FakeTransport| {
-                    transport
-                        .urls()
-                        .iter()
-                        .filter(|url| url.contains("frankfurter"))
-                        .count()
-                };
-                let before = frankfurter(self.transport());
-                self.prices().check();
-                frankfurter(self.transport()) - before
-            }
-
-            fn answer(&mut self, outcome: impl Fn(&str) -> TransportOutcome) {
-                let out: Vec<_> = self
-                    .transport()
-                    .requests()
-                    .into_iter()
-                    .filter(|(id, _)| self.fetching().borrow().in_flight_request(*id))
-                    .collect();
-                for (id, request) in out {
-                    let response = self.transport().answer(id, outcome(&request.url));
-                    self.land(response);
-                }
-            }
-
-            fn fetch_now(&mut self, code: &str) {
-                let id = self.unit(code).id;
-                crate::interactor::FetchNow { id }
-                    .run(
-                        &*self.ports().borrow(),
-                        &mut self.fetching().borrow_mut(),
-                        self.now(),
-                    )
-                    .expect("sent");
-            }
-
-            fn fetch_source(&mut self, id: PriceSourceId) -> crate::Result<usize> {
-                crate::interactor::FetchSource { id }.run(
-                    &*self.ports().borrow(),
-                    &mut self.fetching().borrow_mut(),
-                    self.now(),
-                )
-            }
-
-            fn sent(&self) -> usize {
-                self.transport().requests().len()
-            }
-
-            fn unit(&self, code: &str) -> UnitRow {
-                self.ports()
-                    .borrow()
-                    .units
-                    .units
-                    .iter()
-                    .find(|unit| unit.code == code)
-                    .cloned()
-                    .expect("listed")
-            }
-
-            fn unit_failure(&self, code: &str) -> Option<FetchFailure> {
-                let unit = self.unit(code);
-                let ports = self.ports().borrow();
-                let catalogue = ports.source_catalogue();
-                let source = catalogue.source(unit.link.source_id)?;
-                self.fetching()
-                    .borrow()
-                    .unit_fetch(&unit, &source)
-                    .and_then(|last| last.failure())
-            }
-
-            fn source_failure(&self, id: PriceSourceId) -> Option<FetchFailure> {
-                let ports = self.ports().borrow();
-                let catalogue = ports.source_catalogue();
-                let source = catalogue.source(id)?;
-                self.fetching()
-                    .borrow()
-                    .source_fetch(&source)
-                    .and_then(|last| last.failure())
-            }
-
-            fn retime(&mut self, updates: Updates) {
-                self.ports()
-                    .borrow_mut()
-                    .price_sources
-                    .records
-                    .push(PriceSourceRecord::BuiltIn(BuiltInOverride {
-                        id: FRANKFURTER,
-                        name: "Frankfurter".into(),
-                        updates,
-                    }));
-            }
-        }
-
-        fn offline(_: &str) -> TransportOutcome {
-            TransportOutcome::Failed(TransportError::Offline)
-        }
-
-        fn priced(_: &str) -> TransportOutcome {
-            TransportOutcome::Answered {
-                status: 200,
-                body: r#"{"rate":1.5}"#.into(),
-                retry_after: None,
-            }
-        }
-
-        /// A 404 for `code`'s request, a price for every other.
-        fn missing(code: &'static str) -> impl Fn(&str) -> TransportOutcome {
-            move |url| {
-                if url.contains(&format!("/{code}/")) {
-                    TransportOutcome::Answered {
-                        status: 404,
-                        body: r#"{"message":"not found"}"#.into(),
-                        retry_after: None,
-                    }
-                } else {
-                    priced(url)
-                }
-            }
-        }
 
         #[test]
         fn editing_a_units_link_clears_its_failure_and_makes_it_due_at_once() {
@@ -873,14 +730,6 @@ mod tests {
             assert_eq!(requests[0].1.key, None, "keyless");
         }
 
-        fn throttled(retry_after: Option<&str>) -> TransportOutcome {
-            TransportOutcome::Answered {
-                status: 429,
-                body: String::new(),
-                retry_after: retry_after.map(str::to_string),
-            }
-        }
-
         #[test]
         fn a_fetch_now_stopped_part_way_counts_what_it_fetched_in_one_warning() {
             let currencies: Vec<UnitRow> = (0..62)
@@ -1040,89 +889,9 @@ mod tests {
 
         use super::*;
         use crate::TransportOutcome;
-        use crate::fake::InMemoryPorts;
-
-        const FRANKFURTER_RATES: &str =
-            include_str!("../../fixtures/history/frankfurter_rates.json");
 
         fn day(y: i32, m: u32, d: u32) -> NaiveDate {
             NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
-        }
-
-        /// The sample with `units` added, on the fixture's clock and fetching.
-        fn client(units: Vec<UnitRow>) -> LedgerPricesFixture {
-            crate::presenter::test_support::locale();
-            let mut sample = InMemoryPorts::sample(now());
-            sample.units.units.extend(units);
-            LedgerPricesFixture::new(sample, now())
-        }
-
-        /// What these tests ask of the fixture beyond its own interface.
-        trait Client {
-            /// Accounts in the Unit `code`, the earliest opened on `on`.
-            fn opened(&mut self, code: &str, on: NaiveDate);
-            fn unit(&self, code: &str) -> UnitRow;
-            fn edit(&mut self, code: &str, edit: impl FnOnce(&mut UnitRow));
-            fn urls(&self) -> Vec<String>;
-            /// Answers the newest request with `outcome`.
-            fn answer(&mut self, outcome: TransportOutcome);
-            fn weeks(&self, code: &str) -> Vec<NaiveDate>;
-        }
-
-        impl Client for LedgerPricesFixture {
-            fn opened(&mut self, code: &str, on: NaiveDate) {
-                let id = self.unit(code).id;
-                self.ports().borrow_mut().openings.by_unit.insert(id, on);
-            }
-
-            fn unit(&self, code: &str) -> UnitRow {
-                self.ports()
-                    .borrow()
-                    .units
-                    .units
-                    .iter()
-                    .find(|unit| unit.code == code)
-                    .cloned()
-                    .expect("listed")
-            }
-
-            fn edit(&mut self, code: &str, edit: impl FnOnce(&mut UnitRow)) {
-                edit(
-                    self.ports()
-                        .borrow_mut()
-                        .units
-                        .units
-                        .iter_mut()
-                        .find(|unit| unit.code == code)
-                        .expect("listed"),
-                );
-            }
-
-            fn urls(&self) -> Vec<String> {
-                self.transport().urls()
-            }
-
-            fn answer(&mut self, outcome: TransportOutcome) {
-                let (id, _) = self.transport().requests().pop().expect("a request out");
-                let response = self.transport().answer(id, outcome);
-                self.land(response);
-            }
-
-            fn weeks(&self, code: &str) -> Vec<NaiveDate> {
-                self.unit(code)
-                    .prices
-                    .iter()
-                    .map(|price| price.week)
-                    .collect()
-            }
-        }
-
-        fn rates() -> TransportOutcome {
-            TransportOutcome::Answered {
-                status: 200,
-                body: FRANKFURTER_RATES.into(),
-                retry_after: None,
-            }
         }
 
         #[test]
@@ -1130,8 +899,9 @@ mod tests {
             let mut client = client(vec![currency("EUR")]);
             client.opened("EUR", day(2026, 9, 28));
 
-            client.prices().opened();
-            client.answer(rates());
+            client.prices().check();
+            client.prices().backfill();
+            client.answer_last(rates());
 
             assert!(
                 client.urls().iter().any(|url| url.contains("/v2/rates?")),
@@ -1159,7 +929,7 @@ mod tests {
             )
             .expect("sent");
 
-            client.answer(TransportOutcome::Answered {
+            client.answer_last(TransportOutcome::Answered {
                 status: 200,
                 body: r#"{"rate":1.6}"#.into(),
                 retry_after: None,
@@ -1180,7 +950,7 @@ mod tests {
             let mut client = client(vec![currency("EUR")]);
             client.opened("EUR", day(2026, 9, 28));
             // A fresh price this week, so the minute check sends no round of its own.
-            client.edit("EUR", |eur| {
+            client.edit_unit("EUR", |eur| {
                 eur.record_price("1.6".parse().expect("a decimal"), now().date_naive(), now());
             });
             let history = |client: &LedgerPricesFixture| {
@@ -1191,7 +961,7 @@ mod tests {
                     .count()
             };
             client.prices().backfill();
-            client.answer(TransportOutcome::Failed(crate::TransportError::Offline));
+            client.answer_last(TransportOutcome::Failed(crate::TransportError::Offline));
             assert_eq!(history(&client), 1);
 
             client.later(Duration::minutes(9));
@@ -1218,13 +988,13 @@ mod tests {
             .expect("sent");
             client.pump();
 
-            client.answer(TransportOutcome::Answered {
+            client.answer_last(TransportOutcome::Answered {
                 status: 200,
                 body: r#"{"rate":1.6}"#.into(),
                 retry_after: None,
             });
             client.pump();
-            client.answer(rates());
+            client.answer_last(rates());
             client.pump();
 
             assert_eq!(

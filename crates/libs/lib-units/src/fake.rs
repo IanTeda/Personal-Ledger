@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use lib_core::{PriceSourceId, UnitId};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
@@ -23,6 +23,11 @@ use crate::{
     BaseUnitRepository, Error, Holding, KeyState, PriceSourceKeys, PriceSourceRecord,
     PriceSourceRepository, Result, UnitHoldings, UnitOpenings, UnitRepository, UnitRow, UnitUsage,
     UnitUse, sample_units,
+};
+#[cfg(test)]
+use crate::{
+    BuiltInOverride, FRANKFURTER, FetchFailure, LastFetch, Precision, PriceLink, UnitKind, Updates,
+    interactor::{FetchNow, FetchSource},
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -113,11 +118,11 @@ impl UnitHoldings for InMemoryHoldings {
 /// The earliest Opened date a test sets per Unit; a Unit not listed is held by no Account.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryOpenings {
-    pub by_unit: HashMap<UnitId, chrono::NaiveDate>,
+    pub by_unit: HashMap<UnitId, NaiveDate>,
 }
 
 impl UnitOpenings for InMemoryOpenings {
-    fn earliest_opened(&self, id: UnitId) -> Option<chrono::NaiveDate> {
+    fn earliest_opened(&self, id: UnitId) -> Option<NaiveDate> {
         self.by_unit.get(&id).copied()
     }
 }
@@ -445,10 +450,10 @@ pub struct LedgerPricesFixture {
     ports: Rc<RefCell<InMemoryPorts>>,
     shared: SharedPorts,
     transport: FakeTransport,
-    fetching: SharedFetching,
     /// The feed's sending end, `None` once [`Self::hang_up`] drops it.
     feed: Option<Sender<PriceResponse>>,
     at: Rc<Cell<DateTime<Utc>>>,
+    clock: Clock,
     prices: LedgerPrices,
     notices: Vec<Notice>,
 }
@@ -464,16 +469,20 @@ impl LedgerPricesFixture {
             let at = at.clone();
             Rc::new(move || at.get())
         };
-        let prices =
-            LedgerPrices::unopened(shared.clone(), Rc::new(transport.clone()), responses, clock);
+        let prices = LedgerPrices::unopened(
+            shared.clone(),
+            Rc::new(transport.clone()),
+            responses,
+            clock.clone(),
+        );
         Self {
-            fetching: prices.fetching(),
             prices,
             ports,
             shared,
             transport,
             feed: Some(feed),
             at,
+            clock,
             notices: Vec::new(),
         }
     }
@@ -494,21 +503,16 @@ impl LedgerPricesFixture {
 
     /// The fetching every Presenter on this Ledger shares.
     pub fn fetching(&self) -> &SharedFetching {
-        &self.fetching
+        self.prices.shared_fetching()
     }
 
-    /// A clock reading what [`Self::set_now`] and [`Self::later`] last set.
+    /// A clock reading what [`Self::later`] last set.
     pub fn clock(&self) -> Clock {
-        let at = self.at.clone();
-        Rc::new(move || at.get())
+        self.clock.clone()
     }
 
     pub fn now(&self) -> DateTime<Utc> {
         self.at.get()
-    }
-
-    pub fn set_now(&self, now: DateTime<Utc>) {
-        self.at.set(now);
     }
 
     /// Moves the clock on `by`.
@@ -575,10 +579,232 @@ impl LedgerPricesFixture {
     }
 }
 
+/// What the price-fetching tests ask of the fixture beyond a Client's interface, kept here once
+/// rather than in each test module.
+#[cfg(test)]
+impl LedgerPricesFixture {
+    /// The sample with `units` added, the clock reading `now`.
+    pub(crate) fn with_units(units: Vec<UnitRow>, now: DateTime<Utc>) -> Self {
+        let mut sample = InMemoryPorts::sample(now);
+        sample.units.units.extend(units);
+        Self::new(sample, now)
+    }
+
+    pub(crate) fn unit(&self, code: &str) -> UnitRow {
+        self.ports
+            .borrow()
+            .units
+            .units
+            .iter()
+            .find(|unit| unit.code == code)
+            .cloned()
+            .expect("listed")
+    }
+
+    pub(crate) fn edit_unit(&self, code: &str, edit: impl FnOnce(&mut UnitRow)) {
+        edit(
+            self.ports
+                .borrow_mut()
+                .units
+                .units
+                .iter_mut()
+                .find(|unit| unit.code == code)
+                .expect("listed"),
+        );
+    }
+
+    /// Accounts in the Unit `code`, the earliest opened on `on`.
+    pub(crate) fn opened(&self, code: &str, on: NaiveDate) {
+        let id = self.unit(code).id;
+        self.ports.borrow_mut().openings.by_unit.insert(id, on);
+    }
+
+    /// The weeks `code` has a Weekly Price for.
+    pub(crate) fn weeks(&self, code: &str) -> Vec<NaiveDate> {
+        self.unit(code)
+            .prices
+            .iter()
+            .map(|price| price.week)
+            .collect()
+    }
+
+    pub(crate) fn urls(&self) -> Vec<String> {
+        self.transport.urls()
+    }
+
+    pub(crate) fn sent(&self) -> usize {
+        self.transport.requests().len()
+    }
+
+    /// Overrides Frankfurter's Updates with `updates`.
+    pub(crate) fn retime(&self, updates: Updates) {
+        self.ports
+            .borrow_mut()
+            .price_sources
+            .records
+            .push(PriceSourceRecord::BuiltIn(BuiltInOverride {
+                id: FRANKFURTER,
+                name: "Frankfurter".into(),
+                updates,
+            }));
+    }
+
+    /// The scheduled check, as the Client's minute timer runs it; returns how many requests it
+    /// sent to Frankfurter (the sample's btc comes due on CoinGecko too).
+    pub(crate) fn check(&mut self) -> usize {
+        let frankfurter = |fixture: &Self| {
+            fixture
+                .urls()
+                .iter()
+                .filter(|url| url.contains("frankfurter"))
+                .count()
+        };
+        let before = frankfurter(self);
+        self.prices.check();
+        frankfurter(self) - before
+    }
+
+    pub(crate) fn fetch_now(&self, code: &str) {
+        let id = self.unit(code).id;
+        FetchNow { id }
+            .run(
+                &*self.ports.borrow(),
+                &mut self.fetching().borrow_mut(),
+                self.now(),
+            )
+            .expect("sent");
+    }
+
+    pub(crate) fn fetch_source(&self, id: PriceSourceId) -> Result<usize> {
+        FetchSource { id }.run(
+            &*self.ports.borrow(),
+            &mut self.fetching().borrow_mut(),
+            self.now(),
+        )
+    }
+
+    pub(crate) fn unit_failure(&self, code: &str) -> Option<FetchFailure> {
+        let unit = self.unit(code);
+        let ports = self.ports.borrow();
+        let catalogue = ports.source_catalogue();
+        let source = catalogue.source(unit.link.source_id)?;
+        self.fetching()
+            .borrow()
+            .unit_fetch(&unit, &source)
+            .and_then(LastFetch::failure)
+    }
+
+    pub(crate) fn source_failure(&self, id: PriceSourceId) -> Option<FetchFailure> {
+        let ports = self.ports.borrow();
+        let catalogue = ports.source_catalogue();
+        let source = catalogue.source(id)?;
+        self.fetching()
+            .borrow()
+            .source_fetch(&source)
+            .and_then(LastFetch::failure)
+    }
+
+    /// Answers every round's request still out, oldest first, each with `outcome(url)`, without
+    /// landing them.
+    pub(crate) fn respond(&self, outcome: impl Fn(&str) -> TransportOutcome) -> Vec<PriceResponse> {
+        self.transport
+            .requests()
+            .into_iter()
+            .filter(|(id, _)| self.fetching().borrow().in_flight_request(*id))
+            .map(|(id, request)| self.transport.answer(id, outcome(&request.url)))
+            .collect()
+    }
+
+    /// Answers the newest request with `outcome`, without landing it.
+    pub(crate) fn respond_last(&self, outcome: TransportOutcome) -> PriceResponse {
+        let (id, _) = self.transport.requests().pop().expect("a request out");
+        self.transport.answer(id, outcome)
+    }
+
+    /// Answers and lands every round's request still out, oldest first, each with `outcome(url)`.
+    pub(crate) fn answer(&mut self, outcome: impl Fn(&str) -> TransportOutcome) {
+        for response in self.respond(outcome) {
+            self.land(response);
+        }
+    }
+
+    /// Answers and lands the newest request with `outcome`.
+    pub(crate) fn answer_last(&mut self, outcome: TransportOutcome) {
+        let response = self.respond_last(outcome);
+        self.land(response);
+    }
+}
+
+/// A currency on Frankfurter, quoted in aud.
+#[cfg(test)]
+pub(crate) fn currency(code: &str) -> UnitRow {
+    UnitRow::new(
+        code.into(),
+        code.into(),
+        UnitKind::Currency,
+        Precision::of_kind(UnitKind::Currency),
+        PriceLink {
+            source_id: FRANKFURTER,
+            symbol: code.into(),
+            quote: UnitId::SEED_AUD,
+        },
+    )
+}
+
+/// A provider's answer: `status`, `body` and the raw `Retry-After` header `retry_after`.
+#[cfg(test)]
+pub(crate) fn answered(status: u16, body: &str, retry_after: Option<&str>) -> TransportOutcome {
+    TransportOutcome::Answered {
+        status,
+        body: body.into(),
+        retry_after: retry_after.map(str::to_string),
+    }
+}
+
+/// Offline, whatever was asked.
+#[cfg(test)]
+pub(crate) fn offline(_: &str) -> TransportOutcome {
+    TransportOutcome::Failed(crate::TransportError::Offline)
+}
+
+/// A rate of 1.5, whatever was asked.
+#[cfg(test)]
+pub(crate) fn priced(_: &str) -> TransportOutcome {
+    answered(200, r#"{"rate":1.5}"#, None)
+}
+
+/// A 429, waiting `retry_after` when it says.
+#[cfg(test)]
+pub(crate) fn throttled(retry_after: Option<&str>) -> TransportOutcome {
+    answered(429, "", retry_after)
+}
+
+/// A 404 for `code`'s request, a price for every other.
+#[cfg(test)]
+pub(crate) fn missing(code: &'static str) -> impl Fn(&str) -> TransportOutcome {
+    move |url| {
+        if url.contains(&format!("/{code}/")) {
+            answered(404, r#"{"message":"not found"}"#, None)
+        } else {
+            priced(url)
+        }
+    }
+}
+
+/// Frankfurter's history for EUR in AUD over three past weeks.
+#[cfg(test)]
+pub(crate) fn rates() -> TransportOutcome {
+    answered(
+        200,
+        include_str!("../fixtures/history/frankfurter_rates.json"),
+        None,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{BuiltInOverride, COINGECKO, Precision, PriceLink, UnitKind, Updates};
+    use crate::COINGECKO;
 
     #[test]
     fn the_sample_seed_holds_aud_btc_and_vas_with_aud_as_base() {
@@ -621,7 +847,7 @@ mod tests {
     #[test]
     fn the_prices_fixture_lands_a_fetch_now_and_collects_its_toast() {
         let mut prices = crate::presenter::test_support::prices();
-        crate::interactor::FetchNow {
+        FetchNow {
             id: UnitId::SEED_BTC,
         }
         .run(

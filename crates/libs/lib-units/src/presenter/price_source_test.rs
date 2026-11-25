@@ -7,11 +7,9 @@
 //! results on each repaint, never pushed, so `LedgerPrices` keeps no registry of open forms.
 
 use chrono::Local;
-use lib_core::{PriceSourceId, UnitId};
 use lib_locale::format::format_time_minutes;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::view::count;
-use secrecy::SecretString;
 
 use super::Clock;
 use super::fetch_text::{Asked, failure_detail, failure_name};
@@ -22,7 +20,7 @@ use crate::fetching::{
 };
 use crate::interactor::TestPriceSource;
 use crate::protocols::UnitsPorts;
-use crate::{Endpoint, Error, UnitRow, msg};
+use crate::{Error, UnitRow, msg};
 
 /// How the last test went.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,21 +77,6 @@ pub struct HistoryResponseView {
     pub body: String,
 }
 
-/// A test a form has everything for, as the form's fields stand: what it asks of which endpoint.
-pub(crate) struct FormTest {
-    /// The stored source, `None` for one still being added.
-    pub source: Option<PriceSourceId>,
-    pub source_name: String,
-    pub endpoint: Endpoint,
-    pub symbol: String,
-    pub quote: UnitId,
-    pub quote_code: String,
-    /// The typed key, else the stored one.
-    pub key: Option<SecretString>,
-    /// The form differs from the stored source, so its result is tagged *with unsaved changes*.
-    pub unsaved: bool,
-}
-
 /// A form's test: the last one it sent, read back from fetching as it lands.
 pub(crate) struct PriceSourceTest {
     fetching: SharedFetching,
@@ -134,23 +117,13 @@ impl PriceSourceTest {
 
     /// Sends `test`, dropping the last one and closing a Response the person opened. Writes
     /// nothing; its result is held for the form, never raised as a Toast.
-    pub(crate) fn run(&mut self, test: FormTest) {
+    pub(crate) fn run(&mut self, mut test: TestPriceSource) {
         let mut fetching = self.fetching.borrow_mut();
         if let Some(last) = self.last.take() {
             fetching.drop_test(last);
         }
         self.response_open = None;
-        let test = TestPriceSource {
-            source: test.source,
-            source_name: test.source_name,
-            endpoint: test.endpoint,
-            symbol: test.symbol,
-            quote: test.quote,
-            quote_code: test.quote_code,
-            key: test.key,
-            toast: false,
-            unsaved: test.unsaved,
-        };
+        test.toast = false;
         // A form sends only a test its readiness found a key for, so no refusal is left.
         self.last = test.run(&mut fetching, (self.clock)()).ok();
     }
@@ -389,12 +362,15 @@ fn history_view(
 
 #[cfg(test)]
 mod tests {
+    use lib_core::{PriceSourceId, UnitId};
+    use secrecy::SecretString;
+
     use super::*;
     use crate::fake::{InMemoryPorts, LedgerPricesFixture};
     use crate::presenter::test_support::{now, prices};
     use crate::{
-        COINGECKO, CustomSource, FRANKFURTER, HistoryEndpoint, HistoryRef, KeyPlacement, Precision,
-        PriceLink, PriceSourceAuth, PriceSourceRecord, SeriesShape, UnitKind, Updates,
+        COINGECKO, CustomSource, Endpoint, FRANKFURTER, HistoryEndpoint, HistoryRef, KeyPlacement,
+        Precision, PriceLink, PriceSourceAuth, PriceSourceRecord, SeriesShape, UnitKind, Updates,
     };
 
     /// Alpha Vantage as a Custom source, keyed in a parameter when `keyed`, with a list-of-points
@@ -430,8 +406,8 @@ mod tests {
     }
 
     /// An unsaved Custom source's test of VAS.AX in AUD on `endpoint`.
-    fn vas(endpoint: Endpoint, key: Option<&str>) -> FormTest {
-        FormTest {
+    fn vas(endpoint: Endpoint, key: Option<&str>) -> TestPriceSource {
+        TestPriceSource {
             source: None,
             source_name: "Alpha Vantage".into(),
             endpoint,
@@ -439,6 +415,7 @@ mod tests {
             quote: UnitId::SEED_AUD,
             quote_code: "AUD".into(),
             key: key.map(SecretString::from),
+            toast: false,
             unsaved: false,
         }
     }
@@ -538,7 +515,7 @@ mod tests {
     fn an_unsaved_test_is_tagged_with_unsaved_changes() {
         let mut on = prices();
         let mut test = form(&on);
-        test.run(FormTest {
+        test.run(TestPriceSource {
             unsaved: true,
             ..vas(alpha(false, false), None)
         });
@@ -636,7 +613,7 @@ mod tests {
             .expect("a built-in")
             .endpoint
             .clone();
-        test.run(FormTest {
+        test.run(TestPriceSource {
             source: Some(COINGECKO),
             source_name: "CoinGecko".into(),
             endpoint,
@@ -644,6 +621,7 @@ mod tests {
             quote: UnitId::SEED_AUD,
             quote_code: "AUD".into(),
             key: None,
+            toast: false,
             unsaved: false,
         });
         on.land(on.transport().answer_last(200, r#"{"bitcoin":{"aud":1}}"#));

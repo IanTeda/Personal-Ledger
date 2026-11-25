@@ -10,7 +10,6 @@
 //! rules are tested with no network.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::rc::Rc;
 
 use chrono::{DateTime, NaiveDate, Utc};
@@ -42,11 +41,11 @@ pub(crate) use fine_prices::{FineCall, FineState};
 pub(crate) use history::history_request;
 use history::{HistoryReading, read_history};
 pub(crate) use landing::Landing;
-pub use landing::{FetchedPrice, RoundOutcome};
+pub(crate) use landing::{FetchedPrice, RoundOutcome};
 use last_fetch::LastFetches;
 pub(crate) use last_fetch::back_off;
 pub use last_fetch::{FetchOutcome, LastFetch, MIN_BACK_OFF};
-pub use planning::BackfillUnits;
+pub(crate) use planning::BackfillUnits;
 use price_tests::PriceTests;
 pub(crate) use price_tests::{
     HistoryTestOutcome, HistoryTestResult, TestHistory, TestInFlight, TestOutcome, TestResult,
@@ -145,7 +144,7 @@ pub struct PriceFetching {
 pub type SharedFetching = Rc<RefCell<PriceFetching>>;
 
 impl PriceFetching {
-    pub fn new(transport: Rc<dyn PriceTransport>) -> Self {
+    pub(crate) fn new(transport: Rc<dyn PriceTransport>) -> Self {
         Self {
             calls: CallQueue::new(transport),
             rounds: Rounds::default(),
@@ -156,7 +155,7 @@ impl PriceFetching {
         }
     }
 
-    pub fn shared(transport: Rc<dyn PriceTransport>) -> SharedFetching {
+    pub(crate) fn shared(transport: Rc<dyn PriceTransport>) -> SharedFetching {
         Rc::new(RefCell::new(Self::new(transport)))
     }
 
@@ -506,25 +505,9 @@ impl PriceFetching {
         }
     }
 
-    /// Notes that `call` couldn't be sent at `at` for want of a key this Client doesn't have: it
-    /// fails Key missing, tried again after [`HISTORY_RETRY`], as a sent one that failed would.
-    fn history_key_missing(&mut self, call: &HistoryCall, at: DateTime<Utc>) {
-        self.history_failed(call, FetchFailure::KeyMissing, at);
-    }
-
-    /// The weeks `unit`'s provider answered with nothing on the link it has now.
-    fn empty_weeks(&self, unit: &UnitRow) -> HashSet<NaiveDate> {
-        self.backfill.empty_weeks(unit)
-    }
-
     /// Whether `unit`'s history request is queued or out.
     pub fn history_fetching(&self, unit: UnitId) -> bool {
         self.backfill.fetching(unit)
-    }
-
-    /// Whether `unit` has a history request waiting, queued or out.
-    fn history_wanted(&self, unit: UnitId) -> bool {
-        self.backfill.wanted(unit)
     }
 
     /// Why `unit`'s last history request on `source` failed and when it is tried again, while it
@@ -535,16 +518,6 @@ impl PriceFetching {
         source: &PriceSource<'_>,
     ) -> Option<(FetchFailure, DateTime<Utc>)> {
         self.backfill.failure(unit, source)
-    }
-
-    /// The Units whose failed history request is due to be tried again at `now`.
-    fn history_retries(&self, now: DateTime<Utc>) -> Vec<UnitId> {
-        self.backfill.retries(now)
-    }
-
-    /// Forgets `unit`'s failed history request: it was tried again, or no longer needs trying.
-    fn clear_history_failure(&mut self, unit: UnitId) {
-        self.backfill.clear_failure(unit);
     }
 
     /// Whether `unit` failed and is still backing off at `now`.

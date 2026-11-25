@@ -25,22 +25,28 @@ pub use lib_units::presenter::PRICE_CHECK;
 
 impl Root {
     /// Polls the Open Ledger's prices for as long as the returned task is held, landing each
-    /// response as an input, then pumps the queued calls out. Stops once the feed has gone, the
+    /// response as an input, then pumps the queued calls out once none is waiting. Stops once the feed has gone, the
     /// window with the Shell, or the Open Ledger holding the task.
     pub(super) fn listen_for_price_responses(cx: &mut Context<'_, Self>) -> Task<()> {
         cx.spawn(async move |this, cx| {
             loop {
                 // The executor's timer, not `Timer::after`, so headless tests can advance it.
                 cx.background_executor().timer(PRICE_RESPONSE_POLL).await;
+                // Each landed response is its own update and input; the pump runs once nothing
+                // waits, in the update that found the channel empty, so an idle poll is one update.
                 loop {
-                    match this.update(cx, |shell, cx| shell.receive_price(cx)) {
+                    let received = this.update(cx, |shell, cx| {
+                        let received = shell.receive_price(cx);
+                        if received == Received::Empty {
+                            shell.pump_prices(cx);
+                        }
+                        received
+                    });
+                    match received {
                         Ok(Received::Landed) => {}
                         Ok(Received::Empty) => break,
                         Ok(Received::Gone) | Err(_) => return,
                     }
-                }
-                if this.update(cx, |shell, cx| shell.pump_prices(cx)).is_err() {
-                    return;
                 }
             }
         })

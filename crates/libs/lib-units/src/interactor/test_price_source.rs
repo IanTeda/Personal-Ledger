@@ -10,7 +10,7 @@ use crate::{Endpoint, Error, Result};
 /// Test a Price Source (`GLOSSARY.md`): ask `endpoint` for one symbol's price and show it, writing
 /// nothing. No price, no fetch failure or back-off and no key: the response lands through
 /// [`crate::presenter::LedgerPrices`], held for the form that asked or raised as its Toast. The
-/// presenter module `PriceSourceTest` is its only caller, and the only one that sets `toast`. The endpoint is whatever the form holds, saved or not. A form's test of a source with
+/// presenter module `PriceSourceTest` is its only caller, and sets `toast` itself: never for a form. The endpoint is whatever the form holds, saved or not. A form's test of a source with
 /// a history request asks it for the last 14 days once the price passes (ADR-0043's amendment "a
 /// Custom source's history request"); `t` on a row asks only the price.
 #[derive(Clone)]
