@@ -88,7 +88,7 @@ mod tests {
     use std::rc::Rc;
 
     use super::*;
-    use crate::fake::{FakeTransport, InMemoryUnits};
+    use crate::fake::{FakeTransport, InMemoryPorts};
     use crate::fetching::{HistoryTestOutcome, Landing, PriceResponse};
     use crate::{KeyPlacement, PriceSourceAuth, TransportOutcome};
 
@@ -115,14 +115,15 @@ mod tests {
         }
     }
 
-    /// Lands `response` at `at` as a Client would, on no Units.
+    /// Lands `response` at `at` as a Client would. A test never reads the Units, so the sample's
+    /// stand in for them.
     fn land(fetching: &mut PriceFetching, response: PriceResponse, at: DateTime<Utc>) -> Landing {
         fetching.land(
             response,
             at,
             at.date_naive(),
             &Utc,
-            &InMemoryUnits::default(),
+            &InMemoryPorts::sample(at),
         )
     }
 

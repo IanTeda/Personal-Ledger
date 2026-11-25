@@ -10,9 +10,10 @@ use lib_core::{Money, PriceSourceId, UnitId};
 
 use super::backfill::HistoryAnswer;
 use super::{
-    FetchFailure, Landed, PriceFetching, PriceResponse, Reading, TestResult, read, round_failure,
+    BackfillUnits, FetchFailure, Landed, PriceFetching, PriceResponse, Reading, TestResult, read,
+    round_failure,
 };
-use crate::protocols::UnitRepository;
+use crate::protocols::UnitsPorts;
 use crate::{PriceLink, WeeklyPrice};
 
 /// What a landed response asks of its caller.
@@ -43,12 +44,12 @@ pub struct FetchedPrice {
     pub close: Money,
 }
 
-/// How a round went, for the Toast a round a person asked for raises.
+/// How a round a person asked for went apart from its prices: the source, the failures and the
+/// round failure. The prices themselves travel beside it in [`Landing::Prices`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RoundOutcome {
     /// The source asked.
     pub source: Option<PriceSourceId>,
-    pub written: Vec<FetchedPrice>,
     /// The Units the round failed for, and why, round failures included.
     pub failed: Vec<(UnitId, FetchFailure)>,
     /// The first round failure, which backed the source off.
@@ -57,14 +58,16 @@ pub struct RoundOutcome {
 
 impl PriceFetching {
     /// Lands `response` at `now`, whatever it answers, on the Clock's day `today`, a finer
-    /// prices response's hours read in `zone`. `units` are only read.
+    /// prices response's hours read in `zone`. `ports` are only read. A Fetch now's priced Units
+    /// are queued to backfill before the caller writes their prices, which is safe since their
+    /// history ends at last week.
     pub(crate) fn land<Tz: TimeZone>(
         &mut self,
         response: PriceResponse,
         now: DateTime<Utc>,
         today: NaiveDate,
         zone: &Tz,
-        units: &dyn UnitRepository,
+        ports: &dyn UnitsPorts,
     ) -> Landing {
         if self.tests.is_test(&response) {
             return self.land_test(&response, now);
@@ -76,7 +79,7 @@ impl PriceFetching {
         if self.backfill.is_history(&response) {
             return self.land_history(&response, now);
         }
-        self.land_round(response, now, units)
+        self.land_round(response, now, today, ports)
     }
 
     /// Reads a test's `response`, holding a form's for the form and sending its history request
@@ -139,12 +142,14 @@ impl PriceFetching {
 
     /// Holds `response` in its round until the last lands, then reads the whole round: each
     /// price for a Unit still active and on the link it was asked on, and how each Unit and the
-    /// source fared, backing off a failed source or Unit and clearing a fetched one.
+    /// source fared, backing off a failed source or Unit and clearing a fetched one. A round a
+    /// person asked for then queues the history of the Units it priced.
     fn land_round(
         &mut self,
         response: PriceResponse,
         now: DateTime<Utc>,
-        units: &dyn UnitRepository,
+        today: NaiveDate,
+        ports: &dyn UnitsPorts,
     ) -> Landing {
         let Some(landed) = self.hold_in_round(response, now) else {
             return Landing::Nothing;
@@ -161,7 +166,8 @@ impl PriceFetching {
             for call in sent.units {
                 let unit_id = call.unit;
                 let reading = read(&response.outcome, &call.price_path);
-                let current = units
+                let current = ports
+                    .units()
                     .unit(unit_id)
                     .is_some_and(|unit| unit.is_active && unit.link == call.link);
                 if !current {
@@ -205,9 +211,12 @@ impl PriceFetching {
                 outcome: None,
             };
         }
+        if !prices.is_empty() {
+            let priced = prices.iter().map(|price| price.unit).collect();
+            self.backfill(BackfillUnits::Asked(priced), ports, today, now);
+        }
         let outcome = RoundOutcome {
             source: Some(source),
-            written: prices.clone(),
             failed,
             round_failure,
         };
@@ -285,9 +294,9 @@ mod tests {
     }
 
     /// Lands `response` at the fixture's now and writes what it hands back as `LedgerPrices`
-    /// does, returning the [`Landing`] and the Units a Fetch now would backfill, never
-    /// backfilled here.
-    fn land(ledger: &LedgerPricesFixture, response: PriceResponse) -> (Landing, Vec<UnitId>) {
+    /// does, returning the [`Landing`]. A fetch now's priced Units are queued to backfill by
+    /// fetching itself, as they are in production.
+    fn land(ledger: &LedgerPricesFixture, response: PriceResponse) -> Landing {
         let now = ledger.now();
         let today = now.date_naive();
         let landing = {
@@ -295,15 +304,15 @@ mod tests {
             ledger
                 .fetching()
                 .borrow_mut()
-                .land(response, now, today, &Utc, ports.units())
+                .land(response, now, today, &Utc, &*ports)
         };
-        let backfill = write_landing(
+        write_landing(
             &landing,
             ledger.ports().borrow_mut().split_mut().units,
             today,
             now,
         );
-        (landing, backfill)
+        landing
     }
 
     /// Answers every round's request still out, oldest first, each with `outcome(url)`,
@@ -311,7 +320,7 @@ mod tests {
     fn answer(
         ledger: &LedgerPricesFixture,
         outcome: impl Fn(&str) -> TransportOutcome,
-    ) -> Vec<(Landing, Vec<UnitId>)> {
+    ) -> Vec<Landing> {
         ledger
             .respond(outcome)
             .into_iter()
@@ -321,7 +330,13 @@ mod tests {
 
     /// Answers the newest request with `outcome`, returning what it landed as.
     fn answer_last(ledger: &LedgerPricesFixture, outcome: TransportOutcome) -> Landing {
-        land(ledger, ledger.respond_last(outcome)).0
+        land(ledger, ledger.respond_last(outcome))
+    }
+
+    /// Whether `code`'s history is queued or out, as fetching left it.
+    fn history_queued(ledger: &LedgerPricesFixture, code: &str) -> bool {
+        let unit = ledger.unit(code);
+        ledger.fetching().borrow().backfill.wanted(unit.id)
     }
 
     fn release(ledger: &LedgerPricesFixture) {
@@ -382,16 +397,12 @@ mod tests {
         ledger.fetching().borrow_mut().ask_fine(call, ledger.now());
     }
 
-    /// The round's one landing that isn't [`Landing::Nothing`]: its prices, outcome and backfill.
-    fn round(
-        landings: Vec<(Landing, Vec<UnitId>)>,
-    ) -> (Vec<FetchedPrice>, Option<RoundOutcome>, Vec<UnitId>) {
-        let mut rounds = landings
-            .into_iter()
-            .filter_map(|(landing, backfill)| match landing {
-                Landing::Prices { prices, outcome } => Some((prices, outcome, backfill)),
-                Landing::Nothing | Landing::Test(_) | Landing::History { .. } => None,
-            });
+    /// The round's one landing that isn't [`Landing::Nothing`]: its prices and outcome.
+    fn round(landings: Vec<Landing>) -> (Vec<FetchedPrice>, Option<RoundOutcome>) {
+        let mut rounds = landings.into_iter().filter_map(|landing| match landing {
+            Landing::Prices { prices, outcome } => Some((prices, outcome)),
+            Landing::Nothing | Landing::Test(_) | Landing::History { .. } => None,
+        });
         let landed = rounds.next().expect("the round landed");
         assert!(rounds.next().is_none(), "the round lands once");
         landed
@@ -420,14 +431,11 @@ mod tests {
 
         let landings = answer(&ledger, priced);
 
-        assert!(
-            matches!(landings[0].0, Landing::Nothing),
-            "held for the rest"
-        );
-        let (prices, outcome, backfill) = round(landings);
+        assert!(matches!(landings[0], Landing::Nothing), "held for the rest");
+        let (prices, outcome) = round(landings);
         assert_eq!(codes(&ledger, &prices), ["EUR", "USD"]);
         assert_eq!(outcome, None, "a scheduled round tells no one");
-        assert!(backfill.is_empty());
+        assert!(!history_queued(&ledger, "EUR") && !history_queued(&ledger, "USD"));
         assert_eq!(ledger.fetching().borrow().in_flight(), 0);
     }
 
@@ -436,7 +444,7 @@ mod tests {
         let mut ledger = sample_with(vec![currency("EUR")]);
         assert_eq!(ledger.check(), 1);
 
-        let (prices, outcome, _) = round(answer(&ledger, offline));
+        let (prices, outcome) = round(answer(&ledger, offline));
 
         assert!(prices.is_empty());
         assert_eq!(outcome, None);
@@ -490,7 +498,7 @@ mod tests {
     }
 
     /// 62 Units on Frankfurter, fetched now: its call rate sends 60, and the fourth answers 429.
-    fn stopped_round() -> (LedgerPricesFixture, Vec<(Landing, Vec<UnitId>)>) {
+    fn stopped_round() -> (LedgerPricesFixture, Vec<Landing>) {
         let currencies: Vec<UnitRow> = (0..62)
             .map(|index| currency(&format!("C{index:02}")))
             .collect();
@@ -511,13 +519,17 @@ mod tests {
     fn a_round_failure_mid_round_stops_it_and_lands_what_it_fetched_in_one_go() {
         let (ledger, landings) = stopped_round();
 
-        let (prices, outcome, backfill) = round(landings);
+        let (prices, outcome) = round(landings);
         assert_eq!(prices.len(), 59);
         let outcome = outcome.expect("a fetch now has an outcome");
         assert_eq!(outcome.source, Some(FRANKFURTER));
-        assert_eq!(outcome.written, prices);
         assert_eq!(outcome.round_failure, Some(FetchFailure::RateLimited));
-        assert_eq!(backfill.len(), 59, "every Unit it priced");
+        assert!(
+            prices
+                .iter()
+                .all(|price| !ledger.fetching().borrow().backfill.wanted(price.unit)),
+            "these Units have no Opened or creation date, so none has a floor to backfill from"
+        );
         assert_eq!(
             ledger.source_failure(FRANKFURTER),
             Some(FetchFailure::RateLimited)
@@ -632,16 +644,52 @@ mod tests {
         }
         let sources = ledger.ports().borrow().price_sources.clone();
         ledger.check();
-        let (prices, _, _) = round(answer(&ledger, missing("EUR")));
+        let (prices, _) = round(answer(&ledger, missing("EUR")));
         assert_eq!(codes(&ledger, &prices), ["USD"]);
 
         ledger.later(Duration::days(1));
         ledger.check();
-        let (prices, _, _) = round(answer(&ledger, offline));
+        let (prices, _) = round(answer(&ledger, offline));
         assert!(prices.is_empty());
 
         assert_eq!(ledger.ports().borrow().price_sources, sources);
         assert_eq!(ledger.unit("EUR").prices, Vec::new());
+    }
+
+    #[test]
+    fn an_asked_round_queues_its_priced_units_history_and_a_scheduled_one_queues_none() {
+        let mut ledger = sample_with(vec![currency("EUR")]);
+        ledger.edit_unit("EUR", |eur| eur.created_on = Some(day(2026, 10, 7)));
+        assert_eq!(ledger.check(), 1);
+        answer(&ledger, priced);
+        assert!(
+            !history_queued(&ledger, "EUR"),
+            "a scheduled round queues no history"
+        );
+
+        ledger.later(Duration::days(1));
+        ledger.fetch_now("EUR");
+        let (prices, outcome) = round(answer(&ledger, priced));
+
+        assert_eq!(codes(&ledger, &prices), ["EUR"]);
+        assert!(outcome.is_some());
+        assert!(
+            history_queued(&ledger, "EUR"),
+            "a fetch now's priced Unit queues its history inside the landing"
+        );
+    }
+
+    #[test]
+    fn an_asked_round_that_priced_nothing_queues_no_history() {
+        let ledger = sample_with(vec![currency("EUR")]);
+        ledger.edit_unit("EUR", |eur| eur.created_on = Some(day(2026, 10, 7)));
+        ledger.fetch_now("EUR");
+
+        let (prices, outcome) = round(answer(&ledger, missing("EUR")));
+
+        assert!(prices.is_empty());
+        assert!(outcome.is_some());
+        assert!(!history_queued(&ledger, "EUR"));
     }
 
     #[test]
@@ -650,11 +698,14 @@ mod tests {
         ledger.fetch_now("EUR");
         ledger.edit_unit("EUR", |eur| eur.link.symbol = "EURO".into());
 
-        let (prices, outcome, backfill) = round(answer(&ledger, priced));
+        let (prices, outcome) = round(answer(&ledger, priced));
 
         assert!(prices.is_empty());
-        assert_eq!(outcome.map(|outcome| outcome.written), Some(Vec::new()));
-        assert!(backfill.is_empty());
+        assert!(outcome.is_some(), "a Fetch now still tells its outcome");
+        assert!(
+            !history_queued(&ledger, "EUR"),
+            "nothing priced, nothing queued"
+        );
     }
 
     #[test]

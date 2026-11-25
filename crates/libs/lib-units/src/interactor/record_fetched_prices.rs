@@ -112,7 +112,7 @@ mod tests {
         fn record(&mut self, response: PriceResponse) -> Vec<FetchedPrice> {
             let landing = self
                 .fetching
-                .land(response, at(), today(), &Utc, &self.ports.units);
+                .land(response, at(), today(), &Utc, &self.ports);
             let Landing::Prices { prices, .. } = landing else {
                 return Vec::new();
             };

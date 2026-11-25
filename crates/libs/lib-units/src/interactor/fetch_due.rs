@@ -212,7 +212,7 @@ mod tests {
             let answer = check.transport.answer_last(200, r#"{"bitcoin":{"aud":1}}"#);
             let landing = check
                 .fetching
-                .land(answer, now(), today(), &Utc, &check.ports.units);
+                .land(answer, now(), today(), &Utc, &check.ports);
             let crate::fetching::Landing::Prices { prices, .. } = landing else {
                 panic!("a round of one lands its price");
             };

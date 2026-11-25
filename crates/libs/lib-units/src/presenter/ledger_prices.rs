@@ -6,11 +6,12 @@
 //! Success Toast, one that failed in a Warning Toast, and a scheduled round says nothing at all,
 //! whether it landed or failed. Each Client keeps its own minute timer, clock and commit.
 //!
-//! It also backfills (ADR-0043's backfill amendment): on Ledger open, after a person's fetch now
-//! and again for a failed history request on the minute check, it asks each Unit's source for the
-//! past weeks it has no Weekly Price for, and writes each Unit's weeks as that response's one
-//! commit. A backfill never toasts, and nothing here touches the status line (ADR-0048): a fetch now's
-//! history shows in the Weekly Prices table.
+//! It also backfills (ADR-0043's backfill amendment): on Ledger open and again for a failed history
+//! request on the minute check, it asks each Unit's source for the past weeks it has no Weekly Price
+//! for, and writes each Unit's weeks as that response's one commit. Fetching queues a Fetch now's
+//! priced Units for their history as the round lands, so nothing here backfills them. A backfill
+//! never toasts, and nothing here touches the status line (ADR-0048): a fetch now's history shows
+//! in the Weekly Prices table.
 
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, TryRecvError};
@@ -26,12 +27,12 @@ use super::fetch_text::{
 use super::price_source_test::PriceSourceTest;
 use super::units_pane::amount;
 use crate::fetching::{
-    BackfillUnits, Landing, PriceFetching, PriceResponse, PriceTransport, RoundOutcome,
-    SharedFetching,
+    BackfillUnits, FetchedPrice, Landing, PriceFetching, PriceResponse, PriceTransport,
+    RoundOutcome, SharedFetching,
 };
 use crate::interactor::{FetchDue, RecordFetchedPrices, RecordPriceHistory};
+use crate::msg;
 use crate::protocols::{SharedPorts, UnitRepository};
-use crate::{UnitId, msg};
 
 /// What [`LedgerPrices::land_next`] found on the feed's channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,10 +148,9 @@ impl LedgerPrices {
     }
 
     /// Lands `response` through fetching and does what the [`Landing`] asks: writes a round's
-    /// prices or a Unit's backfilled weeks, raises a test's Toast, tells a Fetch now's outcome and
-    /// backfills the Units it priced. A scheduled round and a backfill raise nothing, and a form's
-    /// test is held for the form to show. A fetched price is never undoable, so it raises no
-    /// `Notice::Changed`.
+    /// prices or a Unit's backfilled weeks, raises a test's Toast and tells a Fetch now's outcome.
+    /// A scheduled round and a backfill raise nothing, and a form's test is held for the form to
+    /// show. A fetched price is never undoable, so it raises no `Notice::Changed`.
     fn land(&mut self, response: PriceResponse, router: &mut dyn Notify) {
         let now = (self.clock)();
         let today = local_day(now);
@@ -158,9 +158,9 @@ impl LedgerPrices {
             let ports = self.ports.borrow();
             self.fetching
                 .borrow_mut()
-                .land(response, now, today, &Local, ports.units())
+                .land(response, now, today, &Local, &*ports)
         };
-        let backfill = write_landing(
+        write_landing(
             &landing,
             self.ports.borrow_mut().split_mut().units,
             today,
@@ -174,27 +174,19 @@ impl LedgerPrices {
                 ));
             }
             Landing::Prices {
+                prices,
                 outcome: Some(outcome),
-                ..
-            } => self.tell(&outcome, router),
+            } => self.tell(&outcome, &prices, router),
             // Never a Toast for a scheduled round, nor for a history, whose weeks the Weekly
             // Prices table shows in place.
             Landing::Nothing | Landing::Prices { outcome: None, .. } | Landing::History { .. } => {}
-        }
-        if !backfill.is_empty() {
-            self.fetching.borrow_mut().backfill(
-                BackfillUnits::Asked(backfill),
-                &*self.ports.borrow(),
-                today,
-                now,
-            );
         }
     }
 
     /// A Fetch now's outcome, one Toast per round: a Success Toast naming the price, or counting
     /// the prices from the source, when everything landed, else one Warning Toast naming what
-    /// failed.
-    fn tell(&self, outcome: &RoundOutcome, router: &mut dyn Notify) {
+    /// failed. `prices` are the round's prices, as written.
+    fn tell(&self, outcome: &RoundOutcome, prices: &[FetchedPrice], router: &mut dyn Notify) {
         let ports = self.ports.borrow();
         let catalogue = ports.source_catalogue();
         let source = outcome
@@ -206,14 +198,14 @@ impl LedgerPrices {
         if let Some(reason) = outcome.round_failure {
             // A round stopped before it wrote anything says only why; one stopped part way also
             // counts what it wrote.
-            let text = match outcome.written.len() {
+            let text = match prices.len() {
                 0 => round_failed_toast(reason, &source),
                 fetched => round_stopped_toast(fetched, reason, &source),
             };
             router.notify(warn(text));
             return;
         }
-        match (outcome.written.as_slice(), outcome.failed.as_slice()) {
+        match (prices, outcome.failed.as_slice()) {
             ([], [(unit, reason)]) => {
                 let Some(unit) = ports.units().unit(*unit) else {
                     return;
@@ -262,27 +254,21 @@ impl LedgerPrices {
 }
 
 /// Writes what `landing` carries through the writing Interactors, on `today` at `at`: a round's
-/// prices or a Unit's backfilled weeks. Returns the Units a Fetch now priced, whose past weeks are
-/// filled next; a scheduled round, having no outcome, backfills none.
+/// prices or a Unit's backfilled weeks.
 pub(crate) fn write_landing(
     landing: &Landing,
     units: &mut dyn UnitRepository,
     today: NaiveDate,
     at: DateTime<Utc>,
-) -> Vec<UnitId> {
+) {
     match landing {
-        Landing::Prices { prices, outcome } => {
+        Landing::Prices { prices, .. } => {
             RecordFetchedPrices {
                 prices: prices.clone(),
                 today,
                 at,
             }
             .run(units);
-            if outcome.is_some() {
-                prices.iter().map(|price| price.unit).collect()
-            } else {
-                Vec::new()
-            }
         }
         Landing::History { unit, link, weeks } => {
             RecordPriceHistory {
@@ -291,9 +277,8 @@ pub(crate) fn write_landing(
                 weeks: weeks.clone(),
             }
             .run(units);
-            Vec::new()
         }
-        Landing::Nothing | Landing::Test(_) => Vec::new(),
+        Landing::Nothing | Landing::Test(_) => {}
     }
 }
 
