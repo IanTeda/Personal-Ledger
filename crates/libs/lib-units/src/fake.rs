@@ -15,10 +15,9 @@ use lib_viper::dialog::DialogRouter;
 use secrecy::{ExposeSecret as _, SecretString};
 
 use crate::fetching::{
-    PriceFetching, PriceRequest, PriceResponse, PriceTransport, RequestId, SharedFetching,
-    TransportOutcome,
+    PriceRequest, PriceResponse, PriceTransport, RequestId, SharedFetching, TransportOutcome,
 };
-use crate::presenter::{Clock, FetchedPricesPresenter};
+use crate::presenter::{Clock, LedgerPrices, Received};
 use crate::protocols::{PortsMut, SharedPorts, UnitsDialog, UnitsOutcome, UnitsPorts, UnitsRouter};
 use crate::{
     BaseUnitRepository, Error, Holding, KeyState, PriceSourceKeys, PriceSourceRecord,
@@ -438,18 +437,19 @@ impl PriceTransport for FakeTransport {
     }
 }
 
-/// An Open Ledger's price fetching as a test drives it: the fake Units ports, a [`FakeTransport`],
-/// a clock the test sets, the shared fetching, and the fetched-prices Presenter every response
-/// lands through, collecting the Notices each landing raises. It wraps today's
-/// [`FetchedPricesPresenter`] under the name the Ledger prices module will take, so the tests that
-/// build on it move with that rename rather than each rebuilding this setup.
+/// An Open Ledger's prices as a test drives it: the fake Units ports, a [`FakeTransport`], a
+/// clock the test sets, and the [`LedgerPrices`] every response lands through, on a channel the
+/// fixture feeds, collecting the Notices each landing raises. It is built before the open check,
+/// so a test arranges the Ledger first and runs [`LedgerPrices`]' open check itself.
 pub struct LedgerPricesFixture {
     ports: Rc<RefCell<InMemoryPorts>>,
     shared: SharedPorts,
     transport: FakeTransport,
     fetching: SharedFetching,
+    /// The feed's sending end, `None` once [`Self::hang_up`] drops it.
+    feed: Option<Sender<PriceResponse>>,
     at: Rc<Cell<DateTime<Utc>>>,
-    prices: FetchedPricesPresenter,
+    prices: LedgerPrices,
     notices: Vec<Notice>,
 }
 
@@ -458,18 +458,21 @@ impl LedgerPricesFixture {
     pub fn new(ports: InMemoryPorts, now: DateTime<Utc>) -> Self {
         let (ports, shared) = ports.shared();
         let transport = FakeTransport::default();
-        let fetching = PriceFetching::shared(Rc::new(transport.clone()));
+        let (feed, responses) = std::sync::mpsc::channel();
         let at = Rc::new(Cell::new(now));
         let clock: Clock = {
             let at = at.clone();
             Rc::new(move || at.get())
         };
+        let prices =
+            LedgerPrices::unopened(shared.clone(), Rc::new(transport.clone()), responses, clock);
         Self {
-            prices: FetchedPricesPresenter::new(shared.clone(), fetching.clone(), clock),
+            fetching: prices.fetching(),
+            prices,
             ports,
             shared,
             transport,
-            fetching,
+            feed: Some(feed),
             at,
             notices: Vec::new(),
         }
@@ -513,18 +516,43 @@ impl LedgerPricesFixture {
         self.at.set(self.at.get() + by);
     }
 
-    /// The fetched-prices Presenter, for its scheduled check and backfill.
-    pub fn prices(&mut self) -> &mut FetchedPricesPresenter {
+    /// The Ledger's prices, for its scheduled check and backfill.
+    pub fn prices(&mut self) -> &mut LedgerPrices {
         &mut self.prices
     }
 
-    /// Lands `response` as a Client's input door does, returning the Notices it raised; they are
-    /// collected in [`Self::notices`] too.
+    /// Puts `response` on the feed and lands it as a Client's input door does, returning the
+    /// Notices it raised; they are collected in [`Self::notices`] too.
+    ///
+    /// # Panics
+    /// After [`Self::hang_up`], which is a test's mistake.
+    #[expect(
+        clippy::panic,
+        reason = "test support: landing on a hung-up feed is a broken test"
+    )]
     pub fn land(&mut self, response: PriceResponse) -> Vec<Notice> {
-        let mut raised = Vec::new();
-        self.prices.handle(response, &mut raised);
-        self.notices.extend(raised.iter().cloned());
+        let Some(feed) = &self.feed else {
+            panic!("the feed was hung up");
+        };
+        // The receiver lives in `prices`, held beside the sender.
+        let _ = feed.send(response);
+        let (received, raised) = self.land_next();
+        assert_eq!(received, Received::Landed, "the response just sent");
         raised
+    }
+
+    /// One [`LedgerPrices::land_next`], as a Client's poll makes it, returning what it found and
+    /// the Notices it raised; they are collected in [`Self::notices`] too.
+    pub fn land_next(&mut self) -> (Received, Vec<Notice>) {
+        let mut raised = Vec::new();
+        let received = self.prices.land_next(&mut raised);
+        self.notices.extend(raised.iter().cloned());
+        (received, raised)
+    }
+
+    /// Drops the feed's sending end, as a Ledger's feed goes when it closes.
+    pub fn hang_up(&mut self) {
+        self.feed = None;
     }
 
     /// Releases the queued calls as a Client's response poll does, returning the Notices it

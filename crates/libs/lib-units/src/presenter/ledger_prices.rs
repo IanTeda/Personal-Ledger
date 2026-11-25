@@ -1,15 +1,19 @@
-//! Where a price response lands, and what the Client's minute timer and response poll reach: the
-//! Client hands each response here through its input door, so the round it completes is written
-//! as that input's one commit and every View reading the Units repaints, and pumps the queued
-//! calls out from the same poll. It draws nothing; a Fetch now that wrote a price says so in a
+//! The Ledger prices module both Clients host, one per Open Ledger: it owns the Ledger's price
+//! fetching and the feed's response channel, runs the open check and backfill as the Ledger opens,
+//! and lands each response the Client asks it to, so the round it completes is written as that
+//! input's one commit and every View reading the Units repaints. It pumps the queued calls out
+//! when the Client's poll asks. It draws nothing; a Fetch now that wrote a price says so in a
 //! Success Toast, one that failed in a Warning Toast, and a scheduled round says nothing at all,
-//! whether it landed or failed.
+//! whether it landed or failed. Each Client keeps its own minute timer, clock and commit.
 //!
 //! It also backfills (ADR-0043's backfill amendment): on Ledger open, after a person's fetch now
 //! and again for a failed history request on the minute check, it asks each Unit's source for the
 //! past weeks it has no Weekly Price for, and writes each Unit's weeks as that response's one
 //! commit. A backfill never toasts, and nothing here touches the status line (ADR-0048): a fetch now's
 //! history shows in the Weekly Prices table.
+
+use std::rc::Rc;
+use std::sync::mpsc::{Receiver, TryRecvError};
 
 use chrono::{DateTime, Local, NaiveDate, Utc};
 use lib_toast::{Notice, Notify, ToastKind};
@@ -20,32 +24,86 @@ use super::fetch_text::{
     unit_failed_toast, wait_begun_toast,
 };
 use super::units_pane::amount;
-use crate::fetching::{BackfillUnits, Landing, PriceResponse, SharedFetching};
+use crate::fetching::{
+    BackfillUnits, Landing, PriceFetching, PriceResponse, PriceTransport, SharedFetching,
+};
 use crate::interactor::{FetchDue, RecordFetchedPrices, RecordPriceHistory, RoundOutcome};
 use crate::msg;
 use crate::protocols::SharedPorts;
 
-pub struct FetchedPricesPresenter {
+/// What [`LedgerPrices::land_next`] found on the feed's channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Received {
+    /// One response landed, and its writes wait on the Client's commit.
+    Landed,
+    /// Nothing is waiting; the Client looks again on its next poll.
+    Empty,
+    /// The feed has gone, so nothing more will arrive and the Client stops polling.
+    Gone,
+}
+
+pub struct LedgerPrices {
     ports: SharedPorts,
     fetching: SharedFetching,
+    responses: Receiver<PriceResponse>,
     clock: Clock,
 }
 
-impl FetchedPricesPresenter {
-    pub fn new(ports: SharedPorts, fetching: SharedFetching, clock: Clock) -> Self {
+impl LedgerPrices {
+    /// A Ledger's prices as it opens (app start, `:open`, `:new`): builds its fetching over
+    /// `transport`, whose answers arrive on `responses`, then runs the scheduled check and the
+    /// backfill, once. The Client then runs [`Self::check`] every [`PRICE_CHECK`] while the
+    /// Ledger stays open.
+    pub fn open(
+        ports: SharedPorts,
+        transport: Rc<dyn PriceTransport>,
+        responses: Receiver<PriceResponse>,
+        clock: Clock,
+    ) -> Self {
+        let mut prices = Self::unopened(ports, transport, responses, clock);
+        prices.opened();
+        prices
+    }
+
+    /// The Ledger's prices before the open check, so a test arranges the Ledger first.
+    pub(crate) fn unopened(
+        ports: SharedPorts,
+        transport: Rc<dyn PriceTransport>,
+        responses: Receiver<PriceResponse>,
+        clock: Clock,
+    ) -> Self {
         Self {
             ports,
-            fetching,
+            fetching: PriceFetching::shared(transport),
+            responses,
             clock,
         }
     }
 
-    /// What a Client runs as a Ledger opens (app start, `:open`, `:new`): the scheduled check,
-    /// then the backfill, once. The Client then runs [`Self::fetch_due`] every [`PRICE_CHECK`]
-    /// while the Ledger stays open.
-    pub fn opened(&mut self) {
-        self.fetch_due();
+    /// The open check and backfill [`Self::open`] runs.
+    pub(crate) fn opened(&mut self) {
+        self.check();
         self.backfill();
+    }
+
+    /// The fetching every Units Presenter on this Ledger shares, for the Units page to fetch now,
+    /// test and ask finer prices through.
+    pub fn fetching(&self) -> SharedFetching {
+        self.fetching.clone()
+    }
+
+    /// Lands at most one response waiting on the feed's channel, raising what it tells on
+    /// `notify`. The Client commits after a [`Received::Landed`]; on [`Received::Empty`] and
+    /// [`Received::Gone`] nothing was written.
+    pub fn land_next(&mut self, notify: &mut dyn Notify) -> Received {
+        match self.responses.try_recv() {
+            Ok(response) => {
+                self.land(response, notify);
+                Received::Landed
+            }
+            Err(TryRecvError::Empty) => Received::Empty,
+            Err(TryRecvError::Disconnected) => Received::Gone,
+        }
     }
 
     /// Releases the queued calls at the Clock's now: sends what each source's call rate and any
@@ -64,7 +122,7 @@ impl FetchedPricesPresenter {
     /// The scheduled check, on Ledger open and every minute after: starts a silent round on each
     /// source with a Unit due, leaving a source with a round in flight alone, and tries a failed
     /// history request again once its wait is over. It never starts a backfill of its own.
-    pub fn fetch_due(&mut self) {
+    pub fn check(&mut self) {
         let now = (self.clock)();
         let today = local_day(now);
         let ports = self.ports.borrow();
@@ -91,7 +149,7 @@ impl FetchedPricesPresenter {
     /// backfills the Units it priced. A scheduled round and a backfill raise nothing, and a form's
     /// test is held for the form to show. A fetched price is never undoable, so it raises no
     /// `Notice::Changed`.
-    pub fn handle(&mut self, response: PriceResponse, router: &mut dyn Notify) {
+    fn land(&mut self, response: PriceResponse, router: &mut dyn Notify) {
         let now = (self.clock)();
         let today = local_day(now);
         let landing = {
@@ -270,7 +328,7 @@ mod tests {
             })
         };
 
-        client.prices().fetch_due();
+        client.prices().check();
         let requests = client.transport().requests();
         assert_eq!(requests.len(), 2, "eur and usd, one Frankfurter round");
 
@@ -299,7 +357,54 @@ mod tests {
         assert_eq!(client.fetching().borrow().in_flight(), 0);
     }
 
-    /// One test per [`Landing`] variant: `handle` writes, tells and backfills as it asks.
+    /// What [`LedgerPrices::land_next`] finds on the feed: one response at a time, nothing, or a
+    /// feed gone.
+    mod receiving {
+        use super::*;
+        use crate::presenter::Received;
+
+        fn client() -> LedgerPricesFixture {
+            let mut sample = InMemoryPorts::sample(now());
+            sample.units.units.push(currency("EUR"));
+            LedgerPricesFixture::new(sample, now())
+        }
+
+        #[test]
+        fn an_empty_feed_lands_nothing() {
+            let mut client = client();
+
+            assert_eq!(client.land_next().0, Received::Empty);
+        }
+
+        #[test]
+        fn a_waiting_response_lands_once_and_leaves_the_feed_empty() {
+            let mut client = client();
+            client.prices().check();
+            let eur = client.transport().answer_last(200, r#"{"rate":1.65}"#);
+            client.land(eur);
+
+            assert_eq!(
+                client.fetching().borrow().in_flight(),
+                0,
+                "the round landed"
+            );
+            assert_eq!(
+                client.land_next().0,
+                Received::Empty,
+                "at most one per call"
+            );
+        }
+
+        #[test]
+        fn a_feed_that_has_gone_says_so() {
+            let mut client = client();
+            client.hang_up();
+
+            assert_eq!(client.land_next().0, Received::Gone);
+        }
+    }
+
+    /// One test per [`Landing`] variant: `land_next` writes, tells and backfills as it asks.
     mod dispatch {
         use super::*;
         use crate::fake::InMemoryPorts;
@@ -484,7 +589,7 @@ mod tests {
                         .count()
                 };
                 let before = frankfurter(self.transport());
-                self.prices().fetch_due();
+                self.prices().check();
                 frankfurter(self.transport()) - before
             }
 
@@ -696,7 +801,7 @@ mod tests {
 
             assert_eq!(client.source_failure(id), None);
             assert_eq!(client.unit_failure("EUR"), None);
-            client.prices().fetch_due();
+            client.prices().check();
             let (_, sent) = client
                 .transport()
                 .requests()
@@ -749,7 +854,7 @@ mod tests {
             }
             drop(ports);
 
-            client.prices().fetch_due();
+            client.prices().check();
 
             assert_eq!(client.source_failure(id), Some(FetchFailure::KeyMissing));
             let requests = client.transport().requests();
@@ -1080,11 +1185,11 @@ mod tests {
             assert_eq!(history(&client), 1);
 
             client.later(Duration::minutes(9));
-            client.prices().fetch_due();
+            client.prices().check();
             assert_eq!(history(&client), 1, "not before its wait is over");
 
             client.later(Duration::minutes(1));
-            client.prices().fetch_due();
+            client.prices().check();
             assert_eq!(history(&client), 2, "asked again");
         }
 

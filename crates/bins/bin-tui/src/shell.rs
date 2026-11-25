@@ -223,12 +223,9 @@ struct OpenLedger {
     /// Flushed as the Ledger closes, so its last writes land. `None` for Stores opened without a
     /// writer, a test's in-memory ones.
     writer: Option<Writer>,
-    /// Where the Ledger's price responses land and the channel they arrive on, polled on each
-    /// tick. Dropped with the Ledger, so in-flight work is dropped without writing (ADR-0062).
-    prices: Option<(
-        lib_units::presenter::FetchedPricesPresenter,
-        std::sync::mpsc::Receiver<lib_units::PriceResponse>,
-    )>,
+    /// The Ledger's prices, whose responses are landed on each tick. Dropped with the Ledger, so
+    /// in-flight work is dropped without writing (ADR-0062).
+    prices: Option<lib_units::presenter::LedgerPrices>,
     /// What is left until the next scheduled price check, counted down a tick at a time.
     price_check_in: Duration,
 }
@@ -410,15 +407,14 @@ impl Shell {
         // The Units' price fetching, on a feed of this Ledger's own, dropped with it (ADR-0062).
         let feed = self.price_feeds.as_ref().and_then(|feeds| feeds());
         let prices = feed.map(|feed| {
-            let fetching = lib_units::PriceFetching::shared(feed.transport);
-            units.fetching = Some(fetching.clone());
-            let mut presenter = lib_units::presenter::FetchedPricesPresenter::new(
+            let prices = lib_units::presenter::LedgerPrices::open(
                 units.ports.clone(),
-                fetching,
+                feed.transport,
+                feed.responses,
                 Rc::new(chrono::Utc::now),
             );
-            presenter.opened();
-            (presenter, feed.responses)
+            units.fetching = Some(prices.fetching());
+            prices
         });
         OpenLedger {
             path,
@@ -443,7 +439,7 @@ impl Shell {
         let Some(ledger) = &mut self.ledger else {
             return;
         };
-        let Some((presenter, _)) = &mut ledger.prices else {
+        let Some(prices) = &mut ledger.prices else {
             return;
         };
         ledger.price_check_in = ledger.price_check_in.saturating_sub(TICK_RATE);
@@ -451,10 +447,10 @@ impl Shell {
             return;
         }
         ledger.price_check_in = PRICE_CHECK;
-        presenter.fetch_due();
+        prices.check();
     }
 
-    /// Hands each price response that has arrived to the Open Ledger's Presenter as one input,
+    /// Lands each price response that has arrived through the Open Ledger's prices as one input,
     /// committing what it wrote and raising its Toasts, then pumps out the calls waiting their
     /// source's call rate or `Retry-After`. A fetched price is never undoable, and the TUI keeps no
     /// History.
@@ -462,16 +458,15 @@ impl Shell {
         let Some(ledger) = &mut self.ledger else {
             return;
         };
-        let Some((presenter, responses)) = &mut ledger.prices else {
+        let Some(prices) = &mut ledger.prices else {
             return;
         };
         let mut notices: Vec<Notice> = Vec::new();
         // Each response is its own input, so a Unit's backfilled weeks are one commit.
-        while let Ok(response) = responses.try_recv() {
-            presenter.handle(response, &mut notices);
+        while prices.land_next(&mut notices) == lib_units::presenter::Received::Landed {
             ledger.units.commit();
         }
-        presenter.pump(&mut notices);
+        prices.pump(&mut notices);
         for notice in notices {
             match notice {
                 Notice::Toast(kind, text) => self.raise_toast(kind, text),

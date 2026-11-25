@@ -108,9 +108,8 @@ pub struct OpenLedger {
     failures: Rc<std::sync::mpsc::Receiver<lib_database::WriteFailure>>,
     /// Polls the writer's failure channel; dropped with the Ledger, which stops it.
     _write_failures: Task<()>,
-    /// Where each price response lands, `None` with no price feed installed.
-    pub(super) price_responses:
-        Option<Rc<std::cell::RefCell<lib_units::presenter::FetchedPricesPresenter>>>,
+    /// The Ledger's prices, where each price response lands, `None` with no price feed installed.
+    pub(super) prices: Option<Rc<std::cell::RefCell<lib_units::presenter::LedgerPrices>>>,
     /// Polls the price feed's response channel; dropped with the Ledger, which stops it and drops
     /// the responses still to come.
     _price_responses: Option<Task<()>>,
@@ -154,25 +153,18 @@ impl OpenLedger {
             &lib_shell::dialog_keymap(keybindings),
         ));
         // The Units' price fetching, on a feed of this Ledger's own, dropped with it (ADR-0062).
-        let feed = crate::price_feed::feed(cx);
-        let fetching = feed
-            .as_ref()
-            .map(|feed| lib_units::PriceFetching::shared(feed.transport.clone()));
-        let price_responses = fetching.clone().map(|fetching| {
+        let prices = crate::price_feed::feed(cx).map(|feed| {
             Rc::new(std::cell::RefCell::new(
-                lib_units::presenter::FetchedPricesPresenter::new(
+                lib_units::presenter::LedgerPrices::open(
                     ports.units(),
-                    fetching,
+                    feed.transport,
+                    feed.responses,
                     crate::units::now_of(clock),
                 ),
             ))
         });
-        if let Some(presenter) = &price_responses {
-            presenter.borrow_mut().opened();
-        }
-        let price_checks = price_responses
-            .as_ref()
-            .map(|_| Root::check_prices_every_minute(cx));
+        let fetching = prices.as_ref().map(|prices| prices.borrow().fetching());
+        let price_checks = prices.as_ref().map(|_| Root::check_prices_every_minute(cx));
         let units = crate::units::UnitsSetup::new(
             ports.units(),
             fetching,
@@ -350,8 +342,10 @@ impl OpenLedger {
             _subscriptions: subscriptions,
             _write_failures: Root::listen_for_write_failures(failures.clone(), cx),
             failures,
-            price_responses,
-            _price_responses: feed.map(|feed| Root::listen_for_price_responses(feed.responses, cx)),
+            _price_responses: prices
+                .as_ref()
+                .map(|_| Root::listen_for_price_responses(cx)),
+            prices,
             _price_checks: price_checks,
         }
     }

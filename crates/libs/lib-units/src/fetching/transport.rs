@@ -52,7 +52,7 @@ impl PartialEq for RequestKey {
 impl Eq for RequestKey {}
 
 /// Sends a request without waiting: its response comes back later as a [`PriceResponse`], which
-/// the Client hands to [`crate::presenter::FetchedPricesPresenter`] through its input door.
+/// the Client hands to [`crate::presenter::LedgerPrices`] through its input door.
 pub trait PriceTransport {
     fn send(&self, id: RequestId, request: PriceRequest);
 }
