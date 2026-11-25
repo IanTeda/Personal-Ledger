@@ -183,7 +183,7 @@ impl PayPresenter {
             let reach = Duration::days(MATCH_WINDOW_DAYS);
             let nearby = ports
                 .transactions()
-                .splits_between(entry.due - reach, entry.due + reach);
+                .bill_splits_between(entry.due - reach, entry.due + reach);
             let lines = candidates
                 .iter()
                 .map(|split_ref| {

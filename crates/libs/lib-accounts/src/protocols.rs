@@ -79,7 +79,7 @@ pub trait AccountUnits {
     fn account_units(&self) -> Vec<UnitRef>;
 
     /// The Unit the net worth is summed in and a new Account starts on; `None` when none is set.
-    fn base_unit(&self) -> Option<UnitId>;
+    fn account_base_unit(&self) -> Option<UnitId>;
 }
 
 /// Every Accounts port, as one value the Presenters share.

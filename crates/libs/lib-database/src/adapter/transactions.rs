@@ -202,7 +202,7 @@ pub(crate) fn category_splits(transactions: &[Transaction], id: CategoryId) -> u
 }
 
 /// `transactions`' Splits dated `from` to `to`, as Bills reads them: the one place a store answers
-/// `BillTransactions::splits_between` from.
+/// `BillTransactions::bill_splits_between` from.
 pub(crate) fn splits_between(
     transactions: &[Transaction],
     from: NaiveDate,

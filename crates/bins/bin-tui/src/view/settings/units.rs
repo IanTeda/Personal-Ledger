@@ -148,7 +148,7 @@ impl UnitsPage {
     /// a Price Source's Units are the rows that name it.
     fn notes(&self, view: &UnitsPageViewModel) -> Vec<String> {
         if let Some(unit) = view.units.iter().find(|unit| unit.selected) {
-            let holdings = self.ports.borrow().holdings().holdings(unit.id);
+            let holdings = self.ports.borrow().holdings().unit_holdings(unit.id);
             let transactions: u32 = holdings.iter().map(|holding| holding.transactions).sum();
             let usage = if holdings.is_empty() {
                 msg::tui_settings_units_note_unused(&unit.code)

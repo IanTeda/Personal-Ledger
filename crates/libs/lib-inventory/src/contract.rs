@@ -482,7 +482,7 @@ pub fn a_failed_write_is_reported_and_rolls_back<F: PortsFactory>(factory: &mut 
 pub fn the_currencies_are_the_fiat_units<F: ReadsFactory>(factory: &mut F) {
     let reads = factory.create(sample(), Vec::new());
 
-    let currencies = reads.currencies();
+    let currencies = reads.inventory_currencies();
     assert!(currencies.iter().any(|unit| unit.id == UnitId::SEED_AUD));
     assert!(!currencies.iter().any(|unit| unit.id == UnitId::SEED_BTC));
     let aud = currencies
@@ -490,11 +490,14 @@ pub fn the_currencies_are_the_fiat_units<F: ReadsFactory>(factory: &mut F) {
         .find(|unit| unit.id == UnitId::SEED_AUD)
         .expect("checked above");
     assert_eq!(
-        reads.unit_code(UnitId::SEED_AUD).as_deref(),
+        reads.inventory_unit_code(UnitId::SEED_AUD).as_deref(),
         Some(aud.code.as_str())
     );
-    assert_eq!(reads.unit_code(UnitId::SEED_BTC).as_deref(), Some("BTC"));
-    assert_eq!(reads.unit_code(UnitId::seed(9_999)), None);
+    assert_eq!(
+        reads.inventory_unit_code(UnitId::SEED_BTC).as_deref(),
+        Some("BTC")
+    );
+    assert_eq!(reads.inventory_unit_code(UnitId::seed(9_999)), None);
 }
 
 /// A Location's usage is the Documents Linking any of its Items, each counted once however many

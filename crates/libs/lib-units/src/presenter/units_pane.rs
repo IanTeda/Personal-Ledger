@@ -268,7 +268,7 @@ fn buttons(row: Row<'_>, target: UnitsRow, fetching: bool) -> Vec<PaneButton> {
 }
 
 fn unit_group(input: &PaneInput<'_>, unit: &UnitRow) -> UnitGroup {
-    let holdings = input.ports.holdings().holdings(unit.id);
+    let holdings = input.ports.holdings().unit_holdings(unit.id);
     let transactions: u32 = holdings.iter().map(|holding| holding.transactions).sum();
     let flags = if unit.id == input.base {
         msg::units_flag_base()
@@ -579,7 +579,7 @@ fn price_group(input: &PaneInput<'_>, unit: &UnitRow) -> PriceGroup {
 
 /// The Accounts held in `unit`, each valued at the Unit's last price in its quote Unit.
 fn accounts_group(input: &PaneInput<'_>, unit: &UnitRow) -> AccountsGroup {
-    let holdings = input.ports.holdings().holdings(unit.id);
+    let holdings = input.ports.holdings().unit_holdings(unit.id);
     let quote = unit_of(input.units, unit.link.quote);
     let line = |name: String, kind: String, balance: &Money| AccountLine {
         name,

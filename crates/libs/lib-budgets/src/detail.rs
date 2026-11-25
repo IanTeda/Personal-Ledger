@@ -91,7 +91,7 @@ pub fn category_detail(
         return None;
     }
     let accounts = reads.budget_accounts();
-    let bills = reads.open_bills();
+    let bills = reads.budget_open_bills();
     let splits = counted_splits(budget, reads, &accounts, month, month);
     let index = SpentIndex::build(&splits);
     let is_parent = !tree::is_leaf(&categories, category_id);
@@ -132,7 +132,7 @@ pub fn category_detail(
 
     let below = tree::descendants_inclusive(&categories, category_id);
     let bill_plans = reads
-        .active_bill_plans()
+        .budget_active_bill_plans()
         .iter()
         .filter(|plan| {
             budget.counts(&accounts, plan.account_id) && below.contains(&plan.category_id)

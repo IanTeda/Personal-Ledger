@@ -79,7 +79,7 @@ pub struct BillSplit {
 pub trait BillTransactions {
     /// The Splits of the Transactions dated from `from` to `to`, both included, in no particular
     /// order.
-    fn splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit>;
+    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit>;
 
     /// The Split a Paid entry is Matched to, or `None` when it is gone.
     fn paid_split(&self, split: SplitRef) -> Option<BillSplit>;
@@ -104,16 +104,16 @@ pub trait BillPayees {
 /// crate to write `aud`.
 pub trait BillUnits {
     /// Unit `id`'s code, or `None` when it is gone.
-    fn unit_code(&self, id: UnitId) -> Option<String>;
+    fn bill_unit_code(&self, id: UnitId) -> Option<String>;
 
     /// The base Unit, whose amounts show no code.
-    fn base_unit(&self) -> Option<UnitId>;
+    fn bill_base_unit(&self) -> Option<UnitId>;
 }
 
 /// The Ledger's Financial year start, which the stat callout's Average reads its year by: a read
 /// port, so the month comes from the Ledger rather than a constant (#1342).
 pub trait BillFinancialYear {
-    fn financial_year_start(&self) -> FinancialYearStart;
+    fn bill_financial_year_start(&self) -> FinancialYearStart;
 }
 
 /// Every Bills port, as one value the Presenters share. An Interactor writes the Bills while

@@ -287,8 +287,11 @@ pub fn the_splits_read_back_as_they_were_stored<F: PortsFactory>(factory: &mut F
     factory.create(seed(), receipt());
     let reads = factory.reads();
 
-    assert_eq!(sorted(reads.splits_between(date(2), date(2))), receipt());
-    assert_eq!(reads.splits_between(date(3), date(30)), Vec::new());
+    assert_eq!(
+        sorted(reads.bill_splits_between(date(2), date(2))),
+        receipt()
+    );
+    assert_eq!(reads.bill_splits_between(date(3), date(30)), Vec::new());
     for split in receipt() {
         assert_eq!(reads.paid_split(split.split), Some(split));
     }

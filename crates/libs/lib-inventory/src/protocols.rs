@@ -65,10 +65,10 @@ pub type SharedInventory = Rc<RefCell<dyn InventoryRepository>>;
 /// crate. The form copies them in when it opens, as it is modal.
 pub trait InventoryUnits {
     /// The fiat Units, in Settings order: a Location's Unit is chosen from them when it is added.
-    fn currencies(&self) -> Vec<UnitRef>;
+    fn inventory_currencies(&self) -> Vec<UnitRef>;
 
     /// Unit `id`'s code, lower case, or `None` when it has none.
-    fn unit_code(&self, id: UnitId) -> Option<String>;
+    fn inventory_unit_code(&self, id: UnitId) -> Option<String>;
 }
 
 /// What names a Location in another domain.

@@ -229,7 +229,7 @@ impl Presenter for StopPresenter {
             .ports
             .borrow()
             .reads()
-            .active_bill_plans()
+            .budget_active_bill_plans()
             .into_iter()
             .filter(|plan| plan.category_id == self.category)
             .map(|plan| plan.name)

@@ -183,7 +183,7 @@ pub fn build(
     // which a Ledger created later starts with; the page checks it again on the Ledger it opens.
     let fy_start = shell.open.as_ref().map_or_else(
         || lib_locale::locale().financial_year_start(),
-        |open| open.ports.document_reads().financial_year_start(),
+        |open| open.ports.document_reads().document_financial_year_start(),
     );
     shell.set_documents_state(
         DocumentsMode::from_id(persisted.documents_mode.as_deref()),

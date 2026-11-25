@@ -100,11 +100,11 @@ impl InMemoryUnits {
 }
 
 impl InventoryUnits for InMemoryUnits {
-    fn currencies(&self) -> Vec<UnitRef> {
+    fn inventory_currencies(&self) -> Vec<UnitRef> {
         self.units.clone()
     }
 
-    fn unit_code(&self, id: UnitId) -> Option<String> {
+    fn inventory_unit_code(&self, id: UnitId) -> Option<String> {
         self.units
             .iter()
             .find(|unit| unit.id == id)

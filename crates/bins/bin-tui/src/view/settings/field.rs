@@ -203,7 +203,7 @@ pub fn save_ledger_preference(
     let preferences = &ledger.preferences;
     Some(match field {
         SettingField::LedgerName => match LedgerName::new(value) {
-            Ok(name) if name == reads.name() => LedgerSave::Unchanged,
+            Ok(name) if name == reads.ledger_name() => LedgerSave::Unchanged,
             Ok(name) => {
                 let said = msg::tui_settings_ledger_changed(&field.label(), name.as_str());
                 preferences.set_name(name);
@@ -213,7 +213,7 @@ pub fn save_ledger_preference(
         },
         SettingField::Owner => {
             let owner = Owner::new(value);
-            if owner == reads.owner() {
+            if owner == reads.ledger_owner() {
                 LedgerSave::Unchanged
             } else {
                 let said = match &owner {
@@ -231,7 +231,7 @@ pub fn save_ledger_preference(
                     field.command_name(),
                 )));
             };
-            if start == reads.financial_year_start() {
+            if start == reads.ledger_financial_year_start() {
                 LedgerSave::Unchanged
             } else {
                 preferences.set_financial_year_start(start);

@@ -19,7 +19,7 @@ use crate::adapter::store::{
 struct Ledger(SharedLedgerStore);
 
 impl BillFinancialYear for Ledger {
-    fn financial_year_start(&self) -> FinancialYearStart {
+    fn bill_financial_year_start(&self) -> FinancialYearStart {
         self.0.borrow().ledger().financial_year_start
     }
 }
@@ -165,7 +165,7 @@ mod tests {
                     .bills
                     .borrow()
                     .financial_year()
-                    .financial_year_start()
+                    .bill_financial_year_start()
             };
             assert_eq!(
                 start(),
@@ -178,7 +178,7 @@ mod tests {
                 .set_financial_year_start(lib_core::FinancialYearStart::APRIL);
             assert_eq!(start(), lib_core::FinancialYearStart::APRIL, "an edit");
             assert_eq!(
-                ledger.document_reads.financial_year_start(),
+                ledger.document_reads.document_financial_year_start(),
                 lib_core::FinancialYearStart::APRIL,
                 "the Documents read the same row"
             );

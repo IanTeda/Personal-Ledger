@@ -103,23 +103,23 @@ pub trait BudgetSplits {
 /// The Bills Known Costs are counted from.
 pub trait BudgetBills {
     /// Every open Bill Schedule entry, whatever its due date.
-    fn open_bills(&self) -> Vec<BudgetBill>;
+    fn budget_open_bills(&self) -> Vec<BudgetBill>;
 
     /// Every active Bill Plan.
-    fn active_bill_plans(&self) -> Vec<BudgetBillPlan>;
+    fn budget_active_bill_plans(&self) -> Vec<BudgetBillPlan>;
 }
 
 /// The Units a Budget's amounts are named in. A read port, so `lib-budgets` needn't depend on the
 /// Units crate to write `aud`.
 pub trait BudgetUnits {
     /// Unit `id`'s code, or `None` when it is gone.
-    fn unit_code(&self, id: UnitId) -> Option<String>;
+    fn budget_unit_code(&self, id: UnitId) -> Option<String>;
 }
 
 /// The Payees the Category detail names its Splits by.
 pub trait BudgetPayees {
     /// Payee `id`'s name, or `None` when it is gone.
-    fn payee_name(&self, id: PayeeId) -> Option<String>;
+    fn budget_payee_name(&self, id: PayeeId) -> Option<String>;
 }
 
 /// Every Budgets read port, as the one value the figures take.

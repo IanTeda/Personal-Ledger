@@ -220,10 +220,10 @@ impl LedgerPresenter {
     /// What `field` holds now, as its text field shows it.
     fn stored_text(&self, field: LedgerField) -> String {
         match field {
-            LedgerField::Name => self.units.name().to_string(),
+            LedgerField::Name => self.units.ledger_name().to_string(),
             LedgerField::Owner => self
                 .units
-                .owner()
+                .ledger_owner()
                 .map(|owner| owner.to_string())
                 .unwrap_or_default(),
             LedgerField::FinancialYear | LedgerField::BaseUnit => String::new(),
@@ -233,7 +233,7 @@ impl LedgerPresenter {
     /// The active Units' ids, the Base unit list's options in order.
     fn unit_ids(&self) -> Vec<UnitId> {
         self.units
-            .choices()
+            .ledger_choices()
             .into_iter()
             .map(|unit| unit.id)
             .collect()
@@ -243,7 +243,7 @@ impl LedgerPresenter {
     fn chosen_index(&self, field: LedgerField) -> usize {
         match field {
             LedgerField::FinancialYear => {
-                let start = self.units.financial_year_start();
+                let start = self.units.ledger_financial_year_start();
                 FinancialYearStart::ALL
                     .iter()
                     .position(|month| *month == start)
@@ -251,7 +251,7 @@ impl LedgerPresenter {
             }
             LedgerField::BaseUnit => self
                 .units
-                .base_unit()
+                .ledger_base_unit()
                 .and_then(|base| self.unit_ids().iter().position(|id| *id == base))
                 .unwrap_or(0),
             LedgerField::Name | LedgerField::Owner => 0,
@@ -306,7 +306,7 @@ impl LedgerPresenter {
         match edit.field {
             LedgerField::Name => match LedgerName::new(&edit.draft) {
                 Ok(name) => {
-                    if name != self.units.name() {
+                    if name != self.units.ledger_name() {
                         let changed = changed(&msg::settings_ledger_name(), name.as_str());
                         self.preferences.set_name(name);
                         router.notify(Notice::Changed(changed));
@@ -329,7 +329,7 @@ impl LedgerPresenter {
             },
             LedgerField::Owner => {
                 let owner = Owner::new(&edit.draft);
-                if owner != self.units.owner() {
+                if owner != self.units.ledger_owner() {
                     let changed = match &owner {
                         Some(owner) => changed(&msg::settings_ledger_owner(), owner.as_str()),
                         None => msg::settings_ledger_owner_cleared(),
@@ -365,7 +365,7 @@ impl LedgerPresenter {
         start: FinancialYearStart,
         router: &mut dyn LedgerRouter,
     ) {
-        if self.units.financial_year_start() == start {
+        if self.units.ledger_financial_year_start() == start {
             return;
         }
         self.preferences.set_financial_year_start(start);
@@ -378,13 +378,13 @@ impl LedgerPresenter {
     /// A refusal means the Unit was removed or deactivated under the select, which repaints
     /// without it, so there is nothing to report.
     fn set_base_unit(&mut self, id: UnitId, router: &mut dyn LedgerRouter) {
-        if self.units.base_unit() == Some(id) {
+        if self.units.ledger_base_unit() == Some(id) {
             return;
         }
         if self.preferences.set_base_unit(id) == BaseUnitAnswer::Saved {
             let code = self
                 .units
-                .choices()
+                .ledger_choices()
                 .into_iter()
                 .find(|unit| unit.id == id)
                 .map(|unit| unit.code)
@@ -577,7 +577,7 @@ impl Presenter for LedgerPresenter {
                             label: lib_locale::format::format_month_name(start.month()),
                         })
                         .collect(),
-                    chosen: Some(self.units.financial_year_start()),
+                    chosen: Some(self.units.ledger_financial_year_start()),
                     focused: self.has_focus(LedgerField::FinancialYear),
                 },
                 highlight: self.highlight(LedgerField::FinancialYear),
@@ -586,7 +586,7 @@ impl Presenter for LedgerPresenter {
                 label: msg::settings_ledger_base_unit(),
                 options: self
                     .units
-                    .choices()
+                    .ledger_choices()
                     .into_iter()
                     .map(|unit| BaseUnitOption {
                         label: msg::settings_ledger_base_unit_option(&unit.code, &unit.name),
@@ -594,7 +594,7 @@ impl Presenter for LedgerPresenter {
                         code: unit.code,
                     })
                     .collect(),
-                chosen: self.units.base_unit(),
+                chosen: self.units.ledger_base_unit(),
                 focused: self.has_focus(LedgerField::BaseUnit),
                 highlight: self.highlight(LedgerField::BaseUnit),
             },
@@ -851,7 +851,7 @@ mod tests {
         let routed = send(&mut presenter, &[LedgerEvent::Save(None)]);
 
         assert_eq!(routed, [changed("Ledger name changed to Teda household")]);
-        assert_eq!(units.name().as_str(), "Teda household");
+        assert_eq!(units.ledger_name().as_str(), "Teda household");
         assert_eq!(presenter.mode(), None);
         assert_eq!(presenter.view_model().name.field.text, "Teda household");
     }
@@ -866,7 +866,7 @@ mod tests {
         send(&mut presenter, &[event, LedgerEvent::Save(None)]);
 
         assert_eq!(
-            units.owner().map(|o| o.to_string()).as_deref(),
+            units.ledger_owner().map(|o| o.to_string()).as_deref(),
             Some("Sam Sample!")
         );
         send(&mut presenter, &[LedgerEvent::Step(Step::Next)]);
@@ -926,7 +926,7 @@ mod tests {
         let routed = send(&mut presenter, &[LedgerEvent::Save(None)]);
 
         assert_eq!(routed, [changed("Owner cleared")]);
-        assert_eq!(units.owner(), None);
+        assert_eq!(units.ledger_owner(), None);
         assert_eq!(presenter.view_model().owner.field.placeholder, "None");
     }
 
@@ -946,7 +946,7 @@ mod tests {
 
         let routed = send(&mut presenter, &[LedgerEvent::ClickAway]);
         assert_eq!(routed, [status("Ledger name kept: it can't be blank")]);
-        assert_eq!(units.name().as_str(), "Sample Ledger");
+        assert_eq!(units.ledger_name().as_str(), "Sample Ledger");
         assert!(!presenter.editing());
     }
 
@@ -962,7 +962,7 @@ mod tests {
 
         assert_eq!(routed, [status("A ledger name is at most 60 characters")]);
         assert_eq!(presenter.view_model().name.field.text, "x".repeat(61));
-        assert_eq!(units.name().as_str(), "Sample Ledger");
+        assert_eq!(units.ledger_name().as_str(), "Sample Ledger");
     }
 
     #[test]
@@ -1008,14 +1008,17 @@ mod tests {
         assert_eq!(view.select.options[0].label, "January");
         let routed = send(&mut presenter, &[LedgerEvent::Step(Step::Next); 3]);
         assert!(routed.is_empty());
-        assert_eq!(units.financial_year_start(), FinancialYearStart::JULY);
+        assert_eq!(
+            units.ledger_financial_year_start(),
+            FinancialYearStart::JULY
+        );
 
         let routed = send(&mut presenter, &[LedgerEvent::Open]);
         assert_eq!(
             routed,
             [changed("Financial year starts changed to October")]
         );
-        assert_eq!(units.financial_year_start().month(), 10);
+        assert_eq!(units.ledger_financial_year_start().month(), 10);
         assert_eq!(presenter.view_model().financial_year.highlight, None);
     }
 
@@ -1034,7 +1037,10 @@ mod tests {
             ],
         );
         assert!(routed.is_empty());
-        assert_eq!(units.financial_year_start(), FinancialYearStart::JULY);
+        assert_eq!(
+            units.ledger_financial_year_start(),
+            FinancialYearStart::JULY
+        );
 
         let routed = send(
             &mut presenter,

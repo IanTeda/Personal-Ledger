@@ -443,7 +443,7 @@ impl DocumentsPagePresenter {
     }
 
     fn fy_start(&self) -> FinancialYearStart {
-        self.reads.financial_year_start()
+        self.reads.document_financial_year_start()
     }
 
     fn lookups<'a>(&self, types: &'a [DocumentTypeRow], records: &'a LinkRecords) -> Lookups<'a> {
@@ -2140,7 +2140,7 @@ mod tests {
     }
 
     impl crate::DocumentFinancialYear for MovingStart {
-        fn financial_year_start(&self) -> FinancialYearStart {
+        fn document_financial_year_start(&self) -> FinancialYearStart {
             self.start.get()
         }
     }

@@ -105,23 +105,23 @@ impl BudgetSplits for InMemoryBudgetReads {
 }
 
 impl BudgetBills for InMemoryBudgetReads {
-    fn open_bills(&self) -> Vec<BudgetBill> {
+    fn budget_open_bills(&self) -> Vec<BudgetBill> {
         self.open_bills.clone()
     }
 
-    fn active_bill_plans(&self) -> Vec<BudgetBillPlan> {
+    fn budget_active_bill_plans(&self) -> Vec<BudgetBillPlan> {
         self.active_bill_plans.clone()
     }
 }
 
 impl BudgetUnits for InMemoryBudgetReads {
-    fn unit_code(&self, id: UnitId) -> Option<String> {
+    fn budget_unit_code(&self, id: UnitId) -> Option<String> {
         self.unit_codes.get(&id).cloned()
     }
 }
 
 impl BudgetPayees for InMemoryBudgetReads {
-    fn payee_name(&self, id: PayeeId) -> Option<String> {
+    fn budget_payee_name(&self, id: PayeeId) -> Option<String> {
         self.payee_names.get(&id).cloned()
     }
 }

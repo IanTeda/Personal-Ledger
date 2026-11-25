@@ -277,7 +277,7 @@ impl Presenter for DetailPresenter {
                 date: format_month_day(line.date),
                 payee: line
                     .payee_id
-                    .and_then(|id| reads.payee_name(id))
+                    .and_then(|id| reads.budget_payee_name(id))
                     .unwrap_or_else(msg::budgets_detail_no_payee),
                 account: accounts
                     .iter()

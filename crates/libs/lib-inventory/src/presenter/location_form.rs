@@ -127,7 +127,7 @@ impl LocationFormPresenter {
         preferred: Option<UnitId>,
         keys: DialogKeys,
     ) -> Self {
-        let choices = units.currencies();
+        let choices = units.inventory_currencies();
         let unit = preferred
             .filter(|id| choices.iter().any(|choice| choice.id == *id))
             .or_else(|| choices.first().map(|choice| choice.id));
@@ -153,8 +153,8 @@ impl LocationFormPresenter {
         keys: DialogKeys,
     ) -> Option<Self> {
         let location = inventory.borrow().location(id)?;
-        let choices = units.currencies();
-        let code = units.unit_code(location.unit).unwrap_or_default();
+        let choices = units.inventory_currencies();
+        let code = units.inventory_unit_code(location.unit).unwrap_or_default();
         Some(Self {
             keys,
             inventory: inventory.clone(),

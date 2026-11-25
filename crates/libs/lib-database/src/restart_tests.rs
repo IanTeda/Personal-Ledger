@@ -215,7 +215,7 @@ fn splits_of(store: &Opened) -> Vec<lib_bills::BillSplit> {
         .bills()
         .borrow()
         .transactions()
-        .splits_between(chrono::NaiveDate::MIN, chrono::NaiveDate::MAX)
+        .bill_splits_between(chrono::NaiveDate::MIN, chrono::NaiveDate::MAX)
 }
 
 /// The Budgets as the Budgets store holds them.

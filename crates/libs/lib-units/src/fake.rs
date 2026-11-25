@@ -110,7 +110,7 @@ pub struct InMemoryHoldings {
 }
 
 impl UnitHoldings for InMemoryHoldings {
-    fn holdings(&self, id: UnitId) -> Vec<Holding> {
+    fn unit_holdings(&self, id: UnitId) -> Vec<Holding> {
         self.by_unit.get(&id).cloned().unwrap_or_default()
     }
 }

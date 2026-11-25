@@ -293,7 +293,7 @@ impl PlanFormPresenter {
             .collect();
         categories.sort_by(|a, b| a.label.cmp(&b.label));
         let units = ports.units();
-        let code = |id: UnitId| units.unit_code(id).unwrap_or_default();
+        let code = |id: UnitId| units.bill_unit_code(id).unwrap_or_default();
         let accounts: Vec<(UnitId, Choice<AccountId>)> = ports
             .accounts()
             .bill_accounts()

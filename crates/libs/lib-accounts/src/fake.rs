@@ -83,7 +83,7 @@ impl AccountUnits for InMemoryAccountUnits {
         self.units.clone()
     }
 
-    fn base_unit(&self) -> Option<UnitId> {
+    fn account_base_unit(&self) -> Option<UnitId> {
         self.base
     }
 }

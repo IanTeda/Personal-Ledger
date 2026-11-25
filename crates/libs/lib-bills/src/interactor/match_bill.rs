@@ -14,7 +14,7 @@ use crate::{
 /// The Splits a Match on `entry` may name: those dated within the window of its due date.
 fn window(transactions: &dyn BillTransactions, entry: EntryId) -> Vec<BillSplit> {
     let reach = Duration::days(MATCH_WINDOW_DAYS);
-    transactions.splits_between(entry.due - reach, entry.due + reach)
+    transactions.bill_splits_between(entry.due - reach, entry.due + reach)
 }
 
 /// The Splits an entry may be Matched to, read when Pay is pressed.

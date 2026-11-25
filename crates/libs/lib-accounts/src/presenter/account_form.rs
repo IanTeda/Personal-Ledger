@@ -170,7 +170,7 @@ impl AccountFormPresenter {
             (
                 ports.institutions().account_institutions(),
                 ports.units().account_units(),
-                ports.units().base_unit(),
+                ports.units().account_base_unit(),
             )
         };
         let units: Vec<Choice<UnitId>> = units

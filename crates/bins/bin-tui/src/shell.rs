@@ -5839,9 +5839,9 @@ mod tests {
             .settings
             .ledger;
         (
-            reads.name().as_str().to_string(),
-            reads.owner().map(|owner| owner.as_str().to_string()),
-            reads.financial_year_start(),
+            reads.ledger_name().as_str().to_string(),
+            reads.ledger_owner().map(|owner| owner.as_str().to_string()),
+            reads.ledger_financial_year_start(),
         )
     }
 

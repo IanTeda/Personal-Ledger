@@ -33,10 +33,10 @@ use crate::{BillScheduleEntry, BillSplit, BillStatus, Recurrence, Resolution, ms
 pub fn money(ports: &dyn BillsPorts, amount: &Money, unit: UnitId) -> String {
     let text = format_amount(amount, AmountStyle::own()).text;
     let units = ports.units();
-    if units.base_unit() == Some(unit) {
+    if units.bill_base_unit() == Some(unit) {
         return text;
     }
-    match units.unit_code(unit) {
+    match units.bill_unit_code(unit) {
         Some(code) => with_unit(&text, &code),
         None => text,
     }

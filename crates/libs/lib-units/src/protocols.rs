@@ -102,7 +102,7 @@ pub trait UnitUsage {
 /// port, so `lib-units` needn't depend on the Accounts crate.
 pub trait UnitHoldings {
     /// The Accounts whose Unit is `id`, in the Ledger's order.
-    fn holdings(&self, id: UnitId) -> Vec<Holding>;
+    fn unit_holdings(&self, id: UnitId) -> Vec<Holding>;
 }
 
 /// When the Accounts held in a Unit were opened: how far back its history backfills (ADR-0043's

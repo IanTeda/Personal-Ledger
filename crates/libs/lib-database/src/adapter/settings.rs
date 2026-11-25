@@ -125,7 +125,7 @@ impl LedgerSummaries for StoredSettingsReads {
 
 impl LedgerReads for StoredSettingsReads {
     /// The active Units, by code.
-    fn choices(&self) -> Vec<UnitRef> {
+    fn ledger_choices(&self) -> Vec<UnitRef> {
         let units = self.units.borrow().units().units();
         units::unit_refs(
             units_by_code(&units)
@@ -134,19 +134,19 @@ impl LedgerReads for StoredSettingsReads {
         )
     }
 
-    fn base_unit(&self) -> Option<UnitId> {
+    fn ledger_base_unit(&self) -> Option<UnitId> {
         Some(self.units.borrow().base_unit().base_unit())
     }
 
-    fn name(&self) -> LedgerName {
+    fn ledger_name(&self) -> LedgerName {
         self.ledger.borrow().ledger().name.clone()
     }
 
-    fn owner(&self) -> Option<Owner> {
+    fn ledger_owner(&self) -> Option<Owner> {
         self.ledger.borrow().ledger().owner.clone()
     }
 
-    fn financial_year_start(&self) -> FinancialYearStart {
+    fn ledger_financial_year_start(&self) -> FinancialYearStart {
         self.ledger.borrow().ledger().financial_year_start
     }
 }

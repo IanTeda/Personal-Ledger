@@ -214,7 +214,7 @@ impl Presenter for AccountsPagePresenter {
             .collect();
         let selected = resolve(self.ids_of(&accounts), self.selected);
         AccountsPageViewModel {
-            scope: scope_note(&accounts, &units, ports.units().base_unit()),
+            scope: scope_note(&accounts, &units, ports.units().account_base_unit()),
             status: msg::accounts_count(count(accounts.len())),
             kicker: msg::accounts_kicker(),
             add_button: msg::accounts_add_button("+"),

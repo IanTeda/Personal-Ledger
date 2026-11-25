@@ -2104,24 +2104,24 @@ impl BudgetSplits for StoredBudgetReads {
 }
 
 impl BudgetBills for StoredBudgetReads {
-    fn open_bills(&self) -> Vec<BudgetBill> {
+    fn budget_open_bills(&self) -> Vec<BudgetBill> {
         let bills = self.bills.borrow();
         bills::budget_open_bills(&bills.plans().bill_plans(), &bills.entries().entries())
     }
 
-    fn active_bill_plans(&self) -> Vec<BudgetBillPlan> {
+    fn budget_active_bill_plans(&self) -> Vec<BudgetBillPlan> {
         bills::budget_bill_plans(&self.bills.borrow().plans().bill_plans())
     }
 }
 
 impl BudgetUnits for StoredBudgetReads {
-    fn unit_code(&self, id: UnitId) -> Option<String> {
+    fn budget_unit_code(&self, id: UnitId) -> Option<String> {
         self.units.borrow().unit_code(id)
     }
 }
 
 impl BudgetPayees for StoredBudgetReads {
-    fn payee_name(&self, id: PayeeId) -> Option<String> {
+    fn budget_payee_name(&self, id: PayeeId) -> Option<String> {
         self.payees.borrow().payee_name(id)
     }
 }
@@ -2297,7 +2297,7 @@ impl BillCategories for StoredBillReads {
 }
 
 impl BillTransactions for StoredBillReads {
-    fn splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
+    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
         transactions::splits_between(&self.transactions.borrow().all_transactions(), from, to)
     }
 
@@ -2429,7 +2429,7 @@ impl AccountUnits for StoredAccountReads {
         units::unit_refs(&self.units.borrow().units().units())
     }
 
-    fn base_unit(&self) -> Option<UnitId> {
+    fn account_base_unit(&self) -> Option<UnitId> {
         let store = self.units.borrow();
         units::held_base_unit(&store.units().units(), store.base_unit().base_unit())
     }
@@ -2482,7 +2482,7 @@ impl UnitUsage for StoredUnitReads {
 
 impl UnitHoldings for StoredUnitReads {
     /// One pass over the Transactions for every Account in the Unit, rather than one per Account.
-    fn holdings(&self, id: UnitId) -> Vec<Holding> {
+    fn unit_holdings(&self, id: UnitId) -> Vec<Holding> {
         let rows = self.accounts.borrow().accounts().accounts();
         let counts = transactions::account_transaction_counts(
             &self.transactions.borrow().all_transactions(),
@@ -2508,11 +2508,11 @@ pub(crate) struct StoredBillUnits {
 }
 
 impl BillUnits for StoredBillUnits {
-    fn unit_code(&self, id: UnitId) -> Option<String> {
+    fn bill_unit_code(&self, id: UnitId) -> Option<String> {
         self.units.borrow().unit_code(id)
     }
 
-    fn base_unit(&self) -> Option<UnitId> {
+    fn bill_base_unit(&self) -> Option<UnitId> {
         Some(self.units.borrow().base_unit().base_unit())
     }
 }
@@ -2723,7 +2723,7 @@ impl DocumentItems for StoredDocumentReads {
 }
 
 impl DocumentFinancialYear for StoredDocumentReads {
-    fn financial_year_start(&self) -> lib_core::FinancialYearStart {
+    fn document_financial_year_start(&self) -> lib_core::FinancialYearStart {
         self.ledger.borrow().ledger().financial_year_start
     }
 }
@@ -2740,12 +2740,12 @@ pub(crate) struct StoredInventoryReads {
 
 impl InventoryUnits for StoredInventoryReads {
     /// In the Units' order.
-    fn currencies(&self) -> Vec<UnitRef> {
+    fn inventory_currencies(&self) -> Vec<UnitRef> {
         let units = self.units.borrow().units().units();
         units::unit_refs(units.iter().filter(|unit| unit.kind == UnitKind::Currency))
     }
 
-    fn unit_code(&self, id: UnitId) -> Option<String> {
+    fn inventory_unit_code(&self, id: UnitId) -> Option<String> {
         self.units.borrow().unit_code(id)
     }
 }
@@ -3197,7 +3197,7 @@ mod tests {
         );
         let (from, to) = (NaiveDate::MIN, NaiveDate::MAX);
         assert_eq!(
-            bills.splits_between(from, to).len(),
+            bills.bill_splits_between(from, to).len(),
             sample
                 .transactions
                 .transactions
@@ -3308,7 +3308,10 @@ mod tests {
             .expect("the sample's AUD");
         assert!(aud.is_active);
         assert_eq!(aud.precision, 2);
-        assert_eq!(AccountUnits::base_unit(&reads), Some(UnitId::SEED_AUD));
+        assert_eq!(
+            AccountUnits::account_base_unit(&reads),
+            Some(UnitId::SEED_AUD)
+        );
 
         let mut btc = units
             .borrow()
@@ -3334,13 +3337,16 @@ mod tests {
         assert_eq!(edited.code, "XBT", "written since the reads were built");
         assert!(!edited.is_active);
         assert_eq!(edited.precision, 6);
-        assert_eq!(AccountUnits::base_unit(&reads), Some(UnitId::SEED_BTC));
+        assert_eq!(
+            AccountUnits::account_base_unit(&reads),
+            Some(UnitId::SEED_BTC)
+        );
 
         units.borrow_mut().split_write(&unread, |ports| {
             ports.base_unit.set_base_unit(UnitId::new())
         });
         assert_eq!(
-            AccountUnits::base_unit(&reads),
+            AccountUnits::account_base_unit(&reads),
             None,
             "a base Unit the store doesn't hold is none"
         );
@@ -3420,7 +3426,7 @@ mod tests {
         assert_eq!(usage.locations, 0);
         assert_eq!(reads.unit_usage(UnitId::new()), UnitUse::default());
 
-        let holdings = reads.holdings(aud);
+        let holdings = reads.unit_holdings(aud);
         assert_eq!(holdings.len(), usage.accounts);
         let everyday = holdings
             .iter()
@@ -3437,7 +3443,7 @@ mod tests {
                     .count()
             )
         );
-        assert!(reads.holdings(UnitId::new()).is_empty());
+        assert!(reads.unit_holdings(UnitId::new()).is_empty());
     }
 
     /// Over the in-memory stores [`Stores::fake`] bundles, the Remove tag and Merge tags Dialogs
@@ -3505,9 +3511,12 @@ mod tests {
         let units: SharedUnitsStore =
             Rc::new(RefCell::new(InMemoryPorts::sample(chrono::Utc::now())));
         let reads = StoredBillUnits { units };
-        assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("AUD"));
-        assert_eq!(reads.unit_code(UnitId::new()), None);
-        assert_eq!(reads.base_unit(), Some(UnitId::SEED_AUD));
+        assert_eq!(
+            reads.bill_unit_code(UnitId::SEED_AUD).as_deref(),
+            Some("AUD")
+        );
+        assert_eq!(reads.bill_unit_code(UnitId::new()), None);
+        assert_eq!(reads.bill_base_unit(), Some(UnitId::SEED_AUD));
     }
 
     /// The six Budgets read ports are answered by their stores, as the Ledger once answered them.
@@ -3542,12 +3551,15 @@ mod tests {
             .iter()
             .filter(|entry| entry.is_open())
             .count();
-        assert_eq!(reads.open_bills().len(), open);
+        assert_eq!(reads.budget_open_bills().len(), open);
         assert!(!reads.budget_categories().is_empty());
         assert!(!reads.budget_accounts().is_empty());
-        assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("AUD"));
-        assert!(reads.payee_name(PayeeId::seed(1)).is_some());
-        assert!(reads.active_bill_plans().len() <= sample.bills.plans.len());
+        assert_eq!(
+            reads.budget_unit_code(UnitId::SEED_AUD).as_deref(),
+            Some("AUD")
+        );
+        assert!(reads.budget_payee_name(PayeeId::seed(1)).is_some());
+        assert!(reads.budget_active_bill_plans().len() <= sample.bills.plans.len());
     }
 }
 

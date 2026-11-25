@@ -262,7 +262,7 @@ pub trait DocumentItems {
 /// The Ledger's Financial year start, which a Document's Financial Year and the Library's year
 /// facets are read by (#1342).
 pub trait DocumentFinancialYear {
-    fn financial_year_start(&self) -> FinancialYearStart;
+    fn document_financial_year_start(&self) -> FinancialYearStart;
 }
 
 /// Every Documents read port, as the one value a Client reads the records through.
@@ -319,7 +319,7 @@ impl LinkRecords {
             accounts: reads.document_accounts(),
             plans: reads.document_bill_plans(),
             items: reads.document_items(),
-            financial_year_start: reads.financial_year_start(),
+            financial_year_start: reads.document_financial_year_start(),
         }
     }
 

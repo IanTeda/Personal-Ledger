@@ -128,7 +128,7 @@ impl PageSnapshot for SettingsInventorySnapshot {
                 .map(|p| {
                     (
                         p.name.clone(),
-                        units.unit_code(p.unit).unwrap_or_default(),
+                        units.inventory_unit_code(p.unit).unwrap_or_default(),
                         p.cover.as_ref().map(|c| c.insurer.clone()),
                     )
                 })

@@ -163,13 +163,13 @@ fn row(field: SettingField, context: &Context<'_>) -> FieldRow {
 fn stored(field: SettingField, settings: &SettingsLedger) -> String {
     let reads = &settings.ledger;
     match field {
-        SettingField::LedgerName => reads.name().as_str().to_string(),
+        SettingField::LedgerName => reads.ledger_name().as_str().to_string(),
         SettingField::Owner => reads
-            .owner()
+            .ledger_owner()
             .map_or_else(msg::tui_settings_ledger_owner_none, |owner| {
                 owner.as_str().to_string()
             }),
-        _ => month_label(reads.financial_year_start()),
+        _ => month_label(reads.ledger_financial_year_start()),
     }
 }
 
@@ -191,18 +191,18 @@ pub(super) fn draft(field: SettingField, context: &Context<'_>) -> Option<(Draft
     let reads = &units.settings.ledger;
     Some(match field {
         SettingField::LedgerName => {
-            let name = reads.name().as_str().to_string();
+            let name = reads.ledger_name().as_str().to_string();
             (Draft::Text(name.clone()), name)
         }
         SettingField::Owner => {
-            let owner = reads.owner().map(|owner| owner.as_str().to_string());
+            let owner = reads.ledger_owner().map(|owner| owner.as_str().to_string());
             (
                 Draft::Text(owner.clone().unwrap_or_default()),
                 owner.unwrap_or_else(msg::tui_settings_ledger_owner_none),
             )
         }
         SettingField::FinancialYearStart => {
-            let start = reads.financial_year_start();
+            let start = reads.ledger_financial_year_start();
             let items = MONTHS
                 .iter()
                 .filter_map(|key| {
@@ -254,7 +254,7 @@ fn sub_rows(editor: &FieldEditor, context: &Context<'_>) -> Vec<(String, String)
         SettingField::FinancialYearStart => {
             let Some(stored) = context
                 .units
-                .map(|units| units.settings.ledger.financial_year_start())
+                .map(|units| units.settings.ledger.ledger_financial_year_start())
             else {
                 return Vec::new();
             };

@@ -149,7 +149,7 @@ impl DocumentItems for LinkRecords {
 }
 
 impl DocumentFinancialYear for LinkRecords {
-    fn financial_year_start(&self) -> FinancialYearStart {
+    fn document_financial_year_start(&self) -> FinancialYearStart {
         self.financial_year_start
     }
 }

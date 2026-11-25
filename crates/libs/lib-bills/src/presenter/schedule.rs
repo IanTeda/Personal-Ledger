@@ -475,7 +475,7 @@ impl SchedulePresenter {
     ) -> Vec<MetaClause> {
         let units = ports.units();
         let summary = period_summary(rows, plans, entries, splits, |id| {
-            units.unit_code(id).unwrap_or_default()
+            units.bill_unit_code(id).unwrap_or_default()
         });
         let entries_clause = if self.all {
             msg::bills_schedule_entries_all(count(rows.len()))
@@ -500,7 +500,9 @@ impl SchedulePresenter {
                 &summary.paid.to_string(),
             )));
         }
-        let base = units.base_unit().and_then(|id| units.unit_code(id));
+        let base = units
+            .bill_base_unit()
+            .and_then(|id| units.bill_unit_code(id));
         let total = match summary.planned {
             Total::Empty => None,
             Total::Mixed => Some(msg::bills_total_mixed()),
@@ -896,7 +898,7 @@ impl Presenter for SchedulePresenter {
                     &entries,
                     &splits,
                     today,
-                    ports.financial_year().financial_year_start(),
+                    ports.financial_year().bill_financial_year_start(),
                 );
                 stats_view(ports, plan, &stats)
             });

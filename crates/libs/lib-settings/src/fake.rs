@@ -250,7 +250,7 @@ impl InMemoryLedgerUnits {
 }
 
 impl LedgerReads for InMemoryLedgerUnits {
-    fn choices(&self) -> Vec<UnitRef> {
+    fn ledger_choices(&self) -> Vec<UnitRef> {
         self.rows
             .borrow()
             .units
@@ -260,19 +260,19 @@ impl LedgerReads for InMemoryLedgerUnits {
             .collect()
     }
 
-    fn base_unit(&self) -> Option<UnitId> {
+    fn ledger_base_unit(&self) -> Option<UnitId> {
         Some(self.rows.borrow().base)
     }
 
-    fn name(&self) -> LedgerName {
+    fn ledger_name(&self) -> LedgerName {
         self.rows.borrow().name.clone()
     }
 
-    fn owner(&self) -> Option<Owner> {
+    fn ledger_owner(&self) -> Option<Owner> {
         self.rows.borrow().owner.clone()
     }
 
-    fn financial_year_start(&self) -> FinancialYearStart {
+    fn ledger_financial_year_start(&self) -> FinancialYearStart {
         self.rows.borrow().financial_year_start
     }
 }

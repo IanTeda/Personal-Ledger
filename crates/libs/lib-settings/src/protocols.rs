@@ -243,19 +243,19 @@ pub trait DataBackupRouter: Notify {
 /// stores (through `LedgerPorts::settings_ledger()`), so the page never holds a copy.
 pub trait LedgerReads {
     /// The Units the Base unit select offers: the active ones, by code.
-    fn choices(&self) -> Vec<UnitRef>;
+    fn ledger_choices(&self) -> Vec<UnitRef>;
 
     /// The Ledger's base Unit.
-    fn base_unit(&self) -> Option<UnitId>;
+    fn ledger_base_unit(&self) -> Option<UnitId>;
 
     /// The Ledger's name, from the Ledger store.
-    fn name(&self) -> LedgerName;
+    fn ledger_name(&self) -> LedgerName;
 
     /// Who the Ledger belongs to, if anyone.
-    fn owner(&self) -> Option<Owner>;
+    fn ledger_owner(&self) -> Option<Owner>;
 
     /// The month the Ledger's Financial year starts in.
-    fn financial_year_start(&self) -> FinancialYearStart;
+    fn ledger_financial_year_start(&self) -> FinancialYearStart;
 }
 
 /// How a write of the base Unit went.

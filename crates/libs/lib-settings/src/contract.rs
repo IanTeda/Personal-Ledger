@@ -496,9 +496,13 @@ pub trait LedgerFactory {
 pub fn the_choices_are_the_active_units_by_code(factory: &mut impl LedgerFactory) {
     let (reads, _) = factory.create(&[UnitId::SEED_BTC]);
 
-    let codes: Vec<_> = reads.choices().into_iter().map(|unit| unit.code).collect();
+    let codes: Vec<_> = reads
+        .ledger_choices()
+        .into_iter()
+        .map(|unit| unit.code)
+        .collect();
     assert_eq!(codes, ["AUD", "VAS"]);
-    assert_eq!(reads.base_unit(), Some(UnitId::SEED_AUD));
+    assert_eq!(reads.ledger_base_unit(), Some(UnitId::SEED_AUD));
 }
 
 /// A base Unit that is saved reads back, and only it moves.
@@ -510,8 +514,12 @@ pub fn a_saved_base_unit_reads_back(factory: &mut impl LedgerFactory) {
         BaseUnitAnswer::Saved
     );
 
-    assert_eq!(reads.base_unit(), Some(UnitId::SEED_BTC));
-    assert_eq!(reads.choices().len(), 3, "no Unit is added or removed");
+    assert_eq!(reads.ledger_base_unit(), Some(UnitId::SEED_BTC));
+    assert_eq!(
+        reads.ledger_choices().len(),
+        3,
+        "no Unit is added or removed"
+    );
 }
 
 /// A Unit that is gone, or deactivated, is refused and the base stays.
@@ -523,16 +531,19 @@ pub fn a_unit_that_is_gone_or_inactive_is_refused(factory: &mut impl LedgerFacto
         writes.set_base_unit(UnitId::SEED_VAS),
         BaseUnitAnswer::Refused
     );
-    assert_eq!(reads.base_unit(), Some(UnitId::SEED_AUD));
+    assert_eq!(reads.ledger_base_unit(), Some(UnitId::SEED_AUD));
 }
 
 /// The sample's name, Owner and Financial year start are read before any write.
 pub fn the_preferences_read_as_the_sample_holds_them(factory: &mut impl LedgerFactory) {
     let (reads, _) = factory.create(&[]);
 
-    assert_eq!(reads.name().as_str(), "Sample Ledger");
-    assert_eq!(reads.owner(), Owner::new("Sam Sample"));
-    assert_eq!(reads.financial_year_start(), FinancialYearStart::JULY);
+    assert_eq!(reads.ledger_name().as_str(), "Sample Ledger");
+    assert_eq!(reads.ledger_owner(), Owner::new("Sam Sample"));
+    assert_eq!(
+        reads.ledger_financial_year_start(),
+        FinancialYearStart::JULY
+    );
 }
 
 /// A name, Owner and Financial year start that are written read back, and the base Unit stays.
@@ -547,10 +558,13 @@ pub fn a_saved_preference_reads_back(factory: &mut impl LedgerFactory) {
     writes.set_owner(Owner::new("Ian"));
     writes.set_financial_year_start(FinancialYearStart::APRIL);
 
-    assert_eq!(reads.name().as_str(), "Household");
-    assert_eq!(reads.owner(), Owner::new("Ian"));
-    assert_eq!(reads.financial_year_start(), FinancialYearStart::APRIL);
-    assert_eq!(reads.base_unit(), Some(UnitId::SEED_AUD));
+    assert_eq!(reads.ledger_name().as_str(), "Household");
+    assert_eq!(reads.ledger_owner(), Owner::new("Ian"));
+    assert_eq!(
+        reads.ledger_financial_year_start(),
+        FinancialYearStart::APRIL
+    );
+    assert_eq!(reads.ledger_base_unit(), Some(UnitId::SEED_AUD));
 }
 
 /// No Owner clears the one there was.
@@ -559,7 +573,7 @@ pub fn no_owner_clears_the_owner(factory: &mut impl LedgerFactory) {
 
     writes.set_owner(None);
 
-    assert_eq!(reads.owner(), None);
+    assert_eq!(reads.ledger_owner(), None);
 }
 
 /// Runs every Settings › Ledger check on `factory`.

@@ -269,7 +269,7 @@ impl BudgetFormPresenter {
             if !units.iter().any(|(id, _)| *id == candidate.unit) {
                 units.push((
                     candidate.unit,
-                    reads.unit_code(candidate.unit).unwrap_or_default(),
+                    reads.budget_unit_code(candidate.unit).unwrap_or_default(),
                 ));
             }
         }
@@ -610,7 +610,7 @@ impl Presenter for BudgetFormPresenter {
             .map(|(_, code)| code.clone())
             .or_else(|| {
                 self.unit
-                    .and_then(|unit| self.ports.borrow().reads().unit_code(unit))
+                    .and_then(|unit| self.ports.borrow().reads().budget_unit_code(unit))
             })
             .unwrap_or_default();
         let card = |title: String, tag: String, detail: String, enabled: bool| MethodCard {

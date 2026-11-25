@@ -84,7 +84,7 @@ pub struct InMemoryBillReads {
 }
 
 impl BillTransactions for InMemoryBillReads {
-    fn splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
+    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
         crate::splits_between(&self.splits, from, to)
     }
 
@@ -133,14 +133,14 @@ impl InMemoryBillUnits {
 }
 
 impl BillUnits for InMemoryBillUnits {
-    fn unit_code(&self, id: UnitId) -> Option<String> {
+    fn bill_unit_code(&self, id: UnitId) -> Option<String> {
         self.codes
             .iter()
             .find(|(unit, _)| *unit == id)
             .map(|(_, code)| code.clone())
     }
 
-    fn base_unit(&self) -> Option<UnitId> {
+    fn bill_base_unit(&self) -> Option<UnitId> {
         self.base
     }
 }
@@ -150,7 +150,7 @@ impl BillUnits for InMemoryBillUnits {
 pub struct InMemoryBillFinancialYear(pub FinancialYearStart);
 
 impl BillFinancialYear for InMemoryBillFinancialYear {
-    fn financial_year_start(&self) -> FinancialYearStart {
+    fn bill_financial_year_start(&self) -> FinancialYearStart {
         self.0
     }
 }
@@ -526,7 +526,7 @@ mod tests {
         };
 
         let mut days: Vec<u32> = reads
-            .splits_between(date(2), date(4))
+            .bill_splits_between(date(2), date(4))
             .iter()
             .map(|s| s.split.transaction_id.seed_number())
             .collect();

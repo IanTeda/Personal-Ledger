@@ -309,7 +309,7 @@ pub fn period_figures(
 ) -> PeriodFigures {
     let categories = reads.budget_categories();
     let accounts = reads.budget_accounts();
-    let bills = reads.open_bills();
+    let bills = reads.budget_open_bills();
     let index = SpentIndex::load(budget, reads, &accounts, month, month);
     let leaves: BTreeMap<CategoryId, LeafFigures> = expense_leaves(&categories)
         .into_iter()

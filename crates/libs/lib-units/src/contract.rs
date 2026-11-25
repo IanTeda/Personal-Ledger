@@ -165,7 +165,7 @@ impl UsageFactory for InMemoryUsageFactory {
 pub fn usage_counts_the_accounts_and_transactions_in_a_unit<F: UsageFactory>(factory: &mut F) {
     let mut ports = factory.create();
     let aud = UnitId::SEED_AUD;
-    let before = ports.holdings().holdings(aud);
+    let before = ports.holdings().unit_holdings(aud);
     let used = ports.usage().unit_usage(aud);
     assert_eq!(used.accounts, before.len(), "one Account per holding");
     let account = before
@@ -176,7 +176,7 @@ pub fn usage_counts_the_accounts_and_transactions_in_a_unit<F: UsageFactory>(fac
         .clone();
     let nothing = UnitId::new();
     assert_eq!(ports.usage().unit_usage(nothing), UnitUse::default());
-    assert!(ports.holdings().holdings(nothing).is_empty());
+    assert!(ports.holdings().unit_holdings(nothing).is_empty());
 
     factory.book(&mut ports, &account);
     let counted = |ports: &F::Ports| {
@@ -185,7 +185,7 @@ pub fn usage_counts_the_accounts_and_transactions_in_a_unit<F: UsageFactory>(fac
             .map(|was| {
                 let now = ports
                     .holdings()
-                    .holdings(aud)
+                    .unit_holdings(aud)
                     .into_iter()
                     .find(|holding| holding.name == was.name)
                     .expect("still held");
