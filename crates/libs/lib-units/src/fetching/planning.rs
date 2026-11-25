@@ -69,7 +69,31 @@ impl PriceFetching {
                 Err(Error::KeyMissing) => {
                     tracing::warn!(price_source_id = %source, "A price source needs an API key this Client doesn't have");
                 }
-                Err(_) => {}
+                Err(
+                    error @ (Error::UnitGone
+                    | Error::PriceSourceGone
+                    | Error::QuoteGone
+                    | Error::OnlyUnit
+                    | Error::UnitInUse(_)
+                    | Error::BaseUnitNeeded
+                    | Error::NewBaseGone
+                    | Error::InactiveBase
+                    | Error::QuotedBy(_)
+                    | Error::DeactivateBase
+                    | Error::DeleteBuiltIn
+                    | Error::ChangeManualEntry
+                    | Error::BuiltInEndpoint
+                    | Error::PricedBySource
+                    | Error::NotFetched
+                    | Error::AlreadyFetching
+                    | Error::KeysLocked
+                    | Error::KeyNotSaved
+                    | Error::FutureWeek),
+                ) => {
+                    debug_assert!(false, "A due round was refused with {error:?}");
+                    tracing::error!(error = ?error, "A due round was refused with an error it never returns");
+                    continue;
+                }
             }
         }
         if started.is_empty() {
