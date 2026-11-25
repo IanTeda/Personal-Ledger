@@ -33,7 +33,7 @@ use gpui::{AnyView, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle,
 use lib_list_cursor::Step;
 use lib_settings::{
     ColourChoice, DataFolderOutcome, DevicePorts, DeviceSnapshot, DisplayEvent, DisplayOutput,
-    GeneralEvent, LedgerSummaries, PageRows, PageSummary, RestoreSetting, ScopeFacts, ScopeGroup,
+    GeneralEvent, LedgerSummaries, PageRows, PageSummary, RestoreSettings, ScopeFacts, ScopeGroup,
     SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,
     SummarySources, TracingLevel, TracingLog, summarise,
 };
@@ -609,22 +609,15 @@ impl SettingsView {
         changes: &[(lib_core::configuration::ConfigKey, Option<String>)],
         cx: &mut Context<'_, Self>,
     ) -> crate::Result<()> {
-        let mut restored = 0;
-        let mut outcome = Ok(());
-        for (key, value) in changes {
-            if let Err(error) = refused(
-                RestoreSetting {
-                    key: *key,
-                    value: value.clone(),
-                }
-                .run(&self.device),
-                *key,
-            ) {
-                outcome = Err(error);
-                break;
-            }
-            restored += 1;
+        let done = RestoreSettings {
+            changes: changes.to_vec(),
         }
+        .run(&self.device);
+        let restored = done.restored;
+        let outcome = match done.refusal {
+            Some((key, answer)) => refused(answer, key),
+            None => Ok(()),
+        };
         if restored > 0 {
             let snapshot = self.device.snapshot();
             self.pages.general.update(cx, |page, cx| {
