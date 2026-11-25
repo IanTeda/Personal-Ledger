@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::PriceSourceId;
 
-use crate::fetching::{PriceFetching, Wanted, is_due};
+use crate::fetching::{PriceFetching, Wanted};
 use crate::protocols::UnitsPorts;
 use crate::{Error, units_by_code};
 
@@ -74,13 +74,7 @@ impl FetchDue {
             let Some(source) = catalogue.source(unit.link.source_id) else {
                 continue;
             };
-            if source.endpoint().is_none()
-                || fetching.source_in_flight(source.id)
-                || fetching.fine_in_flight(source.id)
-                || fetching.source_backing_off(&source, self.now)
-                || fetching.unit_backing_off(unit, &source, self.now)
-                || !(fetching.relinked(unit) || is_due(unit, source.updates, self.today, self.now))
-            {
+            if !fetching.due(unit, &source, self.today, self.now) {
                 continue;
             }
             let Some(wanted) = Wanted::of(unit, &units) else {

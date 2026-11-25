@@ -267,11 +267,10 @@ mod tests {
 
     use super::*;
     use crate::fake::{FakeTransport, InMemoryPorts};
-    use crate::fetching::{FetchOutcome, FineCall, FineKey, Grain, SourceSettings};
+    use crate::fetching::{BackfillUnits, FetchOutcome, FineCall, FineKey, Grain, SourceSettings};
     use crate::fetching::{TransportError, TransportOutcome, history_request, window};
     use crate::interactor::{
-        Backfill, BackfillUnits, FetchDue, FetchNow, FetchSource, RecordFetchedPrices,
-        RecordPriceHistory, TestPriceSource,
+        FetchDue, FetchNow, FetchSource, RecordFetchedPrices, RecordPriceHistory, TestPriceSource,
     };
     use crate::protocols::UnitsPorts;
     use crate::{
@@ -381,25 +380,15 @@ mod tests {
             let before = self.frankfurter();
             let (today, now) = (self.today(), self.now);
             FetchDue { today, now }.run(&self.ports, &mut self.fetching);
-            let retries = self.fetching.history_retries(now);
-            if !retries.is_empty() {
-                Backfill {
-                    units: BackfillUnits::Retrying(retries),
-                    today,
-                    now,
-                }
-                .run(&self.ports, &mut self.fetching);
-            }
+            self.fetching
+                .backfill(BackfillUnits::Due, &self.ports, today, now);
             self.frankfurter() - before
         }
 
         fn backfill(&mut self) {
-            Backfill {
-                units: BackfillUnits::Every,
-                today: self.today(),
-                now: self.now,
-            }
-            .run(&self.ports, &mut self.fetching);
+            let (today, now) = (self.today(), self.now);
+            self.fetching
+                .backfill(BackfillUnits::Every, &self.ports, today, now);
         }
 
         fn fetch_now(&mut self, code: &str) {

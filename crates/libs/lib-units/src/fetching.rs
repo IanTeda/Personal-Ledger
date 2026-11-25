@@ -23,6 +23,7 @@ mod fine_prices;
 mod history;
 mod landing;
 mod last_fetch;
+mod planning;
 mod price_tests;
 mod reading;
 mod request;
@@ -38,13 +39,14 @@ pub use fine::{FINE_FRESH, Grain};
 pub(crate) use fine::{FineKey, FinePrice, fine_prices, window};
 use fine_prices::FinePrices;
 pub(crate) use fine_prices::{FineCall, FineState};
+pub(crate) use history::history_request;
 use history::{HistoryReading, read_history};
-pub(crate) use history::{floor, gaps, history_request, wanted_weeks};
 pub(crate) use landing::Landing;
 pub use landing::{FetchedPrice, RoundOutcome};
 use last_fetch::LastFetches;
 pub(crate) use last_fetch::back_off;
 pub use last_fetch::{FetchOutcome, LastFetch, MIN_BACK_OFF};
+pub use planning::BackfillUnits;
 use price_tests::PriceTests;
 pub(crate) use price_tests::{
     HistoryTestOutcome, HistoryTestResult, TestHistory, TestInFlight, TestOutcome, TestResult,
@@ -394,7 +396,7 @@ impl PriceFetching {
 
     /// Whether `source` has a finer prices request waiting or out, which a scheduled check counts
     /// as in flight.
-    pub(crate) fn fine_in_flight(&self, source: PriceSourceId) -> bool {
+    fn fine_in_flight(&self, source: PriceSourceId) -> bool {
         self.fine.in_flight(source)
     }
 
@@ -418,6 +420,25 @@ impl PriceFetching {
         self.fine.state(key, link, now, queued, hold)
     }
 
+    /// Whether `unit` on `source` is due a scheduled fetch on `today` at `now`: the source fetches,
+    /// has no round or finer prices request in flight and isn't backing off, the Unit isn't
+    /// backing off, and it was fetched on another link than it has now or is due by its source's
+    /// Updates.
+    pub(crate) fn due(
+        &self,
+        unit: &UnitRow,
+        source: &PriceSource<'_>,
+        today: NaiveDate,
+        now: DateTime<Utc>,
+    ) -> bool {
+        source.endpoint().is_some()
+            && !self.source_in_flight(source.id)
+            && !self.fine_in_flight(source.id)
+            && !self.source_backing_off(source, now)
+            && !self.unit_backing_off(unit, source, now)
+            && (self.relinked(unit) || is_due(unit, source.updates, today, now))
+    }
+
     /// Whether `source` failed a round, or a history request found it offline or rate limited,
     /// and is still backing off at `now`.
     pub(crate) fn source_backing_off(&self, source: &PriceSource<'_>, now: DateTime<Utc>) -> bool {
@@ -427,7 +448,7 @@ impl PriceFetching {
     /// Queues `call` behind its source's history requests, oldest gap first, and sends the next
     /// if the source has none in flight. Returns false, queuing nothing, for a Unit whose history
     /// is already queued or out.
-    pub(crate) fn queue_history(&mut self, call: HistoryCall, now: DateTime<Utc>) -> bool {
+    fn queue_history(&mut self, call: HistoryCall, now: DateTime<Utc>) -> bool {
         let source = call.source;
         if !self.backfill.queue(call) {
             return false;
@@ -487,12 +508,12 @@ impl PriceFetching {
 
     /// Notes that `call` couldn't be sent at `at` for want of a key this Client doesn't have: it
     /// fails Key missing, tried again after [`HISTORY_RETRY`], as a sent one that failed would.
-    pub(crate) fn history_key_missing(&mut self, call: &HistoryCall, at: DateTime<Utc>) {
+    fn history_key_missing(&mut self, call: &HistoryCall, at: DateTime<Utc>) {
         self.history_failed(call, FetchFailure::KeyMissing, at);
     }
 
     /// The weeks `unit`'s provider answered with nothing on the link it has now.
-    pub(crate) fn empty_weeks(&self, unit: &UnitRow) -> HashSet<NaiveDate> {
+    fn empty_weeks(&self, unit: &UnitRow) -> HashSet<NaiveDate> {
         self.backfill.empty_weeks(unit)
     }
 
@@ -502,7 +523,7 @@ impl PriceFetching {
     }
 
     /// Whether `unit` has a history request waiting, queued or out.
-    pub(crate) fn history_wanted(&self, unit: UnitId) -> bool {
+    fn history_wanted(&self, unit: UnitId) -> bool {
         self.backfill.wanted(unit)
     }
 
@@ -517,17 +538,17 @@ impl PriceFetching {
     }
 
     /// The Units whose failed history request is due to be tried again at `now`.
-    pub(crate) fn history_retries(&self, now: DateTime<Utc>) -> Vec<UnitId> {
+    fn history_retries(&self, now: DateTime<Utc>) -> Vec<UnitId> {
         self.backfill.retries(now)
     }
 
     /// Forgets `unit`'s failed history request: it was tried again, or no longer needs trying.
-    pub(crate) fn clear_history_failure(&mut self, unit: UnitId) {
+    fn clear_history_failure(&mut self, unit: UnitId) {
         self.backfill.clear_failure(unit);
     }
 
     /// Whether `unit` failed and is still backing off at `now`.
-    pub(crate) fn unit_backing_off(
+    fn unit_backing_off(
         &self,
         unit: &UnitRow,
         source: &PriceSource<'_>,
@@ -538,7 +559,7 @@ impl PriceFetching {
 
     /// Whether this Client fetched `unit` on another link than it has now: editing its source,
     /// symbol or quote makes it due straight away.
-    pub(crate) fn relinked(&self, unit: &UnitRow) -> bool {
+    fn relinked(&self, unit: &UnitRow) -> bool {
         self.last.relinked(unit)
     }
 

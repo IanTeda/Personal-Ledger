@@ -5,7 +5,6 @@
 
 mod add_price_source;
 mod add_unit;
-mod backfill;
 mod deactivate_unit;
 mod delete_price_source;
 mod delete_unit;
@@ -26,7 +25,6 @@ mod test_price_source;
 pub use crate::fetching::{FetchedPrice, RoundOutcome};
 pub use add_price_source::AddPriceSource;
 pub use add_unit::AddUnit;
-pub use backfill::{Backfill, BackfillUnits};
 pub use deactivate_unit::DeactivateUnit;
 pub use delete_price_source::{DeletePriceSource, PriceSourceDeleted};
 pub use delete_unit::{CheckedDelete, DeleteUnit};
