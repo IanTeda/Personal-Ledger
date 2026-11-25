@@ -79,7 +79,8 @@ A gated ticket closes when you close it, or when you tell Claude it's approved.
 | Triage waits on the reporter           | Adds `state:waiting`, and comments that it's waiting on the reporter                                              |
 | Grilling finds the effort too big for one session | Swaps `flow:grilling` for `flow:wayfinding`; the ticket becomes the map (`wayfinder:map`) and comments why |
 | `/to-tickets` charts a parent's tickets | Gives each new ticket `flow:implementation` and swaps the parent's `flow:` for `flow:implementation`; the parent closes by [Closing or review](#closing-or-review) once its tickets do |
-| A Wayfinder map clears                 | Swaps the map's `flow:wayfinding` for `flow:grilling`, so `/to-spec` and `/to-tickets` turn its decisions into a buildable plan |
+| A map's decision ticket resolves through `/to-tickets` | Gives each new child `wayfinder:task` and `flow:implementation` (with `agent:` and `priority:`), then closes the decision ticket, removing its `priority:` and `flow:` labels |
+| A Wayfinder map clears                 | A map whose Notes carry execution, its build slices already children: swaps `flow:wayfinding` for `flow:implementation`, so `/implement-parent` builds them. Any other map: swaps it for `flow:grilling`, so `/to-spec` and `/to-tickets` turn its decisions into a buildable plan. Either way it comments why |
 | Implementation hits a seam the ticket didn't decide | Swaps `flow:implementation` for `flow:grilling`, keeps the rank, and comments with the seam |
 | Releasing a ticket unfinished          | Unassigns it, adds `state:waiting`, and comments with where it stopped                                            |
 | Anything else that blocks a ticket     | Adds `state:waiting`, and comments with what it's waiting on                                                  |

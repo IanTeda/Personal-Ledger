@@ -50,7 +50,7 @@ Read it as in **Read an issue** above.
 
 ## Wayfinding operations
 
-Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets. What the `wayfinder:` and `flow:` labels mean is in [Flow labels](flow-labels.md).
+Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets. What the `wayfinder:` and `flow:` labels mean, and which a map's child carries, is in [Flow labels](flow-labels.md). Every label change on a map or ticket (claiming, resolving, clearing the map) follows [Ticket labels](ticket-labels.md#when-labels-change): a `flow:` or `state:` change is a comment, never a `## Labels` line, and a claim is the assignee alone.
 
 - **Map**: a single issue labelled `wayfinder:map` and `flow:wayfinding`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map --label flow:wayfinding`.
 - **Child ticket**: an issue linked to the map as a GitHub sub-issue (see **Make an issue a sub-issue of a parent**). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`) and a `flow:` label, by [Flow labels](flow-labels.md). Once claimed, the ticket is assigned to the driving dev.

@@ -24,6 +24,13 @@ When a ticket moves from one Flow to another is in [Ticket labels](ticket-labels
 
 A Wayfinder map and every child ticket on it whose question is still a decision carry `flow:wayfinding` beside their `wayfinder:` label. The `wayfinder:` label says how the ticket is resolved, and the `flow:` label says which skill to open. Maps and their tickets also carry `category:` and `priority:` labels by [Ticket labels](ticket-labels.md), whatever the `/wayfinder` skill says about `wayfinder:` labels being the only ones.
 
+**A map's children.** Every child of a `wayfinder:map` carries a `wayfinder:` label beside its `flow:` label, whichever skill creates it (`/wayfinder`, `/viper-review`, `/review-parent`, or `/to-tickets` after a map's grilling):
+
+- A **decision** child is `wayfinder:grilling` (or `research` or `prototype`) with `flow:wayfinding`, and no `agent:` label.
+- A **build slice**, on a map whose Notes carry execution, is `wayfinder:task` with `flow:implementation` and an `agent:` label.
+
+`mise run labels-check` reports any open issue that breaks these rules.
+
 | Label                 | Means                                                                                                                         |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `wayfinder:map`       | The map: a single issue holding the Destination, Notes, Decisions so far, Not yet specified and Out of scope, with tickets as its sub-issues |

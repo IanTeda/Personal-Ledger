@@ -106,6 +106,48 @@ description = "Check dependencies for advisories, licences, bans and sources (de
 # buries the result line; hiding them keeps the warnings and the summary.
 run = "cargo deny check --hide-inclusion-graph"
 
+# The mechanical label rules of docs/agents/ticket-labels.md and flow-labels.md, over every open
+# issue on GitHub. Run by the skills that create tickets (/viper-review, /review-parent) after they
+# write, and by hand; never in CI or pre-push, since it reads the live tracker, not the commit.
+[tasks.labels-check]
+description = "Report open issues whose flow:, priority:, wayfinder: or agent: labels break the label rules"
+run = '''
+set -eu
+gh api 'repos/{owner}/{repo}/issues?state=open&per_page=100' --paginate --slurp | jq -r '
+  [ add[] | select(.pull_request | not)
+    | { n: .number, labels: [.labels[].name],
+        parent: ((.parent_issue_url // "" | split("/") | last | tonumber?) // null),
+        subs: (.sub_issues_summary.total // 0) } ] as $open
+  | ($open | map({ key: (.n | tostring), value: .labels }) | from_entries) as $by
+  | def has($p): any(.labels[]; startswith($p));
+    def count($p): [.labels[] | select(startswith($p))] | length;
+    def isMap: any(.labels[]; . == "wayfinder:map");
+  $open[]
+  | . as $i
+  | [ (if count("flow:") != 1 then "has \(count("flow:")) flow: labels, wants exactly one" else empty end),
+      (if count("priority:") != 1 then "has \(count("priority:")) priority: labels, wants exactly one" else empty end),
+      (if ($i.parent != null) and (($by[$i.parent | tostring] // []) | any(.[]; . == "wayfinder:map"))
+          and (has("wayfinder:") | not)
+       then "is a child of map #\($i.parent) with no wayfinder: label" else empty end),
+      (if any(.labels[]; . == "wayfinder:grilling" or . == "wayfinder:research" or . == "wayfinder:prototype")
+          and (any(.labels[]; . == "flow:wayfinding") | not)
+       then "is a decision ticket off flow:wayfinding" else empty end),
+      (if any(.labels[]; . == "wayfinder:task") and any(.labels[]; . == "flow:implementation") and (has("agent:") | not)
+       then "is a build slice with no agent: label" else empty end),
+      (if any(.labels[]; . == "flow:implementation") and $i.subs == 0 and (isMap | not) and (has("agent:") | not)
+          and (any(.labels[]; . == "wayfinder:task") | not)
+       then "is flow:implementation with no agent: label" else empty end)
+    ]
+  | .[] as $why | "#\($i.n) \($why)"
+' > "${TMPDIR:-/tmp}/labels-check.out"
+if [ -s "${TMPDIR:-/tmp}/labels-check.out" ]; then
+  cat "${TMPDIR:-/tmp}/labels-check.out"
+  echo "$(wc -l < "${TMPDIR:-/tmp}/labels-check.out") label problem(s): fix by docs/agents/ticket-labels.md and flow-labels.md"
+  exit 1
+fi
+echo "Every open issue's labels follow the rules"
+'''
+
 # Opt this checkout into the repo's git hooks (`.githooks/pre-push` runs `mise run lint`).
 [tasks.install-hooks]
 description = "Point git at the repo's .githooks directory"

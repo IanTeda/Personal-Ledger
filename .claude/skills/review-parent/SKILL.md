@@ -40,8 +40,8 @@ Merge the two reports into one, and keep it in your own reply rather than on the
 3. Draft **proposed tickets**. Group findings that share one fix into one ticket. For each ticket give:
    - its title, with the bin-crate prefix
    - the findings it covers
-   - its `flow:` label: `flow:implementation` when every decision is made, `flow:grilling` when it needs one
-   - its `agent:` label, by the `triage-labels.md` table (a `flow:grilling` ticket carries none)
+   - its labels by `flow-labels.md` "A map's children", since the parent goes on as a map (step 5): a **build slice** (`wayfinder:task`, `flow:implementation`) when every decision is made, a **decision ticket** (`wayfinder:grilling`, `flow:wayfinding`) when it needs one
+   - its `agent:` label, by the `triage-labels.md` table (a decision ticket carries none)
    - its `priority:` rank and the reason for it
 
    Findings worth no ticket are listed as **leave as is**, each with why.
@@ -59,9 +59,11 @@ Then ask a second, single-select question about the parent:
 
 ## 5. Create
 
-Create each picked ticket by `ticket-labels.md` "Creating a ticket":
+When any ticket is picked and the parent isn't yet a `wayfinder:map`, chart it as one first, by `issue-tracker.md` "Wayfinding operations": rewrite its body into Destination (the picked findings fixed, beside whatever the parent already set out to do), Notes ("This map carries execution: build slices are `wayfinder:task` + `flow:implementation` children, picked up with `/implement-parent`", and the parent's old summary), Decisions so far, Not yet specified, Out of scope (each finding left as is, with why) and Labels; add `wayfinder:map` and set `flow:wayfinding` when a decision ticket is picked, else `flow:implementation`; give each open child its `wayfinder:` label; comment why. A parent already a map grows instead: append to its Destination and Out of scope.
 
-1. **Verify each premise**: before writing a Decision, open the `file:line` it rests on and confirm the code is as the Decision assumes (an order, a type, what a page draws). A premise you can't confirm moves the ticket to `flow:grilling`, with the doubt as its seam. Reviewer output and your memory are claims, not facts.
+Then create each picked ticket by `ticket-labels.md` "Creating a ticket":
+
+1. **Verify each premise**: before writing a Decision, open the `file:line` it rests on and confirm the code is as the Decision assumes (an order, a type, what a page draws). A premise you can't confirm makes the ticket a decision ticket, with the doubt as its seam. Reviewer output and your memory are claims, not facts.
 2. **Body**: a self-contained spec. Include `## Problem` (each finding, quoted with `file:line`), `## Decisions`, `## Seams to decide` (`None`, or the open seam), `## Acceptance criteria`, and `## Labels` (one line per label, with its reason). Each acceptance criterion names a test or command that would fail without the change; a criterion that a check rejects something names a test that feeds it the bad input. A Decision that states a rule across the codebase ("no test mutates X") lists every site in `## Problem` and carries the grep that proves it as an acceptance criterion.
 3. **Labels**:
    - `category:`: inherited from the parent.
@@ -69,6 +71,7 @@ Create each picked ticket by `ticket-labels.md` "Creating a ticket":
    - `flow:`: as drafted.
    - `agent:`: as drafted, by the `triage-labels.md` table. When the label leans on an earlier commit's pattern, name that commit in the body.
 4. **Link**: make it a sub-issue of the parent, and wire any blocking edges in a second pass, once every new ticket has its number.
+5. **Check**: run `mise run labels-check` and fix every issue it reports on the parent or its children.
 
 Then comment on the parent: `Reviewed through <HEAD>` (the marker step 1 reads next time), the commit range, and each new ticket with its findings and why. If the parent carries `state:needs-review` and your human chose to close it, close it by `ticket-labels.md` "You approve a `state:needs-review` ticket".
 
@@ -77,4 +80,4 @@ Then comment on the parent: `Reviewed through <HEAD>` (the marker step 1 reads n
 - The report from step 3.
 - **Created**: each new ticket by name, with its labels.
 - **Left as is**: each finding not ticketed.
-- **Parent**: closed or left open, and the next step: `/implement-parent <parent>` runs the new children.
+- **Parent**: closed or left open, and the next step: `/wayfinder <parent>` for each decision ticket, then `/implement-parent <parent>` runs the build slices.

@@ -1,13 +1,13 @@
 ---
 name: viper-review
-description: Review the code, recent or whole, against the VIPER architecture for five changes that make it more VIPER, deeper and simpler; rate them in a temp HTML report, recommend the top one, then turn your human's picks into grilling and implementation children of a parent ticket.
+description: Review the code, recent or whole, against the VIPER architecture for five changes that make it more VIPER, deeper and simpler; rate them in a temp HTML report, recommend the top one, then chart your human's picks as a Wayfinder map of decision tickets and build slices.
 argument-hint: "[<parent issue number>] [recent | all | <crate or path>]"
 disable-model-invocation: true
 ---
 
 # VIPER review
 
-Find the five changes that would most move the code toward the VIPER architecture, rate them, and recommend one. This skill is **read-only on code**: it never edits, commits or stashes. Its writes are a report in the temp directory and, only after your human picks, tickets on the tracker. The changes happen later, as ordinary children, through `/implement-parent`.
+Find the five changes that would most move the code toward the VIPER architecture, rate them, and recommend one. This skill is **read-only on code**: it never edits, commits or stashes. Its writes are a report in the temp directory and, only after your human picks, a **map** on the tracker: a parent labelled `wayfinder:map` whose Notes carry execution, so its fog is worked through `/wayfinder` and its build slices through `/implement-parent`.
 
 A **candidate** is one proposed change: what is wrong, where (`file:line`), what it becomes, and its **fog**, the decisions it still needs before it can be specified. A candidate with no fog is ready to build; fog is what a grilling session clears.
 
@@ -17,7 +17,7 @@ The sources this skill reads, each in one place:
 - The decisions a candidate must not re-litigate: the ADRs in `docs/adr/`, chiefly 0047, 0048, 0055, 0056 and 0062, and any ADR naming VIPER, a port, a Presenter or an Interactor.
 - The domain names a candidate uses: `GLOSSARY.md`.
 - The architecture vocabulary (**module**, **interface**, **depth**, **seam**, **adapter**, **leverage**, **locality**, the deletion test): the `codebase-design` skill.
-- Creating a ticket, its labels and its `## Labels` section: `docs/agents/ticket-labels.md` ("When labels change"); the `agent:` label: `docs/agents/triage-labels.md`; titles, sub-issues and dependencies: `docs/agents/issue-tracker.md`; what a self-contained body holds: `CLAUDE.md` "Tickets and model choice".
+- Creating a ticket, its labels and its `## Labels` section: `docs/agents/ticket-labels.md` ("When labels change"); a map's children's `wayfinder:` and `flow:` labels: `docs/agents/flow-labels.md` ("A map's children"); the `agent:` label: `docs/agents/triage-labels.md`; titles, sub-issues, dependencies and the map's body: `docs/agents/issue-tracker.md` ("Wayfinding operations"); what a self-contained body holds: `CLAUDE.md` "Tickets and model choice".
 
 ## 1. Scope
 
@@ -60,30 +60,42 @@ Then give the ranked table and the top recommendation in your reply too, so the 
 
 ## 5. Ask
 
-Draft the **proposed tickets** for each candidate, splitting it along its fog:
+Draft the **proposed tickets** for each candidate, splitting it along its fog, labelled by `flow-labels.md` "A map's children":
 
-- Each part every decision covers becomes a `flow:implementation` child, with its `agent:` label by the `triage-labels.md` table.
-- Each fog becomes a `flow:grilling` child holding the open questions (no `agent:` label). It **blocks** the implementation children that wait on it, and its acceptance criterion is that the grilling session records the decisions and writes the remaining implementation children under the same parent (`/grill-with-docs`, then `/to-tickets`).
-- A candidate that is all fog is one grilling child.
+- Each part every decision covers becomes a **build slice**: `wayfinder:task`, `flow:implementation`, its `agent:` label by the `triage-labels.md` table.
+- Each fog becomes a **decision ticket**: `wayfinder:grilling`, `flow:wayfinding`, holding the open questions. It **blocks** the build slices that wait on it, and its acceptance criterion is that the grilling session records the decisions and writes the remaining build slices as children of the same map (`/wayfinder <map>`, then `/to-tickets`).
+- A candidate that is all fog is one decision ticket.
 
-Use AskUserQuestion with `multiSelect`: "Which candidates should become children of #<parent>?", one option per candidate, its label the candidate's title and its description its score and the tickets it would create (how many grilling, how many implementation). With no parent, a second, single-select question asks whether to create one (`CORE: VIPER review <date>`, `category:architecture`, `flow:grilling`) or stop with the report.
+Use AskUserQuestion with `multiSelect`: "Which candidates should go on the map?", one option per candidate, its label the candidate's title and its description its score and the tickets it would create (how many decision tickets, how many build slices). With no parent, a second, single-select question asks whether to create the map (`CORE: VIPER review <date>`) or stop with the report.
 
 ## 6. Create
 
-Create each picked candidate's tickets by `ticket-labels.md` "Creating a ticket":
+First the **map**, by `issue-tracker.md` "Wayfinding operations": the parent, labelled `wayfinder:map`, `flow:wayfinding`, `category:architecture` and `priority:99-backlog` (a map takes no rank of its own). Its body:
+
+- **Destination**: every picked candidate has landed, each named in one line.
+- **Notes**: "This map carries execution: build slices are `wayfinder:task` + `flow:implementation` children, picked up with `/implement-parent`", the rules a session reads (`docs/development/viper-architecture.md`, `GLOSSARY.md`), and every candidate with its score and badge.
+- **Decisions so far**: empty.
+- **Not yet specified**: fog the report hints at that you can't yet phrase as a question, or empty.
+- **Out of scope**: each candidate your human passed on, its score, and why it sits past the Destination.
+- **Labels**: one line per label, with its reason.
+
+An existing parent becomes the map: rewrite its body into these sections (its old summary moves under Notes), swap its `flow:` for `flow:wayfinding` and add `wayfinder:map`, commenting why. A parent that is already a map grows instead: append the new candidates to its Destination and Notes and the passed ones to Out of scope.
+
+Then each picked candidate's tickets, by `ticket-labels.md` "Creating a ticket":
 
 1. **Body**: a self-contained spec. `## Problem` (each finding with `file:line`), `## Decisions`, `## Seams to decide` (`None`, or the fog), `## Acceptance criteria` (each naming a test or command that fails without the change; a rule across the codebase carries the grep that proves it), and `## Labels` (one line per label, with its reason).
 2. **Labels**: `category:` inherited from the parent; `priority:` from the candidate's rank and the `ticket-labels.md` Ranking (only the top candidate may claim `priority:10-now`, and only within the Now cap); `flow:` and `agent:` as drafted.
-3. **Link**: make each a sub-issue of the parent, then, once every ticket has its number, wire each grilling child as a blocker of the implementation children waiting on it.
+3. **Link**: make each a sub-issue of the map, then, once every ticket has its number, wire each decision ticket as a blocker of the build slices waiting on it.
+4. **Check**: run `mise run labels-check` and fix every issue it reports on the map or its children.
 
-Then comment on the parent: `VIPER-reviewed through <HEAD>` (the marker step 1 reads next time), the scope, the report's top recommendation, and each new ticket with its candidate.
+Then comment on the map: `VIPER-reviewed through <HEAD>` (the marker step 1 reads next time), the scope, the report's top recommendation, and each new ticket with its candidate.
 
 ## 7. Final message
 
 - The ranked table and the top recommendation.
-- **Created**: each ticket by number and title, with its `flow:`, `priority:` and `agent:` labels, grouped by candidate.
-- **Not ticketed**: each candidate your human passed on.
-- **Next**: run `/grilling` (or `/grill-with-docs`) on each grilling child to clear the fog; once the parent's children are all `flow:implementation`, `/implement-parent <parent>` builds them.
+- **Created**: the map, then each ticket by title (its link inside), with its `wayfinder:`, `flow:`, `priority:` and `agent:` labels, grouped by candidate.
+- **Out of scope**: each candidate your human passed on.
+- **Next**: `/wayfinder <map>` works each decision ticket, one per session; once none is open, `/implement-parent <map>` builds the slices.
 
 ## Rating
 
@@ -91,6 +103,6 @@ Score each candidate out of 10 as the sum of three axes, each with one line of e
 
 - **VIPER gain (0–4)**: how far it moves code toward the rules. 4 breaks a rule a check would enforce (a dependency, I/O in a feature crate, a Presenter writing); 2 moves logic to the layer the rules name; 0 is cosmetic.
 - **Compounding (0–4)**: by `ticket-labels.md` Ranking. 4 is a shared foundation (`lib-viper`, `lib-shell`, `lib-database`'s ports, `lib-core`) other tickets will copy or build on, or a pattern half the modules already repeat; 0 is a leaf only it touches.
-- **Certainty (0–2)**: 2 with no fog, 1 with fog a grilling session can clear, 0 if it needs a Wayfinder map.
+- **Certainty (0–2)**: 2 with no fog, 1 with fog one decision ticket can clear, 0 if its fog needs several decision tickets or a map of its own.
 
 The badge follows the score: **Strong** at 8 or more, **Worth exploring** at 5–7, **Speculative** below 5. Ties go to the smaller change.
