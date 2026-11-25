@@ -29,7 +29,7 @@ pub mod summary;
 
 pub use crate::device::{ChangeLog, DeviceFile, DevicePorts, snapshot};
 pub use crate::error::{Error, Result};
-pub use crate::interactor::{RemoveSetting, RestoreSetting, WriteSetting};
+pub use crate::interactor::{RemoveApiKeys, RemoveSetting, RestoreSetting, WriteSetting};
 pub use crate::log::{LogLevel, LogLine, TracingLevel};
 pub use crate::page::{ScopeFacts, ScopeGroup, SettingsPage};
 pub use crate::presenter::{

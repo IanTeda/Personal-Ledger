@@ -240,7 +240,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_all_api_keys_asks_through_its_dialog_and_deletes_nothing_itself() {
+    fn removing_every_api_key_asks_through_its_dialog_and_deletes_nothing_itself() {
         let keys = Rc::new(InMemoryApiKeys::new(Some("3F9A-21C0"), 2));
         let mut presenter = DataBackupPresenter::new(
             DataBackupSetup { keys: keys.clone() },

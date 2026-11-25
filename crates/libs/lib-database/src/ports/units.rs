@@ -192,7 +192,7 @@ impl lib_settings::ApiKeys for StoredPriceSourceKeys {
             .iter()
             .map(|row| row.source())
             .collect();
-        tracing::info!(keys = sources.len(), "Removing every Price Source API key");
+        tracing::debug!(keys = sources.len(), "Removing every Price Source API key");
         let mut rows = self.rows.borrow_mut();
         for source in sources {
             rows.delete(source);

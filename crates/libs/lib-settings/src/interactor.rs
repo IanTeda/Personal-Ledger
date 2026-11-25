@@ -6,10 +6,12 @@
 //! [`Error::WriteFailed`]. A refusal is an answer for the person, never a failure for the
 //! caller (ADR-0046).
 
+mod remove_api_keys;
 mod remove_setting;
 mod restore_setting;
 mod write_setting;
 
+pub use remove_api_keys::RemoveApiKeys;
 pub use remove_setting::RemoveSetting;
 pub use restore_setting::RestoreSetting;
 pub use write_setting::WriteSetting;

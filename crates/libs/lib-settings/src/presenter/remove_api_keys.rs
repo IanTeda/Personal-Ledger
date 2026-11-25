@@ -11,6 +11,7 @@ use lib_viper::keymap::{BACK, SELECT};
 use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::Hint;
 
+use crate::interactor::RemoveApiKeys;
 use crate::msg;
 use crate::protocols::ApiKeys;
 
@@ -56,7 +57,7 @@ impl RemoveApiKeysPresenter {
 
     /// Deletes every key, says so and closes. Nothing can refuse it.
     fn remove(&mut self, router: &mut dyn DialogRouter<RemoveApiKeysOutcome>) {
-        self.keys.remove_all();
+        RemoveApiKeys.run(&*self.keys);
         router.notify(Notice::Toast(
             ToastKind::Info,
             msg::settings_backup_remove_keys_toast(),
