@@ -11,7 +11,6 @@ pub struct SetLedgerOwner {
 
 impl SetLedgerOwner {
     /// The Owner is personal, so the log says only whether it was set or cleared.
-    #[tracing::instrument(skip_all)]
     pub fn run(self, preferences: &dyn LedgerPreferences) {
         let cleared = self.owner.is_none();
         preferences.set_owner(self.owner);

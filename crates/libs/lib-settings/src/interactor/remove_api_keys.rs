@@ -6,7 +6,6 @@ use crate::protocols::ApiKeys;
 pub struct RemoveApiKeys;
 
 impl RemoveApiKeys {
-    #[tracing::instrument(skip_all)]
     pub fn run(self, keys: &dyn ApiKeys) {
         keys.remove_all();
         tracing::info!("Removed every Price Source API key");

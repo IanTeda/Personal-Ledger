@@ -11,13 +11,15 @@ pub struct ChooseBaseUnit {
 }
 
 impl ChooseBaseUnit {
-    #[tracing::instrument(skip_all, fields(unit = ?self.id))]
     pub fn run(self, preferences: &dyn LedgerPreferences) -> Result<()> {
-        let result = preferences.set_base_unit(self.id);
-        if result.is_ok() {
-            tracing::info!("Chose the Ledger's base Unit");
+        let outcome = preferences.set_base_unit(self.id);
+        match &outcome {
+            Ok(()) => tracing::info!(unit_id = %self.id, "Chose the Ledger's base Unit"),
+            Err(refusal) => {
+                tracing::info!(unit_id = %self.id, %refusal, "Refused to choose the Ledger's base Unit");
+            }
         }
-        result
+        outcome
     }
 }
 

@@ -11,7 +11,6 @@ pub struct RenameLedger {
 
 impl RenameLedger {
     /// The name is user-entered text, so the log says only that it changed.
-    #[tracing::instrument(skip_all)]
     pub fn run(self, preferences: &dyn LedgerPreferences) {
         preferences.set_name(self.name);
         tracing::info!("Renamed the Ledger");

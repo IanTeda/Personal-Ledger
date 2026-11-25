@@ -10,7 +10,6 @@ pub struct SetFinancialYearStart {
 }
 
 impl SetFinancialYearStart {
-    #[tracing::instrument(skip_all)]
     pub fn run(self, preferences: &dyn LedgerPreferences) {
         preferences.set_financial_year_start(self.start);
         tracing::info!(
