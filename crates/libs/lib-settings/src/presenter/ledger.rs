@@ -1,6 +1,7 @@
 //! Settings › Ledger's Presenter: the Ledger name and Owner edited in place, and the Financial year
 //! starts and Base unit selects, the Ledger's own Preferences (ADR-0061), read through
-//! [`LedgerReads`] and written through [`LedgerPreferences`], so it holds no copy of them and a
+//! [`LedgerReads`] and written through [`LedgerPreferences`] by the Interactors ([`RenameLedger`],
+//! [`SetLedgerOwner`], [`SetFinancialYearStart`]), so it holds no copy of them and a
 //! change made anywhere (an Undo among them) shows at once. The THIS LEDGER summary counts through
 //! [`LedgerSummaries`] on every view model, caching nothing.
 //!
@@ -24,6 +25,7 @@ use lib_viper::view::{Choice, Hint, SelectView, TextFieldView};
 
 use lib_locale::format::format_count;
 
+use crate::interactor::{RenameLedger, SetFinancialYearStart, SetLedgerOwner};
 use crate::msg;
 use crate::protocols::{
     BaseUnitAnswer, LedgerPreferences, LedgerReads, LedgerRouter, LedgerSummaries,
@@ -308,7 +310,7 @@ impl LedgerPresenter {
                 Ok(name) => {
                     if name != self.units.ledger_name() {
                         let changed = changed(&msg::settings_ledger_name(), name.as_str());
-                        self.preferences.set_name(name);
+                        RenameLedger { name }.run(self.preferences.as_ref());
                         router.notify(Notice::Changed(changed));
                     }
                 }
@@ -334,7 +336,7 @@ impl LedgerPresenter {
                         Some(owner) => changed(&msg::settings_ledger_owner(), owner.as_str()),
                         None => msg::settings_ledger_owner_cleared(),
                     };
-                    self.preferences.set_owner(owner);
+                    SetLedgerOwner { owner }.run(self.preferences.as_ref());
                     router.notify(Notice::Changed(changed));
                 }
             }
@@ -368,7 +370,7 @@ impl LedgerPresenter {
         if self.units.ledger_financial_year_start() == start {
             return;
         }
-        self.preferences.set_financial_year_start(start);
+        SetFinancialYearStart { start }.run(self.preferences.as_ref());
         router.notify(Notice::Changed(changed(
             &msg::settings_ledger_financial_year(),
             &lib_locale::format::format_month_name(start.month()),

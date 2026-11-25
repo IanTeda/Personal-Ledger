@@ -5,15 +5,25 @@
 //! write refuses it, then the write itself, whose failure becomes
 //! [`Error::WriteFailed`]. A refusal is an answer for the person, never a failure for the
 //! caller (ADR-0046).
+//!
+//! The This Ledger Interactors ([`RenameLedger`], [`SetLedgerOwner`], [`SetFinancialYearStart`])
+//! take the [`LedgerPreferences`](crate::protocols::LedgerPreferences) port instead. Their value
+//! types have already checked the value, so nothing refuses them (ADR-0061).
 
 mod remove_api_keys;
 mod remove_setting;
+mod rename_ledger;
 mod restore_setting;
+mod set_financial_year_start;
+mod set_ledger_owner;
 mod write_setting;
 
 pub use remove_api_keys::RemoveApiKeys;
 pub use remove_setting::RemoveSetting;
+pub use rename_ledger::RenameLedger;
 pub use restore_setting::RestoreSetting;
+pub use set_financial_year_start::SetFinancialYearStart;
+pub use set_ledger_owner::SetLedgerOwner;
 pub use write_setting::WriteSetting;
 
 use lib_core::configuration::ConfigKey;
