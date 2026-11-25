@@ -12,7 +12,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Utc};
 use lib_core::{PriceSourceId, UnitId};
 
 mod backfill;
@@ -53,7 +53,7 @@ pub(crate) use price_tests::{
 pub use reading::RETRY_AFTER_DEFAULT;
 use reading::round_failure;
 pub(crate) use reading::{Reading, read, retry_after_wait};
-pub(crate) use request::{Wanted, fill, is_due, key_missing, price_request, request, round_calls};
+pub(crate) use request::{Wanted, fill, key_missing, price_request, request, round_calls};
 use rounds::Landed;
 use rounds::Rounds;
 pub(crate) use rounds::{InFlight, RoundId, UnitCall};
@@ -419,25 +419,6 @@ impl PriceFetching {
         self.fine.state(key, link, now, queued, hold)
     }
 
-    /// Whether `unit` on `source` is due a scheduled fetch on `today` at `now`: the source fetches,
-    /// has no round or finer prices request in flight and isn't backing off, the Unit isn't
-    /// backing off, and it was fetched on another link than it has now or is due by its source's
-    /// Updates.
-    pub(crate) fn due(
-        &self,
-        unit: &UnitRow,
-        source: &PriceSource<'_>,
-        today: NaiveDate,
-        now: DateTime<Utc>,
-    ) -> bool {
-        source.endpoint().is_some()
-            && !self.source_in_flight(source.id)
-            && !self.fine_in_flight(source.id)
-            && !self.source_backing_off(source, now)
-            && !self.unit_backing_off(unit, source, now)
-            && (self.relinked(unit) || is_due(unit, source.updates, today, now))
-    }
-
     /// Whether `source` failed a round, or a history request found it offline or rate limited,
     /// and is still backing off at `now`.
     pub(crate) fn source_backing_off(&self, source: &PriceSource<'_>, now: DateTime<Utc>) -> bool {
@@ -564,6 +545,8 @@ impl PriceFetching {
 
 #[cfg(test)]
 mod tests {
+    use chrono::NaiveDate;
+
     use super::*;
     use crate::FRANKFURTER;
 

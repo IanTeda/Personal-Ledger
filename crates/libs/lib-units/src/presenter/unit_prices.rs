@@ -1035,7 +1035,6 @@ mod tests {
 
         use super::*;
         use crate::fake::LedgerPricesFixture;
-        use crate::interactor::FetchDue;
         use crate::protocols::UnitsPorts as _;
         use crate::{
             COINGECKO, FRANKFURTER, Precision, PriceLink, TransportError, TransportOutcome,
@@ -1496,10 +1495,11 @@ mod tests {
             btc.later(Duration::hours(1));
             let today = btc.today();
             let now = btc.prices.now();
-            let started = FetchDue { today, now }.run(
-                &*btc.prices.ports().borrow(),
-                &mut btc.prices.fetching().borrow_mut(),
-            );
+            let started =
+                btc.prices
+                    .fetching()
+                    .borrow_mut()
+                    .check(&*btc.prices.ports().borrow(), today, now);
             assert_eq!(started, [COINGECKO]);
             let round = btc.sent();
 
@@ -1514,13 +1514,10 @@ mod tests {
             assert!(btc.last_url().contains("market_chart"));
 
             btc.later(Duration::hours(2));
-            let started = FetchDue {
-                today,
-                now: btc.prices.now(),
-            }
-            .run(
+            let started = btc.prices.fetching().borrow_mut().check(
                 &*btc.prices.ports().borrow(),
-                &mut btc.prices.fetching().borrow_mut(),
+                today,
+                btc.prices.now(),
             );
             assert!(started.is_empty(), "the daily request counts as in flight");
         }

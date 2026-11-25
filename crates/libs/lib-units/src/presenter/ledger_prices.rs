@@ -30,7 +30,7 @@ use crate::fetching::{
     BackfillUnits, FetchedPrice, Landing, PriceFetching, PriceResponse, PriceTransport,
     RoundOutcome, SharedFetching,
 };
-use crate::interactor::{FetchDue, RecordFetchedPrices, RecordPriceHistory};
+use crate::interactor::{RecordFetchedPrices, RecordPriceHistory};
 use crate::msg;
 use crate::protocols::{SharedPorts, UnitRepository};
 
@@ -130,8 +130,7 @@ impl LedgerPrices {
         let today = local_day(now);
         let ports = self.ports.borrow();
         let mut fetching = self.fetching.borrow_mut();
-        FetchDue { today, now }.run(&*ports, &mut fetching);
-        fetching.backfill(BackfillUnits::Due, &*ports, today, now);
+        fetching.check(&*ports, today, now);
     }
 
     /// The backfill on Ledger open (app start, `:open`, `:new`): asks every Unit's source for the

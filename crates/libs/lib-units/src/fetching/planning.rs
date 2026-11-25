@@ -1,16 +1,19 @@
-//! Planning a backfill (ADR-0043's backfill amendment): which Units want history, which of their
-//! past weeks, and the request asking for them, queued oldest gap first. A method on
-//! [`PriceFetching`] since it spans the call queue, the last fetches and the history requests.
+//! Planning what fetching sends without being asked: the scheduled check (which Units are due a
+//! price, one round per source, and the retry of due history) and a backfill (ADR-0043's backfill
+//! amendment: which Units want history, which of their past weeks, and the request asking for
+//! them, queued oldest gap first). Methods on [`PriceFetching`] since they span the call queue,
+//! the last fetches and the history requests.
 
 use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
-use lib_core::UnitId;
+use lib_core::{PriceSourceId, UnitId};
 
 use super::history::{floor, gaps, history_request, wanted_weeks};
-use super::{FetchFailure, HistoryCall, PriceFetching, SourceSettings, key_missing};
+use super::request::is_due;
+use super::{FetchFailure, HistoryCall, PriceFetching, SourceSettings, Wanted, key_missing};
 use crate::protocols::UnitsPorts;
-use crate::{UnitRow, Updates, WeeklyPrice, units_by_code};
+use crate::{Error, PriceSource, UnitRow, Updates, WeeklyPrice, units_by_code};
 
 /// Which Units a backfill asks history for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +25,111 @@ pub(crate) enum BackfillUnits {
     /// The Units whose history request failed and is due again, while last week is still empty;
     /// older gaps wait for the next open.
     Due,
+}
+
+impl PriceFetching {
+    /// The scheduled check (ADR-0043's "where and when fetching runs"): fetch every due Unit, one
+    /// round per source, then try a failed history request again once its wait is over. Run on
+    /// Ledger open and every minute after. Only sends: each round is written in one commit when
+    /// its last response comes back, through [`crate::interactor::RecordFetchedPrices`], and tells
+    /// no one.
+    ///
+    /// Never fetches a Unit on Manual entry or on a Manual only source, a deactivated Unit or the
+    /// base Unit, and leaves a source with a round already in flight alone, as it does a source or
+    /// Unit still backing off a failure and a source the Unit prices view is asking for finer
+    /// prices. A Unit this Client fetched on another link is due at once. A source needing a key
+    /// this Client doesn't have fails its round Key missing without sending. A source with a batch
+    /// request asks for its due Units in batches; every call waits its turn behind the calls a
+    /// person asked for. Returns the sources a round was started on, in the order the Units list
+    /// by code; a history retry adds nothing to it.
+    pub(crate) fn check(
+        &mut self,
+        ports: &dyn UnitsPorts,
+        today: NaiveDate,
+        now: DateTime<Utc>,
+    ) -> Vec<PriceSourceId> {
+        let rounds = self.due_rounds(ports, today, now);
+        let mut started = Vec::with_capacity(rounds.len());
+        let catalogue = ports.source_catalogue();
+        for (source, wanted) in rounds {
+            let Some(listed) = catalogue.source(source) else {
+                continue;
+            };
+            let key = ports.keys().key(source);
+            match self.start_round(&listed, &wanted, key.as_ref(), false, now) {
+                Ok(calls) => {
+                    tracing::info!(
+                        price_source_id = %source,
+                        units = wanted.len(),
+                        calls = calls.len(),
+                        "Fetching due Units' prices"
+                    );
+                    started.push(source);
+                }
+                Err(Error::KeyMissing) => {
+                    tracing::warn!(price_source_id = %source, "A price source needs an API key this Client doesn't have");
+                }
+                Err(_) => {}
+            }
+        }
+        if started.is_empty() {
+            tracing::debug!("No Unit's price is due");
+        }
+        self.backfill(BackfillUnits::Due, ports, today, now);
+        started
+    }
+
+    /// Every due Unit, grouped by source.
+    fn due_rounds(
+        &self,
+        ports: &dyn UnitsPorts,
+        today: NaiveDate,
+        now: DateTime<Utc>,
+    ) -> Vec<(PriceSourceId, Vec<Wanted>)> {
+        let base = ports.base_unit().base_unit();
+        let catalogue = ports.source_catalogue();
+        let units = ports.units().units();
+        let mut rounds: Vec<(PriceSourceId, Vec<Wanted>)> = Vec::new();
+        for unit in units_by_code(&units) {
+            let Some(source) = catalogue.source(unit.link.source_id) else {
+                continue;
+            };
+            if !self.due(unit, &source, base, today, now) {
+                continue;
+            }
+            let Some(wanted) = Wanted::of(unit, &units) else {
+                tracing::warn!(unit_id = %unit.id, "Skipped a due Unit whose quote Unit is gone");
+                continue;
+            };
+            match rounds.iter_mut().find(|(id, _)| *id == source.id) {
+                Some((_, due)) => due.push(wanted),
+                None => rounds.push((source.id, vec![wanted])),
+            }
+        }
+        rounds
+    }
+
+    /// Whether `unit` on `source` is due a scheduled fetch on `today` at `now`: it isn't
+    /// deactivated or the `base` Unit, the source fetches, has no round or finer prices request
+    /// in flight and isn't backing off, the Unit isn't backing off, and it was fetched on another
+    /// link than it has now or is due by its source's Updates.
+    fn due(
+        &self,
+        unit: &UnitRow,
+        source: &PriceSource<'_>,
+        base: UnitId,
+        today: NaiveDate,
+        now: DateTime<Utc>,
+    ) -> bool {
+        unit.is_active
+            && unit.id != base
+            && source.endpoint().is_some()
+            && !self.source_in_flight(source.id)
+            && !self.fine_in_flight(source.id)
+            && !self.source_backing_off(source, now)
+            && !self.unit_backing_off(unit, source, now)
+            && (self.relinked(unit) || is_due(unit, source.updates, today, now))
+    }
 }
 
 impl PriceFetching {
@@ -180,7 +288,7 @@ mod tests {
         NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
     }
 
-    fn on(source: lib_core::PriceSourceId, code: &str, symbol: &str) -> UnitRow {
+    fn on(source: PriceSourceId, code: &str, symbol: &str) -> UnitRow {
         let mut unit = currency(code);
         unit.link.source_id = source;
         unit.link.symbol = symbol.into();
@@ -212,7 +320,7 @@ mod tests {
     fn custom_source(
         ledger: &LedgerPricesFixture,
         history: Option<crate::HistoryEndpoint>,
-    ) -> lib_core::PriceSourceId {
+    ) -> PriceSourceId {
         crate::add_custom_source(
             &mut ledger.ports().borrow_mut().price_sources.records,
             "Rates".into(),
@@ -500,5 +608,199 @@ mod tests {
         let (usd, _) = ledger.transport().requests()[0].clone();
         ledger.land(ledger.transport().answer(usd, rates()));
         assert!(ledger.urls()[2].contains("base=EUR"), "then eur's");
+    }
+
+    /// The scheduled check, over the facade.
+    mod check {
+        use std::rc::Rc;
+
+        use chrono::Duration;
+        use lib_core::{PriceSourceId, UnitId};
+
+        use super::*;
+        use crate::fake::{FakeTransport, InMemoryPorts};
+        use crate::fetching::Landing;
+        use crate::{FRANKFURTER, MANUAL_ENTRY, Precision};
+
+        fn today() -> NaiveDate {
+            day(2026, 10, 21)
+        }
+
+        fn unit(code: &str, kind: UnitKind, source_id: PriceSourceId, symbol: &str) -> UnitRow {
+            UnitRow::new(
+                code.into(),
+                code.into(),
+                kind,
+                Precision::of_kind(kind),
+                PriceLink {
+                    source_id,
+                    symbol: symbol.into(),
+                    quote: UnitId::SEED_AUD,
+                },
+            )
+        }
+
+        struct Check {
+            ports: InMemoryPorts,
+            transport: FakeTransport,
+            fetching: PriceFetching,
+        }
+
+        /// The sample, its btc priced five minutes before [`now`], with `units` added.
+        fn on(units: Vec<UnitRow>) -> Check {
+            let mut ports = InMemoryPorts::sample(now());
+            ports.units.units.extend(units);
+            let transport = FakeTransport::default();
+            let fetching = PriceFetching::new(Rc::new(transport.clone()));
+            Check {
+                ports,
+                transport,
+                fetching,
+            }
+        }
+
+        impl Check {
+            fn run(&mut self) -> Vec<PriceSourceId> {
+                self.fetching.check(&self.ports, today(), now())
+            }
+        }
+
+        #[test]
+        fn every_due_unit_is_fetched_one_round_per_source() {
+            let mut check = on(vec![
+                unit("USD", UnitKind::Currency, FRANKFURTER, "USD"),
+                unit("ETH", UnitKind::Crypto, COINGECKO, "ethereum"),
+                unit("EUR", UnitKind::Currency, FRANKFURTER, "EUR"),
+            ]);
+
+            let started = check.run();
+
+            assert_eq!(started, [COINGECKO, FRANKFURTER]);
+            assert_eq!(
+                check.transport.urls(),
+                [
+                    "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=aud",
+                    "https://api.frankfurter.dev/v2/rate/EUR/AUD",
+                    "https://api.frankfurter.dev/v2/rate/USD/AUD",
+                ],
+                "btc, priced five minutes ago on a 15-minute source, isn't due"
+            );
+            assert_eq!(check.fetching.in_flight(), 3);
+        }
+
+        #[test]
+        fn coingeckos_due_units_go_out_in_one_batch() {
+            let mut check = on(vec![
+                unit("SOL", UnitKind::Crypto, COINGECKO, "solana"),
+                unit("ETH", UnitKind::Crypto, COINGECKO, "ethereum"),
+            ]);
+
+            assert_eq!(check.run(), [COINGECKO]);
+
+            assert_eq!(
+                check.transport.urls(),
+                [
+                    "https://api.coingecko.com/api/v3/simple/price?ids=ethereum,solana&vs_currencies=aud"
+                ],
+                "btc, priced five minutes ago, isn't due"
+            );
+            assert_eq!(check.fetching.in_flight(), 1);
+            assert!(check.fetching.fetching(check.ports.units.units[3].id));
+        }
+
+        #[test]
+        fn a_round_queued_behind_the_call_rate_is_in_flight_so_the_next_check_skips_it() {
+            let mut check = on(vec![unit("ETH", UnitKind::Crypto, COINGECKO, "ethereum")]);
+            let btc = FetchNow {
+                id: UnitId::SEED_BTC,
+            };
+            // CoinGecko keyless takes 5 calls a minute: five asked-for fetches fill the window.
+            for _ in 0..5 {
+                btc.run(&check.ports, &mut check.fetching, now())
+                    .expect("sent");
+                let answer = check.transport.answer_last(200, r#"{"bitcoin":{"aud":1}}"#);
+                let landing = check
+                    .fetching
+                    .land(answer, now(), today(), &Utc, &check.ports);
+                let Landing::Prices { prices, .. } = landing else {
+                    panic!("a round of one lands its price");
+                };
+                crate::interactor::RecordFetchedPrices {
+                    prices,
+                    today: today(),
+                    at: now(),
+                }
+                .run(&mut check.ports.units);
+            }
+
+            assert_eq!(check.run(), [COINGECKO], "eth's round starts, queued");
+            assert_eq!(check.transport.urls().len(), 5, "and nothing more goes out");
+
+            assert!(check.run().is_empty(), "the queued round is in flight");
+            assert_eq!(check.transport.urls().len(), 5);
+        }
+
+        #[test]
+        fn a_source_with_a_round_in_flight_is_skipped_and_the_others_still_fetch() {
+            let mut check = on(vec![unit("EUR", UnitKind::Currency, FRANKFURTER, "EUR")]);
+            check.run();
+            check
+                .ports
+                .units
+                .units
+                .push(unit("ETH", UnitKind::Crypto, COINGECKO, "ethereum"));
+
+            let started = check.run();
+
+            assert_eq!(started, [COINGECKO]);
+            assert_eq!(check.transport.urls().len(), 2, "eur's round is still out");
+        }
+
+        #[test]
+        fn a_unit_on_a_fresh_price_is_left_until_its_interval_passes() {
+            let mut eur = unit("EUR", UnitKind::Currency, FRANKFURTER, "EUR");
+            eur.record_price(
+                "1.65".parse().expect("a decimal"),
+                today(),
+                now() - Duration::hours(23),
+            );
+            let mut check = on(vec![eur]);
+
+            assert!(check.run().is_empty());
+            assert!(check.transport.requests().is_empty());
+        }
+
+        #[test]
+        fn manual_entry_deactivated_manual_only_and_base_units_are_never_fetched() {
+            let mut inactive = unit("EUR", UnitKind::Currency, FRANKFURTER, "EUR");
+            inactive.is_active = false;
+            let mut check = on(vec![
+                inactive,
+                unit("GOLD", UnitKind::Commodity, MANUAL_ENTRY, ""),
+                unit("ETH", UnitKind::Crypto, COINGECKO, "ethereum"),
+            ]);
+            check
+                .ports
+                .price_sources
+                .records
+                .push(PriceSourceRecord::BuiltIn(BuiltInOverride {
+                    id: COINGECKO,
+                    name: "CoinGecko".into(),
+                    updates: Updates::ManualOnly,
+                }));
+            // The base, aud, linked to a fetching source it can't price itself on.
+            let base = check
+                .ports
+                .units
+                .units
+                .iter_mut()
+                .find(|unit| unit.id == UnitId::SEED_AUD)
+                .expect("aud");
+            base.link.source_id = FRANKFURTER;
+            base.link.symbol = "AUD".into();
+
+            assert!(check.run().is_empty());
+            assert!(check.transport.requests().is_empty());
+        }
     }
 }
