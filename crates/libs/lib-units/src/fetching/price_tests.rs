@@ -9,10 +9,67 @@ use lib_core::{Money, PriceSourceId, UnitId};
 use secrecy::{ExposeSecret as _, SecretString};
 
 use super::{
-    FetchFailure, HistoryReading, PriceResponse, Reading, RequestId, TransportOutcome, read,
-    read_history,
+    FetchFailure, HistoryReading, PriceRequest, PriceResponse, Reading, RequestId,
+    TransportOutcome, price_request, read, read_history,
 };
 use crate::{Endpoint, HistoryEndpoint};
+
+/// The facts of a Price Source test (`GLOSSARY.md`) a form or a row hands fetching, which builds
+/// the requests and the record of what is in flight from them.
+pub(crate) struct TestAsk {
+    /// The stored source, `None` for one still being added.
+    pub source: Option<PriceSourceId>,
+    pub source_name: String,
+    pub endpoint: Endpoint,
+    pub symbol: String,
+    pub quote: UnitId,
+    pub quote_code: String,
+    /// The typed key, else the stored one.
+    pub key: Option<SecretString>,
+    /// `t` on a row: it answers with one Toast.
+    pub toast: bool,
+    /// The form differs from the stored source, so its result is tagged *with unsaved changes*.
+    pub unsaved: bool,
+}
+
+impl TestAsk {
+    /// The price request and what is in flight once it is sent at `now`: the history test is the
+    /// last 14 days to the local day of `now`, only when the endpoint has a history request and
+    /// the test is a form's, not a row's Toast.
+    pub(super) fn build(self, now: DateTime<Utc>) -> (PriceRequest, TestInFlight) {
+        let today = now.with_timezone(&chrono::Local).date_naive();
+        let history = self
+            .endpoint
+            .history
+            .as_deref()
+            .filter(|_| !self.toast)
+            .map(|history| TestHistory {
+                endpoint: self.endpoint.clone(),
+                history: history.clone(),
+                range: (today - Duration::days(13), today),
+            });
+        let (request, price_path) = price_request(
+            &self.endpoint,
+            &self.symbol,
+            &self.quote_code,
+            self.key.clone(),
+        );
+        let asked = TestInFlight {
+            source: self.source,
+            source_name: self.source_name,
+            symbol: self.symbol,
+            quote: self.quote,
+            quote_code: self.quote_code,
+            price_path,
+            key: self.key,
+            sent_at: now,
+            toast: self.toast,
+            unsaved: self.unsaved,
+            history,
+        };
+        (request, asked)
+    }
+}
 
 /// What a test asked (`GLOSSARY.md`'s Price Source, test): one symbol's price, shown and never
 /// written.

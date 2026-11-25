@@ -213,7 +213,7 @@ impl PriceFetching {
         }
         if !prices.is_empty() {
             let priced = prices.iter().map(|price| price.unit).collect();
-            self.backfill(BackfillUnits::Asked(priced), ports, today, now);
+            self.plan_backfill(BackfillUnits::Asked(priced), ports, today, now);
         }
         let outcome = RoundOutcome {
             source: Some(source),
@@ -269,7 +269,7 @@ mod tests {
     use crate::fake::{
         LedgerPricesFixture, answered, currency, missing, offline, priced, rates, throttled,
     };
-    use crate::fetching::{FetchOutcome, FineKey, FineState, Grain};
+    use crate::fetching::{FetchOutcome, FineState, Grain};
     use crate::fetching::{TransportError, TransportOutcome, window};
     use crate::interactor::TestPriceSource;
     use crate::presenter::ledger_prices::write_landing;
@@ -661,17 +661,12 @@ mod tests {
 
         assert_eq!(ledger.sent(), 0, "nothing is sent without the key");
         let unit = ledger.unit("EUR");
-        let (first, _) = window(Grain::Day, ledger.now().date_naive(), 0);
-        let key = FineKey {
-            unit: unit.id,
-            grain: Grain::Day,
-            first,
-        };
+        let frame = window(Grain::Day, ledger.now().date_naive(), 0);
         assert_eq!(
             ledger
                 .fetching()
                 .borrow()
-                .fine_state(key, &unit.link, ledger.now()),
+                .fine_state(&unit, Grain::Day, frame, ledger.now()),
             FineState::Failed(FetchFailure::KeyMissing)
         );
     }

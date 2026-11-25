@@ -25,7 +25,7 @@ use lib_viper::view::Hint;
 use super::fetch_text::{Asked, failure_detail};
 use super::units_pane::{Fact, amount};
 use super::{Clock, ago};
-use crate::fetching::{FineKey, FinePrice, FineState, SharedFetching, window as fine_window};
+use crate::fetching::{FinePrice, FineState, SharedFetching, window as fine_window};
 use crate::keymap::{EARLIER, GRAIN, LATER, SET_PRICE};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
 use crate::{Grain, MANUAL_ENTRY, UnitRow, WeeklyPrice, msg};
@@ -486,15 +486,6 @@ impl UnitPricesPresenter {
         })
     }
 
-    /// The series the finer window names.
-    fn fine_key(&self) -> FineKey {
-        FineKey {
-            unit: self.unit,
-            grain: self.grain,
-            first: self.window().0,
-        }
-    }
-
     /// Asks the Unit's source for the finer window showing: fetching builds the request and
     /// fails Key missing in place without sending.
     fn ask(&self) {
@@ -556,7 +547,7 @@ impl UnitPricesPresenter {
             return (Vec::new(), Some(window_empty()));
         };
         let fetching = fetching.borrow();
-        match fetching.fine_state(self.fine_key(), &unit.link, self.now()) {
+        match fetching.fine_state(unit, self.grain, self.window(), self.now()) {
             FineState::Fetching { waiting } if waiting > 0 => (
                 Vec::new(),
                 Some(msg::units_status_fetch_waiting(&name, &waiting.to_string())),

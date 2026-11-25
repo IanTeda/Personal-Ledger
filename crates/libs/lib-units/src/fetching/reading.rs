@@ -11,7 +11,7 @@ pub const RETRY_AFTER_DEFAULT: Duration = Duration::seconds(60);
 
 /// How long a 429's raw `Retry-After` asks to wait from `now`: whole seconds, or an HTTP date.
 /// Missing, unreadable or already past, it is [`RETRY_AFTER_DEFAULT`].
-pub(crate) fn retry_after_wait(raw: Option<&str>, now: DateTime<Utc>) -> Duration {
+pub(super) fn retry_after_wait(raw: Option<&str>, now: DateTime<Utc>) -> Duration {
     let Some(raw) = raw.map(str::trim) else {
         return RETRY_AFTER_DEFAULT;
     };
@@ -26,7 +26,7 @@ pub(crate) fn retry_after_wait(raw: Option<&str>, now: DateTime<Utc>) -> Duratio
 
 /// What a response held: a price, or why not.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Reading {
+pub(super) enum Reading {
     Priced(Money),
     Failed(FetchFailure),
 }
@@ -40,7 +40,7 @@ pub(super) fn round_failure(outcome: &TransportOutcome) -> Option<FetchFailure> 
 }
 
 /// Reads `outcome` onto a price at `price_path`, or onto one of the [`FetchFailure`]s.
-pub(crate) fn read(outcome: &TransportOutcome, price_path: &str) -> Reading {
+pub(super) fn read(outcome: &TransportOutcome, price_path: &str) -> Reading {
     let failed = Reading::Failed;
     match outcome {
         TransportOutcome::Failed(TransportError::Offline | TransportError::Timeout) => {

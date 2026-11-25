@@ -76,7 +76,7 @@ struct SourceRecord {
 
 /// How long a failure on a source that updates every `updates` is left alone: its interval, never
 /// under [`MIN_BACK_OFF`].
-pub(crate) fn back_off(updates: Updates) -> Duration {
+pub(super) fn back_off(updates: Updates) -> Duration {
     updates
         .interval()
         .map_or(MIN_BACK_OFF, |interval| interval.max(MIN_BACK_OFF))

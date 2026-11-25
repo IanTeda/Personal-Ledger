@@ -74,7 +74,7 @@ pub(crate) fn window(grain: Grain, today: NaiveDate, steps: u32) -> (NaiveDate, 
 /// first. A period of several points, or of one carrying an open, high or low, is a candle,
 /// opening at its first point and closing at its last; a lone close-only point is a tick. A period
 /// with no points is absent. An hour needs a point's instant, so a bare date never makes one.
-pub(crate) fn fine_prices<Tz: TimeZone>(
+pub(super) fn fine_prices<Tz: TimeZone>(
     points: Vec<Point>,
     grain: Grain,
     (first, last): (NaiveDate, NaiveDate),

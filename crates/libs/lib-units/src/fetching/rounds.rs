@@ -11,7 +11,7 @@ use crate::PriceLink;
 /// What a request was for: every Unit it asks the price of, one, or several in a batch, and the
 /// source settings it went out on.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct InFlight {
+pub(super) struct InFlight {
     pub units: Vec<UnitCall>,
     pub settings: SourceSettings,
 }
@@ -19,7 +19,7 @@ pub(crate) struct InFlight {
 /// One Unit a request asks for: the Unit and its link as they were when it was asked, so a
 /// response for a Unit relinked since writes nothing, and the price path filled for that link.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct UnitCall {
+pub(super) struct UnitCall {
     pub unit: UnitId,
     pub link: PriceLink,
     pub price_path: String,
@@ -27,7 +27,7 @@ pub(crate) struct UnitCall {
 
 /// Names one round: the requests sent to one source together, written in one commit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct RoundId(u64);
+pub(super) struct RoundId(u64);
 
 /// One source's round in flight: the requests still out and the responses held until the last
 /// lands, so the round writes once.

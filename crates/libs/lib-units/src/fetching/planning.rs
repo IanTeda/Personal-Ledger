@@ -17,7 +17,7 @@ use crate::{Error, PriceSource, UnitRow, Updates, WeeklyPrice, units_by_code};
 
 /// Which Units a backfill asks history for.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum BackfillUnits {
+pub(super) enum BackfillUnits {
     /// Every Unit wanting history, as the Ledger opens: never one on a Manual only source.
     Every,
     /// The Units a person's fetch now just priced, a Manual only source's included.
@@ -75,7 +75,7 @@ impl PriceFetching {
         if started.is_empty() {
             tracing::debug!("No Unit's price is due");
         }
-        self.backfill(BackfillUnits::Due, ports, today, now);
+        self.plan_backfill(BackfillUnits::Due, ports, today, now);
         started
     }
 
@@ -126,13 +126,25 @@ impl PriceFetching {
             && source.endpoint().is_some()
             && !self.source_in_flight(source.id)
             && !self.fine_in_flight(source.id)
-            && !self.source_backing_off(source, now)
+            && !self.last.source_backing_off(source, now)
             && !self.unit_backing_off(unit, source, now)
             && (self.relinked(unit) || is_due(unit, source.updates, today, now))
     }
 }
 
 impl PriceFetching {
+    /// The backfill on Ledger open: asks every Unit's source for the past weeks it has no Weekly
+    /// Price for, silently. Only sends; the Units wanting history are worked out by
+    /// [`Self::plan_backfill`], which a check and a landed Fetch now use for their own Units.
+    pub(crate) fn backfill(
+        &mut self,
+        ports: &dyn UnitsPorts,
+        today: NaiveDate,
+        now: DateTime<Utc>,
+    ) {
+        self.plan_backfill(BackfillUnits::Every, ports, today, now);
+    }
+
     /// Asks each of `units`' sources for the past weeks it has no Weekly Price for: from the week
     /// holding its floor, the earliest Opened date of its Accounts or else its creation, to last
     /// week on `today`, within its source's history depth, leaving out the weeks its provider
@@ -144,7 +156,7 @@ impl PriceFetching {
     /// with the oldest gap first, each paced by the source's call rate behind the calls a person
     /// asked for. A source needing a key this Client doesn't have fails the Unit's history Key
     /// missing unsent.
-    pub(crate) fn backfill(
+    pub(super) fn plan_backfill(
         &mut self,
         units: BackfillUnits,
         ports: &dyn UnitsPorts,
@@ -308,7 +320,7 @@ mod tests {
 
     /// Backfills every Unit wanting history, returning how many Units' history was queued.
     fn backfill(ledger: &LedgerPricesFixture) -> usize {
-        ledger.fetching().borrow_mut().backfill(
+        ledger.fetching().borrow_mut().plan_backfill(
             BackfillUnits::Every,
             &*ledger.ports().borrow(),
             now().date_naive(),

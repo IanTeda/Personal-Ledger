@@ -20,7 +20,7 @@ use super::price_source_test::PriceSourceTest;
 use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
-use crate::fetching::{FetchFailure, PriceFetching, SharedFetching, is_out_of_date};
+use crate::fetching::{FetchFailure, PriceFetching, SharedFetching};
 use crate::interactor::{FetchAll, FetchNow, FetchSource, ReactivateUnit};
 use crate::keymap::{FETCH_NOW, NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE, unit_prices_keymap};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
@@ -582,7 +582,7 @@ impl UnitsPagePresenter {
         };
         let out_of_date = |unit: &UnitRow| {
             unit.link.source_id != MANUAL_ENTRY
-                && is_out_of_date(unit, source_of(unit).map(|source| source.updates), now)
+                && unit.is_out_of_date(source_of(unit).map(|source| source.updates), now)
         };
         let history = self.history_unit(&by_code, selection).map(|unit| {
             price_history(

@@ -66,7 +66,7 @@ impl FetchNow {
         // through it, as a batch of one.
         let key = ports.keys().key(source.id);
         fetching
-            .start_round(&source, &wanted, key.as_ref(), true, now)?
+            .ask_round(&source, &wanted, key.as_ref(), now)?
             .into_iter()
             .next()
             .ok_or(Error::NotFetched)

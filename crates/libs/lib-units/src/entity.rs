@@ -128,6 +128,18 @@ impl UnitRow {
         self.prices.iter().max_by_key(|price| price.week)
     }
 
+    /// Whether this Unit's last price, on a source updating every `updates`, is Out of date at
+    /// `now` (`GLOSSARY.md`): written more than twice the interval ago. Never for Manual only, a
+    /// Unit with no price or (with no `updates`) one on Manual entry. Worked out from the Ledger,
+    /// so every Client agrees.
+    pub fn is_out_of_date(&self, updates: Option<Updates>, now: DateTime<Utc>) -> bool {
+        let Some(interval) = updates.and_then(Updates::interval) else {
+            return false;
+        };
+        self.last_price()
+            .is_some_and(|price| now - price.written_at > interval * 2)
+    }
+
     /// Writes `close`, a price as of `at`, into the week holding `today`. A week with no entry yet
     /// starts with the close only; the current week's entry is provisional, so a new price
     /// overwrites its close and widens its high and low. `today` is the Clock's day rather than
@@ -387,6 +399,59 @@ pub fn remove_unit(units: &mut Vec<UnitRow>, id: UnitId) -> Option<UnitRow> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod out_of_date {
+        use chrono::Duration;
+
+        use super::*;
+
+        fn now() -> DateTime<Utc> {
+            NaiveDate::from_ymd_opt(2026, 10, 21)
+                .and_then(|day| day.and_hms_opt(9, 0, 0))
+                .expect("a real time")
+                .and_utc()
+        }
+
+        fn written(at: DateTime<Utc>) -> UnitRow {
+            let mut unit = UnitRow::new(
+                "EUR".into(),
+                "Euro".into(),
+                UnitKind::Currency,
+                Precision::of_kind(UnitKind::Currency),
+                PriceLink {
+                    source_id: FRANKFURTER,
+                    symbol: "EUR".into(),
+                    quote: UnitId::SEED_AUD,
+                },
+            );
+            unit.record_price("1.65".parse().expect("a decimal"), at.date_naive(), at);
+            unit
+        }
+
+        #[test]
+        fn a_price_is_out_of_date_past_twice_its_sources_interval() {
+            for (updates, twice) in [
+                (Updates::Every15Minutes, Duration::minutes(30)),
+                (Updates::Hourly, Duration::hours(2)),
+                (Updates::Daily, Duration::hours(48)),
+            ] {
+                let fresh = written(now() - twice);
+                let old = written(now() - twice - Duration::seconds(1));
+                assert!(!fresh.is_out_of_date(Some(updates), now()), "{updates:?}");
+                assert!(old.is_out_of_date(Some(updates), now()), "{updates:?}");
+            }
+        }
+
+        #[test]
+        fn manual_only_manual_entry_and_an_unpriced_unit_are_never_out_of_date() {
+            let ancient = written(now() - Duration::weeks(10));
+            assert!(!ancient.is_out_of_date(Some(Updates::ManualOnly), now()));
+            assert!(!ancient.is_out_of_date(None, now()));
+            let mut unpriced = ancient;
+            unpriced.prices.clear();
+            assert!(!unpriced.is_out_of_date(Some(Updates::Daily), now()));
+        }
+    }
 
     fn seed() -> Vec<UnitRow> {
         sample_units(Utc::now())

@@ -75,7 +75,7 @@ impl FetchSource {
         }
         // Asked for, so its outcome is told.
         let key = ports.keys().key(self.id);
-        let sent = fetching.start_round(&source, &asked, key.as_ref(), true, now)?;
+        let sent = fetching.ask_round(&source, &asked, key.as_ref(), now)?;
         Ok(sent.len())
     }
 }

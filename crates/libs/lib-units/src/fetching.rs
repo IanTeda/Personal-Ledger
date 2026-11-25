@@ -33,11 +33,12 @@ mod transport;
 
 use backfill::Backfill;
 pub use backfill::HISTORY_RETRY;
-pub(crate) use backfill::HistoryCall;
+use backfill::HistoryCall;
 use call_queue::CallQueue;
 pub use call_queue::CallRate;
 pub use fine::{FINE_FRESH, Grain};
-pub(crate) use fine::{FineKey, FinePrice, fine_prices, window};
+use fine::{FineKey, fine_prices};
+pub(crate) use fine::{FinePrice, window};
 use fine_prices::FineCall;
 use fine_prices::FinePrices;
 pub(crate) use fine_prices::FineState;
@@ -45,20 +46,22 @@ use history::{HistoryReading, history_request, read_history};
 pub(crate) use landing::Landing;
 pub(crate) use landing::{FetchedPrice, RoundOutcome};
 use last_fetch::LastFetches;
-pub(crate) use last_fetch::back_off;
+use last_fetch::back_off;
 pub use last_fetch::{FetchOutcome, LastFetch, MIN_BACK_OFF};
-pub(crate) use planning::BackfillUnits;
+use planning::BackfillUnits;
 use price_tests::PriceTests;
 pub(crate) use price_tests::{
-    HistoryTestOutcome, HistoryTestResult, TestHistory, TestInFlight, TestOutcome, TestResult,
+    HistoryTestOutcome, HistoryTestResult, TestAsk, TestOutcome, TestResult,
 };
+use price_tests::{TestHistory, TestInFlight};
 pub use reading::RETRY_AFTER_DEFAULT;
 use reading::round_failure;
-pub(crate) use reading::{Reading, read, retry_after_wait};
-pub(crate) use request::{Wanted, fill, price_request, request, round_calls};
+use reading::{Reading, read, retry_after_wait};
+pub(crate) use request::Wanted;
+use request::{fill, price_request, request, round_calls};
 use rounds::Landed;
 use rounds::Rounds;
-pub(crate) use rounds::{InFlight, RoundId, UnitCall};
+use rounds::{InFlight, RoundId, UnitCall};
 pub use transport::{
     PriceRequest, PriceResponse, PriceTransport, RequestId, RequestKey, TransportError,
     TransportOutcome,
@@ -115,18 +118,6 @@ impl SourceSettings {
     pub(crate) fn matches(&self, source: &PriceSource<'_>) -> bool {
         self.updates == source.updates && self.endpoint.as_ref() == source.endpoint()
     }
-}
-
-/// Whether `unit`'s last price, on a source updating every `updates`, is Out of date at `now`
-/// (`GLOSSARY.md`): written more than twice the interval ago. Never for Manual only, a Unit with
-/// no price or (with no `updates`) one on Manual entry. Worked out from the Ledger, so every
-/// Client agrees.
-pub(crate) fn is_out_of_date(unit: &UnitRow, updates: Option<Updates>, now: DateTime<Utc>) -> bool {
-    let Some(interval) = updates.and_then(Updates::interval) else {
-        return false;
-    };
-    unit.last_price()
-        .is_some_and(|price| now - price.written_at > interval * 2)
 }
 
 /// The fetching state one Client keeps per open Ledger, beside its ports, and drops when the
@@ -193,15 +184,14 @@ impl PriceFetching {
         self.rounds.source_asked_for(source)
     }
 
-    /// Queues a test's `request` at `now`, remembering what it asked until it lands. Never in a
-    /// round, so it neither waits for nor holds up a fetch's response, but it is a call a person
-    /// asked for, paced like any other.
-    pub(crate) fn send_test(
-        &mut self,
-        request: PriceRequest,
-        asked: TestInFlight,
-        now: DateTime<Utc>,
-    ) -> RequestId {
+    /// Sends a Price Source test at `now`, remembering what it asked until it lands: builds the
+    /// price request, the history test (the last 14 days to the local day of `now`, only for a
+    /// form's test of an endpoint with a history request) and the record of what is in flight from
+    /// the test's facts. Never in a round, so it neither waits for nor holds up a fetch's
+    /// response, but it is a call a person asked for, paced like any other. The caller refuses a
+    /// Key missing first.
+    pub(crate) fn send_test(&mut self, ask: TestAsk, now: DateTime<Utc>) -> RequestId {
+        let (request, asked) = ask.build(now);
         let id = self.calls.enqueue(asked.source, true, request);
         self.tests.sent(id, asked);
         self.release(now);
@@ -219,13 +209,7 @@ impl PriceFetching {
     }
 
     /// The source a call a person asked for waits on, and the whole seconds left of its
-    /// `Retry-After` at `now`, rounded up. `None` while no such call is held, a queued one only
-    /// waiting its call rate included.
-    pub(crate) fn waiting(&self, now: DateTime<Utc>) -> Option<(PriceSourceId, i64)> {
-        self.calls.waiting(now, |id| self.tests.asks(id))
-    }
-
-    /// [`Self::waiting`] the first time it is asked of a hold, `None` after: a wait is announced
+    /// `Retry-After` at `now`, rounded up, the first time it is asked of a hold, `None` after: a wait is announced
     /// once as it begins, never counted down.
     pub(crate) fn wait_begun(&mut self, now: DateTime<Utc>) -> Option<(PriceSourceId, i64)> {
         self.calls.wait_begun(now, |id| self.tests.asks(id))
@@ -275,9 +259,25 @@ impl PriceFetching {
 
     /// Starts a round on `source`, `asked` when a person asked for it. Every request sent into it
     /// is held until the last lands; a round sent nothing never lands, so open one only to send.
-    pub(crate) fn open_round(&mut self, source: &PriceSource<'_>, asked: bool) -> RoundId {
+    fn open_round(&mut self, source: &PriceSource<'_>, asked: bool) -> RoundId {
         self.rounds
             .open(source.id, SourceSettings::of(source), asked)
+    }
+
+    /// Starts a round a person asked for on `source` for `wanted` (Fetch now, Fetch source),
+    /// sending its calls at `now` and handing back their ids: [`Self::start_round`] asked.
+    ///
+    /// # Errors
+    /// [`crate::Error::KeyMissing`] for a missing key, [`crate::Error::NotFetched`] for a source
+    /// that doesn't fetch.
+    pub(crate) fn ask_round(
+        &mut self,
+        source: &PriceSource<'_>,
+        wanted: &[Wanted],
+        key: Option<&secrecy::SecretString>,
+        now: DateTime<Utc>,
+    ) -> crate::Result<Vec<RequestId>> {
+        self.start_round(source, wanted, key, true, now)
     }
 
     /// Starts a round on `source` for `wanted`, `asked` when a person asked for it, sending its
@@ -288,7 +288,7 @@ impl PriceFetching {
     /// # Errors
     /// [`crate::Error::KeyMissing`] for a missing key, [`crate::Error::NotFetched`] for a source
     /// that doesn't fetch.
-    pub(crate) fn start_round(
+    pub(super) fn start_round(
         &mut self,
         source: &PriceSource<'_>,
         wanted: &[Wanted],
@@ -319,7 +319,7 @@ impl PriceFetching {
 
     /// Queues `request` for `sent` in `round`, remembering it until its response comes back, and
     /// sends what the call rate allows at `now`.
-    pub(crate) fn send(
+    fn send(
         &mut self,
         round: RoundId,
         request: PriceRequest,
@@ -457,13 +457,21 @@ impl PriceFetching {
         self.fine.fresh(key, link, now)
     }
 
-    /// What the view has of the series `key` on `link` at `now`.
+    /// What the view has of `unit`'s series at `grain` over the window starting `first`, on its
+    /// link, at `now`.
     pub(crate) fn fine_state(
         &self,
-        key: FineKey,
-        link: &PriceLink,
+        unit: &UnitRow,
+        grain: Grain,
+        (first, _): (NaiveDate, NaiveDate),
         now: DateTime<Utc>,
     ) -> FineState<'_> {
+        let key = FineKey {
+            unit: unit.id,
+            grain,
+            first,
+        };
+        let link = &unit.link;
         let (queued, hold) = match self.fine.out_call(key) {
             Some((id, source)) => (self.calls.queued(id), self.calls.held_until(Some(source))),
             None => (false, None),
@@ -472,7 +480,9 @@ impl PriceFetching {
     }
 
     /// Whether `source` failed a round, or a history request found it offline or rate limited,
-    /// and is still backing off at `now`.
+    /// and is still backing off at `now`. Fetching reads it from its last fetches itself; this is
+    /// the tests' way in.
+    #[cfg(test)]
     pub(crate) fn source_backing_off(&self, source: &PriceSource<'_>, now: DateTime<Utc>) -> bool {
         self.last.source_backing_off(source, now)
     }
@@ -592,67 +602,5 @@ impl PriceFetching {
     ) {
         let hold = self.calls.held_until(Some(source));
         self.last.record_source(source, settings, at, failure, hold);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use chrono::NaiveDate;
-
-    use super::*;
-    use crate::FRANKFURTER;
-
-    mod out_of_date {
-        use chrono::Duration;
-
-        use super::*;
-        use crate::{Precision, UnitKind};
-
-        fn now() -> DateTime<Utc> {
-            NaiveDate::from_ymd_opt(2026, 10, 21)
-                .and_then(|day| day.and_hms_opt(9, 0, 0))
-                .expect("a real time")
-                .and_utc()
-        }
-
-        fn written(at: DateTime<Utc>) -> UnitRow {
-            let mut unit = UnitRow::new(
-                "EUR".into(),
-                "Euro".into(),
-                UnitKind::Currency,
-                Precision::of_kind(UnitKind::Currency),
-                PriceLink {
-                    source_id: FRANKFURTER,
-                    symbol: "EUR".into(),
-                    quote: UnitId::SEED_AUD,
-                },
-            );
-            unit.record_price("1.65".parse().expect("a decimal"), at.date_naive(), at);
-            unit
-        }
-
-        #[test]
-        fn a_price_is_out_of_date_past_twice_its_sources_interval() {
-            for (updates, twice) in [
-                (Updates::Every15Minutes, Duration::minutes(30)),
-                (Updates::Hourly, Duration::hours(2)),
-                (Updates::Daily, Duration::hours(48)),
-            ] {
-                let fresh = written(now() - twice);
-                let old = written(now() - twice - Duration::seconds(1));
-                assert!(!is_out_of_date(&fresh, Some(updates), now()), "{updates:?}");
-                assert!(is_out_of_date(&old, Some(updates), now()), "{updates:?}");
-            }
-        }
-
-        #[test]
-        fn manual_only_manual_entry_and_an_unpriced_unit_are_never_out_of_date() {
-            let ancient = written(now() - Duration::weeks(10));
-            assert!(!is_out_of_date(&ancient, Some(Updates::ManualOnly), now()));
-            assert!(!is_out_of_date(&ancient, None, now()));
-            let mut unpriced = ancient;
-            unpriced.prices.clear();
-            assert!(!is_out_of_date(&unpriced, Some(Updates::Daily), now()));
-        }
     }
 }

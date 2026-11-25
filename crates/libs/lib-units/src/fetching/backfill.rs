@@ -21,7 +21,7 @@ pub const HISTORY_RETRY: Duration = Duration::minutes(10);
 /// One Unit's history request: what it asked for, so the weeks it brings are written only while
 /// the Unit still wants them.
 #[derive(Debug, Clone)]
-pub(crate) struct HistoryCall {
+pub(super) struct HistoryCall {
     pub unit: UnitId,
     /// The Unit's code, which the status line names while a person's fetch now waits on it.
     pub code: String,

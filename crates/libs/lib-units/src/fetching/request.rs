@@ -13,7 +13,7 @@ use crate::{Endpoint, PriceLink, PriceSourceAuth, UnitRow, Updates, WeeklyPrice}
 /// interval ago. The current week's price, not the newest written, decides, since a backfilled
 /// past week carries a recent `written_at` but no current price. The Ledger alone decides, so a
 /// price another device fetched and synced counts as fresh. Manual only is never due.
-pub(crate) fn is_due(
+pub(super) fn is_due(
     unit: &UnitRow,
     updates: Updates,
     today: NaiveDate,
@@ -33,7 +33,7 @@ pub(crate) fn is_due(
 
 /// `text` with `{symbol}` and `{quote}` filled from a link, and `{symbol_lower}` and
 /// `{quote_lower}` with the same in lower case.
-pub(crate) fn fill(text: &str, symbol: &str, quote: &str) -> String {
+pub(super) fn fill(text: &str, symbol: &str, quote: &str) -> String {
     text.replace("{symbol}", symbol)
         .replace("{quote}", quote)
         .replace("{symbol_lower}", &symbol.to_lowercase())
@@ -54,7 +54,7 @@ fn fill_lists(text: &str, symbols: &[&str], quotes: &[&str]) -> String {
 /// the endpoint's fixed headers and `key` where its authentication places it, and the price path
 /// filled the same way. A source with a batch request asks through it, as a batch of one. With no
 /// key, a source whose key is optional is asked keyless.
-pub(crate) fn price_request(
+pub(super) fn price_request(
     endpoint: &Endpoint,
     symbol: &str,
     quote: &str,
@@ -94,7 +94,7 @@ impl Wanted {
 /// The calls a round on `endpoint` makes for `wanted`, in order: one per Unit, or, for a source
 /// with a batch request, one per chunk of at most its `max_symbols` distinct symbols, each asking
 /// every quote its Units need. Each Unit's price is read at its own filled price path.
-pub(crate) fn round_calls(
+pub(super) fn round_calls(
     endpoint: &Endpoint,
     wanted: &[Wanted],
     key: Option<&SecretString>,
@@ -155,7 +155,7 @@ fn distinct<'a>(items: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
 
 /// A GET of `path_and_query` on `endpoint`'s address with its fixed headers, and `key` where its
 /// authentication places it.
-pub(crate) fn request(
+pub(super) fn request(
     endpoint: &Endpoint,
     path_and_query: &str,
     key: Option<SecretString>,

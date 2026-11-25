@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use lib_core::{PriceSourceId, UnitId};
 use secrecy::SecretString;
 
-use crate::fetching::{PriceFetching, RequestId, TestHistory, TestInFlight, price_request};
+use crate::fetching::{PriceFetching, RequestId, TestAsk};
 use crate::{Endpoint, Error, Result};
 
 /// Test a Price Source (`GLOSSARY.md`): ask `endpoint` for one symbol's price and show it, writing
@@ -42,37 +42,17 @@ impl TestPriceSource {
             );
             return Err(Error::KeyMissing);
         }
-        let today = now.with_timezone(&chrono::Local).date_naive();
-        let history = self
-            .endpoint
-            .history
-            .as_deref()
-            .filter(|_| !self.toast)
-            .map(|history| TestHistory {
-                endpoint: self.endpoint.clone(),
-                history: history.clone(),
-                range: (today - chrono::Duration::days(13), today),
-            });
-        let (request, price_path) = price_request(
-            &self.endpoint,
-            &self.symbol,
-            &self.quote_code,
-            self.key.clone(),
-        );
         let id = fetching.send_test(
-            request,
-            TestInFlight {
+            TestAsk {
                 source: self.source,
                 source_name: self.source_name,
+                endpoint: self.endpoint,
                 symbol: self.symbol,
                 quote: self.quote,
                 quote_code: self.quote_code,
-                price_path,
                 key: self.key,
-                sent_at: now,
                 toast: self.toast,
                 unsaved: self.unsaved,
-                history,
             },
             now,
         );

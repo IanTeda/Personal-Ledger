@@ -27,8 +27,8 @@ use super::fetch_text::{
 use super::price_source_test::PriceSourceTest;
 use super::units_pane::amount;
 use crate::fetching::{
-    BackfillUnits, FetchedPrice, Landing, PriceFetching, PriceResponse, PriceTransport,
-    RoundOutcome, SharedFetching,
+    FetchedPrice, Landing, PriceFetching, PriceResponse, PriceTransport, RoundOutcome,
+    SharedFetching,
 };
 use crate::interactor::{RecordFetchedPrices, RecordPriceHistory};
 use crate::msg;
@@ -138,12 +138,9 @@ impl LedgerPrices {
     /// completes.
     pub fn backfill(&mut self) {
         let now = (self.clock)();
-        self.fetching.borrow_mut().backfill(
-            BackfillUnits::Every,
-            &*self.ports.borrow(),
-            local_day(now),
-            now,
-        );
+        self.fetching
+            .borrow_mut()
+            .backfill(&*self.ports.borrow(), local_day(now), now);
     }
 
     /// Lands `response` through fetching and does what the [`Landing`] asks: writes a round's
