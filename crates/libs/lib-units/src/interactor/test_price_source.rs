@@ -110,7 +110,7 @@ mod tests {
             response,
             at,
             at.date_naive(),
-            &Utc,
+            &lib_core::Clock::fixed(at.date_naive()),
             &InMemoryPorts::sample(at),
         )
     }

@@ -1,10 +1,10 @@
 //! Daily and Hourly Prices (`GLOSSARY.md`): the grains finer than a week that the Unit prices view
 //! asks a Unit's source for, to show and never to store. Their windows, and folding a history
 //! reply's points into one price per day or per hour. A day is the provider's own (the day its
-//! points are dated by); an hour is the device's local hour, so the time zone is passed in.
+//! points are dated by); an hour is the person's local hour, read through the Clock.
 
-use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike as _};
-use lib_core::{Money, UnitId};
+use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike as _};
+use lib_core::{Clock, Money, UnitId};
 
 use super::history::Point;
 
@@ -70,22 +70,22 @@ pub(crate) fn window(grain: Grain, today: NaiveDate, steps: u32) -> (NaiveDate, 
     (last - Duration::days(days - 1), last)
 }
 
-/// `points` folded into one price per day, or per hour in `zone`, from `first` to `last`, oldest
-/// first. A period of several points, or of one carrying an open, high or low, is a candle,
+/// `points` folded into one price per day, or per `clock`'s local hour, from `first` to `last`,
+/// oldest first. A period of several points, or of one carrying an open, high or low, is a candle,
 /// opening at its first point and closing at its last; a lone close-only point is a tick. A period
 /// with no points is absent. An hour needs a point's instant, so a bare date never makes one.
-pub(super) fn fine_prices<Tz: TimeZone>(
+pub(super) fn fine_prices(
     points: Vec<Point>,
     grain: Grain,
     (first, last): (NaiveDate, NaiveDate),
-    zone: &Tz,
+    clock: &Clock,
 ) -> Vec<FinePrice> {
     let mut keyed: Vec<(NaiveDateTime, Point)> = points
         .into_iter()
         .filter_map(|point| {
             let start = match grain {
                 Grain::Hour => {
-                    let local = point.at?.with_timezone(zone).naive_local();
+                    let local = clock.local_time(point.at?);
                     local
                         .date()
                         .and_time(NaiveTime::from_hms_opt(local.hour(), 0, 0)?)
@@ -231,7 +231,7 @@ mod tests {
             points,
             Grain::Day,
             (day(2026, 10, 19), day(2026, 10, 21)),
-            &Utc,
+            &Clock::fixed(day(2026, 10, 21)),
         );
         let days: Vec<_> = prices.iter().map(|price| price.start.date()).collect();
         assert_eq!(days, [day(2026, 10, 19), day(2026, 10, 21)]);
@@ -248,11 +248,16 @@ mod tests {
             close_only(day(2026, 10, 21), Some("2026-10-21T00:10:00Z"), "11"),
         ];
         let sydney = FixedOffset::east_opt(11 * 3600).expect("a valid offset");
+        let clock = Clock::with_time(
+            || day(2026, 10, 21),
+            || DateTime::UNIX_EPOCH,
+            move |at| at.with_timezone(&sydney).naive_local(),
+        );
         let prices = fine_prices(
             points,
             Grain::Hour,
             (day(2026, 10, 21), day(2026, 10, 21)),
-            &sydney,
+            &clock,
         );
         let starts: Vec<_> = prices
             .iter()
@@ -272,7 +277,7 @@ mod tests {
             vec![close_only(day(2026, 10, 21), None, "1")],
             Grain::Hour,
             (day(2026, 10, 21), day(2026, 10, 21)),
-            &Utc,
+            &Clock::fixed(day(2026, 10, 21)),
         );
         assert!(prices.is_empty());
     }

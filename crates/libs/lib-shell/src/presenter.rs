@@ -12,7 +12,7 @@
 
 use std::time::{Duration, Instant};
 
-use chrono::{DateTime, Local, NaiveDate};
+use chrono::{DateTime, NaiveDate, Utc};
 use lib_config::KeyBindingConfig;
 use lib_core::{Clock, Period};
 use lib_list_cursor::{HALF_PAGE, Step};
@@ -189,8 +189,9 @@ pub struct ShellPresenter<P, E = (), H = ()> {
     prefix: Option<String>,
     nav: NavState<P>,
     status: Option<String>,
-    /// Stamped with the local time each was raised at, for the history.
-    toasts: Toasts<DateTime<Local>>,
+    /// Stamped at the Clock's now, in UTC, each was raised at; the history reads them in local
+    /// time as it draws.
+    toasts: Toasts<DateTime<Utc>>,
     toasts_hovered: bool,
     /// The last [`ShellPresenter::tick_toasts`]' time, which the next advances from. `None` while the
     /// stack is empty, so the first tick after a raise only starts the count.
@@ -654,7 +655,7 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
         self.nav.forget_history();
     }
 
-    pub fn toasts(&self) -> &Toasts<DateTime<Local>> {
+    pub fn toasts(&self) -> &Toasts<DateTime<Utc>> {
         &self.toasts
     }
 
@@ -710,13 +711,13 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
         self.status = None;
     }
 
-    /// Shows a Notice the Client drained after an input, stamped `at` for the Toast history: a
-    /// Toast on the stack, or a message on the status line.
-    pub fn show(&mut self, notice: Notice, at: DateTime<Local>) {
+    /// Shows a Notice the Client drained after an input, stamped at the Clock's now for the Toast
+    /// history: a Toast on the stack, or a message on the status line.
+    pub fn show(&mut self, notice: Notice) {
         match notice {
             Notice::Toast(kind, text) => {
                 self.restart_idle_count();
-                self.toasts.raise(kind, text, at);
+                self.toasts.raise(kind, text, self.clock.now());
             }
             // Only a key takes the status down (ADR-0048), so even an empty message is shown.
             Notice::Status(text) => self.status = Some(text),
@@ -726,11 +727,11 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
     }
 
     /// The Toasts test, from Settings › General or `:toasts test` (DESKTOP-184): one Toast of each
-    /// Kind a second apart, `text` being the Client's test Message for each, stamped `at` for the
-    /// history. The Toast timer raises all but the first.
-    pub fn test_toasts(&mut self, text: impl Fn(ToastKind) -> String, at: DateTime<Local>) {
+    /// Kind a second apart, `text` being the Client's test Message for each, stamped at the Clock's
+    /// now for the history. The Toast timer raises all but the first.
+    pub fn test_toasts(&mut self, text: impl Fn(ToastKind) -> String) {
         self.restart_idle_count();
-        self.toasts.raise_test(text, at);
+        self.toasts.raise_test(text, self.clock.now());
     }
 
     /// Whether a Toast is up, echoed or waiting to be raised, for the Client's timer to tick.
@@ -889,7 +890,7 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
             }
             ShellCommand::DismissToasts => self.toasts.dismiss_all(),
             ShellCommand::ToastHistory => {
-                let history = ToastHistoryPresenter::open(self.toasts.history());
+                let history = ToastHistoryPresenter::open(self.toasts.history(), &self.clock);
                 self.host(ShellDialog::ToastHistory(history), router);
             }
             ShellCommand::Undo => self.undo_through(1, router),
@@ -1008,7 +1009,7 @@ impl<P: Copy + Eq + Default, E: Clone, H> ShellPresenter<P, E, H> {
             return false;
         }
         // What the stack and the echo draw, less the timers: a raise that evicts keeps the count.
-        let drawn = |toasts: &Toasts<DateTime<Local>>| {
+        let drawn = |toasts: &Toasts<DateTime<Utc>>| {
             let shown = |toast: &Toast| (toast.kind(), toast.text().to_owned(), toast.count());
             (
                 toasts.visible().iter().map(shown).collect::<Vec<_>>(),
@@ -1525,7 +1526,7 @@ mod tests {
     #[test]
     fn the_toast_history_hosts_the_toasts_raised_so_far() {
         let mut shell = shell();
-        shell.show(toast(ToastKind::Info, "Synced"), local(0));
+        shell.show(toast(ToastKind::Info, "Synced"));
         let mut router = RecordingRouter::default();
 
         shell.command(ShellCommand::ToastHistory, &mut router);
@@ -2109,8 +2110,8 @@ mod tests {
     #[test]
     fn dismiss_removes_the_newest_toast() {
         let mut shell = palette_on(PaletteEffect::DismissNewestToast);
-        shell.show(toast(ToastKind::Error, "first"), local(0));
-        shell.show(toast(ToastKind::Error, "second"), local(1));
+        shell.show(toast(ToastKind::Error, "first"));
+        shell.show(toast(ToastKind::Error, "second"));
 
         run_on(&mut shell, &mut RecordingRouter::default());
 
@@ -2238,12 +2239,6 @@ mod tests {
         );
     }
 
-    fn local(seconds: i64) -> DateTime<Local> {
-        DateTime::from_timestamp(seconds, 0)
-            .expect("a real time")
-            .with_timezone(&Local)
-    }
-
     fn texts(shell: &Shell) -> Vec<String> {
         shell
             .toasts()
@@ -2265,8 +2260,8 @@ mod tests {
     fn a_toast_notice_goes_on_the_stack_and_a_status_notice_on_the_status_line() {
         let mut shell = shell();
 
-        shell.show(toast(ToastKind::Success, "Saved"), local(100));
-        shell.show(status("g x is not a jump"), local(100));
+        shell.show(toast(ToastKind::Success, "Saved"));
+        shell.show(status("g x is not a jump"));
 
         assert_eq!(texts(&shell), ["Saved"]);
         assert_eq!(
@@ -2276,8 +2271,8 @@ mod tests {
                 .iter()
                 .next()
                 .map(|e| *e.last_raised()),
-            Some(local(100)),
-            "stamped as the Client said"
+            DateTime::from_timestamp(1_789_819_200, 0),
+            "stamped at the Clock's now, midday UTC on its day"
         );
         assert_eq!(
             shell.view_model().status.as_deref(),
@@ -2288,9 +2283,9 @@ mod tests {
     #[test]
     fn an_empty_status_notice_is_shown_like_any_other_and_only_a_key_clears_it() {
         let mut shell = shell();
-        shell.show(status("Exported"), local(0));
+        shell.show(status("Exported"));
 
-        shell.show(status(""), local(1));
+        shell.show(status(""));
 
         assert_eq!(
             shell.view_model().status.as_deref(),
@@ -2304,12 +2299,12 @@ mod tests {
     #[test]
     fn a_key_clears_the_status_before_it_is_handled_so_one_it_sets_survives() {
         let mut shell = shell();
-        shell.show(status("Exported"), local(0));
+        shell.show(status("Exported"));
 
         assert!(shell.keypress(), "a showing message asks for a redraw");
         assert_eq!(shell.view_model().status, None);
 
-        shell.show(status("Undo is not built yet"), local(0));
+        shell.show(status("Undo is not built yet"));
         assert_eq!(
             shell.view_model().status.as_deref(),
             Some("Undo is not built yet")
@@ -2322,8 +2317,8 @@ mod tests {
     fn a_tick_or_a_dialog_button_leaves_the_status() {
         let mut shell = shell();
         let mut router = RecordingRouter::default();
-        shell.show(status("Exported"), local(0));
-        shell.show(toast(ToastKind::Info, "Synced"), local(0));
+        shell.show(status("Exported"));
+        shell.show(toast(ToastKind::Info, "Synced"));
         shell.dialog(DialogInput::Opened);
 
         shell.handle(ShellInput::DayTick, &mut router);
@@ -2341,8 +2336,8 @@ mod tests {
         let tick = |shell: &mut Shell, seconds: u64| {
             shell.tick_toasts(start + Duration::from_secs(seconds));
         };
-        shell.show(toast(ToastKind::Success, "Saved"), local(0));
-        shell.show(toast(ToastKind::Error, "Save failed"), local(0));
+        shell.show(toast(ToastKind::Success, "Saved"));
+        shell.show(toast(ToastKind::Error, "Save failed"));
         assert!(shell.toasts_ticking());
 
         tick(&mut shell, 10);
@@ -2361,7 +2356,7 @@ mod tests {
     fn the_toasts_pause_while_hovered_or_while_a_modal_is_up() {
         let mut shell = shell();
         let start = Instant::now();
-        shell.show(toast(ToastKind::Info, "Synced"), local(0));
+        shell.show(toast(ToastKind::Info, "Synced"));
         shell.tick_toasts(start);
 
         shell.toast(ToastInput::Hover(true));
@@ -2385,7 +2380,7 @@ mod tests {
         let start = Instant::now();
         assert!(!shell.tick_toasts(start), "nothing up");
 
-        shell.show(toast(ToastKind::Error, "Save failed"), local(0));
+        shell.show(toast(ToastKind::Error, "Save failed"));
         assert!(
             !shell.tick_toasts(start),
             "the first tick only starts the count"
@@ -2395,7 +2390,7 @@ mod tests {
             "a sticky Error never changes"
         );
 
-        shell.show(toast(ToastKind::Success, "Saved"), local(0));
+        shell.show(toast(ToastKind::Success, "Saved"));
         assert!(!shell.tick_toasts(start + Duration::from_secs(61)));
         assert!(
             shell.tick_toasts(start + Duration::from_secs(70)),
@@ -2409,7 +2404,7 @@ mod tests {
         let mut shell = shell();
         let start = Instant::now();
         shell.toast(ToastInput::Display(Display { toasts_on: false }));
-        shell.test_toasts(|kind| format!("{kind:?}"), local(0));
+        shell.test_toasts(|kind| format!("{kind:?}"));
         let echo = |shell: &Shell| shell.toasts().echo().map(|t| t.text().to_owned());
         assert_eq!(echo(&shell).as_deref(), Some("Success"));
         assert!(
@@ -2436,11 +2431,11 @@ mod tests {
     fn a_toast_raised_onto_an_empty_stack_starts_a_fresh_count() {
         let mut shell = shell();
         let start = Instant::now();
-        shell.show(toast(ToastKind::Info, "one"), local(0));
+        shell.show(toast(ToastKind::Info, "one"));
         shell.tick_toasts(start);
         shell.toast(ToastInput::DismissAll);
 
-        shell.show(toast(ToastKind::Info, "two"), local(0));
+        shell.show(toast(ToastKind::Info, "two"));
         shell.tick_toasts(start + Duration::from_secs(60));
 
         assert_eq!(texts(&shell), ["two"], "the idle minute isn't its age");
@@ -2449,7 +2444,7 @@ mod tests {
     #[test]
     fn ctrl_l_dismisses_the_toasts_on_the_shell_alone() {
         let mut shell = shell();
-        shell.show(toast(ToastKind::Error, "Save failed"), local(0));
+        shell.show(toast(ToastKind::Error, "Save failed"));
 
         assert_eq!(press(&mut shell, &["ctrl+l"]), (ShellKey::Taken, vec![]));
         assert!(texts(&shell).is_empty());

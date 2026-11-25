@@ -331,7 +331,7 @@ mod tests {
         let late = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 10, 21, 23, 30, 0)
             .single()
             .expect("a valid instant");
-        let clock = Clock::with_time(|| day(2026, 10, 22), move || late);
+        let clock = Clock::with_time(|| day(2026, 10, 22), move || late, |at| at.naive_utc());
 
         let view = SetPricePresenter::new(shared, clock, UnitId::SEED_VAS, DialogKeys::default())
             .expect("VAS is on Manual entry")

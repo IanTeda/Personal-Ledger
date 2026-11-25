@@ -110,9 +110,13 @@ mod tests {
     impl Round {
         /// Lands `response` and writes the prices it hands back, returning them.
         fn record(&mut self, response: PriceResponse) -> Vec<FetchedPrice> {
-            let landing = self
-                .fetching
-                .land(response, at(), today(), &Utc, &self.ports);
+            let landing = self.fetching.land(
+                response,
+                at(),
+                today(),
+                &lib_core::Clock::fixed(today()),
+                &self.ports,
+            );
             let Landing::Prices { prices, .. } = landing else {
                 return Vec::new();
             };

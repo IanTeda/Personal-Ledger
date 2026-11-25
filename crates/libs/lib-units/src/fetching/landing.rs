@@ -5,8 +5,8 @@
 //! lent the Units read-only, to check each is still active and on the link it was asked on; the
 //! writing Interactors write and log, and the Presenter tells.
 
-use chrono::{DateTime, NaiveDate, TimeZone, Utc};
-use lib_core::{Money, PriceSourceId, UnitId};
+use chrono::{DateTime, NaiveDate, Utc};
+use lib_core::{Clock, Money, PriceSourceId, UnitId};
 
 use super::backfill::HistoryAnswer;
 use super::{
@@ -58,22 +58,22 @@ pub struct RoundOutcome {
 
 impl PriceFetching {
     /// Lands `response` at `now`, whatever it answers, on the Clock's day `today`, a finer
-    /// prices response's hours read in `zone`. `ports` are only read. A Fetch now's priced Units
-    /// are queued to backfill before the caller writes their prices, which is safe since their
-    /// history ends at last week.
-    pub(crate) fn land<Tz: TimeZone>(
+    /// prices response's hours read in `clock`'s local time. `ports` are only read. A Fetch now's
+    /// priced Units are queued to backfill before the caller writes their prices, which is safe
+    /// since their history ends at last week.
+    pub(crate) fn land(
         &mut self,
         response: PriceResponse,
         now: DateTime<Utc>,
         today: NaiveDate,
-        zone: &Tz,
+        clock: &Clock,
         ports: &dyn UnitsPorts,
     ) -> Landing {
         if self.tests.is_test(&response) {
             return self.land_test(&response, now);
         }
         if self.fine.is_fine(&response) {
-            self.land_fine(&response, now, today, zone);
+            self.land_fine(&response, now, today, clock);
             return Landing::Nothing;
         }
         if self.backfill.is_history(&response) {
@@ -101,18 +101,18 @@ impl PriceFetching {
     /// Reads a finer prices `response` into the cache, or notes its failure for the view alone. A
     /// 429 holds its source until its `Retry-After`; Offline and Rate limited back the source off,
     /// as a history request's do.
-    fn land_fine<Tz: TimeZone>(
+    fn land_fine(
         &mut self,
         response: &PriceResponse,
         now: DateTime<Utc>,
         today: NaiveDate,
-        zone: &Tz,
+        clock: &Clock,
     ) {
         let Some(source) = self.fine.source_of(response.request) else {
             return;
         };
         let hold = self.hold_on_429(source, &response.outcome, now);
-        if let Some((settings, until)) = self.fine.land(response, now, today, zone, hold) {
+        if let Some((settings, until)) = self.fine.land(response, now, today, clock, hold) {
             self.last.back_off_quietly(source, settings, until);
         }
     }
@@ -304,7 +304,7 @@ mod tests {
             ledger
                 .fetching()
                 .borrow_mut()
-                .land(response, now, today, &Utc, &*ports)
+                .land(response, now, today, &ledger.clock(), &*ports)
         };
         write_landing(
             &landing,

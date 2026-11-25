@@ -986,7 +986,7 @@ mod tests {
         let today = chrono::Local::now().date_naive();
         let at = lib_database::seed::sample_priced_at(today);
         let mut setup = UnitsSetup::sample(&KeyBindingConfig::default());
-        setup.clock = lib_core::Clock::with_time(move || today, move || at);
+        setup.clock = lib_core::Clock::with_time(move || today, move || at, |at| at.naive_utc());
         UnitsView::new(&setup)
     }
 

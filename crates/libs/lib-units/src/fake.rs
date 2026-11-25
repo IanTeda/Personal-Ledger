@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use chrono::{DateTime, Duration, FixedOffset, NaiveDate, Offset as _, Utc};
 use lib_core::{Clock, PriceSourceId, UnitId};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
@@ -454,6 +454,7 @@ pub struct LedgerPricesFixture {
     feed: Option<Sender<PriceResponse>>,
     at: Rc<Cell<DateTime<Utc>>>,
     day: Rc<Cell<NaiveDate>>,
+    zone: Rc<Cell<FixedOffset>>,
     clock: Clock,
     prices: LedgerPrices,
     notices: Vec<Notice>,
@@ -461,17 +462,21 @@ pub struct LedgerPricesFixture {
 
 impl LedgerPricesFixture {
     /// `ports` with fetching over a fresh [`FakeTransport`], the clock reading `now` and its day
-    /// in UTC.
+    /// in UTC, and local time in UTC until [`Self::set_zone`] moves it.
     pub fn new(ports: InMemoryPorts, now: DateTime<Utc>) -> Self {
         let (ports, shared) = ports.shared();
         let transport = FakeTransport::default();
         let (feed, responses) = std::sync::mpsc::channel();
         let at = Rc::new(Cell::new(now));
         let day = Rc::new(Cell::new(now.date_naive()));
+        let zone = Rc::new(Cell::new(Utc.fix()));
         let clock = {
-            let at = at.clone();
-            let day = day.clone();
-            Clock::with_time(move || day.get(), move || at.get())
+            let (at, day, zone) = (at.clone(), day.clone(), zone.clone());
+            Clock::with_time(
+                move || day.get(),
+                move || at.get(),
+                move |at| at.with_timezone(&zone.get()).naive_local(),
+            )
         };
         let prices = LedgerPrices::unopened(
             shared.clone(),
@@ -487,6 +492,7 @@ impl LedgerPricesFixture {
             feed: Some(feed),
             at,
             day,
+            zone,
             clock,
             notices: Vec::new(),
         }
@@ -538,6 +544,11 @@ impl LedgerPricesFixture {
     /// ahead of now's UTC date.
     pub fn set_today(&self, day: NaiveDate) {
         self.day.set(day);
+    }
+
+    /// Moves the zone the clock reads local time in, so a test reads an hour away from UTC.
+    pub fn set_zone(&self, zone: FixedOffset) {
+        self.zone.set(zone);
     }
 
     /// The Ledger's prices, for its scheduled check and backfill.

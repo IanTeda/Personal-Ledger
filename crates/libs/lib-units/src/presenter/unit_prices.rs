@@ -865,6 +865,7 @@ mod tests {
                     .single()
                     .expect("a valid instant")
             },
+            |at| at.naive_utc(),
         );
         let mut presenter = UnitPricesPresenter::new(
             shared,
@@ -1243,15 +1244,12 @@ mod tests {
         #[test]
         fn hourly_prices_bucket_by_the_local_hour() {
             let mut btc = Finer::of(UnitId::SEED_BTC);
+            // Ten hours east of UTC: noon UTC is 10 pm there, so an hour read in UTC is wrong.
+            btc.prices
+                .set_zone(chrono::FixedOffset::east_opt(10 * 3600).expect("a valid offset"));
             btc.press(UnitPricesEvent::SetGrain(Grain::Hour));
-            let noon = btc.today().and_hms_opt(12, 0, 0).expect("noon");
-            let instant = |minutes: i64| {
-                (noon + Duration::minutes(minutes))
-                    .and_local_timezone(chrono::Local)
-                    .earliest()
-                    .expect("local noon exists")
-                    .timestamp_millis()
-            };
+            let noon = btc.today().and_hms_opt(12, 0, 0).expect("noon").and_utc();
+            let instant = |minutes: i64| (noon + Duration::minutes(minutes)).timestamp_millis();
             btc.answer(
                 200,
                 &format!(
@@ -1267,8 +1265,8 @@ mod tests {
             assert_eq!(
                 starts,
                 [
-                    NaiveTime::from_hms_opt(13, 0, 0).expect("1 pm"),
-                    NaiveTime::from_hms_opt(12, 0, 0).expect("noon")
+                    NaiveTime::from_hms_opt(23, 0, 0).expect("11 pm"),
+                    NaiveTime::from_hms_opt(22, 0, 0).expect("10 pm")
                 ]
             );
             assert_eq!(view.rows[1].open, "10.00");

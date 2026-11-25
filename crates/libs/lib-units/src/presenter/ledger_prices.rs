@@ -16,7 +16,7 @@
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, TryRecvError};
 
-use chrono::{DateTime, Local, NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::Clock;
 use lib_toast::{Notice, Notify, ToastKind};
 
@@ -154,7 +154,7 @@ impl LedgerPrices {
             let ports = self.ports.borrow();
             self.fetching
                 .borrow_mut()
-                .land(response, now, today, &Local, &*ports)
+                .land(response, now, today, &self.clock, &*ports)
         };
         write_landing(
             &landing,

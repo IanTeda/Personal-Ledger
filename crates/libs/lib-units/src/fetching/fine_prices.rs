@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, NaiveDate, Utc};
-use lib_core::PriceSourceId;
+use lib_core::{Clock, PriceSourceId};
 
 use super::{
     FINE_FRESH, FetchFailure, FineKey, FinePrice, HistoryReading, PriceRequest, PriceResponse,
@@ -133,15 +133,15 @@ impl FinePrices {
     }
 
     /// Reads a finer prices `response` at `now` into the cache, its days dated by the provider and
-    /// its hours in `zone`, or notes its failure for the view alone. `hold` is its source's
-    /// `Retry-After` hold from a 429. Returns until when an Offline or Rate limited failure backs
-    /// the source off, as a history request's does, for the caller to write.
-    pub(super) fn land<Tz: chrono::TimeZone>(
+    /// its hours in `clock`'s local time, or notes its failure for the view alone. `hold` is its
+    /// source's `Retry-After` hold from a 429. Returns until when an Offline or Rate limited
+    /// failure backs the source off, as a history request's does, for the caller to write.
+    pub(super) fn land(
         &mut self,
         response: &PriceResponse,
         now: DateTime<Utc>,
         today: NaiveDate,
-        zone: &Tz,
+        clock: &Clock,
         hold: Option<DateTime<Utc>>,
     ) -> Option<(SourceSettings, DateTime<Utc>)> {
         let call = self.fine_out.remove(&response.request)?;
@@ -152,7 +152,8 @@ impl FinePrices {
             &call.quote,
         ) {
             HistoryReading::Points(points) => {
-                let prices = fine_prices(points, call.key.grain, (call.key.first, call.last), zone);
+                let prices =
+                    fine_prices(points, call.key.grain, (call.key.first, call.last), clock);
                 self.fine_cache.insert(
                     call.key,
                     FineEntry {

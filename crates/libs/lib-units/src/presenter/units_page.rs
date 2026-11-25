@@ -2,7 +2,7 @@
 //! across both, the row menu, and where a confirmed Dialog's outcome lands (a Toast, or ACTIVITY
 //! while the detail pane is docked).
 
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Utc};
 use lib_core::{Clock, PriceSourceId, UnitId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Label as _;
@@ -1106,7 +1106,7 @@ impl UnitsPagePresenter {
     /// newest first, instead of raising a Toast (DESKTOP-125).
     fn land(&mut self, outcome: UnitsOutcome, router: &mut dyn UnitsRouter) {
         if self.docked {
-            let time = format_time_minutes(self.clock.now().with_timezone(&Local).time());
+            let time = format_time_minutes(self.clock.local_time(self.clock.now()).time());
             self.activity.insert(
                 0,
                 ActivityLine {

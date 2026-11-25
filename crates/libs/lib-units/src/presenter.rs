@@ -342,7 +342,7 @@ pub(crate) mod test_support {
 
     /// The tests' clock, on [`today`] and [`now`].
     pub fn clock() -> Clock {
-        Clock::with_time(today, now)
+        Clock::with_time(today, now, |at| at.naive_utc())
     }
 
     /// `frame`'s hints as `(commands, action)`, the commands joined by `/`, for asserting which

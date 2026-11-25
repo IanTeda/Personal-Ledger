@@ -2,7 +2,8 @@
 //! newest first, as rows of text. It is read-only: `Esc` and the Close button close it, viewing
 //! dismisses nothing, and every key is left to the Shell. The card scrolls by pointer, in gpui.
 
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Utc};
+use lib_core::Clock;
 use lib_locale::format::format_time;
 use lib_toast::{History, ToastKind};
 use lib_viper::dialog::{DialogInput, DialogRouter};
@@ -32,19 +33,19 @@ pub struct ToastHistoryPresenter {
 }
 
 impl ToastHistoryPresenter {
-    /// Opens over the Toasts raised so far.
-    pub fn open(history: &History<DateTime<Local>>) -> Self {
+    /// Opens over the Toasts raised so far, their times read where `clock` says the person is.
+    pub fn open(history: &History<DateTime<Utc>>, clock: &Clock) -> Self {
         Self {
             view_model: ToastHistoryViewModel {
-                rows: rows(history),
+                rows: rows(history, clock),
             },
         }
     }
 
     /// Reads the history again after a Toast was raised behind the card. The Toast stack is hidden
     /// while the card is up, so the card is the only place a new Toast shows.
-    pub fn refresh(&mut self, history: &History<DateTime<Local>>) {
-        self.view_model.rows = rows(history);
+    pub fn refresh(&mut self, history: &History<DateTime<Utc>>, clock: &Clock) {
+        self.view_model.rows = rows(history, clock);
     }
 }
 
@@ -97,13 +98,13 @@ impl DialogPresenter for ToastHistoryPresenter {
     }
 }
 
-/// The history's rows, newest first.
-fn rows(history: &History<DateTime<Local>>) -> Vec<ToastHistoryRow> {
+/// The history's rows, newest first, at `clock`'s local time.
+fn rows(history: &History<DateTime<Utc>>, clock: &Clock) -> Vec<ToastHistoryRow> {
     history
         .iter()
         .map(|entry| ToastHistoryRow {
             kind: entry.kind(),
-            time: format_time(entry.last_raised().time()),
+            time: format_time(clock.local_time(*entry.last_raised()).time()),
             text: entry.text().to_string(),
             badge: (entry.count() > 1).then(|| format!("×{}", entry.count())),
         })
@@ -112,7 +113,7 @@ fn rows(history: &History<DateTime<Local>>) -> Vec<ToastHistoryRow> {
 
 #[cfg(test)]
 mod tests {
-    use chrono::TimeZone;
+    use chrono::{FixedOffset, NaiveDate, NaiveTime, TimeZone};
     use lib_toast::{Notice, Notify, Toasts};
 
     use super::*;
@@ -132,15 +133,24 @@ mod tests {
         }
     }
 
-    fn at(second: u32) -> DateTime<Local> {
-        Local
-            .with_ymd_and_hms(2026, 9, 28, 15, 4, second)
+    fn at(second: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 9, 28, 15, 4, second)
             .single()
             .expect("test time is unambiguous")
     }
 
-    fn open(toasts: &Toasts<DateTime<Local>>) -> ToastHistoryPresenter {
-        ToastHistoryPresenter::open(toasts.history())
+    /// A Clock reading local time `hours` east of UTC.
+    fn east(hours: i32) -> Clock {
+        let zone = FixedOffset::east_opt(hours * 3600).expect("a valid offset");
+        Clock::with_time(
+            || NaiveDate::from_ymd_opt(2026, 9, 28).expect("a real date"),
+            || DateTime::UNIX_EPOCH,
+            move |at| at.with_timezone(&zone).naive_local(),
+        )
+    }
+
+    fn open(toasts: &Toasts<DateTime<Utc>>) -> ToastHistoryPresenter {
+        ToastHistoryPresenter::open(toasts.history(), &east(0))
     }
 
     #[test]
@@ -157,7 +167,7 @@ mod tests {
         let mut history = open(&toasts);
         toasts.raise(ToastKind::Error, "behind", at(2));
 
-        history.refresh(toasts.history());
+        history.refresh(toasts.history(), &east(0));
 
         let view = history.view_model();
         let texts: Vec<_> = view.rows.iter().map(|row| row.text.as_str()).collect();
@@ -198,6 +208,20 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].badge.as_deref(), Some("×2"));
         assert_eq!(rows[0].time, format_time(at(2).time()));
+    }
+
+    #[test]
+    fn a_rows_time_is_where_the_person_is() {
+        let mut toasts = Toasts::default();
+        // 15:04 UTC is 01:04 the next morning ten hours east.
+        toasts.raise(ToastKind::Info, "Saved", at(1));
+
+        let presenter = ToastHistoryPresenter::open(toasts.history(), &east(10));
+
+        assert_eq!(
+            presenter.view_model().rows[0].time,
+            format_time(NaiveTime::from_hms_opt(1, 4, 1).expect("a real time"))
+        );
     }
 
     #[test]

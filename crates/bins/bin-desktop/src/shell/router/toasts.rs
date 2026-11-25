@@ -2,7 +2,6 @@
 //! modal. An `impl Root` block, not the Toast stack (the Presenter's, as `lib_toast`'s model) or
 //! its drawing (`shell::view::toast`).
 
-use chrono::Local;
 use gpui::{App, Context};
 use lib_toast::{Notice, ToastKind};
 
@@ -13,14 +12,14 @@ use lib_shell::ToastHistoryPresenter;
 
 impl Root {
     /// Shows every Notice the Routers queued since the last drain (`crate::notices`) on the
-    /// Shell's Presenter, stamped with the local time for the Toast history. Each input's `send`
-    /// runs it once the input is handled and committed (`crate::input`), having taken the
-    /// `Notice::Changed`s off the queue for its History entry; any left queued wait for it. An open
-    /// Toast history card reads them too, since it hides the Toast stack.
+    /// Shell's Presenter, which stamps them at its Clock's now for the Toast history. Each input's
+    /// `send` runs it once the input is handled and committed (`crate::input`), having taken the
+    /// `Notice::Changed`s off the queue for its History entry; any left queued wait for it. An
+    /// open Toast history card reads them too, since it hides the Toast stack.
     pub(crate) fn drain_notices(&mut self, cx: &mut App) {
         let mut shown = false;
         for notice in crate::notices::drain_shown() {
-            self.presenter.show(notice, Local::now());
+            self.presenter.show(notice);
             shown = true;
         }
         if !shown {
@@ -31,8 +30,9 @@ impl Root {
             .and_then(|dialog| dialog.downcast::<ModuleDialog<ToastHistoryPresenter>>())
         {
             let history = self.presenter.toasts().history();
+            let clock = self.presenter.clock();
             dialog.update(cx, |dialog, cx| {
-                dialog.presenter_mut().refresh(history);
+                dialog.presenter_mut().refresh(history, clock);
                 cx.notify();
             });
         }
@@ -41,29 +41,25 @@ impl Root {
     /// Says a Ledger file start-up or `:open` was told to open couldn't be, as an Error Toast naming
     /// it and why (#977). The Shell keeps whatever Ledger was open, or none.
     pub fn ledger_open_failed(&mut self, path: &std::path::Path, error: &crate::Error) {
-        self.presenter.show(
-            super::root_router::ledger_open_failed(path, error),
-            Local::now(),
-        );
+        self.presenter
+            .show(super::root_router::ledger_open_failed(path, error));
     }
 
     /// Raises a Toast whose Message the caller has already resolved to text.
     pub fn raise_toast(&mut self, kind: ToastKind, text: impl Into<String>) {
-        self.presenter
-            .show(Notice::Toast(kind, text.into()), Local::now());
+        self.presenter.show(Notice::Toast(kind, text.into()));
     }
 
     /// The Toasts test, from General's **Test** or `:toasts test` (DESKTOP-184): one Toast of each
     /// Kind a second apart, each with its test Message, which the Toast clock raises in turn.
     pub(crate) fn test_toasts(&mut self) {
-        self.presenter
-            .test_toasts(lib_toast::test_text, Local::now());
+        self.presenter.test_toasts(lib_toast::test_text);
     }
 
     /// Sets the status message from the Shell's own handling (a palette command), which the next
     /// key clears.
     pub(super) fn set_status(&mut self, text: String) {
-        self.presenter.show(Notice::Status(text), Local::now());
+        self.presenter.show(Notice::Status(text));
     }
 
     /// Starts the Toast clock for the window's life: every [`crate::shell::view::toast::TICK`] while a

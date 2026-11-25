@@ -545,6 +545,7 @@ impl<'a> Harness<'a> {
                         + chrono::Duration::hours(12)
                         + offset.get()
                 },
+                |at| at.naive_utc(),
             )
         };
         let (stores, shared) = ledger.unzip();

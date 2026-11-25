@@ -6,7 +6,6 @@
 //! one-shot [`PriceSourceTest::in_background`]. A form's result is pulled from fetching's held
 //! results on each repaint, never pushed, so `LedgerPrices` keeps no registry of open forms.
 
-use chrono::Local;
 use lib_core::Clock;
 use lib_locale::format::format_time_minutes;
 use lib_toast::{Notice, ToastKind};
@@ -192,7 +191,7 @@ impl PriceSourceTest {
         }
         let result = self.result()?;
         let quote = ports.units().unit(result.asked.quote);
-        let (heading, detail) = test_lines(&result, quote.as_ref());
+        let (heading, detail) = test_lines(&result, quote.as_ref(), &self.clock);
         Some(TestResultView {
             state: match result.outcome {
                 TestOutcome::Priced(_) => TestState::Found,
@@ -290,15 +289,16 @@ fn test_asked(result: &TestResult) -> Asked<'_> {
 }
 
 /// A landed test as its form shows it: `Price found · 412 ms` over `VAS.AX · 101.84 AUD · tested
-/// 14:36`, or a reason's name over its detail. `quote` is the quote Unit, for the price's places.
-fn test_lines(result: &TestResult, quote: Option<&UnitRow>) -> (String, String) {
+/// 14:36`, or a reason's name over its detail. `quote` is the quote Unit, for the price's places,
+/// and `clock` reads the time it was tested at where the person is.
+fn test_lines(result: &TestResult, quote: Option<&UnitRow>, clock: &Clock) -> (String, String) {
     match &result.outcome {
         TestOutcome::Priced(price) => (
             msg::units_price_source_test_found(&millis(result)),
             msg::units_price_source_test_found_detail(
                 &result.asked.symbol,
                 &amount(price, quote),
-                &format_time_minutes(result.at.with_timezone(&Local).time()),
+                &format_time_minutes(clock.local_time(result.at).time()),
             ),
         ),
         TestOutcome::Failed(reason) => failure_lines(*reason, result),
