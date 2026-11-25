@@ -6,7 +6,7 @@
 # `mise tasks` to list the tasks. See https://mise.jdx.dev/.
 
 [tools]
-rust = { version = "1.98.0", components = "clippy,rustfmt" }
+rust = { version = "1.98.0", components = "clippy,rustfmt,rust-analyzer" }
 protoc = "36.0"
 node = "26.7.0"
 mdbook = "0.5.4"
