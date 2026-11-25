@@ -13,8 +13,8 @@ use super::view::dialog::Dialog;
 
 pub struct Router<'a> {
     ports: SharedPorts,
-    /// Where the set price Dialog reads the time from.
-    now: lib_units::presenter::Clock,
+    /// Where the Dialogs read the day and the time from.
+    clock: lib_core::Clock,
     /// The Open Ledger's price fetching, which the price source forms test through.
     fetching: Option<lib_units::SharedFetching>,
     toasts: &'a mut Vec<(ToastKind, String)>,
@@ -25,19 +25,16 @@ pub struct Router<'a> {
 }
 
 impl<'a> Router<'a> {
-    pub fn new(ports: SharedPorts, toasts: &'a mut Vec<(ToastKind, String)>) -> Self {
-        Self::with_now(ports, toasts, std::rc::Rc::new(chrono::Utc::now))
-    }
-
-    /// A Router whose Dialogs read the time from `now`, as the Units View it runs in does.
-    pub fn with_now(
+    /// A Router whose Dialogs read the day and the time from `clock`, the Open Ledger's, as the
+    /// Units View it runs in does.
+    pub fn with_clock(
         ports: SharedPorts,
         toasts: &'a mut Vec<(ToastKind, String)>,
-        now: lib_units::presenter::Clock,
+        clock: lib_core::Clock,
     ) -> Self {
         Self {
             ports,
-            now,
+            clock,
             fetching: None,
             toasts,
             opened: None,
@@ -54,7 +51,7 @@ impl<'a> Router<'a> {
 
 impl UnitsRouter for Router<'_> {
     fn open_dialog(&mut self, dialog: Which) -> bool {
-        self.opened = Dialog::open(dialog, &self.ports, &self.now, self.fetching.as_ref());
+        self.opened = Dialog::open(dialog, &self.ports, &self.clock, self.fetching.as_ref());
         self.opened.is_some()
     }
 }

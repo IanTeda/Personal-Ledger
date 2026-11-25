@@ -85,11 +85,11 @@ impl Dialog {
     pub fn open(
         which: Which,
         ports: &SharedPorts,
-        now: &lib_units::presenter::Clock,
+        clock: &lib_core::Clock,
         fetching: Option<&SharedFetching>,
     ) -> Option<Self> {
         let testing =
-            |form: PriceSourceFormPresenter| form.with_testing(fetching.cloned(), now.clone());
+            |form: PriceSourceFormPresenter| form.with_testing(fetching.cloned(), clock.clone());
         let ports = ports.clone();
         // The TUI's footer reads its own hints from the keymap, so the Presenters' stay empty.
         let keys = DialogKeys::default();
@@ -99,7 +99,7 @@ impl Dialog {
             Which::DeleteUnit(id) => Self::DeleteUnit(DeleteUnitPresenter::new(ports, id, keys)?),
             Which::SetBaseUnit => Self::SetBaseUnit(SetBaseUnitPresenter::new(ports, keys)),
             Which::SetPrice(id) => {
-                Self::SetPrice(SetPricePresenter::new(ports, now.clone(), id, keys)?)
+                Self::SetPrice(SetPricePresenter::new(ports, clock.clone(), id, keys)?)
             }
             Which::AddPriceSource => Self::PriceSourceForm(
                 Box::new(testing(PriceSourceFormPresenter::add(ports, keys))),

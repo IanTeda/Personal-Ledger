@@ -14,8 +14,6 @@ mod pane;
 mod prices;
 mod render;
 
-use std::rc::Rc;
-
 use gpui::{AnyElement, App, Context, IntoElement as _, Pixels, Point, Window};
 use lib_database::Domain;
 use lib_shell::Hint;
@@ -32,12 +30,6 @@ use crate::shell::view::window_size::{WindowSize, WindowSizeExt as _};
 use crate::units::{UnitsPage, UnitsSetup};
 
 pub use pane::detail_pane;
-
-/// `clock`'s now, as the Units Presenters read the time.
-pub(crate) fn now_of(clock: &lib_core::Clock) -> Rc<dyn Fn() -> chrono::DateTime<chrono::Utc>> {
-    let clock = clock.clone();
-    Rc::new(move || clock.now())
-}
 
 impl PageView for UnitsPagePresenter {
     type Setup = UnitsSetup;

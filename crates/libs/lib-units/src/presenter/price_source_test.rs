@@ -7,13 +7,12 @@
 //! results on each repaint, never pushed, so `LedgerPrices` keeps no registry of open forms.
 
 use chrono::Local;
+use lib_core::Clock;
 use lib_locale::format::format_time_minutes;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::view::count;
 
-use super::Clock;
 use super::fetch_text::{Asked, failure_detail, failure_name};
-use super::ledger_prices::local_day;
 use super::units_pane::amount;
 use crate::fetching::{
     FetchFailure, HistoryTestOutcome, HistoryTestResult, RequestId, SharedFetching, TestOutcome,
@@ -126,8 +125,9 @@ impl PriceSourceTest {
         self.response_open = None;
         test.toast = false;
         // A form sends only a test its readiness found a key for, so no refusal is left.
-        let now = (self.clock)();
-        self.last = test.run(&mut fetching, local_day(now), now).ok();
+        self.last = test
+            .run(&mut fetching, self.clock.today(), self.clock.now())
+            .ok();
     }
 
     /// Opens or closes the Response, once one came back.
@@ -243,8 +243,7 @@ impl PriceSourceTest {
             toast: true,
             unsaved: false,
         };
-        let now = clock();
-        let refused = test.run(&mut fetching.borrow_mut(), local_day(now), now);
+        let refused = test.run(&mut fetching.borrow_mut(), clock.today(), clock.now());
         matches!(refused, Err(Error::KeyMissing)).then(|| {
             test_failed_toast(
                 FetchFailure::KeyMissing,
@@ -527,6 +526,25 @@ mod tests {
         assert_eq!(
             shown(&on, &test).unsaved.as_deref(),
             Some("with unsaved changes")
+        );
+    }
+
+    #[test]
+    fn the_history_range_ends_on_the_clocks_day_not_on_nows_utc_date() {
+        crate::presenter::test_support::locale();
+        let late = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 10, 21, 23, 30, 0)
+            .single()
+            .expect("a valid instant");
+        let mut on = LedgerPricesFixture::new(InMemoryPorts::sample(late), late);
+        on.set_today(chrono::NaiveDate::from_ymd_opt(2026, 10, 22).expect("a real date"));
+        let mut test = form(&on);
+
+        test.run(vas(alpha(false, true), None));
+        on.land(on.transport().answer_last(200, PRICED));
+
+        assert_eq!(
+            on.transport().urls()[1],
+            "https://www.alphavantage.co/history?symbol=VAS.AX&from=2026-10-09&to=2026-10-22"
         );
     }
 

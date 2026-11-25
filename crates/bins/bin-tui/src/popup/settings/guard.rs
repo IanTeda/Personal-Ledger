@@ -61,6 +61,8 @@ pub enum Confirmed {
 /// The guard on moving the base from `from` to `to`, the Unit codes.
 pub struct BaseUnitGuardPopup {
     ports: TuiPorts,
+    /// The Open Ledger's Clock, which the Router hands any Dialog it opens.
+    clock: lib_core::Clock,
     /// What ends the confirm's input.
     commit: std::rc::Rc<dyn lib_database::Commit>,
     /// Boxed: the Presenter holds the Dialog keys, which would make the popup enum large.
@@ -109,10 +111,11 @@ impl BaseUnitGuardPopup {
         let mut toasts = Vec::new();
         presenter.handle(
             SetBaseUnitEvent::Choose(to_id),
-            &mut Router::new(shared, &mut toasts),
+            &mut Router::with_clock(shared, &mut toasts, units.clock.clone()),
         );
         Some(Self {
             ports: units.ports.clone(),
+            clock: units.clock.clone(),
             commit: units.commit.clone(),
             presenter: Box::new(presenter),
             from,
@@ -145,7 +148,8 @@ impl BaseUnitGuardPopup {
         }
         let mut toasts = Vec::new();
         let closed = {
-            let mut router = Router::new(self.ports.clone(), &mut toasts);
+            let mut router =
+                Router::with_clock(self.ports.clone(), &mut toasts, self.clock.clone());
             self.presenter
                 .handle(SetBaseUnitEvent::Confirm, &mut router);
             router.closed.take()

@@ -3,8 +3,8 @@
 //! under it; it starts on today, so the current week is the default. Close is in the quote Unit and
 //! is padded to its Precision when set. Focus starts on Close, since Week is already filled.
 
-use chrono::{Local, NaiveDate};
-use lib_core::{Money, UnitId};
+use chrono::NaiveDate;
+use lib_core::{Clock, Money, UnitId};
 use lib_locale::format::{
     AmountStyle, DateInputError, DateInputOptions, date_error_message, format_amount, format_date,
     format_date_input, parse_date_with, parse_positive_amount,
@@ -13,7 +13,7 @@ use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{DialogFrame, Hint, TextFieldView};
 
-use super::{Clock, UnitsOutcome, cycle};
+use super::{UnitsOutcome, cycle};
 use crate::interactor::SetPrice;
 use crate::protocols::SharedPorts;
 use crate::{Error, MANUAL_ENTRY, Precision, WeeklyPrice, msg};
@@ -95,7 +95,7 @@ impl SetPricePresenter {
                 .map(|quote| (quote.code, quote.precision));
             (unit.code, quote)
         };
-        let today = today(&clock);
+        let today = clock.today();
         Some(Self {
             ports,
             keys,
@@ -151,7 +151,7 @@ impl Presenter for SetPricePresenter {
         };
         let week_help = match self.day() {
             Ok(day) => msg::units_set_price_week_of(&format_date(WeeklyPrice::week_of(day), None)),
-            Err(error) => date_error_message(&error, today(&self.clock), &Self::date_options()),
+            Err(error) => date_error_message(&error, self.clock.today(), &Self::date_options()),
         };
         let zero = Money(0.into());
         let (placeholder, close_help) = match &self.quote {
@@ -176,7 +176,7 @@ impl Presenter for SetPricePresenter {
             week: text(
                 msg::units_set_price_field_week(),
                 &self.week,
-                format_date_input(today(&self.clock), None),
+                format_date_input(self.clock.today(), None),
                 SetPriceField::Week,
             ),
             week_help,
@@ -230,7 +230,7 @@ impl SetPricePresenter {
 
     /// The typed day, or why it can't be read; the view model turns the error into its Message.
     fn day(&self) -> Result<NaiveDate, DateInputError> {
-        parse_date_with(&self.week, today(&self.clock), &Self::date_options())
+        parse_date_with(&self.week, self.clock.today(), &Self::date_options())
     }
 
     /// The typed close, padded to the quote Unit's Precision; never rounded, so places finer than
@@ -249,7 +249,7 @@ impl SetPricePresenter {
         let (Ok(day), Some(close)) = (self.day(), self.price()) else {
             return;
         };
-        let now = (self.clock)();
+        let now = self.clock.now();
         let set = {
             let mut ports = self.ports.borrow_mut();
             SetPrice {
@@ -257,7 +257,7 @@ impl SetPricePresenter {
                 day,
                 close,
             }
-            .run(ports.split_mut().units, today(&self.clock), now)
+            .run(ports.split_mut().units, self.clock.today(), now)
         };
         let week = WeeklyPrice::week_of(day);
         match set {
@@ -283,11 +283,6 @@ impl SetPricePresenter {
             }
         }
     }
-}
-
-/// The Clock's day where the person is, which decides the current week.
-fn today(clock: &Clock) -> NaiveDate {
-    clock().with_timezone(&Local).date_naive()
 }
 
 #[cfg(test)]
@@ -321,13 +316,29 @@ mod tests {
 
         assert_eq!(view.frame.title, "Set price — VAS");
         assert_eq!(view.frame.submit, "Set price");
-        assert_eq!(view.week.text, format_date_input(today(&clock()), None));
+        assert_eq!(view.week.text, format_date_input(clock().today(), None));
         // The tests' clock reads Wednesday 21 October 2026, in the week starting Monday 19th.
         assert_eq!(view.week_help, "Week of Oct 19, 2026");
         assert_eq!(view.close.placeholder, "0.00");
         assert_eq!(view.close_help, "In AUD, to 2 places.");
         assert!(view.close.focused && !view.week.focused);
         assert!(!view.frame.can_confirm, "no close yet");
+    }
+
+    #[test]
+    fn the_date_field_opens_on_the_clocks_day_not_on_nows_utc_date() {
+        let (_, shared) = sample();
+        let late = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 10, 21, 23, 30, 0)
+            .single()
+            .expect("a valid instant");
+        let clock = Clock::with_time(|| day(2026, 10, 22), move || late);
+
+        let view = SetPricePresenter::new(shared, clock, UnitId::SEED_VAS, DialogKeys::default())
+            .expect("VAS is on Manual entry")
+            .view_model();
+
+        assert_eq!(late.date_naive(), day(2026, 10, 21));
+        assert_eq!(view.week.text, format_date_input(day(2026, 10, 22), None));
     }
 
     #[test]

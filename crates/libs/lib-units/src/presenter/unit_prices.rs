@@ -11,8 +11,8 @@
 //! only; every figure a person reads is formatted here.
 
 use bigdecimal::{BigDecimal, Signed as _, ToPrimitive as _, Zero as _};
-use chrono::{DateTime, Duration, Local, Months, NaiveDate, NaiveDateTime, NaiveTime, Utc};
-use lib_core::{Money, UnitId};
+use chrono::{DateTime, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use lib_core::{Clock, Money, UnitId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::format::{
     AmountStyle, format_amount, format_date, format_month_day, format_time_minutes,
@@ -22,9 +22,9 @@ use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
 use lib_viper::presenter::Presenter;
 use lib_viper::view::Hint;
 
+use super::ago;
 use super::fetch_text::{Asked, failure_detail};
 use super::units_pane::{Fact, amount};
-use super::{Clock, ago};
 use crate::fetching::{FinePrice, FineState, SharedFetching, window as fine_window};
 use crate::keymap::{EARLIER, GRAIN, LATER, SET_PRICE};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
@@ -425,11 +425,11 @@ impl UnitPricesPresenter {
     }
 
     fn now(&self) -> DateTime<Utc> {
-        (self.clock)()
+        self.clock.now()
     }
 
     fn today(&self) -> NaiveDate {
-        self.now().with_timezone(&Local).date_naive()
+        self.clock.today()
     }
 
     /// The grains the Unit's source offers, Week alone with no fetching.
@@ -858,11 +858,14 @@ mod tests {
     fn earlier_then_later_from_a_months_last_day_lands_back_on_the_current_week() {
         let (_ports, shared) = sample();
         // Wednesday 31 Mar 2027: a month back is 28 Feb, and a month on from that is 28 Mar.
-        let clock: Clock = std::rc::Rc::new(|| {
-            chrono::TimeZone::with_ymd_and_hms(&Utc, 2027, 3, 31, 9, 30, 0)
-                .single()
-                .expect("a valid instant")
-        });
+        let clock = Clock::with_time(
+            || day(2027, 3, 31),
+            || {
+                chrono::TimeZone::with_ymd_and_hms(&Utc, 2027, 3, 31, 9, 30, 0)
+                    .single()
+                    .expect("a valid instant")
+            },
+        );
         let mut presenter = UnitPricesPresenter::new(
             shared,
             clock,
@@ -1055,7 +1058,7 @@ mod tests {
             }
 
             fn today(&self) -> NaiveDate {
-                self.prices.now().with_timezone(&Local).date_naive()
+                self.prices.today()
             }
         }
 
@@ -1244,7 +1247,7 @@ mod tests {
             let noon = btc.today().and_hms_opt(12, 0, 0).expect("noon");
             let instant = |minutes: i64| {
                 (noon + Duration::minutes(minutes))
-                    .and_local_timezone(Local)
+                    .and_local_timezone(chrono::Local)
                     .earliest()
                     .expect("local noon exists")
                     .timestamp_millis()

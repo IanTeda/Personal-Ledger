@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
-use lib_core::{PriceSourceId, UnitId};
+use lib_core::{Clock, PriceSourceId, UnitId};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 use secrecy::{ExposeSecret as _, SecretString};
@@ -17,7 +17,7 @@ use secrecy::{ExposeSecret as _, SecretString};
 use crate::fetching::{
     PriceRequest, PriceResponse, PriceTransport, RequestId, SharedFetching, TransportOutcome,
 };
-use crate::presenter::{Clock, LedgerPrices, Received};
+use crate::presenter::{LedgerPrices, Received};
 use crate::protocols::{PortsMut, SharedPorts, UnitsDialog, UnitsOutcome, UnitsPorts, UnitsRouter};
 use crate::{
     BaseUnitRepository, Error, Holding, KeyState, PriceSourceKeys, PriceSourceRecord,
@@ -443,7 +443,7 @@ impl PriceTransport for FakeTransport {
 }
 
 /// An Open Ledger's prices as a test drives it: the fake Units ports, a [`FakeTransport`], a
-/// clock the test sets, and the [`LedgerPrices`] every response lands through, on a channel the
+/// clock whose day and time the test sets, and the [`LedgerPrices`] every response lands through, on a channel the
 /// fixture feeds, collecting the Notices each landing raises. It is built before the open check,
 /// so a test arranges the Ledger first and runs [`LedgerPrices`]' open check itself.
 pub struct LedgerPricesFixture {
@@ -453,21 +453,25 @@ pub struct LedgerPricesFixture {
     /// The feed's sending end, `None` once [`Self::hang_up`] drops it.
     feed: Option<Sender<PriceResponse>>,
     at: Rc<Cell<DateTime<Utc>>>,
+    day: Rc<Cell<NaiveDate>>,
     clock: Clock,
     prices: LedgerPrices,
     notices: Vec<Notice>,
 }
 
 impl LedgerPricesFixture {
-    /// `ports` with fetching over a fresh [`FakeTransport`], the clock reading `now`.
+    /// `ports` with fetching over a fresh [`FakeTransport`], the clock reading `now` and its day
+    /// in UTC.
     pub fn new(ports: InMemoryPorts, now: DateTime<Utc>) -> Self {
         let (ports, shared) = ports.shared();
         let transport = FakeTransport::default();
         let (feed, responses) = std::sync::mpsc::channel();
         let at = Rc::new(Cell::new(now));
-        let clock: Clock = {
+        let day = Rc::new(Cell::new(now.date_naive()));
+        let clock = {
             let at = at.clone();
-            Rc::new(move || at.get())
+            let day = day.clone();
+            Clock::with_time(move || day.get(), move || at.get())
         };
         let prices = LedgerPrices::unopened(
             shared.clone(),
@@ -482,6 +486,7 @@ impl LedgerPricesFixture {
             transport,
             feed: Some(feed),
             at,
+            day,
             clock,
             notices: Vec::new(),
         }
@@ -506,7 +511,7 @@ impl LedgerPricesFixture {
         self.prices.shared_fetching()
     }
 
-    /// A clock reading what [`Self::later`] last set.
+    /// A clock reading what [`Self::later`] and [`Self::set_today`] last set.
     pub fn clock(&self) -> Clock {
         self.clock.clone()
     }
@@ -515,9 +520,24 @@ impl LedgerPricesFixture {
         self.at.get()
     }
 
-    /// Moves the clock on `by`.
+    /// The day the clock reads.
+    pub fn today(&self) -> NaiveDate {
+        self.day.get()
+    }
+
+    /// Moves the clock on `by`, its day by as many days as that moves now's UTC date.
     pub fn later(&self, by: Duration) {
-        self.at.set(self.at.get() + by);
+        let before = self.at.get();
+        let after = before + by;
+        self.at.set(after);
+        self.day
+            .set(self.day.get() + (after.date_naive() - before.date_naive()));
+    }
+
+    /// Sets the clock's day alone, leaving now where it is, as a Client east of UTC reads a day
+    /// ahead of now's UTC date.
+    pub fn set_today(&self, day: NaiveDate) {
+        self.day.set(day);
     }
 
     /// The Ledger's prices, for its scheduled check and backfill.

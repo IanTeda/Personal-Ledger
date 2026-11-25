@@ -17,9 +17,9 @@ use std::rc::Rc;
 use std::sync::mpsc::{Receiver, TryRecvError};
 
 use chrono::{DateTime, Local, NaiveDate, Utc};
+use lib_core::Clock;
 use lib_toast::{Notice, Notify, ToastKind};
 
-use super::Clock;
 use super::fetch_text::{
     Asked, round_failed_toast, round_stopped_toast, some_failed_toast, unit_failed_toast,
     wait_begun_toast,
@@ -114,7 +114,7 @@ impl LedgerPrices {
     /// person asked for begins to wait, unless the page already did. Each Client calls it from its
     /// response poll; nothing here waits or sleeps.
     pub fn pump(&mut self, router: &mut dyn Notify) {
-        let now = (self.clock)();
+        let now = self.clock.now();
         self.fetching.borrow_mut().release(now);
         let toast = wait_begun_toast(&*self.ports.borrow(), &mut self.fetching.borrow_mut(), now);
         if let Some(toast) = toast {
@@ -126,8 +126,8 @@ impl LedgerPrices {
     /// source with a Unit due, leaving a source with a round in flight alone, and tries a failed
     /// history request again once its wait is over. It never starts a backfill of its own.
     pub fn check(&mut self) {
-        let now = (self.clock)();
-        let today = local_day(now);
+        let now = self.clock.now();
+        let today = self.clock.today();
         let ports = self.ports.borrow();
         let mut fetching = self.fetching.borrow_mut();
         fetching.check(&*ports, today, now);
@@ -137,10 +137,10 @@ impl LedgerPrices {
     /// past weeks it has no Weekly Price for, silently. The sync effort calls it too, once a sync
     /// completes.
     pub fn backfill(&mut self) {
-        let now = (self.clock)();
+        let now = self.clock.now();
         self.fetching
             .borrow_mut()
-            .backfill(&*self.ports.borrow(), local_day(now), now);
+            .backfill(&*self.ports.borrow(), self.clock.today(), now);
     }
 
     /// Lands `response` through fetching and does what the [`Landing`] asks: writes a round's
@@ -148,8 +148,8 @@ impl LedgerPrices {
     /// A scheduled round and a backfill raise nothing, and a form's test is held for the form to
     /// show. A fetched price is never undoable, so it raises no `Notice::Changed`.
     fn land(&mut self, response: PriceResponse, router: &mut dyn Notify) {
-        let now = (self.clock)();
-        let today = local_day(now);
+        let now = self.clock.now();
+        let today = self.clock.today();
         let landing = {
             let ports = self.ports.borrow();
             self.fetching
@@ -282,11 +282,6 @@ pub(crate) fn write_landing(
 /// on opening (ADR-0043's "where and when fetching runs").
 pub const PRICE_CHECK: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// The day `now` falls on here, which every week a fetch writes or asks for is counted from.
-pub(super) fn local_day(now: DateTime<Utc>) -> NaiveDate {
-    now.with_timezone(&Local).date_naive()
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, Utc};
@@ -313,6 +308,37 @@ mod tests {
     }
 
     #[test]
+    fn a_landed_round_is_written_into_the_week_of_the_clocks_day_not_of_nows_utc_date() {
+        crate::presenter::test_support::locale();
+        let late = NaiveDate::from_ymd_opt(2026, 10, 21)
+            .and_then(|day| day.and_hms_opt(23, 30, 0))
+            .expect("a real time")
+            .and_utc();
+        let mut client = LedgerPricesFixture::with_units(vec![currency("EUR")], late);
+        let day = |d: u32| NaiveDate::from_ymd_opt(2026, 10, d).expect("a real date");
+        client.set_today(day(22));
+        let weeks = |client: &LedgerPricesFixture| -> Vec<NaiveDate> {
+            client
+                .unit("EUR")
+                .prices
+                .iter()
+                .map(|price| price.week)
+                .collect()
+        };
+
+        client.prices().check();
+        client.land(client.transport().answer_last(200, r#"{"rate":1.65}"#));
+        assert_eq!(weeks(&client), vec![day(19)]);
+
+        // Monday 26 Oct opens a week now's UTC date, still 21 Oct, isn't in.
+        client.set_today(day(26));
+        client.prices().check();
+        client.land(client.transport().answer_last(200, r#"{"rate":1.66}"#));
+
+        assert_eq!(weeks(&client), vec![day(19), day(26)]);
+    }
+
+    #[test]
     fn a_scheduled_round_is_written_once_its_last_response_lands_and_tells_no_one() {
         let mut sample = InMemoryPorts::sample(now());
         sample
@@ -329,9 +355,9 @@ mod tests {
                 .into_iter()
                 .find(|unit| unit.code == code)
                 .expect("listed");
-            unit.prices.iter().any(|price| {
-                price.week == WeeklyPrice::week_of(now().with_timezone(&Local).date_naive())
-            })
+            unit.prices
+                .iter()
+                .any(|price| price.week == WeeklyPrice::week_of(now().date_naive()))
         };
 
         client.prices().check();

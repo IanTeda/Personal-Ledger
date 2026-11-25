@@ -42,6 +42,9 @@ pub struct UnitsSetup {
     pub dialog_keymap: Keymap<DialogCommand>,
     /// The Open Ledger's price fetching, `None` with no price feed (ADR-0062).
     pub fetching: Option<lib_units::SharedFetching>,
+    /// The Open Ledger's Clock, which the Units View, its Router and its Dialogs read the day and
+    /// the time from.
+    pub clock: lib_core::Clock,
 }
 
 impl UnitsSetup {
@@ -56,7 +59,7 @@ impl UnitsSetup {
     ) -> (Self, mpsc::Receiver<WriteFailure>) {
         let shared = stores.share();
         let stores = shared.stores.clone();
-        let (ledger, failures) = LedgerPorts::over(shared, clock, api_key_secret);
+        let (ledger, failures) = LedgerPorts::over(shared, clock.clone(), api_key_secret);
         let setup = Self {
             ports: ledger.units(),
             stores,
@@ -65,6 +68,7 @@ impl UnitsSetup {
             config: config.clone(),
             dialog_keymap: lib_shell::dialog_keymap(config),
             fetching: None,
+            clock,
         };
         (setup, failures)
     }

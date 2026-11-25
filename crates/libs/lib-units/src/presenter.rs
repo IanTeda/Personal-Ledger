@@ -22,8 +22,6 @@ mod unit_prices;
 mod units_page;
 mod units_pane;
 
-use std::rc::Rc;
-
 use chrono::{DateTime, Utc};
 use lib_core::PriceSourceId;
 use lib_list_cursor::Step;
@@ -95,9 +93,6 @@ pub fn dialog_legend(keys: &DialogKeys, hints: &[DialogHint]) -> Vec<Hint> {
     legend.extend(keys.legend(hints));
     legend
 }
-
-/// Where a Presenter reads the time from: `Utc::now` in a Client, a fixed instant in a test.
-pub type Clock = Rc<dyn Fn() -> DateTime<Utc>>;
 
 impl UnitsOutcome {
     /// The Toast raised while the detail pane isn't docked; a saved Unit or a new base raises none.
@@ -314,9 +309,8 @@ pub(crate) mod test_support {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use chrono::{DateTime, TimeZone, Utc};
-
-    use super::Clock;
+    use chrono::{DateTime, NaiveDate, TimeZone, Utc};
+    use lib_core::Clock;
     use lib_viper::dialog::{DialogKeys, dialog_keymap};
     use lib_viper::keymap::KeyBindingConfig;
 
@@ -341,8 +335,14 @@ pub(crate) mod test_support {
             .expect("a valid, unambiguous instant")
     }
 
+    /// The day the tests' clock reads, the day of [`now`] in UTC.
+    pub fn today() -> NaiveDate {
+        now().date_naive()
+    }
+
+    /// The tests' clock, on [`today`] and [`now`].
     pub fn clock() -> Clock {
-        Rc::new(now)
+        Clock::with_time(today, now)
     }
 
     /// `frame`'s hints as `(commands, action)`, the commands joined by `/`, for asserting which

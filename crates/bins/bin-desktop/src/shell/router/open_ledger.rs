@@ -159,7 +159,7 @@ impl OpenLedger {
                     ports.units(),
                     feed.transport,
                     feed.responses,
-                    crate::units::now_of(clock),
+                    clock.clone(),
                 ),
             ))
         });

@@ -22,6 +22,7 @@ mod toast;
 mod tui;
 pub mod units;
 mod view;
+mod wall_clock;
 
 /// This bin's own Messages, generated at build time from `i18n/<locale>/*.ftl`.
 mod msg {

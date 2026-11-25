@@ -398,9 +398,11 @@ impl Shell {
     /// The Open Ledger on `LedgerPorts` over `stores`, its Units under the key bindings already
     /// set.
     fn open_ledger_on(&self, path: PathBuf, stores: Stores, writer: Option<Writer>) -> OpenLedger {
+        // One Clock for the Ledger's ports, its price fetching and its Units.
+        let clock = crate::wall_clock::wall_clock();
         let (mut units, failures) = UnitsSetup::on(
             stores,
-            lib_core::Clock::new(|| Local::now().date_naive()),
+            clock.clone(),
             &self.keybindings,
             self.api_key_secret.clone(),
         );
@@ -411,7 +413,7 @@ impl Shell {
                 units.ports.clone(),
                 feed.transport,
                 feed.responses,
-                Rc::new(chrono::Utc::now),
+                clock,
             );
             units.fetching = Some(prices.fetching());
             prices

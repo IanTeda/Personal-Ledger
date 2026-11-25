@@ -44,8 +44,7 @@ impl UnitsRouter for PageRouter<'_, '_, UnitsPagePresenter> {
             }
             Which::SetBaseUnit => self.open(SetBaseUnitPresenter::new(ports, keys)),
             Which::SetPrice(id) => {
-                let now = super::view::page::now_of(&setup.clock);
-                let Some(set) = SetPricePresenter::new(ports, now, id, keys) else {
+                let Some(set) = SetPricePresenter::new(ports, setup.clock.clone(), id, keys) else {
                     return false;
                 };
                 self.open(set);
@@ -73,10 +72,7 @@ impl UnitsRouter for PageRouter<'_, '_, UnitsPagePresenter> {
 
 /// `form` testing through the Open Ledger's fetching, when it has a price feed.
 fn testing(form: PriceSourceFormPresenter, setup: &UnitsSetup) -> PriceSourceFormPresenter {
-    form.with_testing(
-        setup.fetching.clone(),
-        super::view::page::now_of(&setup.clock),
-    )
+    form.with_testing(setup.fetching.clone(), setup.clock.clone())
 }
 
 /// The Units module's entry point: its Settings page, `presenter` routed over `setup`, which the

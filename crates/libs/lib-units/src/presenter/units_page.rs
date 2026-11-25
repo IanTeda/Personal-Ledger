@@ -3,7 +3,7 @@
 //! while the detail pane is docked).
 
 use chrono::{DateTime, Local, Utc};
-use lib_core::{PriceSourceId, UnitId};
+use lib_core::{Clock, PriceSourceId, UnitId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Label as _;
 use lib_locale::format::format_time_minutes;
@@ -19,7 +19,7 @@ use super::price_history::{HistoryInput, PriceHistory, price_history};
 use super::price_source_test::PriceSourceTest;
 use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
-use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
+use super::{UnitChange, UnitsOutcome, ago, joined};
 use crate::fetching::{FetchFailure, PriceFetching, SharedFetching};
 use crate::interactor::{FetchAll, FetchNow, FetchSource, ReactivateUnit};
 use crate::keymap::{FETCH_NOW, NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE, unit_prices_keymap};
@@ -566,7 +566,7 @@ impl UnitsPagePresenter {
         let sources = catalogue.sources();
         let by_code = units_by_code(&units);
         let selection = resolve(Self::rows_of(&by_code, &sources), self.selected);
-        let now = (self.clock)();
+        let now = self.clock.now();
         let fetching = self.fetching.as_ref().map(|fetching| fetching.borrow());
         let fetching = fetching.as_deref();
         let source_of = |unit: &UnitRow| {
@@ -591,7 +591,7 @@ impl UnitsPagePresenter {
                     sources: &sources,
                     base,
                     open_chord: self.keymap.hint_chord(OPEN),
-                    today: now.with_timezone(&Local).date_naive(),
+                    today: self.clock.today(),
                     out_of_date: out_of_date(unit),
                     fetch_failed: unit_failed(unit),
                     backfill: source_of(unit).and_then(|source| {
@@ -992,7 +992,7 @@ impl UnitsPagePresenter {
             return;
         }
         // Any other refusal is logged by the Interactor; the checks above leave none but a race.
-        let now = (self.clock)();
+        let now = self.clock.now();
         let sent = FetchNow { id }.run(&*ports, &mut fetching.borrow_mut(), now);
         if sent.is_ok() {
             // Held by its source's `Retry-After`, it says so once, as the wait begins.
@@ -1023,7 +1023,7 @@ impl UnitsPagePresenter {
             return;
         };
         let ports = self.ports.borrow();
-        let outcome = FetchSource { id }.run(&*ports, &mut fetching.borrow_mut(), (self.clock)());
+        let outcome = FetchSource { id }.run(&*ports, &mut fetching.borrow_mut(), self.clock.now());
         self.tell_started(&[(id, outcome)], true, router);
     }
 
@@ -1033,7 +1033,7 @@ impl UnitsPagePresenter {
             return;
         };
         let ports = self.ports.borrow();
-        let outcomes = FetchAll.run(&*ports, &mut fetching.borrow_mut(), (self.clock)());
+        let outcomes = FetchAll.run(&*ports, &mut fetching.borrow_mut(), self.clock.now());
         self.tell_started(&outcomes, false, router);
     }
 
@@ -1106,7 +1106,7 @@ impl UnitsPagePresenter {
     /// newest first, instead of raising a Toast (DESKTOP-125).
     fn land(&mut self, outcome: UnitsOutcome, router: &mut dyn UnitsRouter) {
         if self.docked {
-            let time = format_time_minutes((self.clock)().with_timezone(&Local).time());
+            let time = format_time_minutes(self.clock.now().with_timezone(&Local).time());
             self.activity.insert(
                 0,
                 ActivityLine {
@@ -3056,7 +3056,7 @@ mod tests {
             );
             for unit in &mut on.page.ports.borrow_mut().units.units {
                 for price in &mut unit.prices {
-                    price.written_at = (clock())() - chrono::Duration::minutes(31);
+                    price.written_at = clock().now() - chrono::Duration::minutes(31);
                 }
             }
 

@@ -158,7 +158,7 @@ mod tests {
         let mut eur = unit("EUR", FRANKFURTER);
         eur.record_price(
             "1.65".parse().expect("a decimal"),
-            chrono::Local::now().date_naive(),
+            chrono::NaiveDate::from_ymd_opt(2026, 10, 21).expect("a real date"),
             Utc::now(),
         );
         let mut ask = on(vec![eur]);

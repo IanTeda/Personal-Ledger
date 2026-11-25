@@ -19,14 +19,14 @@
 //! to the series and each point's date and close. A test of a source with a history request asks
 //! it for the last 14 days once the price passes, and shows how many points came back.
 
-use lib_core::{PriceSourceId, UnitId};
+use lib_core::{Clock, PriceSourceId, UnitId};
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView, count};
 use secrecy::{ExposeSecret as _, SecretString};
 
 use super::price_source_test::{PriceSourceTest, TestResultView};
-use super::{Clock, UnitsOutcome, cycle, step, updates_choices};
+use super::{UnitsOutcome, cycle, step, updates_choices};
 use crate::fetching::SharedFetching;
 use crate::interactor::{
     AddPriceSource, EditPriceSource, KeyChange, SavePriceSourceKey, TestPriceSource,

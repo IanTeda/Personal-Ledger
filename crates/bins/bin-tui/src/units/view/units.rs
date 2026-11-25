@@ -110,8 +110,8 @@ pub struct UnitsView {
     setup: UnitsSetup,
     dialog_keymap: Keymap<DialogCommand>,
     dialog: Option<Dialog>,
-    /// Where the Presenters read the time from.
-    now: lib_units::presenter::Clock,
+    /// Where the Presenters read the day and the time from.
+    clock: lib_core::Clock,
     /// Raised by the Presenters since `Shell` last took them.
     toasts: Vec<(ToastKind, String)>,
     /// Whether the page was last told it is docked: the one place the Window Size is remembered,
@@ -120,19 +120,20 @@ pub struct UnitsView {
 }
 
 impl UnitsView {
+    /// The View on the Open Ledger's Clock.
     pub fn new(setup: &UnitsSetup) -> Self {
-        Self::with_now(setup, std::rc::Rc::new(chrono::Utc::now))
+        Self::with_clock(setup, setup.clock.clone())
     }
 
-    /// The View with its Presenters reading the time from `now`, which a test fixes so a price's
-    /// age is the same on every run.
-    pub fn with_now(setup: &UnitsSetup, now: lib_units::presenter::Clock) -> Self {
+    /// The View with its Presenters reading the day and the time from `clock`, which a test fixes
+    /// so a price's age is the same on every run.
+    pub fn with_clock(setup: &UnitsSetup, clock: lib_core::Clock) -> Self {
         let shared: SharedPorts = setup.ports.clone();
-        let presenter = UnitsPagePresenter::new(shared, now.clone(), &setup.config)
+        let presenter = UnitsPagePresenter::new(shared, clock.clone(), &setup.config)
             .with_fetching(setup.fetching.clone());
         Self {
             presenter,
-            now,
+            clock,
             ports: setup.ports.clone(),
             setup: setup.clone(),
             dialog_keymap: setup.dialog_keymap.clone(),
@@ -160,8 +161,9 @@ impl UnitsView {
     /// Sends `event` to the page Presenter, which holds the prices view and hands it its events,
     /// hosts any Dialog it asked for, and commits whatever it wrote as one transaction.
     fn send(&mut self, event: UnitsPageEvent) {
-        let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone())
-            .with_fetching(self.setup.fetching.clone());
+        let mut router =
+            Router::with_clock(self.ports.clone(), &mut self.toasts, self.clock.clone())
+                .with_fetching(self.setup.fetching.clone());
         self.presenter.handle(event, &mut router);
         let opened = router.opened.take();
         self.setup.commit();
@@ -199,8 +201,9 @@ impl UnitsView {
         let Some(dialog) = &mut self.dialog else {
             return;
         };
-        let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone())
-            .with_fetching(self.setup.fetching.clone());
+        let mut router =
+            Router::with_clock(self.ports.clone(), &mut self.toasts, self.clock.clone())
+                .with_fetching(self.setup.fetching.clone());
         dialog.handle_key(key, &self.dialog_keymap, &mut router);
         let closed = router.closed.take();
         self.setup.commit();
@@ -994,10 +997,11 @@ mod tests {
     /// age is the same on every run.
     fn units_view_at_the_samples_pricing() -> UnitsView {
         crate::locale::init_for_tests();
-        let at = lib_database::seed::sample_priced_at(chrono::Local::now().date_naive());
-        UnitsView::with_now(
+        let today = chrono::Local::now().date_naive();
+        let at = lib_database::seed::sample_priced_at(today);
+        UnitsView::with_clock(
             &UnitsSetup::sample(&KeyBindingConfig::default()),
-            std::rc::Rc::new(move || at),
+            lib_core::Clock::with_time(move || today, move || at),
         )
     }
 

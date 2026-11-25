@@ -21,7 +21,6 @@ use lib_units::SharedPorts;
 use lib_units::presenter::UnitsPagePresenter;
 pub use router::units_page;
 pub(crate) use view::dialog::{help, refusal};
-pub(crate) use view::page::now_of;
 
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::ModulePage;
@@ -81,7 +80,7 @@ impl UnitsSetup {
         clock: lib_core::Clock,
         config: &lib_config::KeyBindingConfig,
     ) -> (UnitsPagePresenter, Self) {
-        let presenter = UnitsPagePresenter::new(ports.clone(), now_of(&clock), config)
+        let presenter = UnitsPagePresenter::new(ports.clone(), clock.clone(), config)
             .with_fetching(fetching.clone());
         let setup = Self {
             ports,
