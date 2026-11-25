@@ -2,7 +2,7 @@ use lib_core::configuration::ConfigKey;
 
 use super::RestoreSetting;
 use crate::device::DevicePorts;
-use crate::protocols::DeviceAnswer;
+use crate::protocols::{DeviceAnswer, DeviceRefusal};
 
 /// Put a batch of This device settings back for one Undo or Redo (#1449), in order, each as
 /// [`RestoreSetting`] does. The first key that doesn't go back, shadowed or refused, stops the
@@ -13,11 +13,11 @@ pub struct RestoreSettings {
 }
 
 /// How a [`RestoreSettings`] went: how many keys went back, and the first one that didn't, with
-/// its answer (never `Saved`).
+/// why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Restored {
     pub restored: usize,
-    pub refusal: Option<(ConfigKey, DeviceAnswer<()>)>,
+    pub refusal: Option<(ConfigKey, DeviceRefusal)>,
 }
 
 impl RestoreSettings {
@@ -27,8 +27,12 @@ impl RestoreSettings {
         for (key, value) in self.changes {
             match (RestoreSetting { key, value }).run(ports) {
                 DeviceAnswer::Saved { .. } => restored += 1,
-                answer => {
-                    refusal = Some((key, answer));
+                DeviceAnswer::Shadowed { source } => {
+                    refusal = Some((key, DeviceRefusal::Shadowed { source }));
+                    break;
+                }
+                DeviceAnswer::Refused(error) => {
+                    refusal = Some((key, DeviceRefusal::Refused(error)));
                     break;
                 }
             }
@@ -84,7 +88,7 @@ mod tests {
         assert_eq!(done.restored, 1);
         assert!(matches!(
             done.refusal,
-            Some((ConfigKey::Toasts, DeviceAnswer::Shadowed { .. }))
+            Some((ConfigKey::Toasts, DeviceRefusal::Shadowed { .. }))
         ));
         assert_eq!(
             file.restored(),

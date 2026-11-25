@@ -179,6 +179,20 @@ pub enum DeviceAnswer<T> {
     Refused(Error),
 }
 
+/// Why a write of a device's setting didn't go to the file: a [`DeviceAnswer`] other than `Saved`,
+/// for a caller that has already counted the saves, as [`Restored`] has.
+///
+/// [`Restored`]: crate::Restored
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeviceRefusal {
+    /// Not written, since a source above the file sets the key: a flag, an environment variable or
+    /// a higher configuration file, named by `source`. Never the answer for a key that
+    /// [writes when shadowed](ConfigKey::writes_when_shadowed).
+    Shadowed { source: String },
+    /// Not written, for the reason given.
+    Refused(Error),
+}
+
 /// What only the Shell does for Settings › Tracing: the log box's list is the Client's, and Clear
 /// logs is a Dialog it hosts.
 pub trait TracingRouter: Notify {

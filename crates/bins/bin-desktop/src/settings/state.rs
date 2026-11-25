@@ -615,7 +615,7 @@ impl SettingsView {
         .run(&self.device);
         let restored = done.restored;
         let outcome = match done.refusal {
-            Some((key, answer)) => refused(answer, key),
+            Some((key, refusal)) => refused(refusal, key),
             None => Ok(()),
         };
         if restored > 0 {
@@ -647,19 +647,18 @@ impl SettingsView {
     }
 }
 
-/// Why a restore of `key` didn't go to the file, or `Ok` once saved.
+/// Why a restore of `key` didn't go to the file, as the status line says it.
 fn refused(
-    answer: lib_settings::DeviceAnswer<()>,
+    refusal: lib_settings::DeviceRefusal,
     key: lib_core::configuration::ConfigKey,
 ) -> crate::Result<()> {
-    use lib_settings::{DeviceAnswer, Error};
-    let refusal = match answer {
-        DeviceAnswer::Saved { .. } => return Ok(()),
-        DeviceAnswer::Shadowed { source } => {
+    use lib_settings::{DeviceRefusal, Error};
+    let refusal = match refusal {
+        DeviceRefusal::Shadowed { source } => {
             lib_shell::Error::ConfigurationShadowed { key, source }
         }
-        DeviceAnswer::Refused(Error::NoFile) => lib_shell::Error::ConfigurationNoFile { key },
-        DeviceAnswer::Refused(Error::WriteFailed | Error::BaseUnitRefused) => {
+        DeviceRefusal::Refused(Error::NoFile) => lib_shell::Error::ConfigurationNoFile { key },
+        DeviceRefusal::Refused(Error::WriteFailed | Error::BaseUnitRefused) => {
             lib_shell::Error::ConfigurationNotWritten { key }
         }
     };
