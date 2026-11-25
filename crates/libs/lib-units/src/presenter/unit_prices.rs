@@ -858,8 +858,7 @@ mod tests {
     fn earlier_then_later_from_a_months_last_day_lands_back_on_the_current_week() {
         let (_ports, shared) = sample();
         // Wednesday 31 Mar 2027: a month back is 28 Feb, and a month on from that is 28 Mar.
-        let clock = Clock::with_time(
-            || day(2027, 3, 31),
+        let clock = Clock::new(
             || {
                 chrono::TimeZone::with_ymd_and_hms(&Utc, 2027, 3, 31, 9, 30, 0)
                     .single()

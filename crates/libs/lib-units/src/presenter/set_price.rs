@@ -331,7 +331,12 @@ mod tests {
         let late = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 10, 21, 23, 30, 0)
             .single()
             .expect("a valid instant");
-        let clock = Clock::with_time(|| day(2026, 10, 22), move || late, |at| at.naive_utc());
+        // Brisbane reads 21 Oct 23:30 UTC as 22 Oct.
+        let brisbane = chrono::FixedOffset::east_opt(10 * 3600).expect("a real offset");
+        let clock = Clock::new(
+            move || late,
+            move |at| at.with_timezone(&brisbane).naive_local(),
+        );
 
         let view = SetPricePresenter::new(shared, clock, UnitId::SEED_VAS, DialogKeys::default())
             .expect("VAS is on Manual entry")

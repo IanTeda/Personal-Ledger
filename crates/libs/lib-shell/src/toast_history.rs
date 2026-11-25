@@ -113,7 +113,7 @@ fn rows(history: &History<DateTime<Utc>>, clock: &Clock) -> Vec<ToastHistoryRow>
 
 #[cfg(test)]
 mod tests {
-    use chrono::{FixedOffset, NaiveDate, NaiveTime, TimeZone};
+    use chrono::{FixedOffset, NaiveTime, TimeZone};
     use lib_toast::{Notice, Notify, Toasts};
 
     use super::*;
@@ -142,11 +142,7 @@ mod tests {
     /// A Clock reading local time `hours` east of UTC.
     fn east(hours: i32) -> Clock {
         let zone = FixedOffset::east_opt(hours * 3600).expect("a valid offset");
-        Clock::with_time(
-            || NaiveDate::from_ymd_opt(2026, 9, 28).expect("a real date"),
-            || DateTime::UNIX_EPOCH,
-            move |at| at.with_timezone(&zone).naive_local(),
-        )
+        Clock::new(|| at(0), move |at| at.with_timezone(&zone).naive_local())
     }
 
     fn open(toasts: &Toasts<DateTime<Utc>>) -> ToastHistoryPresenter {

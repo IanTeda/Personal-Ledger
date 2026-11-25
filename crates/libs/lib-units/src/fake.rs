@@ -453,7 +453,6 @@ pub struct LedgerPricesFixture {
     /// The feed's sending end, `None` once [`Self::hang_up`] drops it.
     feed: Option<Sender<PriceResponse>>,
     at: Rc<Cell<DateTime<Utc>>>,
-    day: Rc<Cell<NaiveDate>>,
     zone: Rc<Cell<FixedOffset>>,
     clock: Clock,
     prices: LedgerPrices,
@@ -461,19 +460,17 @@ pub struct LedgerPricesFixture {
 }
 
 impl LedgerPricesFixture {
-    /// `ports` with fetching over a fresh [`FakeTransport`], the clock reading `now` and its day
-    /// in UTC, and local time in UTC until [`Self::set_zone`] moves it.
+    /// `ports` with fetching over a fresh [`FakeTransport`], the clock reading `now`, and local time
+    /// and the day in UTC until [`Self::set_zone`] moves the zone.
     pub fn new(ports: InMemoryPorts, now: DateTime<Utc>) -> Self {
         let (ports, shared) = ports.shared();
         let transport = FakeTransport::default();
         let (feed, responses) = std::sync::mpsc::channel();
         let at = Rc::new(Cell::new(now));
-        let day = Rc::new(Cell::new(now.date_naive()));
         let zone = Rc::new(Cell::new(Utc.fix()));
         let clock = {
-            let (at, day, zone) = (at.clone(), day.clone(), zone.clone());
-            Clock::with_time(
-                move || day.get(),
+            let (at, zone) = (at.clone(), zone.clone());
+            Clock::new(
                 move || at.get(),
                 move |at| at.with_timezone(&zone.get()).naive_local(),
             )
@@ -491,7 +488,6 @@ impl LedgerPricesFixture {
             transport,
             feed: Some(feed),
             at,
-            day,
             zone,
             clock,
             notices: Vec::new(),
@@ -517,7 +513,7 @@ impl LedgerPricesFixture {
         self.prices.shared_fetching()
     }
 
-    /// A clock reading what [`Self::later`] and [`Self::set_today`] last set.
+    /// A clock reading what [`Self::later`] and [`Self::set_zone`] last set.
     pub fn clock(&self) -> Clock {
         self.clock.clone()
     }
@@ -526,27 +522,18 @@ impl LedgerPricesFixture {
         self.at.get()
     }
 
-    /// The day the clock reads.
+    /// The day the clock reads: the local date of now in its zone.
     pub fn today(&self) -> NaiveDate {
-        self.day.get()
+        self.clock.today()
     }
 
-    /// Moves the clock on `by`, its day by as many days as that moves now's UTC date.
+    /// Moves the clock's moment on `by`, leaving its zone.
     pub fn later(&self, by: Duration) {
-        let before = self.at.get();
-        let after = before + by;
-        self.at.set(after);
-        self.day
-            .set(self.day.get() + (after.date_naive() - before.date_naive()));
+        self.at.set(self.at.get() + by);
     }
 
-    /// Sets the clock's day alone, leaving now where it is, as a Client east of UTC reads a day
-    /// ahead of now's UTC date.
-    pub fn set_today(&self, day: NaiveDate) {
-        self.day.set(day);
-    }
-
-    /// Moves the zone the clock reads local time in, so a test reads an hour away from UTC.
+    /// Moves the zone the clock reads local time and the day in, so a test reads an hour, or a
+    /// day, away from UTC.
     pub fn set_zone(&self, zone: FixedOffset) {
         self.zone.set(zone);
     }

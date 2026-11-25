@@ -6,7 +6,6 @@
 
 use std::time::Duration;
 
-use chrono::NaiveDate;
 use gpui::Context;
 use lib_core::Clock;
 use lib_shell::ShellInput;
@@ -18,15 +17,12 @@ use super::Root;
 #[doc(hidden)]
 pub const DATE_POLL: Duration = Duration::from_secs(60);
 
-/// `today` moving on with the local clock, so a Desktop left running crosses into a new month,
-/// now the real time, and local time in the device's zone.
-pub fn wall_clock(today: NaiveDate) -> Clock {
-    let started = chrono::Local::now().date_naive();
-    Clock::with_time(
-        move || today + (chrono::Local::now().date_naive() - started),
-        chrono::Utc::now,
-        |at| at.with_timezone(&chrono::Local).naive_local(),
-    )
+/// The real time read in the device's zone on each call, so a Desktop left running crosses into a
+/// new month.
+pub fn wall_clock() -> Clock {
+    Clock::new(chrono::Utc::now, |at| {
+        at.with_timezone(&chrono::Local).naive_local()
+    })
 }
 
 impl Root {

@@ -187,6 +187,11 @@ pub fn today() -> NaiveDate {
     date(2026, 6, 15)
 }
 
+/// Midday UTC on `day`, the moment the Shell's clock reads as now on that day.
+fn midday(day: NaiveDate) -> chrono::DateTime<chrono::Utc> {
+    lib_core::Clock::fixed(day).now()
+}
+
 pub fn date(y: i32, m: u32, d: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(y, m, d).expect("fixed test date is valid")
 }
@@ -197,11 +202,9 @@ pub struct Harness<'a> {
     pub cx: &'a mut VisualTestContext,
     /// The Shell's live log capture: push entries here, then [`Harness::settle_logs`].
     pub logs: lib_tracing::LogBuffer,
-    /// The day the Shell's clock reads, [`today`] until [`Harness::turn_date_to`] moves it.
-    date: Rc<Cell<NaiveDate>>,
-    /// How far past midday on that day the Shell's clock reads now, moved by
-    /// [`Harness::advance_now`].
-    past_midday: Rc<Cell<chrono::Duration>>,
+    /// The moment the Shell's clock reads as now, in UTC: midday on [`today`] until
+    /// [`Harness::turn_date_to`] or [`Harness::advance_now`] moves it.
+    now: Rc<Cell<chrono::DateTime<chrono::Utc>>>,
     /// How many times the Shell has committed, once per input (`input::send`).
     commits: Rc<Cell<usize>>,
     /// A clone of the stores the Shell was built on, `None` with no Ledger open: what
@@ -533,20 +536,11 @@ impl<'a> Harness<'a> {
             theme::colours::init(ThemeOverrides::default(), cx);
             theme::colours::set_device_colours(&config, cx);
         });
-        // Now reads midday on the day, as `Clock::settable`'s does, until a test moves it on.
-        let date = Rc::new(Cell::new(today()));
-        let past_midday = Rc::new(Cell::new(chrono::Duration::zero()));
+        // Now reads midday UTC on the day, as `Clock::settable`'s does, until a test moves it on.
+        let now = Rc::new(Cell::new(midday(today())));
         let clock = {
-            let (day, now_day, offset) = (date.clone(), date.clone(), past_midday.clone());
-            lib_core::Clock::with_time(
-                move || day.get(),
-                move || {
-                    now_day.get().and_time(chrono::NaiveTime::MIN).and_utc()
-                        + chrono::Duration::hours(12)
-                        + offset.get()
-                },
-                |at| at.naive_utc(),
-            )
+            let now = now.clone();
+            lib_core::Clock::new(move || now.get(), |at| at.naive_utc())
         };
         let (stores, shared) = ledger.unzip();
         let (shell, cx) = app.add_window_view(|window, cx| {
@@ -574,8 +568,7 @@ impl<'a> Harness<'a> {
             shell,
             cx,
             logs,
-            date,
-            past_midday,
+            now,
             commits,
             stores: shared,
             conf_dir,
@@ -625,15 +618,16 @@ impl<'a> Harness<'a> {
         self.commits.get()
     }
 
-    /// Moves the Shell's clock's now on by `by` within its day, as time passing would, without
-    /// running any timer: a test advances the executor after to let the Shell notice.
+    /// Moves the Shell's clock's now on by `by`, as time passing would, without running any
+    /// timer: a test advances the executor after to let the Shell notice.
     pub fn advance_now(&mut self, by: chrono::Duration) {
-        self.past_midday.set(self.past_midday.get() + by);
+        self.now.set(self.now.get() + by);
     }
 
-    /// Moves the Shell's clock to `day`, then lets the Shell notice: past one poll of its clock.
+    /// Moves the Shell's clock to midday UTC on `day`, dropping any earlier
+    /// [`Harness::advance_now`], then lets the Shell notice: past one poll of its clock.
     pub fn turn_date_to(&mut self, day: NaiveDate) {
-        self.date.set(day);
+        self.now.set(midday(day));
         self.advance_clock(router::DATE_POLL);
     }
 

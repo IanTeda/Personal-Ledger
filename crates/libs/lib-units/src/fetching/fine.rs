@@ -248,9 +248,14 @@ mod tests {
             close_only(day(2026, 10, 21), Some("2026-10-21T00:10:00Z"), "11"),
         ];
         let sydney = FixedOffset::east_opt(11 * 3600).expect("a valid offset");
-        let clock = Clock::with_time(
-            || day(2026, 10, 21),
-            || DateTime::UNIX_EPOCH,
+        // Now only fixes the day: 21 Oct 09:30 UTC is 20:30 the same day in Sydney.
+        let clock = Clock::new(
+            || {
+                day(2026, 10, 21)
+                    .and_hms_opt(9, 30, 0)
+                    .expect("a real time")
+                    .and_utc()
+            },
             move |at| at.with_timezone(&sydney).naive_local(),
         );
         let prices = fine_prices(

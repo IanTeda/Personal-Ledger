@@ -417,7 +417,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                                 configured_level,
                             },
                             ledger,
-                            shell::router::wall_clock(chrono::Local::now().date_naive()),
+                            shell::router::wall_clock(),
                             // The no-Ledger adapters, built once here and handed to `Root`: the
                             // Create ledger Dialog's creation port and the file explorer's disk.
                             std::rc::Rc::new(std::cell::RefCell::new(LedgerCreationAdapter::new()))

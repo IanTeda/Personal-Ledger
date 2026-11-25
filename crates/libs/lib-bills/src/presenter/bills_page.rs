@@ -971,10 +971,16 @@ mod tests {
         let (_, shared) = sample();
         let reads = Rc::new(std::cell::Cell::new(0));
         let counted = reads.clone();
-        let clock = Clock::new(move || {
-            counted.set(counted.get() + 1);
-            today()
-        });
+        let clock = Clock::new(
+            move || {
+                counted.set(counted.get() + 1);
+                today()
+                    .and_hms_opt(12, 0, 0)
+                    .expect("a real time")
+                    .and_utc()
+            },
+            |at| at.naive_utc(),
+        );
         let mut schedule = SchedulePresenter::new(shared, clock);
         let mut router = RecordingRouter::default();
         let reads_in = |reads: &std::cell::Cell<usize>, pass: &mut dyn FnMut()| {

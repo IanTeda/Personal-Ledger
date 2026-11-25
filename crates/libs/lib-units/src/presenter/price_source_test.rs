@@ -536,7 +536,8 @@ mod tests {
             .single()
             .expect("a valid instant");
         let mut on = LedgerPricesFixture::new(InMemoryPorts::sample(late), late);
-        on.set_today(chrono::NaiveDate::from_ymd_opt(2026, 10, 22).expect("a real date"));
+        // Brisbane reads 21 Oct 23:30 UTC as 22 Oct.
+        on.set_zone(chrono::FixedOffset::east_opt(10 * 3600).expect("a real offset"));
         let mut test = form(&on);
 
         test.run(vas(alpha(false, true), None));

@@ -316,7 +316,9 @@ mod tests {
             .and_utc();
         let mut client = LedgerPricesFixture::with_units(vec![currency("EUR")], late);
         let day = |d: u32| NaiveDate::from_ymd_opt(2026, 10, d).expect("a real date");
-        client.set_today(day(22));
+        // Brisbane reads 21 Oct 23:30 UTC as 22 Oct.
+        client.set_zone(chrono::FixedOffset::east_opt(10 * 3600).expect("a real offset"));
+        assert_eq!(client.today(), day(22));
         let weeks = |client: &LedgerPricesFixture| -> Vec<NaiveDate> {
             client
                 .unit("EUR")
@@ -330,8 +332,9 @@ mod tests {
         client.land(client.transport().answer_last(200, r#"{"rate":1.65}"#));
         assert_eq!(weeks(&client), vec![day(19)]);
 
-        // Monday 26 Oct opens a week now's UTC date, still 21 Oct, isn't in.
-        client.set_today(day(26));
+        // Monday 26 Oct opens a week now's UTC date, still 25 Oct, isn't in.
+        client.later(chrono::Duration::days(4));
+        assert_eq!(client.today(), day(26));
         client.prices().check();
         client.land(client.transport().answer_last(200, r#"{"rate":1.66}"#));
 

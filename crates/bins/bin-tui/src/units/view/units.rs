@@ -984,9 +984,10 @@ mod tests {
     fn units_view_at_the_samples_pricing() -> UnitsView {
         crate::locale::init_for_tests();
         let today = chrono::Local::now().date_naive();
-        let at = lib_database::seed::sample_priced_at(today);
         let mut setup = UnitsSetup::sample(&KeyBindingConfig::default());
-        setup.clock = lib_core::Clock::with_time(move || today, move || at, |at| at.naive_utc());
+        // A fixed Clock reads midday UTC on its day as now, which is the moment
+        // `lib_database::seed::sample_priced_at` prices the sample at.
+        setup.clock = lib_core::Clock::fixed(today);
         UnitsView::new(&setup)
     }
 
