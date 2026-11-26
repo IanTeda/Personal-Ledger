@@ -228,3 +228,55 @@ pub fn item_attrs(item: &syn::Item) -> &[syn::Attribute] {
         _ => &[],
     }
 }
+
+/// The attributes of an impl item, for the kinds a `#[cfg(test)]` can sit on; none for the rest.
+pub fn impl_item_attrs(item: &syn::ImplItem) -> &[syn::Attribute] {
+    match item {
+        syn::ImplItem::Const(item) => &item.attrs,
+        syn::ImplItem::Fn(item) => &item.attrs,
+        syn::ImplItem::Type(item) => &item.attrs,
+        syn::ImplItem::Macro(item) => &item.attrs,
+        _ => &[],
+    }
+}
+
+/// The attributes of a trait item, for the kinds a `#[cfg(test)]` can sit on; none for the rest.
+pub fn trait_item_attrs(item: &syn::TraitItem) -> &[syn::Attribute] {
+    match item {
+        syn::TraitItem::Const(item) => &item.attrs,
+        syn::TraitItem::Fn(item) => &item.attrs,
+        syn::TraitItem::Type(item) => &item.attrs,
+        syn::TraitItem::Macro(item) => &item.attrs,
+        _ => &[],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn impl_and_trait_item_attrs_return_the_cfg_test_attributes() {
+        let parsed: syn::File = syn::parse_str(
+            "impl A { #[cfg(test)] fn f() {} #[cfg(test)] const C: u8 = 1; fn g() {} }
+             trait T { #[cfg(test)] fn f(); #[cfg(test)] const C: u8; fn g(); }",
+        )
+        .unwrap();
+        let (syn::Item::Impl(imp), syn::Item::Trait(tr)) = (&parsed.items[0], &parsed.items[1])
+        else {
+            panic!("an impl then a trait");
+        };
+        let impl_flags: Vec<bool> = imp
+            .items
+            .iter()
+            .map(|item| is_cfg_test(impl_item_attrs(item)))
+            .collect();
+        assert_eq!(impl_flags, [true, true, false]);
+        let trait_flags: Vec<bool> = tr
+            .items
+            .iter()
+            .map(|item| is_cfg_test(trait_item_attrs(item)))
+            .collect();
+        assert_eq!(trait_flags, [true, true, false]);
+    }
+}

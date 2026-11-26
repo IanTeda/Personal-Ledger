@@ -17,7 +17,10 @@ mod common;
 
 use std::path::Path;
 
-use common::{CROSS_DOMAIN, FEATURE_CRATES, SHARED_CRATES, crate_sources, is_cfg_test, item_attrs};
+use common::{
+    CROSS_DOMAIN, FEATURE_CRATES, SHARED_CRATES, crate_sources, impl_item_attrs, is_cfg_test,
+    item_attrs, trait_item_attrs,
+};
 use syn::visit::{self, Visit};
 
 fn is_instrument(attr: &syn::Attribute) -> bool {
@@ -53,12 +56,12 @@ fn violations_in(parsed: &syn::File, file: &str) -> Vec<String> {
             }
         }
         fn visit_impl_item(&mut self, item: &'ast syn::ImplItem) {
-            if !matches!(item, syn::ImplItem::Fn(f) if is_cfg_test(&f.attrs)) {
+            if !is_cfg_test(impl_item_attrs(item)) {
                 visit::visit_impl_item(self, item);
             }
         }
         fn visit_trait_item(&mut self, item: &'ast syn::TraitItem) {
-            if !matches!(item, syn::TraitItem::Fn(f) if is_cfg_test(&f.attrs)) {
+            if !is_cfg_test(trait_item_attrs(item)) {
                 visit::visit_trait_item(self, item);
             }
         }

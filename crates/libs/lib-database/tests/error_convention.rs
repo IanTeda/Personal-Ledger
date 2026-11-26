@@ -391,7 +391,7 @@ struct ResultAliases(usize);
 
 impl<'ast> Visit<'ast> for ResultAliases {
     fn visit_item(&mut self, item: &'ast syn::Item) {
-        if item_is_test(item) {
+        if is_cfg_test(item_attrs(item)) {
             return;
         }
         if let syn::Item::Type(alias) = item
@@ -401,10 +401,6 @@ impl<'ast> Visit<'ast> for ResultAliases {
         }
         visit::visit_item(self, item);
     }
-}
-
-fn item_is_test(item: &syn::Item) -> bool {
-    is_cfg_test(item_attrs(item))
 }
 
 /// Walks one file for the usage rules, collecting what breaks them.
@@ -592,7 +588,7 @@ impl Imports {
         }
         impl<'ast> Visit<'ast> for Collect<'_> {
             fn visit_item(&mut self, item: &'ast syn::Item) {
-                if !item_is_test(item) {
+                if !is_cfg_test(item_attrs(item)) {
                     visit::visit_item(self, item);
                 }
             }
@@ -651,7 +647,7 @@ fn is_std_result(path: &syn::Path) -> bool {
 
 impl<'ast> Visit<'ast> for Usage<'_> {
     fn visit_item(&mut self, item: &'ast syn::Item) {
-        if !item_is_test(item) {
+        if !is_cfg_test(item_attrs(item)) {
             visit::visit_item(self, item);
         }
     }
