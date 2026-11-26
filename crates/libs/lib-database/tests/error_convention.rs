@@ -47,6 +47,8 @@ use quote::ToTokens;
 use serde_json::Value;
 use syn::visit::{self, Visit};
 
+use common::{crate_sources, is_cfg_test, item_attrs};
+
 /// The value errors (ADR-0060), each as the crate that declares it and its name: an enum beside
 /// one value type, naming only the ways a text or number fails to become that value, so any crate
 /// may return it. Keyed by crate because a name alone says nothing: another crate's `ParseError`
@@ -215,117 +217,6 @@ fn workspace_crates() -> Vec<Crate> {
         .collect();
     crates.sort_by(|a, b| a.dir.cmp(&b.dir));
     crates
-}
-
-fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(|attr| {
-        attr.path().is_ident("cfg")
-            && attr.parse_args::<syn::Meta>().is_ok_and(|meta| {
-                match meta {
-                syn::Meta::Path(path) => path.is_ident("test"),
-                syn::Meta::List(list) => {
-                    list.path.is_ident("all")
-                        && list.tokens.clone().into_iter().any(|token| {
-                            matches!(token, proc_macro2::TokenTree::Ident(ident) if ident == "test")
-                        })
-                }
-                syn::Meta::NameValue(_) => false,
-            }
-            })
-    })
-}
-
-fn path_attr(attrs: &[syn::Attribute]) -> Option<String> {
-    attrs.iter().find_map(|attr| match &attr.meta {
-        syn::Meta::NameValue(pair) if pair.path.is_ident("path") => match &pair.value {
-            syn::Expr::Lit(syn::ExprLit {
-                lit: syn::Lit::Str(text),
-                ..
-            }) => Some(text.value()),
-            _ => None,
-        },
-        _ => None,
-    })
-}
-
-/// The file a `mod name;` declared with `attrs` inside `module_dir` loads.
-fn module_file(module_dir: &Path, name: &str, attrs: &[syn::Attribute]) -> Option<PathBuf> {
-    if let Some(path) = path_attr(attrs) {
-        return Some(module_dir.join(path));
-    }
-    [
-        module_dir.join(format!("{name}.rs")),
-        module_dir.join(name).join("mod.rs"),
-    ]
-    .into_iter()
-    .find(|path| path.is_file())
-}
-
-/// Adds to `out` the files the module tree under `items` loads, skipping `#[cfg(test)]` and
-/// `generated` modules.
-fn collect_modules(items: &[syn::Item], module_dir: &Path, out: &mut Vec<(PathBuf, syn::File)>) {
-    for item in items {
-        let syn::Item::Mod(module) = item else {
-            continue;
-        };
-        let name = module.ident.to_string();
-        if is_cfg_test(&module.attrs) || name == "generated" {
-            continue;
-        }
-        match &module.content {
-            Some((_, inner)) => collect_modules(inner, &module_dir.join(&name), out),
-            None => {
-                if let Some(file) = module_file(module_dir, &name, &module.attrs) {
-                    load(&file, false, out);
-                }
-            }
-        }
-    }
-}
-
-/// Parses `file` and the modules it loads into `out`. A crate root's modules sit beside it; any
-/// other file's sit in the directory named after it.
-fn load(file: &Path, is_root: bool, out: &mut Vec<(PathBuf, syn::File)>) {
-    if out.iter().any(|(seen, _)| seen == file) {
-        return;
-    }
-    let source = fs::read_to_string(file).unwrap_or_default();
-    let parsed = syn::parse_file(&source)
-        .unwrap_or_else(|error| panic!("{} should parse: {error}", file.display()));
-    let module_dir = match file.file_name().and_then(|name| name.to_str()) {
-        _ if is_root => file.parent().map(Path::to_path_buf),
-        Some("mod.rs") => file.parent().map(Path::to_path_buf),
-        _ => file
-            .parent()
-            .zip(file.file_stem())
-            .map(|(dir, stem)| dir.join(stem)),
-    }
-    .unwrap_or_default();
-    // Pushed before its modules load, so the seen check above stops a module loading twice; its
-    // items are lent out while they do, rather than the whole file cloned.
-    let index = out.len();
-    out.push((file.to_path_buf(), parsed));
-    let items = std::mem::take(&mut out[index].1.items);
-    collect_modules(&items, &module_dir, out);
-    out[index].1.items = items;
-}
-
-/// Every source file the crate's lib and bin targets compile, parsed.
-fn crate_sources(dir: &Path) -> Vec<(PathBuf, syn::File)> {
-    let mut out = Vec::new();
-    let mut roots = vec![dir.join("src/lib.rs"), dir.join("src/main.rs")];
-    let mut bins: Vec<PathBuf> = fs::read_dir(dir.join("src/bin"))
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| Some(entry.ok()?.path()))
-        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
-        .collect();
-    bins.sort();
-    roots.extend(bins);
-    for root in roots.into_iter().filter(|root| root.is_file()) {
-        load(&root, true, &mut out);
-    }
-    out
 }
 
 fn spelt(tokens: &impl ToTokens) -> String {
@@ -509,22 +400,6 @@ impl<'ast> Visit<'ast> for ResultAliases {
             self.0 += 1;
         }
         visit::visit_item(self, item);
-    }
-}
-
-fn item_attrs(item: &syn::Item) -> &[syn::Attribute] {
-    match item {
-        syn::Item::Const(item) => &item.attrs,
-        syn::Item::Enum(item) => &item.attrs,
-        syn::Item::Fn(item) => &item.attrs,
-        syn::Item::Impl(item) => &item.attrs,
-        syn::Item::Mod(item) => &item.attrs,
-        syn::Item::Static(item) => &item.attrs,
-        syn::Item::Struct(item) => &item.attrs,
-        syn::Item::Trait(item) => &item.attrs,
-        syn::Item::Type(item) => &item.attrs,
-        syn::Item::Use(item) => &item.attrs,
-        _ => &[],
     }
 }
 
