@@ -13,6 +13,7 @@
 //! (#1202). The input door announces each input's
 //! writes through its [`Announcer`] (#1081).
 
+use lib_core::configuration::KeyBindingConfig;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -123,7 +124,7 @@ impl OpenLedger {
     /// the Announcer and the Views, and gives `settings` its This Ledger pages.
     pub fn build(
         file: LedgerFile,
-        keybindings: &lib_core::configuration::KeyBindingConfig,
+        keybindings: &KeyBindingConfig,
         api_key_secret: &lib_database::ApiKeySecret,
         clock: &lib_core::Clock,
         settings: &Entity<SettingsView>,

@@ -4,6 +4,7 @@
 
 use gpui::{AppContext as _, Entity};
 use lib_core::Clock;
+use lib_core::configuration::KeyBindingConfig;
 use lib_dashboard::{DashboardEntryId, DashboardPresenter, DashboardReads, DashboardRouter};
 
 use super::view::page::DashboardPage;
@@ -28,7 +29,7 @@ impl DashboardRouter for PageRouter<'_, '_, DashboardPresenter> {
 pub fn dashboard_page(
     reads: std::rc::Rc<dyn DashboardReads>,
     announcer: &Entity<Announcer>,
-    config: &lib_core::configuration::KeyBindingConfig,
+    config: &KeyBindingConfig,
     clock: Clock,
     cx: &mut gpui::App,
 ) -> Entity<DashboardPage> {

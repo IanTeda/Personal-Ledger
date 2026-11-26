@@ -4,6 +4,7 @@
 //! in the Dialog host through the generic [`PageRouter`]'s gpui context, which is why the Router is
 //! built for each `handle` call, and it queues a Notice for the input's `send` to drain.
 
+use lib_core::configuration::KeyBindingConfig;
 use std::path::Path;
 
 use gpui::{App, AppContext as _, Entity};
@@ -74,7 +75,7 @@ pub fn documents_page(
     files: SharedFiles,
     reads: lib_documents::SharedReads,
     announcer: Entity<Announcer>,
-    config: &lib_core::configuration::KeyBindingConfig,
+    config: &KeyBindingConfig,
     clock: Clock,
     dialog_keys: crate::dialog_keys::LiveDialogKeys,
     cx: &mut App,

@@ -19,6 +19,7 @@ mod view;
 pub use router::document_types_page;
 
 use lib_core::DocumentTypeId;
+use lib_core::configuration::KeyBindingConfig;
 use lib_documents::presenter::DocumentTypesPagePresenter;
 
 use crate::shell::view::module_page::ModulePage;
@@ -52,7 +53,7 @@ impl DocumentTypesSetup {
     pub fn new(
         documents: lib_documents::SharedRepository,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-        config: &lib_core::configuration::KeyBindingConfig,
+        config: &KeyBindingConfig,
     ) -> (DocumentTypesPagePresenter, Self) {
         let presenter = DocumentTypesPagePresenter::new(documents.clone(), config);
         (
@@ -67,7 +68,7 @@ impl DocumentTypesSetup {
     /// `ports`' Documents store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn sample(ports: &lib_database::LedgerPorts) -> (DocumentTypesPagePresenter, Self) {
-        let config = lib_core::configuration::KeyBindingConfig::default();
+        let config = KeyBindingConfig::default();
         Self::new(
             ports.documents(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(

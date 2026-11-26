@@ -1210,6 +1210,7 @@ fn clip(text: &str, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use crossterm::event::KeyModifiers;
+    use lib_core::configuration::KeyBindingConfig;
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::*;
@@ -1226,7 +1227,7 @@ mod tests {
 
     /// The sample seed's Units on the Sample Ledger, as an Open Ledger holds them.
     pub(super) fn sample_units() -> UnitsSetup {
-        UnitsSetup::sample(&lib_core::configuration::KeyBindingConfig::default())
+        UnitsSetup::sample(&KeyBindingConfig::default())
     }
 
     pub(super) fn render_at(view: &SettingsView, width: u16, height: u16) -> String {

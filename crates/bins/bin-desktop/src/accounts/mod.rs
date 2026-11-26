@@ -20,6 +20,7 @@ pub use router::accounts_page;
 
 use lib_accounts::presenter::AccountsPagePresenter;
 use lib_core::InstitutionId;
+use lib_core::configuration::KeyBindingConfig;
 use lib_institutions::Institution;
 
 use crate::shell::view::module_page::ModulePage;
@@ -60,7 +61,7 @@ impl AccountsSetup {
         deletion: lib_account_deletion::DeletionPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         clock: lib_core::Clock,
-        config: &lib_core::configuration::KeyBindingConfig,
+        config: &KeyBindingConfig,
     ) -> (AccountsPagePresenter, Self) {
         let presenter = AccountsPagePresenter::new(ports.clone(), config);
         let setup = Self {
@@ -79,7 +80,7 @@ impl AccountsSetup {
         ports: &lib_database::LedgerPorts,
         clock: &lib_core::Clock,
     ) -> (AccountsPagePresenter, Self) {
-        let config = lib_core::configuration::KeyBindingConfig::default();
+        let config = KeyBindingConfig::default();
         Self::new(
             ports.accounts(),
             ports.account_deletion(),

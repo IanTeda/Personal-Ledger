@@ -19,6 +19,7 @@ pub(crate) mod view;
 
 pub use lib_bills::EntryId;
 use lib_bills::{BillsRepository, SharedPorts, presenter};
+use lib_core::configuration::KeyBindingConfig;
 pub use router::bills_page;
 pub use view::page::BillsPage;
 pub use view::snapshot::{BillRowSnapshot, BillsSnapshot};
@@ -57,7 +58,7 @@ impl BillsSetup {
         payments: lib_bill_payments::SharedPayments,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         clock: lib_core::Clock,
-        config: &lib_core::configuration::KeyBindingConfig,
+        config: &KeyBindingConfig,
     ) -> (presenter::BillsPagePresenter, Self) {
         let presenter = presenter::BillsPagePresenter::new(ports.clone(), clock.clone(), config);
         let setup = Self {

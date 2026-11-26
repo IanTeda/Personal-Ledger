@@ -57,6 +57,7 @@ use crate::navigation::nav::NounLabel;
 pub use crate::shell::view::topbar::HistoryPick;
 pub use date_clock::{DATE_POLL, wall_clock};
 pub use key_dispatch::PENDING_G_TIMEOUT;
+use lib_core::configuration::KeyBindingConfig;
 pub use log_feed::LOG_COALESCE;
 pub use open_ledger::{LedgerFile, OpenLedger};
 pub use price_responses::{PRICE_CHECK, PRICE_RESPONSE_POLL};
@@ -113,7 +114,7 @@ const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
 pub struct ShellBindings {
     /// The whole `[keybindings]` section, which the Shell's global and Dialog keymaps and every
     /// VIPER module's keymap read their overrides from.
-    pub keybindings: lib_core::configuration::KeyBindingConfig,
+    pub keybindings: KeyBindingConfig,
 }
 
 /// The live log capture the Tracing page shows, and the configured `log` level it opens on.
@@ -229,7 +230,7 @@ pub struct Root {
     #[cfg(debug_assertions)]
     debug_toast_kind: usize,
     /// The `[keybindings]` in effect, which a Ledger opened at run time builds its keymaps from.
-    keybindings: lib_core::configuration::KeyBindingConfig,
+    keybindings: KeyBindingConfig,
     /// The device's API key secret, which each Ledger opened reads its Price Source keys with.
     api_key_secret: lib_database::ApiKeySecret,
     /// The configuration file Settings writes, which a THIS DEVICE page names on the status line.
@@ -279,7 +280,7 @@ impl Root {
         focus_handle: FocusHandle,
         clock: lib_core::Clock,
         device: DevicePorts,
-        keybindings: &lib_core::configuration::KeyBindingConfig,
+        keybindings: &KeyBindingConfig,
         creation: SharedLedgerCreation,
         folders: Rc<dyn LedgerFolders>,
         cx: &mut Context<'_, Self>,
@@ -530,11 +531,7 @@ impl Root {
 
     /// The global keys and the keys every module Dialog shares, under `config`'s overrides, which
     /// the palette's key column reads too, and the keys of Settings and the Open Ledger's Views.
-    pub fn set_keymaps(
-        &mut self,
-        config: &lib_core::configuration::KeyBindingConfig,
-        cx: &mut App,
-    ) {
+    pub fn set_keymaps(&mut self, config: &KeyBindingConfig, cx: &mut App) {
         self.keybindings = config.clone();
         self.presenter.set_keymap(config);
         root_router::set_view_keymaps(&self.settings, self.open.as_ref(), config, cx);

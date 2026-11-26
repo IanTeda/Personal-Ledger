@@ -17,6 +17,7 @@ mod view;
 
 pub use router::payees_page;
 
+use lib_core::configuration::KeyBindingConfig;
 use lib_payees::presenter::PayeesPagePresenter;
 
 use crate::shell::view::module_page::ModulePage;
@@ -50,7 +51,7 @@ impl PayeesSetup {
         ports: lib_payees::SharedPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         clock: lib_core::Clock,
-        config: &lib_core::configuration::KeyBindingConfig,
+        config: &KeyBindingConfig,
     ) -> (PayeesPagePresenter, Self) {
         let presenter = PayeesPagePresenter::new(ports.clone(), config);
         let setup = Self {
@@ -68,7 +69,7 @@ impl PayeesSetup {
         ports: &lib_database::LedgerPorts,
         clock: &lib_core::Clock,
     ) -> (PayeesPagePresenter, Self) {
-        let config = lib_core::configuration::KeyBindingConfig::default();
+        let config = KeyBindingConfig::default();
         Self::new(
             ports.payees(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(

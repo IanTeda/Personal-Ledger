@@ -17,6 +17,7 @@ mod view;
 
 pub use router::institutions_page;
 
+use lib_core::configuration::KeyBindingConfig;
 use lib_institutions::presenter::InstitutionsPagePresenter;
 
 use crate::shell::view::module_page::ModulePage;
@@ -46,7 +47,7 @@ impl InstitutionsSetup {
     pub fn new(
         ports: lib_institutions::SharedPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-        config: &lib_core::configuration::KeyBindingConfig,
+        config: &KeyBindingConfig,
     ) -> (InstitutionsPagePresenter, Self) {
         let presenter = InstitutionsPagePresenter::new(ports.clone(), config);
         (presenter, Self { ports, dialog_keys })
@@ -56,7 +57,7 @@ impl InstitutionsSetup {
     /// directly.
     #[cfg(test)]
     pub fn sample(ports: &lib_database::LedgerPorts) -> (InstitutionsPagePresenter, Self) {
-        let config = lib_core::configuration::KeyBindingConfig::default();
+        let config = KeyBindingConfig::default();
         Self::new(
             ports.institutions(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(

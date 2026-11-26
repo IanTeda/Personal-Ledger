@@ -66,7 +66,7 @@ rustix = { version = "1.1.4", features = ["event"] }
 
 [dev-dependencies]
 # The folder picker and footer-hint tests rebind keys through `KeyBindingConfig::overriding`.
-lib_config = { path = "../../libs/lib-config", features = ["test-support"] }
+lib_core = { path = "../../libs/lib-core", features = ["test-support"] }
 # The key-clash test checks the Bills and Payees modules' default keys before the TUI draws them.
 lib_bills = { path = "../../libs/lib-bills" }
 lib_payees = { path = "../../libs/lib-payees" }

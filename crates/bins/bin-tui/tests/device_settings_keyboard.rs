@@ -6,6 +6,7 @@
 mod common;
 
 use common::{press, read, run_command, screen, screen_at, shell, writing_config};
+use lib_core::configuration::KeyBindingConfig;
 
 #[test]
 fn toasts_off_by_command_is_saved_to_the_config_file() {
@@ -385,7 +386,7 @@ fn enter_on_the_data_folder_opens_the_picker_and_u_writes_the_folder_it_shows() 
 
 #[test]
 fn the_picker_closes_on_the_user_s_own_back_key() {
-    let mut keybindings = lib_core::configuration::KeyBindingConfig::default();
+    let mut keybindings = KeyBindingConfig::default();
     keybindings
         .bindings
         .insert("back".to_string(), "q".to_string());

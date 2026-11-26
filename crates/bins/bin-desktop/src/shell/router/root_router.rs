@@ -6,6 +6,7 @@
 //! page's `handle` or `join_or_send`, never a `send` of its own (#929). An `impl Root` block of the
 //! root Router, which is `Root` itself, and the Router struct it lends.
 
+use lib_core::configuration::KeyBindingConfig;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -53,7 +54,7 @@ pub(super) struct RootRouter<'a, 'b> {
     /// Set when a Ledger is installed or closed, so `with_router` rebuilds the palette's Commands
     /// once after the input rather than after every one.
     ledger_swapped: &'a mut bool,
-    keybindings: &'a lib_core::configuration::KeyBindingConfig,
+    keybindings: &'a KeyBindingConfig,
     /// The device's API key secret, which a Ledger opened now reads its Price Source keys with.
     api_key_secret: &'a lib_database::ApiKeySecret,
     /// The creation port the Create ledger Dialog writes through, and the folder reads the file
@@ -602,7 +603,7 @@ fn hosted_pages<'a>(
 pub(super) fn set_view_keymaps(
     settings: &Entity<SettingsView>,
     open: Option<&OpenLedger>,
-    config: &lib_core::configuration::KeyBindingConfig,
+    config: &KeyBindingConfig,
     cx: &mut App,
 ) {
     crate::input::join_or_send(cx, |cx| rebind_hosted_pages(settings, open, config, cx));
@@ -613,7 +614,7 @@ pub(super) fn set_view_keymaps(
 fn rebind_hosted_pages(
     settings: &Entity<SettingsView>,
     open: Option<&OpenLedger>,
-    config: &lib_core::configuration::KeyBindingConfig,
+    config: &KeyBindingConfig,
     cx: &mut App,
 ) {
     if let Some(open) = open {

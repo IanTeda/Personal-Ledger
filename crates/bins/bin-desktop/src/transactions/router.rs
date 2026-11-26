@@ -16,6 +16,7 @@
 //!   destination.
 
 use gpui::{App, AppContext as _, Entity, Global, WeakEntity};
+use lib_core::configuration::KeyBindingConfig;
 use lib_core::{Clock, TransactionId};
 use lib_list_cursor::Step;
 use lib_transactions::SharedPorts;
@@ -33,7 +34,7 @@ use crate::view::event::ViewEvent;
 pub fn transactions_page(
     ports: SharedPorts,
     announcer: &Entity<Announcer>,
-    config: &lib_core::configuration::KeyBindingConfig,
+    config: &KeyBindingConfig,
     clock: Clock,
     cx: &mut App,
 ) -> Entity<TransactionsPage> {

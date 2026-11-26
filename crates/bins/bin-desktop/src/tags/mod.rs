@@ -20,6 +20,7 @@ mod view;
 pub use router::tags_page;
 
 use lib_core::TagId;
+use lib_core::configuration::KeyBindingConfig;
 use lib_tags::SharedPorts;
 use lib_tags::presenter::TagsPagePresenter;
 
@@ -55,7 +56,7 @@ impl TagsSetup {
         removal: lib_tag_removal::TagRemovalPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         clock: lib_core::Clock,
-        config: &lib_core::configuration::KeyBindingConfig,
+        config: &KeyBindingConfig,
     ) -> (TagsPagePresenter, Self) {
         let presenter = TagsPagePresenter::new(ports.clone(), config);
         let setup = Self {
@@ -74,7 +75,7 @@ impl TagsSetup {
         ports: &lib_database::LedgerPorts,
         clock: &lib_core::Clock,
     ) -> (TagsPagePresenter, Self) {
-        let config = lib_core::configuration::KeyBindingConfig::default();
+        let config = KeyBindingConfig::default();
         Self::new(
             ports.tags(),
             ports.tag_removal(),

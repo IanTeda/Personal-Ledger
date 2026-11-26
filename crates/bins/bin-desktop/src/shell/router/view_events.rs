@@ -97,6 +97,7 @@ impl Root {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext, Entity, EventEmitter, TestAppContext};
+    use lib_core::configuration::KeyBindingConfig;
     use lib_toast::ToastKind;
 
     use super::*;
@@ -122,7 +123,7 @@ mod tests {
         crate::locale::init_for_tests();
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
         let shell = sample_root(today, cx);
-        let fixture = hosted_pages(&lib_core::configuration::KeyBindingConfig::default());
+        let fixture = hosted_pages(&KeyBindingConfig::default());
         let hosted = shell.read_with(cx, |shell, cx| shell.hosted_page_keys(cx));
         for (view, keys) in hosted {
             let names = listed_names(&keys);
@@ -155,7 +156,7 @@ mod tests {
                 lib_settings::DevicePorts::new(std::rc::Rc::new(
                     lib_settings::fake::InMemoryDeviceFile::default(),
                 )),
-                &lib_core::configuration::KeyBindingConfig::default(),
+                &KeyBindingConfig::default(),
                 std::rc::Rc::new(std::cell::RefCell::new(
                     lib_ledger_creation::fake::InMemoryLedgerCreation::default(),
                 )),

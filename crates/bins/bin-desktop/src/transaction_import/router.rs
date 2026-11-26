@@ -5,6 +5,7 @@
 
 use gpui::{AppContext as _, Entity};
 use lib_core::Clock;
+use lib_core::configuration::KeyBindingConfig;
 use lib_transaction_import::presenter::ImportStepPresenter;
 use lib_transaction_import::{ImportCommitted, ImportRouter};
 use lib_transaction_import::{ImportPorts, SeededStatement};
@@ -29,7 +30,7 @@ impl ImportRouter for PageRouter<'_, '_, ImportStepPresenter> {
 pub fn import_page(
     ports: ImportPorts,
     announcer: &Entity<Announcer>,
-    config: &lib_core::configuration::KeyBindingConfig,
+    config: &KeyBindingConfig,
     clock: Clock,
     cx: &mut gpui::App,
 ) -> Entity<ImportPage> {

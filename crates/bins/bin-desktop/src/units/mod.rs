@@ -17,6 +17,7 @@ mod router;
 mod view;
 
 use gpui::App;
+use lib_core::configuration::KeyBindingConfig;
 use lib_units::SharedPorts;
 use lib_units::presenter::UnitsPagePresenter;
 pub use router::units_page;
@@ -78,7 +79,7 @@ impl UnitsSetup {
         deletion: lib_unit_deletion::SharedUnitDeletion,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         clock: lib_core::Clock,
-        config: &lib_core::configuration::KeyBindingConfig,
+        config: &KeyBindingConfig,
     ) -> (UnitsPagePresenter, Self) {
         let presenter = UnitsPagePresenter::new(ports.clone(), clock.clone(), config)
             .with_fetching(fetching.clone());
@@ -99,7 +100,7 @@ impl UnitsSetup {
         ports: &lib_database::LedgerPorts,
         clock: &lib_core::Clock,
     ) -> (UnitsPagePresenter, Self) {
-        let config = lib_core::configuration::KeyBindingConfig::default();
+        let config = KeyBindingConfig::default();
         Self::new(
             ports.units(),
             None,

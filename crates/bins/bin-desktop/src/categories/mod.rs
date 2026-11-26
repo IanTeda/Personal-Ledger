@@ -21,6 +21,7 @@ mod view;
 pub use router::categories_page;
 
 use lib_categories::presenter::CategoriesPagePresenter;
+use lib_core::configuration::KeyBindingConfig;
 use lib_core::{CategoryId, CategoryTypes};
 
 use crate::shell::view::module_page::ModulePage;
@@ -69,7 +70,7 @@ impl CategoriesSetup {
         budget_months: lib_categories::SharedBudgetMonths,
         deletion: lib_category_deletion::CategoryDeletionPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-        config: &lib_core::configuration::KeyBindingConfig,
+        config: &KeyBindingConfig,
     ) -> (CategoriesPagePresenter, Self) {
         let presenter = CategoriesPagePresenter::new(categories.clone(), config);
         let setup = Self {
@@ -86,7 +87,7 @@ impl CategoriesSetup {
     /// directly.
     #[cfg(test)]
     pub fn sample(ports: &lib_database::LedgerPorts) -> (CategoriesPagePresenter, Self) {
-        let config = lib_core::configuration::KeyBindingConfig::default();
+        let config = KeyBindingConfig::default();
         Self::new(
             ports.categories(),
             ports.category_save(),

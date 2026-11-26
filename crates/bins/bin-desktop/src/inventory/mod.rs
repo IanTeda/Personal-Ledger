@@ -22,6 +22,7 @@
 mod router;
 mod view;
 
+use lib_core::configuration::KeyBindingConfig;
 use lib_inventory::SharedInventory;
 pub use router::inventory_page;
 
@@ -65,7 +66,7 @@ impl InventorySetup {
         inventory: SharedInventory,
         reads: SharedReads,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-        config: &lib_core::configuration::KeyBindingConfig,
+        config: &KeyBindingConfig,
     ) -> (InventoryPagePresenter, Self) {
         let presenter = InventoryPagePresenter::new(inventory.clone(), config);
         let setup = Self {
@@ -79,7 +80,7 @@ impl InventorySetup {
     /// `ports`' Inventory store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn sample(ports: &lib_database::LedgerPorts) -> (InventoryPagePresenter, Self) {
-        let config = lib_core::configuration::KeyBindingConfig::default();
+        let config = KeyBindingConfig::default();
         Self::new(
             ports.inventory(),
             ports.inventory_reads(),

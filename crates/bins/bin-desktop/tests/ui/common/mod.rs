@@ -27,6 +27,7 @@ use gpui::{
     ScrollDelta, ScrollWheelEvent, Size, TestAppContext, VisualTestContext,
 };
 use lib_colour_theme::ThemeOverrides;
+use lib_core::configuration::KeyBindingConfig;
 use lib_core::{AccountId, InstitutionId, UnitId};
 use lib_database::{
     CountingCommit, FakeStores, FsLedgerFolders, LedgerCreationAdapter, SharedStores, Stores,
@@ -318,10 +319,7 @@ impl<'a> Harness<'a> {
     }
 
     /// As [`Harness::new`], under `[keybindings]` overrides.
-    pub fn with_keybindings(
-        app: &'a mut TestAppContext,
-        keybindings: lib_core::configuration::KeyBindingConfig,
-    ) -> Self {
+    pub fn with_keybindings(app: &'a mut TestAppContext, keybindings: KeyBindingConfig) -> Self {
         Self::build_with(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
@@ -354,7 +352,7 @@ impl<'a> Harness<'a> {
             logs,
             configured_level,
             stores,
-            lib_core::configuration::KeyBindingConfig::default(),
+            KeyBindingConfig::default(),
         )
     }
 
@@ -364,7 +362,7 @@ impl<'a> Harness<'a> {
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
         (stores, commits): (Stores, Rc<Cell<usize>>),
-        keybindings: lib_core::configuration::KeyBindingConfig,
+        keybindings: KeyBindingConfig,
     ) -> Self {
         Self::build_on(
             app,
@@ -385,7 +383,7 @@ impl<'a> Harness<'a> {
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             (Some(in_memory(stores)), commits),
-            lib_core::configuration::KeyBindingConfig::default(),
+            KeyBindingConfig::default(),
             PersistedState::default(),
             device,
         )
@@ -488,7 +486,7 @@ impl<'a> Harness<'a> {
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             (stores, commits),
-            lib_core::configuration::KeyBindingConfig::default(),
+            KeyBindingConfig::default(),
             persisted,
             device,
         );
@@ -506,7 +504,7 @@ impl<'a> Harness<'a> {
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
         (ledger, commits): (Option<(router::LedgerFile, SharedStores)>, Rc<Cell<usize>>),
-        keybindings: lib_core::configuration::KeyBindingConfig,
+        keybindings: KeyBindingConfig,
         persisted: PersistedState,
         device: Device<'_>,
     ) -> Self {
@@ -764,7 +762,7 @@ impl<'a> Harness<'a> {
     }
 
     /// Applies `config` while the app runs, as saving `[keybindings]` in Settings does.
-    pub fn rebind(&mut self, config: &lib_core::configuration::KeyBindingConfig) {
+    pub fn rebind(&mut self, config: &KeyBindingConfig) {
         self.shell.update(self.cx, |shell, cx| {
             shell.set_keymaps(config, cx);
             cx.notify();

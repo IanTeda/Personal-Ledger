@@ -348,12 +348,13 @@ fn popup_rect(area: Rect) -> Rect {
 
 #[cfg(test)]
 mod tests {
+    use lib_core::configuration::KeyBindingConfig;
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::*;
 
     fn sample() -> UnitsSetup {
-        UnitsSetup::sample(&lib_core::configuration::KeyBindingConfig::default())
+        UnitsSetup::sample(&KeyBindingConfig::default())
     }
 
     fn render(guard: &BaseUnitGuardPopup) -> String {
