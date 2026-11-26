@@ -1,0 +1,324 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Answers "DESKTOP: how does the hidden API key field look and behave?" (#1465)
+  on the map "DESKTOP: clipboard and text selection in text boxes" (#1460).
+
+  Three variants of Edit price source — CoinGecko's API key box, switchable with ?variant=A|B|C
+  and the floating bar. Drawn in HTML in the Desktop's Modernist colours rather than in gpui,
+  because the TextField with a caret (ADR-0063) doesn't exist yet: this judges look and behaviour only.
+  Never merged; lives on the prototype/hidden-api-key branch.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hidden API key prototype</title>
+<style>
+  :root {
+    --fg: #201e1d; --bg: #f3f2f2; --accent: #ec3013; --muted: #605d5d;
+    --border: #cfcbca; --faint: #8a8584; --panel: #fbfafa; --hover: #e6e3e2; --neg: #b3261e;
+  }
+  :root[data-theme="dark"] {
+    --fg: #f3f2f2; --bg: #161413; --accent: #ff4a2b; --muted: #a19d9c;
+    --border: #3a3634; --faint: #7d7877; --panel: #1f1c1b; --hover: #2c2827; --neg: #ff7a66;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 "Inter", system-ui, sans-serif; }
+  .app { display: grid; grid-template-rows: 1fr 26px; height: 100vh; }
+  .stage { display: flex; gap: 24px; padding: 24px 16px 90px; overflow: auto; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  .dialog { width: 480px; max-width: 100%; background: var(--panel); border: 1px solid var(--border); }
+  .dialog header { padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 700; }
+  .dialog .body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .dialog footer { padding: 10px 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .label { font-size: 11.5px; font-weight: 700; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .help { font-size: 11.5px; color: var(--faint); }
+  .box { border: 1px solid var(--border); padding: 8px 10px; min-height: 35px; display: flex; align-items: center; cursor: text; }
+  .box.focused { border-color: var(--accent); }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .placeholder { color: var(--faint); }
+  .caret { display: inline-block; width: 1.5px; height: 15px; background: var(--fg); vertical-align: middle; animation: blink 1.06s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .text { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+  .dots { letter-spacing: 0.12em; }
+  .seg { display: flex; border: 1px solid var(--border); }
+  .seg div { flex: 1; text-align: center; padding: 6px; font-size: 12px; }
+  .seg .on { background: var(--fg); color: var(--bg); font-weight: 700; }
+  .fact { font-size: 12px; color: var(--muted); }
+  .btn { border: 1px solid var(--border); padding: 5px 10px; font-size: 12px; font-weight: 700; cursor: pointer; background: transparent; color: var(--fg); }
+  .btn.focused { border-color: var(--accent); }
+  .btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  .btn.primary.focused { outline: 1px solid var(--accent); outline-offset: 2px; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  /* Variant A: eye inside the box's right edge */
+  .eye { flex: none; width: 26px; height: 26px; margin: -4px -6px -4px 6px; display: grid; place-items: center; color: var(--muted); cursor: pointer; border: 1px solid transparent; }
+  .eye:hover { background: var(--hover); color: var(--fg); }
+  .eye.focused { border-color: var(--accent); color: var(--fg); }
+  .eye svg { width: 16px; height: 16px; }
+  /* Variant B: a bordered Show/Hide button beside the box */
+  .grow { flex: 1; min-width: 0; }
+  /* Variant C: eye in a segment welded to the box */
+  .welded { display: flex; }
+  .welded .box { flex: 1; min-width: 0; }
+  .weld { flex: none; width: 36px; border: 1px solid var(--border); border-left: none; display: grid; place-items: center; color: var(--muted); cursor: pointer; }
+  .weld:hover { background: var(--hover); color: var(--fg); }
+  .weld.focused { border-color: var(--accent); border-left: 1px solid var(--accent); margin-left: -1px; color: var(--fg); }
+  .weld.shown { background: var(--fg); color: var(--bg); }
+  .weld svg { width: 16px; height: 16px; }
+  .refusal { font-size: 11.5px; color: var(--neg); }
+  .status { border-top: 1px solid var(--border); display: flex; align-items: center; gap: 16px; padding: 0 12px; font-size: 11.5px; color: var(--muted); background: var(--panel); white-space: nowrap; overflow: hidden; }
+  .status kbd { font: inherit; font-weight: 700; color: var(--fg); }
+  .status .msg { color: var(--fg); margin-left: auto; }
+  .state { width: 320px; max-width: 100%; font: 11.5px/1.5 ui-monospace, monospace; border: 1px dashed var(--faint); padding: 10px 12px; color: var(--muted); }
+  .state h3 { margin: 0 0 6px; font: 700 11.5px system-ui; color: var(--fg); text-transform: uppercase; letter-spacing: .05em; }
+  .state .k { color: var(--fg); }
+  .state p { margin: 8px 0 0; font-family: system-ui; }
+  .closed { width: 480px; max-width: 100%; padding: 40px 16px; text-align: center; border: 1px dashed var(--border); color: var(--muted); }
+  /* the prototype's own chrome, deliberately not the app's */
+  .switcher { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; background: #111; color: #fff; padding: 6px 10px; border-radius: 999px; box-shadow: 0 4px 16px rgba(0,0,0,.35); font: 12px system-ui; z-index: 9; }
+  .switcher button { background: #333; color: #fff; border: 0; border-radius: 999px; padding: 4px 10px; cursor: pointer; font: inherit; }
+  .switcher .name { min-width: 230px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage">
+    <div id="dialog-slot"></div>
+    <div class="state" id="state"></div>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+<div class="switcher">
+  <button id="prev" title="Previous variant">←</button>
+  <span class="name" id="vname"></span>
+  <button id="next" title="Next variant">→</button>
+  <button id="saved" title="Toggle whether CoinGecko already has a saved key"></button>
+  <button id="theme">Light/Dark</button>
+</div>
+<script>
+const EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.7 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.1M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+
+// Each variant is a whole answer: where the control sits, what it says, whether it can show the
+// saved key, when it hides again, the glyph, and what copy/cut and the status line do.
+const VARIANTS = {
+  A: {
+    name: 'A · eye inside the box',
+    control: 'inside', glyph: '•', revealSaved: false,
+    hideOn: ['close'], refuseCopy: 'silent',
+    summary: 'A borderless eye icon sits inside the box at its right edge, a Tab stop of its own straight after the field. It shows only what has been typed in this Dialog: a saved key stays the placeholder. Shown stays shown until the Dialog closes; every opening starts hidden. Copy/cut while hidden do nothing, silently.',
+  },
+  B: {
+    name: 'B · Show/Hide button beside',
+    control: 'beside', glyph: '●', revealSaved: true,
+    hideOn: ['close'], refuseCopy: 'status',
+    summary: 'A bordered text button, Show key / Hide key, beside the box like Remove key. It can show the saved key too: Show decrypts it into the box, so it reads and edits like typed text. Hides again only when the Dialog closes. Copy/cut while hidden put a refusal on the status line.',
+  },
+  C: {
+    name: 'C · eye welded on, hides on leaving',
+    control: 'welded', glyph: '•', revealSaved: false,
+    hideOn: ['close', 'leave'], refuseCopy: 'status',
+    summary: 'The eye is a square segment welded to the box\'s right side, filled while shown. It shows only typed text. It hides again the moment focus leaves the field-and-eye pair (Tab past it, click elsewhere) as well as on close, so a key is never left showing. Copy/cut while hidden put a refusal on the status line.',
+  },
+};
+const SAVED_KEY = 'CG-sAvEdDemoKey9f3';
+
+let state = {
+  variant: new URLSearchParams(location.search).get('variant') || 'A',
+  hasSaved: true, open: true, focus: 'key', typed: '', shown: false,
+  savedLoaded: false, removeKey: false, status: '', lastClose: '',
+};
+function V() { return VARIANTS[state.variant]; }
+
+function stops() {
+  const s = ['name', 'key', 'eye'];
+  if (state.hasSaved && !state.removeKey) s.push('remove');
+  s.push('test', 'cancel', 'save');
+  return s;
+}
+function setFocus(next) {
+  const from = state.focus;
+  state.focus = next;
+  if (V().hideOn.includes('leave') && ['key', 'eye'].includes(from) && !['key', 'eye'].includes(next)) state.shown = false;
+}
+function savedShowing() { return V().revealSaved && state.shown && state.hasSaved && !state.removeKey && !state.typed && state.savedLoaded; }
+function keyText() { return savedShowing() ? SAVED_KEY : state.typed; }
+
+function hints() {
+  const f = state.focus;
+  const base = [['Enter', 'confirm'], ['Tab', 'next field'], ['Esc', 'cancel']];
+  if (f === 'eye') return [[ 'Space', state.shown ? 'hide key' : 'show key']].concat(base);
+  if (f === 'key' && state.variant !== 'B') return base; // the eye is its own hint once focused
+  if (f === 'key' && state.variant === 'B') return [['Tab', state.shown ? 'Hide key button' : 'Show key button']].concat(base.slice(0,1), base.slice(2));
+  return base;
+}
+
+function render() {
+  const v = V();
+  document.getElementById('vname').textContent = v.name;
+  document.getElementById('saved').textContent = state.hasSaved ? 'Saved key: yes' : 'Saved key: no';
+  const slot = document.getElementById('dialog-slot');
+  if (!state.open) {
+    slot.innerHTML = `<div class="closed">Dialog ${state.lastClose}.<br><br><button class="btn" id="reopen">Reopen Edit price source</button></div>`;
+    document.getElementById('reopen').onclick = openDialog;
+  } else {
+    slot.innerHTML = dialogHTML(v);
+    wire();
+  }
+  const st = document.getElementById('status');
+  st.innerHTML = hints().map(([k, t]) => `<span><kbd>${k}</kbd> ${t}</span>`).join('') + `<span class="msg">${state.status}</span>`;
+  document.getElementById('state').innerHTML = `<h3>State (${state.variant})</h3>
+    <div>focus: <span class="k">${state.open ? state.focus : '—'}</span></div>
+    <div>shown: <span class="k">${state.shown}</span></div>
+    <div>typed: <span class="k">${JSON.stringify(state.typed)}</span></div>
+    <div>saved key: <span class="k">${state.hasSaved ? (state.removeKey ? 'removed on Save' : 'kept') : 'none'}</span></div>
+    <div>view model text: <span class="k">${JSON.stringify(state.shown ? keyText() : 'len ' + [...state.typed].length)}</span></div>
+    <div>eye aria-label: <span class="k">${state.shown ? 'Hide API key' : 'Show API key'}</span></div>
+    <p>${v.summary}</p>
+    <p>Try: type or Ctrl+V a key into the box, Tab to the eye and press Space, Ctrl+C / Ctrl+X while hidden, Tab past, Esc or Save then Reopen. Toggle "Saved key" in the bar.</p>`;
+}
+
+function boxContent(v) {
+  const focused = state.focus === 'key';
+  const caret = focused ? '<span class="caret"></span>' : '';
+  const text = keyText();
+  if (!text) {
+    const ph = state.hasSaved && !state.removeKey ? 'Key saved · leave blank to keep it' : 'Optional';
+    return `${caret}<span class="text placeholder">${ph}</span>`;
+  }
+  if (state.shown) return `<span class="text mono">${esc(text)}</span>${caret}`;
+  return `<span class="text dots">${v.glyph.repeat([...text].length)}</span>${caret}`;
+}
+function esc(s) { return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function keyField(v) {
+  const f = state.focus;
+  const box = `<div class="box ${f === 'key' ? 'focused' : ''} ${v.control === 'welded' ? '' : 'grow'}" data-stop="key" role="textbox" aria-label="API key">${boxContent(v)}${
+    v.control === 'inside' ? `<span class="eye ${f === 'eye' ? 'focused' : ''}" data-stop="eye" data-act="toggle" role="button" aria-pressed="${state.shown}" aria-label="${state.shown ? 'Hide API key' : 'Show API key'}" title="${state.shown ? 'Hide API key' : 'Show API key'}">${state.shown ? EYE_OFF : EYE}</span>` : ''}</div>`;
+  if (v.control === 'inside') return box;
+  if (v.control === 'beside') return `<div class="row">${box}<button class="btn ${f === 'eye' ? 'focused' : ''}" data-stop="eye" data-act="toggle" aria-pressed="${state.shown}">${state.shown ? 'Hide key' : 'Show key'}</button></div>`;
+  return `<div class="welded">${box}<span class="weld ${f === 'eye' ? 'focused' : ''} ${state.shown ? 'shown' : ''}" data-stop="eye" data-act="toggle" role="button" aria-pressed="${state.shown}" aria-label="${state.shown ? 'Hide API key' : 'Show API key'}" title="${state.shown ? 'Hide API key' : 'Show API key'}">${state.shown ? EYE_OFF : EYE}</span></div>`;
+}
+
+function dialogHTML(v) {
+  const f = state.focus;
+  const remove = state.hasSaved && !state.removeKey
+    ? `<button class="btn ${f === 'remove' ? 'focused' : ''}" data-stop="remove" data-act="remove">Remove key</button>` : '';
+  const removed = state.removeKey ? `<span class="help">The saved key is removed on Save.</span>` : '';
+  return `<div class="dialog">
+    <header>Edit price source — CoinGecko</header>
+    <div class="body">
+      <div><div class="label">Name</div><div class="box ${f === 'name' ? 'focused' : ''}" data-stop="name">${f === 'name' ? '' : ''}<span class="text">CoinGecko</span>${f === 'name' ? '<span class="caret"></span>' : ''}</div>
+        <div class="help">Shown in the Price Sources table and the unit picker.</div></div>
+      <div class="fact">CoinGecko · built-in — Built-in sources update with the app, so their address isn't edited here.</div>
+      <div><div class="label">Updates</div><div class="seg"><div>Every 15 min</div><div class="on">Hourly</div><div>Daily</div><div>Manual only</div></div></div>
+      <div><div class="label">API key</div>${keyField(v)}</div>
+      <div class="row">${remove}${removed}<span class="help">Optional. Without a key CoinGecko is asked keyless, at a lower call limit.</span></div>
+      <div class="help">To get a free Demo key, sign up at CoinGecko, open the Developer Dashboard, choose + Add New Key and paste the key here.</div>
+      <div><button class="btn ${f === 'test' ? 'focused' : ''}" data-stop="test">Test price source</button></div>
+    </div>
+    <footer><span class="help">A test writes nothing.</span><span class="row">
+      <button class="btn ${f === 'cancel' ? 'focused' : ''}" data-stop="cancel" data-act="cancel">Cancel</button>
+      <button class="btn primary ${f === 'save' ? 'focused' : ''}" data-stop="save" data-act="save">Save</button></span></footer>
+  </div>`;
+}
+
+function wire() {
+  document.querySelectorAll('[data-stop]').forEach(el => el.addEventListener('click', e => {
+    e.stopPropagation();
+    const stop = el.dataset.stop, act = el.dataset.act;
+    setFocus(stop);
+    state.status = '';
+    if (act) doAct(act); else render();
+  }));
+}
+function toggle() {
+  state.shown = !state.shown;
+  if (state.shown && V().revealSaved && state.hasSaved && !state.typed) state.savedLoaded = true;
+}
+function doAct(act) {
+  if (act === 'toggle') toggle();
+  if (act === 'remove') { state.removeKey = true; state.focus = 'test'; }
+  if (act === 'cancel') return close('cancelled');
+  if (act === 'save') return close(state.typed ? 'saved, with the new key' : state.removeKey ? 'saved, key removed' : 'saved, key kept');
+  render();
+}
+function close(how) {
+  state.open = false; state.lastClose = how; state.shown = false; state.status = '';
+  if (how.startsWith('saved') && state.typed) state.hasSaved = true;
+  if (how === 'saved, key removed') state.hasSaved = false;
+  render();
+}
+function openDialog() {
+  Object.assign(state, { open: true, focus: 'key', typed: '', shown: false, savedLoaded: false, removeKey: false, status: '' });
+  render();
+}
+function cleanPaste(s) { return s.replace(/[\r\n\t]/g, '').trim(); }
+
+document.addEventListener('keydown', e => {
+  const mod = e.ctrlKey || e.metaKey;
+  if (!state.open) return;
+  const s = stops();
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const i = s.indexOf(state.focus);
+    setFocus(s[(i + (e.shiftKey ? -1 : 1) + s.length) % s.length]);
+    state.status = ''; return render();
+  }
+  if (e.key === 'Escape') { e.preventDefault(); return close('cancelled'); }
+  if (state.focus === 'eye' && (e.key === ' ' || e.key === 'Enter') && !mod) { e.preventDefault(); toggle(); return render(); }
+  if (e.key === 'Enter' && !mod) { e.preventDefault(); return doAct(state.focus === 'remove' ? 'remove' : state.focus === 'cancel' ? 'cancel' : 'save'); }
+  if (state.focus !== 'key') {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); cycle(e.key === 'ArrowLeft' ? -1 : 1); }
+    return;
+  }
+  if (mod && (e.key === 'c' || e.key === 'x')) {
+    e.preventDefault();
+    if (!state.shown) {
+      state.status = V().refuseCopy === 'status' ? 'The API key is hidden: show it to copy or cut.' : '';
+    } else {
+      const t = keyText();
+      navigator.clipboard?.writeText(t).catch(() => {});
+      if (e.key === 'x') { if (savedShowing()) state.savedLoaded = false; state.typed = ''; state.status = 'Cut the key (prototype: cuts all, no selection yet).'; }
+      else state.status = 'Copied the key (prototype: copies all, no selection yet).';
+    }
+    return render();
+  }
+  if (mod && e.key === 'v') return; // handled by the paste event
+  if (e.key === 'Backspace') {
+    e.preventDefault();
+    if (savedShowing()) { state.typed = SAVED_KEY; }
+    state.typed = [...state.typed].slice(0, -1).join(''); state.status = ''; return render();
+  }
+  if (e.key.length === 1 && !mod && !e.altKey) {
+    e.preventDefault();
+    if (savedShowing()) state.typed = SAVED_KEY;
+    state.typed += e.key; state.status = ''; return render();
+  }
+});
+document.addEventListener('paste', e => {
+  if (!state.open || state.focus !== 'key') return;
+  e.preventDefault();
+  if (savedShowing()) state.typed = SAVED_KEY;
+  state.typed += cleanPaste(e.clipboardData.getData('text'));
+  state.status = ''; render();
+});
+document.addEventListener('click', () => { if (state.open && state.focus !== 'none') { setFocus('none'); render(); } });
+
+function cycle(d) {
+  const keys = Object.keys(VARIANTS);
+  state.variant = keys[(keys.indexOf(state.variant) + d + keys.length) % keys.length];
+  const u = new URL(location); u.searchParams.set('variant', state.variant); history.replaceState(null, '', u);
+  openDialog();
+}
+document.getElementById('prev').onclick = e => { e.stopPropagation(); cycle(-1); };
+document.getElementById('next').onclick = e => { e.stopPropagation(); cycle(1); };
+document.getElementById('saved').onclick = e => { e.stopPropagation(); state.hasSaved = !state.hasSaved; openDialog(); };
+document.getElementById('theme').onclick = e => {
+  e.stopPropagation();
+  const r = document.documentElement; r.dataset.theme = r.dataset.theme === 'dark' ? 'light' : 'dark';
+};
+if (!VARIANTS[state.variant]) state.variant = 'A';
+render();
+</script>
+</body>
+</html>
