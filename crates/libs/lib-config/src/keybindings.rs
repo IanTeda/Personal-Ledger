@@ -7,8 +7,8 @@
 //!
 //! ## Configuration Structure
 //!
-//! `KeyBindingConfig` (defined in `lib-core`, so feature crates needn't depend on this one; it is no longer re-exported here;
-//! ADR-0058) has one fixed field, `super_key` -- the modifier held down for global
+//! `KeyBindingConfig`, defined in `lib-core` so feature crates needn't depend on this one
+//! (ADR-0058), has one fixed field, `super_key` -- the modifier held down for global
 //! shortcuts (mirroring a window manager's `$mainMod`/prefix key, e.g. Hyprland's `$mainMod`)
 //! -- plus a flattened map of command name -> key for everything else. Commands are open-ended
 //! (new screens add new ones over time) and INI naturally represents an arbitrary

@@ -1,9 +1,9 @@
-//! Enforces the VIPER Dependencies rule over `cargo metadata`: a feature crate never
-//! depends on another feature crate, a UI toolkit, `lib_config`, `lib_tracing` or `lib_database`, and a cross-domain module
-//! depends on the feature crates it writes and nothing else does on it, and no crate but the bins
-//! and `lib_database` depends on `lib_shell`, which hosts the modules, and no feature or shared
-//! crate depends on an adapter crate (docs/development/viper-architecture.md, Rules > Dependencies;
-//! ADR-0062).
+//! Enforces the VIPER Dependencies rule over `cargo metadata`: a feature crate never depends on
+//! another feature crate, a UI toolkit, `lib_config`, `lib_tracing` or `lib_database`, and a
+//! cross-domain module depends on the feature crates it writes and nothing else does on it, and
+//! no crate but the bins and `lib_database` depends on `lib_shell`, which hosts the modules, and
+//! no feature or shared crate depends on an adapter crate
+//! (docs/development/viper-architecture.md, Rules > Dependencies; ADR-0062).
 //!
 //! `deny.toml` already bans the toolkits and `lib_database` outside the bins, and each
 //! cross-domain module outside the bins and its adapter, but cargo-deny can't express "no feature
@@ -62,9 +62,9 @@ const FORBIDDEN: &[&str] = &[
 ];
 
 /// Whether `dependency` is one `name` may not have: a feature crate (unless `name` is a
-/// cross-domain module that writes it), a toolkit, an adapter crate, a cross-domain module, or the
-/// Shell (for any crate but [`SHELL_DEPENDANTS`]). The price feed may depend on no feature crate
-/// but `lib_units`.
+/// cross-domain module that writes it), a toolkit, `lib_config`, `lib_tracing`, an adapter crate,
+/// a cross-domain module, or the Shell (for any crate but [`SHELL_DEPENDANTS`]). The price feed
+/// may depend on no feature crate but `lib_units`.
 fn forbidden(name: &str, dependency: &str) -> bool {
     if dependency == name {
         return false;
