@@ -39,8 +39,8 @@ pub use delete_unit::{
 pub use ledger_prices::{LedgerPrices, PRICE_CHECK, Received};
 pub use price_history::{HISTORY_WEEKS, HistoryRow, PriceHistory, Trend};
 pub use price_source_form::{
-    ApiKeyView, AuthChoice, HistoryFields, HistoryShape, PriceSourceField, PriceSourceFormEvent,
-    PriceSourceFormPresenter, PriceSourceFormViewModel, TestView,
+    ApiKeyView, AuthChoice, HistoryFields, HistoryShape, KeyHelpView, PriceSourceField,
+    PriceSourceFormEvent, PriceSourceFormPresenter, PriceSourceFormViewModel, TestView,
 };
 pub use price_source_test::{
     HistoryResponseView, ResponseView, TestHistoryView, TestResultView, TestState,

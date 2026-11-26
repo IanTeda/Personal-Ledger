@@ -618,6 +618,14 @@ fn coingeckos_edit_dialog_takes_its_optional_demo_key(app: &mut TestAppContext) 
         ui.dialog_value("key_note").as_deref(),
         Some("Optional. Without a key CoinGecko is asked keyless, at a lower call limit.")
     );
+    assert_eq!(
+        ui.dialog_value("key_help").as_deref(),
+        Some(
+            "To get a free Demo key, sign up at CoinGecko, open the Developer Dashboard, choose + \
+             Add New Key and paste the key here. Open CoinGecko's Developer Dashboard \
+             <https://www.coingecko.com/en/developers/dashboard>"
+        )
+    );
     ui.press("tab tab");
     assert_eq!(ui.dialog_value("field").as_deref(), Some("ApiKey"));
     type_word(&mut ui, "CG-demo");
@@ -667,6 +675,11 @@ fn a_key_another_devices_secret_saved_reads_unreadable_and_its_field_is_off(
 
     ui.press("e");
     assert_eq!(ui.dialog_value("api_key_enabled").as_deref(), Some("false"));
+    assert_eq!(
+        ui.dialog_value("key_help").as_deref(),
+        Some(""),
+        "no steps for a key that can't be written here"
+    );
     assert_eq!(ui.dialog_value("remove_key").as_deref(), Some(""));
     assert_eq!(
         ui.dialog_value("key_note").as_deref(),

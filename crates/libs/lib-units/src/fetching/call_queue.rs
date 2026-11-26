@@ -279,7 +279,7 @@ mod tests {
     fn each_source_has_its_call_rate_and_coingeckos_rises_with_a_demo_key() {
         let custom = Some(PriceSourceId::new());
         assert_eq!(CallRate::of(Some(COINGECKO), false).calls, 5);
-        assert_eq!(CallRate::of(Some(COINGECKO), true).calls, 30);
+        assert_eq!(CallRate::of(Some(COINGECKO), true).calls, 100);
         assert_eq!(CallRate::of(Some(YAHOO_FINANCE), false).calls, 30);
         assert_eq!(CallRate::of(Some(FRANKFURTER), false).calls, 60);
         assert_eq!(CallRate::of(custom, true).calls, 30);

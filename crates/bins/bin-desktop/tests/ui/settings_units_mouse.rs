@@ -917,6 +917,26 @@ fn clicking_coingeckos_key_field_takes_a_demo_key_and_remove_key_clears_it(
 }
 
 #[gpui::test]
+fn clicking_coingeckos_key_link_opens_its_developer_dashboard(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    let row = source_row(&mut ui, "CoinGecko");
+    ui.double_click(&row);
+    assert_eq!(ui.dialog(), Some("EditBuiltInPriceSource"));
+
+    scroll_form_down(&mut ui);
+    ui.click("price-source-key-link");
+    assert_eq!(
+        ui.cx.opened_url().as_deref(),
+        Some("https://www.coingecko.com/en/developers/dashboard")
+    );
+    assert_eq!(
+        ui.dialog(),
+        Some("EditBuiltInPriceSource"),
+        "the Dialog stays open"
+    );
+}
+
+#[gpui::test]
 fn the_history_sections_fields_and_series_take_clicks(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.click("settings-add-price-source");

@@ -478,7 +478,8 @@ fn key_box(api_key: &ApiKeyView, actions: &Clicks, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-/// Remove key, while there is a saved key, then where the key is kept or why the field is off.
+/// Remove key, while there is a saved key, then where the key is kept or why the field is off,
+/// and under them a built-in's steps to get its key with a link to the provider's page.
 fn key_remove_and_note(api_key: &ApiKeyView, actions: &Clicks, cx: &App) -> AnyElement {
     let remove = api_key.remove.clone().map(|label| {
         let on_click = actions.send(PriceSourceFormEvent::RemoveKey);
@@ -500,7 +501,7 @@ fn key_remove_and_note(api_key: &ApiKeyView, actions: &Clicks, cx: &App) -> AnyE
             .on_click(move |_event, window, cx| on_click(window, cx))
             .child(label)
     });
-    div()
+    let row = div()
         .flex()
         .items_center()
         .gap(px(10.0))
@@ -511,7 +512,30 @@ fn key_remove_and_note(api_key: &ApiKeyView, actions: &Clicks, cx: &App) -> AnyE
                 .text_size(px(11.5))
                 .text_color(color::faint_text(cx))
                 .child(api_key.note.clone()),
-        )
+        );
+    let help = api_key.help.as_ref().map(|help| {
+        let url = help.url;
+        div()
+            .debug_selector(|| "price-source-key-help".to_string())
+            .text_size(px(11.5))
+            .text_color(color::faint_text(cx))
+            .child(help.steps.clone())
+            .child(
+                div()
+                    .id("price-source-key-link")
+                    .debug_selector(|| "price-source-key-link".to_string())
+                    .cursor_pointer()
+                    .text_color(color::accent_text(cx))
+                    .on_click(move |_event, _window, cx: &mut App| cx.open_url(url))
+                    .child(format!("{} \u{2197}", help.link)),
+            )
+    });
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(6.0))
+        .child(row)
+        .children(help)
         .into_any_element()
 }
 
@@ -861,6 +885,14 @@ fn readback(view: &PriceSourceFormViewModel) -> Vec<(&'static str, String)> {
             view.api_key
                 .as_ref()
                 .map(|key| key.note.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "key_help",
+            view.api_key
+                .as_ref()
+                .and_then(|key| key.help.as_ref())
+                .map(|help| format!("{} {} <{}>", help.steps, help.link, help.url))
                 .unwrap_or_default(),
         ),
         ("field", format!("{:?}", view.focused)),

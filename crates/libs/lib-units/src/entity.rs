@@ -10,9 +10,9 @@ use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
 pub use precision::{Precision, PrecisionStep};
 pub use price_source::{
     BUILT_IN_SOURCES, BatchRequest, BuiltInOverride, BuiltInSource, COINGECKO, CustomSource,
-    Endpoint, FRANKFURTER, HistoryEndpoint, HistoryRef, KeyPlacement, MANUAL_ENTRY, PriceSource,
-    PriceSourceAuth, PriceSourceRecord, RequestHeader, SeriesShape, SourceOrigin, Updates,
-    YAHOO_FINANCE, add_custom_source, built_in, edit_custom_source, last_fetched,
+    Endpoint, FRANKFURTER, HistoryEndpoint, HistoryRef, KeyHelp, KeyPlacement, MANUAL_ENTRY,
+    PriceSource, PriceSourceAuth, PriceSourceRecord, RequestHeader, SeriesShape, SourceOrigin,
+    Updates, YAHOO_FINANCE, add_custom_source, built_in, edit_custom_source, last_fetched,
     move_units_to_manual, override_built_in, price_source, price_source_exists, price_sources,
     remove_custom_source, sources_for_kind,
 };

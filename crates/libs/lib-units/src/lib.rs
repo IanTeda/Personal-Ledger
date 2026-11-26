@@ -25,13 +25,13 @@ pub mod protocols;
 
 pub use entity::{
     BUILT_IN_SOURCES, BatchRequest, BuiltInOverride, BuiltInSource, COINGECKO, CustomSource,
-    Endpoint, FRANKFURTER, HistoryEndpoint, HistoryRef, KeyPlacement, MANUAL_ENTRY, Precision,
-    PrecisionStep, PriceLink, PriceSource, PriceSourceAuth, PriceSourceRecord, RequestHeader,
-    SeriesShape, SourceOrigin, UnitRow, Updates, WeeklyPrice, YAHOO_FINANCE, add_custom_source,
-    add_unit, built_in, edit_custom_source, edit_unit, last_fetched, move_units_to_manual,
-    override_built_in, price_source, price_source_exists, price_sources, remove_custom_source,
-    remove_unit, sample_units, seed_weekly_prices, seed_written_at, set_unit_active,
-    sources_for_kind, units_by_code,
+    Endpoint, FRANKFURTER, HistoryEndpoint, HistoryRef, KeyHelp, KeyPlacement, MANUAL_ENTRY,
+    Precision, PrecisionStep, PriceLink, PriceSource, PriceSourceAuth, PriceSourceRecord,
+    RequestHeader, SeriesShape, SourceOrigin, UnitRow, Updates, WeeklyPrice, YAHOO_FINANCE,
+    add_custom_source, add_unit, built_in, edit_custom_source, edit_unit, last_fetched,
+    move_units_to_manual, override_built_in, price_source, price_source_exists, price_sources,
+    remove_custom_source, remove_unit, sample_units, seed_weekly_prices, seed_written_at,
+    set_unit_active, sources_for_kind, units_by_code,
 };
 pub use error::{Error, Result};
 pub use fetching::{

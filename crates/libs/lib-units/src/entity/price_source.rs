@@ -230,7 +230,29 @@ pub struct BuiltInSource {
     /// Whether `attribution` shows on every Unit the source prices, rather than only on its own
     /// pane.
     pub attribution_everywhere: bool,
+    /// How to get its API key, shown under the key field; `None` for a source that takes none.
+    pub key_help: Option<KeyHelp>,
 }
+
+/// How a person gets a built-in source's API key: the steps, and the provider's page to take them
+/// on, which the Edit price source Dialog opens as a link.
+#[derive(Debug, Clone, Copy)]
+pub struct KeyHelp {
+    pub steps: fn() -> String,
+    pub link: fn() -> String,
+    pub url: &'static str,
+}
+
+// Hand-written so the text fns compare what they render, not their pointers.
+impl PartialEq for KeyHelp {
+    fn eq(&self, other: &Self) -> bool {
+        (self.steps)() == (other.steps)()
+            && (self.link)() == (other.link)()
+            && self.url == other.url
+    }
+}
+
+impl Eq for KeyHelp {}
 
 // Hand-written so `attribution` compares the text it renders, not the fn pointer: the compiler
 // warns that fn pointers have no stable address to compare.
@@ -248,6 +270,7 @@ impl PartialEq for BuiltInSource {
             && self.keyed_call_rate == other.keyed_call_rate
             && self.attribution.map(|text| text()) == other.attribution.map(|text| text())
             && self.attribution_everywhere == other.attribution_everywhere
+            && self.key_help == other.key_help
     }
 }
 
@@ -302,11 +325,18 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
         }),
         // Hourly points answered 364 days back when checked on 2026-11-24 (#1400).
         hourly_depth: Some(364),
-        // Keyless by default; a Demo key raises it.
+        // Keyless by default; a Demo key raises it to the Demo plan's 100 a minute
+        // (docs.coingecko.com/docs/errors-and-rate-limits, checked 2026-11-26).
         call_rate: CallRate::per_minute(5),
-        keyed_call_rate: Some(CallRate::per_minute(30)),
+        keyed_call_rate: Some(CallRate::per_minute(100)),
         attribution: Some(crate::msg::units_pane_powered_by_coingecko),
         attribution_everywhere: true,
+        // CoinGecko's setup guide, docs.coingecko.com/docs/setting-up-your-api-key.
+        key_help: Some(KeyHelp {
+            steps: crate::msg::units_price_source_coingecko_key_steps,
+            link: crate::msg::units_price_source_coingecko_key_link,
+            url: "https://www.coingecko.com/en/developers/dashboard",
+        }),
     },
     BuiltInSource {
         id: YAHOO_FINANCE,
@@ -362,6 +392,7 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
         keyed_call_rate: None,
         attribution: Some(crate::msg::units_pane_yahoo_unofficial),
         attribution_everywhere: false,
+        key_help: None,
     },
     BuiltInSource {
         id: FRANKFURTER,
@@ -395,6 +426,7 @@ pub const BUILT_IN_SOURCES: &[BuiltInSource] = &[
         keyed_call_rate: None,
         attribution: None,
         attribution_everywhere: false,
+        key_help: None,
     },
 ];
 

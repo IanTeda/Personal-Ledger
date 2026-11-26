@@ -256,6 +256,16 @@ pub struct ApiKeyView {
     pub remove_focused: bool,
     /// Where the key is kept, or why the field is off.
     pub note: String,
+    /// How to get a built-in source's key, while the key is writable here.
+    pub help: Option<KeyHelpView>,
+}
+
+/// A built-in source's steps to get its API key, and a link to the provider's page for them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyHelpView {
+    pub steps: String,
+    pub link: String,
+    pub url: &'static str,
 }
 
 /// Test with symbol, or a built-in's Test price source, and what the last test came to.
@@ -821,6 +831,16 @@ impl PriceSourceFormPresenter {
         } else {
             msg::units_price_source_key_note()
         };
+        let help = match self.mode {
+            Mode::EditBuiltIn(id) if self.keys_writable => crate::built_in(id)
+                .and_then(|source| source.key_help)
+                .map(|help| KeyHelpView {
+                    steps: (help.steps)(),
+                    link: (help.link)(),
+                    url: help.url,
+                }),
+            _ => None,
+        };
         ApiKeyView {
             field: TextFieldView {
                 label: msg::units_price_source_field_api_key(),
@@ -838,6 +858,7 @@ impl PriceSourceFormPresenter {
                 .then(msg::units_price_source_remove_key),
             remove_focused: self.focused == PriceSourceField::RemoveKey,
             note,
+            help,
         }
     }
 
@@ -1845,6 +1866,12 @@ mod tests {
             key.note,
             "Optional. Without a key CoinGecko is asked keyless, at a lower call limit."
         );
+        let help = key.help.expect("CoinGecko says how to get its key");
+        assert_eq!(
+            help.url,
+            "https://www.coingecko.com/en/developers/dashboard"
+        );
+        assert_eq!(help.link, "Open CoinGecko's Developer Dashboard");
 
         let mut events = vec![PriceSourceFormEvent::Focus(PriceSourceField::ApiKey)];
         events.extend(
