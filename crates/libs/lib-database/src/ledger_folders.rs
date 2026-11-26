@@ -42,6 +42,20 @@ impl LedgerFolders for FsLedgerFolders {
     fn exists(&self, path: &Path) -> bool {
         std::fs::symlink_metadata(path).is_ok()
     }
+
+    /// The `io::Error` is logged here, since the Presenter only falls back.
+    fn create_folder(&self, folder: &Path) -> bool {
+        match std::fs::create_dir_all(folder) {
+            Ok(()) => {
+                tracing::info!(folder = %folder.display(), "Made the missing Data folder");
+                true
+            }
+            Err(error) => {
+                tracing::error!(%error, folder = %folder.display(), "Couldn't make the Data folder");
+                false
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -74,6 +88,9 @@ mod tests {
         );
         assert!(entries.iter().all(|entry| entry.modified.is_some()));
         assert!(FsLedgerFolders.exists(&dir.path().join("teda.pldb")));
+        let made = dir.path().join("Personal Ledger").join("2026");
+        assert!(FsLedgerFolders.create_folder(&made));
+        assert!(made.is_dir());
         assert!(!FsLedgerFolders.exists(&dir.path().join("teda.pldb-wal")));
         assert!(
             FsLedgerFolders

@@ -26,8 +26,8 @@
 //!
 //! ```ini
 //! [General]
-//! data = "~/Documents/Personal-Ledger"
-//! file = "~/Documents/Personal-Ledger/My-Personal-Ledger.pldb"
+//! data = "/home/ian/Documents/Personal Ledger"
+//! file = "/home/ian/Documents/Personal Ledger/My-Personal-Ledger.pldb"
 //!
 //! [Display]
 //! date_style = "iso"
@@ -1430,11 +1430,11 @@ mod tests {
                 "[Logs] log did not reach the config"
             );
 
-            // The file's `data` key is a literal tilde path -- `config` does no shell
-            // expansion -- whereas the default is an expanded absolute path.
+            // The file's `data` key is a full path, which no default matches: a `~` is never
+            // expanded, so the shipped file names no home-relative folder.
             assert_eq!(
                 config.general.data(),
-                Path::new("~/Documents/Personal-Ledger"),
+                Path::new("/home/ian/Documents/Personal Ledger"),
                 "[General] data did not reach the config"
             );
 

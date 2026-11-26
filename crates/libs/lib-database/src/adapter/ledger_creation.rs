@@ -52,6 +52,15 @@ impl LedgerCreation for LedgerCreationAdapter {
             tracing::error!(path = %path.display(), "A journal is already beside the new Ledger file");
             return Err(lib_ledger_creation::Error::Exists);
         }
+        // A typed `:new` path may name folders that aren't there yet, the Data folder among them.
+        if let Some(folder) = path
+            .parent()
+            .filter(|folder| !folder.as_os_str().is_empty())
+            && let Err(error) = std::fs::create_dir_all(folder)
+        {
+            tracing::error!(%error, folder = %folder.display(), "Couldn't make the new Ledger's folder");
+            return Err(lib_ledger_creation::Error::Unwritable);
+        }
         // `create_new` claims the name atomically, so a file made after the explorer checked the
         // name is refused rather than overwritten.
         if let Err(error) = std::fs::OpenOptions::new()
@@ -259,6 +268,21 @@ mod tests {
 
         assert!(!path.exists());
         assert!(journal.exists());
+    }
+
+    #[test]
+    fn a_missing_folder_is_made_for_the_new_ledger() {
+        let folder = tempfile::tempdir().expect("a temporary directory");
+        let path = folder
+            .path()
+            .join("Documents")
+            .join("Personal Ledger")
+            .join("teda.pldb");
+
+        let created = LedgerCreationAdapter::new().create_ledger(&path, &contract::usd_ledger());
+
+        assert_eq!(created, Ok(()));
+        assert!(path.is_file());
     }
 
     #[cfg(unix)]

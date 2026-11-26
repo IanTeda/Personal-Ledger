@@ -7,7 +7,7 @@
 //! `:new` names its file in a focused File name field, so creating one runs from the keys here
 //! (#980): a fresh name opens the Create ledger Dialog (#1068), which asks for the base Unit and
 //! writes nothing until Create, then creates the Ledger with what every new Ledger starts with
-//! (#1067) and opens it; Esc leaves what was open and writes nothing, a
+//! (#1067) and opens it, making a Data folder that isn't there yet; Esc leaves what was open and writes nothing, a
 //! name already in the folder is refused
 //! inline, as is one whose SQLite journal is still there, and a folder it can't write keeps the
 //! Open Ledger. Start view (#983) chooses where it
@@ -443,6 +443,28 @@ fn new_with_a_fresh_name_creates_the_ledger_file_and_opens_it(app: &mut TestAppC
     let toast = ui.toasts().visible.pop().expect("a Toast says so");
     assert_eq!(toast.kind, "Success");
     assert_eq!(toast.text, "Created ledger teda2027.pldb");
+}
+
+#[gpui::test]
+fn new_makes_a_missing_data_folder_and_creates_the_ledger_in_it(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let data = dir.path().join("Documents").join("Personal Ledger");
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(&data);
+
+    ui.press(": n e w enter");
+    assert!(data.is_dir(), "the Data folder made as `:new` opens");
+    assert_eq!(
+        ui.read(|shell| shell.explorer_snapshot())
+            .map(|explorer| explorer.folder),
+        Some(data.clone()),
+        "the explorer opens in it, not the home folder"
+    );
+    ui.press("t e d a enter enter enter");
+
+    let created = data.join("teda.pldb");
+    assert!(created.is_file(), "the file written in the Data folder");
+    assert_eq!(ui.ledger_path(), Some(created));
 }
 
 #[gpui::test]

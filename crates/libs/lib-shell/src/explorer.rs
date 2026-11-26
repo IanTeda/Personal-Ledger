@@ -101,6 +101,10 @@ pub trait LedgerFolders {
 
     /// Whether anything, a file, folder or link, is at `path`.
     fn exists(&self, path: &Path) -> bool;
+
+    /// Makes `folder` and any missing parents, so `:new` can start in a Data folder that isn't
+    /// there yet. Returns whether it is there now; a failure is the Client's to log.
+    fn create_folder(&self, folder: &Path) -> bool;
 }
 
 /// The footer's two checkboxes, which outlive each opening and the Client keeps across a restart.
@@ -220,9 +224,16 @@ impl ExplorerPresenter {
     }
 
     /// Opens in `mode` at the Data folder, else the fallback, else the current folder. A start
-    /// that can't be read is passed over for the next; the last lists nothing. The folder picker's
-    /// cursor starts on the first folder.
+    /// that can't be read is passed over for the next; the last lists nothing. `:new` first makes
+    /// a Data folder that isn't there, so a new Ledger lands where the Data folder says. The
+    /// folder picker's cursor starts on the first folder.
     pub fn open(&mut self, mode: ExplorerMode, folders: &dyn LedgerFolders) {
+        if mode == ExplorerMode::New
+            && let Some(start) = &self.start
+            && !folders.exists(start)
+        {
+            folders.create_folder(start);
+        }
         let candidates = [self.start.clone(), self.fallback.clone()];
         let (folder, listing) = candidates
             .into_iter()
@@ -721,6 +732,45 @@ mod tests {
 
         assert_eq!(explorer.mode(), Some(ExplorerMode::New));
         assert_eq!(model(&explorer).folder, root());
+    }
+
+    #[test]
+    fn new_makes_a_missing_data_folder_and_opens_in_it() {
+        let folders = FakeLedgerFolders::default().folder(PathBuf::from("/home"));
+
+        let explorer = opened(ExplorerMode::New, &folders);
+
+        assert!(folders.exists(&root()));
+        assert_eq!(model(&explorer).folder, root());
+    }
+
+    #[test]
+    fn open_leaves_a_missing_data_folder_missing() {
+        let home = PathBuf::from("/home");
+        let folders = FakeLedgerFolders::default().folder(home.clone());
+        let mut explorer = ExplorerPresenter::default();
+        explorer.set_start_folder(Some(root()));
+        explorer.set_fallback_folder(Some(home.clone()));
+
+        explorer.open(ExplorerMode::Open, &folders);
+
+        assert!(!folders.exists(&root()));
+        assert_eq!(model(&explorer).folder, home);
+    }
+
+    #[test]
+    fn new_falls_back_when_the_data_folder_cannot_be_made() {
+        let home = PathBuf::from("/home");
+        let folders = FakeLedgerFolders::default()
+            .folder(home.clone())
+            .uncreatable();
+        let mut explorer = ExplorerPresenter::default();
+        explorer.set_start_folder(Some(root()));
+        explorer.set_fallback_folder(Some(home.clone()));
+
+        explorer.open(ExplorerMode::New, &folders);
+
+        assert_eq!(model(&explorer).folder, home);
     }
 
     #[test]

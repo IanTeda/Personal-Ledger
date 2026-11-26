@@ -142,7 +142,7 @@ The Sync Server ignores this setting.
 
 __data:__
 
-The folder `:open`'s file browser starts in, where you keep your Ledger files.
+The folder `:open` and `:new` start in, where you keep your Ledger files. Give a full path, such as `/home/ian/Documents/Personal Ledger`, or one relative to the folder the app starts in, such as `./data`. A leading `~` is not expanded, since it is a shell shorthand and not something every operating system has: `~/Documents` names a folder called `~` in the folder the app starts in. The same holds for `file`. If the folder isn't there, `:new` makes it, with any missing folders above it, before it creates the Ledger file.
 
 * Type: String
 * CLI Flags: --data/-d 
@@ -154,11 +154,11 @@ Example:
 
 ```ini
 [General]
-data = "~/Documents/Personal-Ledger"
+data = "/home/ian/Documents/Personal Ledger"
 ```
 
 ```bash
-personal_ledger --data/-d '~/Documents/Personal-Ledger/'
+personal_ledger --data/-d '/home/ian/Documents/Personal Ledger/'
 ```
 
 __file:__
@@ -174,11 +174,11 @@ Example:
 
 ```ini
 [General]
-file = "~/Documents/My-Personal-Ledger.pldb"
+file = "/home/ian/Documents/Personal Ledger/My-Personal-Ledger.pldb"
 ```
 
 ```bash
-personal_ledger --file/-f '~/Documents/My-Personal-Ledger.pldb'
+personal_ledger --file/-f '/home/ian/Documents/Personal Ledger/My-Personal-Ledger.pldb'
 ```
 
 The TUI and the Desktop app both read on_start, start_view, toasts and the Colour Theme, Appearance and date style below, and both write them from Settings, so a change in one is the other's the next time it starts. A value a key doesn't take, such as `on_start = sometimes`, stops the app starting with an error naming it.
@@ -800,12 +800,15 @@ Example Configuration File
 # When absent, the operating system's locale is used, falling back to "en-US".
 # locale = "en-AU"
 
-# Client data directory: the folder `:open` starts in
-data = "~/Documents/Personal-Ledger"
+# Client data directory: the folder `:open` and `:new` start in. Give a full path, such as
+# "/home/ian/Documents/Personal Ledger", or one relative to the folder the Client starts in, such
+# as "./data". A leading `~` is not expanded: it is a shell shorthand, not something every
+# operating system has, so "~/Documents" names a folder called `~` in the working directory.
+data = "/home/ian/Documents/Personal Ledger"
 
 # Optional: a Ledger file to open at start, overriding on_start. Usually left unset, so the
 # Client reopens the last Ledger, or none, as on_start says.
-# file = "~/Documents/Personal-Ledger/My-Personal-Ledger.pldb"
+# file = "/home/ian/Documents/Personal Ledger/My-Personal-Ledger.pldb"
 
 
 # Settings › Display. Each shows its default.

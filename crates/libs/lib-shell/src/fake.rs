@@ -222,22 +222,29 @@ impl ShellRailCounts for FakeRailCounts {
 
 /// Folders and files held in memory, by path, built up a test at a time. Every file is 1 kb and
 /// was modified at the epoch; a folder marked unreadable fails to read, as one without permission
-/// does.
+/// does. A folder made through the port is held as if built.
 #[derive(Debug, Default)]
 pub struct FakeLedgerFolders {
-    /// Each path held, `true` for a folder.
-    paths: BTreeMap<PathBuf, bool>,
+    /// Each path held, `true` for a folder. In a cell since the port makes folders through `&self`.
+    paths: RefCell<BTreeMap<PathBuf, bool>>,
     unreadable: BTreeSet<PathBuf>,
+    /// Refuses every folder the port is asked to make, as a read-only disk does.
+    uncreatable: bool,
 }
 
 impl FakeLedgerFolders {
-    pub fn folder(mut self, path: PathBuf) -> Self {
-        self.paths.insert(path, true);
+    pub fn folder(self, path: PathBuf) -> Self {
+        self.paths.borrow_mut().insert(path, true);
         self
     }
 
-    pub fn file(mut self, path: PathBuf) -> Self {
-        self.paths.insert(path, false);
+    pub fn file(self, path: PathBuf) -> Self {
+        self.paths.borrow_mut().insert(path, false);
+        self
+    }
+
+    pub fn uncreatable(mut self) -> Self {
+        self.uncreatable = true;
         self
     }
 
@@ -254,11 +261,11 @@ impl LedgerFolders for FakeLedgerFolders {
                 std::io::ErrorKind::PermissionDenied,
             ));
         }
-        if self.paths.get(folder) != Some(&true) {
+        let paths = self.paths.borrow();
+        if paths.get(folder) != Some(&true) {
             return Err(crate::Error::FolderUnreadable(std::io::ErrorKind::NotFound));
         }
-        Ok(self
-            .paths
+        Ok(paths
             .iter()
             .filter(|(path, _)| path.parent() == Some(folder))
             .map(|(path, &is_folder)| FolderEntry {
@@ -272,7 +279,18 @@ impl LedgerFolders for FakeLedgerFolders {
     }
 
     fn exists(&self, path: &Path) -> bool {
-        self.paths.contains_key(path)
+        self.paths.borrow().contains_key(path)
+    }
+
+    fn create_folder(&self, folder: &Path) -> bool {
+        if self.uncreatable {
+            return false;
+        }
+        let mut paths = self.paths.borrow_mut();
+        for ancestor in folder.ancestors() {
+            paths.entry(ancestor.to_path_buf()).or_insert(true);
+        }
+        true
     }
 }
 
