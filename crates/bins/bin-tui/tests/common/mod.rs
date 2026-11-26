@@ -16,7 +16,7 @@ use std::sync::mpsc;
 
 use bin_tui::{Shell, build_shell, colours::Colours, event::Event, locale};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_database::{
     Commit, Domain, FakeStores, InMemoryCommit, Recorded, Stores, UnitsStore, WriteFailure, Written,
 };

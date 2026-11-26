@@ -17,7 +17,7 @@ pub mod view;
 use std::rc::Rc;
 use std::sync::mpsc;
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_database::{Commit, FakeStores, LedgerPorts, SharedStores, Stores, WriteFailure};
 use lib_shell::DialogCommand;
 use lib_viper::keymap::Keymap;

@@ -726,7 +726,7 @@ pub(super) fn number(money: &Money) -> f64 {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use lib_config::KeyBindingConfig;
+    use lib_core::configuration::KeyBindingConfig;
 
     use super::super::test_support::{clock, sample};
     use super::*;

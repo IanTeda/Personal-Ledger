@@ -6,7 +6,7 @@
 
 use super::common;
 use bin_desktop::shell::router::SettingsAccountsSnapshot;
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};

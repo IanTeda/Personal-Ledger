@@ -4,7 +4,7 @@
 
 use super::common;
 use bin_desktop::shell::router::{SettingsAccountsSnapshot, SettingsPayeesSnapshot};
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 
 use bin_desktop::navigation::nav::Noun;
 use common::Harness;

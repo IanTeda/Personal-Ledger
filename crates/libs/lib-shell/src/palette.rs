@@ -17,7 +17,7 @@
 
 use std::ops::Range;
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_viper::keymap::{BACK, Binding, Keymap, NEXT_FIELD, SELECT, SELECT_NEXT, SELECT_PREVIOUS};
 
 use crate::dialog::DialogCommand;

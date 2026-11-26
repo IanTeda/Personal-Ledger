@@ -2,7 +2,7 @@
 //! the flat names every module shares (`lib_viper::keymap`). Remove and merge are the module's own:
 //! the flat `delete` defaults to `d` in `[keybindings]`, and the page has always removed on `x`.
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
     ARROW_DOWN, ARROW_UP, Binding, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,

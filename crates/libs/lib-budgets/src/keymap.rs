@@ -10,7 +10,7 @@
 //! Budget-wide verbs the palette lists (`budgets duplicate`, `budgets archive`, …) have no key until
 //! `[keybindings]` gives them one.
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
     ARROW_DOWN, ARROW_UP, Binding, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,

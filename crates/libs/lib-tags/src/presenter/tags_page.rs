@@ -308,7 +308,7 @@ fn scope(tags: &[Tag], groups: &[DuplicateGroup]) -> (Vec<Segment>, String) {
 
 #[cfg(test)]
 mod tests {
-    use lib_config::KeyBindingConfig;
+    use lib_core::configuration::KeyBindingConfig;
 
     use super::super::test_support::sample;
     use super::*;

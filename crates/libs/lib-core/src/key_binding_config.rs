@@ -81,7 +81,7 @@ impl KeyBindingConfig {
 
     /// The defaults with `command` rebound to `chord`, for a test that needs one rebind. Behind
     /// the `test-support` feature so shipped builds never carry it; a crate's tests reach it by
-    /// enabling `lib_config/test-support` in `[dev-dependencies]`.
+    /// enabling `lib_core/test-support` in `[dev-dependencies]`.
     #[cfg(any(test, feature = "test-support"))]
     pub fn overriding(command: &str, chord: &str) -> Self {
         Self::default().and(command, chord)

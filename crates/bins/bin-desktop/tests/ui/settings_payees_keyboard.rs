@@ -3,7 +3,7 @@
 
 use super::common;
 use bin_desktop::shell::router::{SettingsCategoriesSnapshot, SettingsPayeesSnapshot};
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_core::{PayeeId, TransactionId};
 use lib_database::{Commit as _, Domain};
 use lib_payees::Payee;

@@ -13,7 +13,7 @@
 //! A sequence (`g d`) is bound as one chord. Its first key is a prefix: the Shell waits for the next
 //! key, and the Client's timer ends the wait with [`crate::ShellInput::PrefixExpired`].
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
     ARROW_DOWN, ARROW_UP, BACK, BACK_DEFAULT, Binding, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME,

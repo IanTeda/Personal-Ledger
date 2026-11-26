@@ -78,7 +78,7 @@ impl UnitsSetup {
         deletion: lib_unit_deletion::SharedUnitDeletion,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         clock: lib_core::Clock,
-        config: &lib_config::KeyBindingConfig,
+        config: &lib_core::configuration::KeyBindingConfig,
     ) -> (UnitsPagePresenter, Self) {
         let presenter = UnitsPagePresenter::new(ports.clone(), clock.clone(), config)
             .with_fetching(fetching.clone());
@@ -99,7 +99,7 @@ impl UnitsSetup {
         ports: &lib_database::LedgerPorts,
         clock: &lib_core::Clock,
     ) -> (UnitsPagePresenter, Self) {
-        let config = lib_config::KeyBindingConfig::default();
+        let config = lib_core::configuration::KeyBindingConfig::default();
         Self::new(
             ports.units(),
             None,

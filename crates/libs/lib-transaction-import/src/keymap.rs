@@ -4,7 +4,7 @@
 //! (`import.pick_payee`). `back` is bound in both, and the Client hands the Presenter
 //! [`ImportEvent::Cancel`] for it, as the Shell keeps `esc`.
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
     ARROW_DOWN, ARROW_UP, BACK, BACK_DEFAULT, Binding, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME,

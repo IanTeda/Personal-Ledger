@@ -37,7 +37,7 @@
 
 use crate::navigation::nav::NounLabel;
 use lib_colour_theme::ColourAppearance;
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_settings::ColourChoice;
 use lib_shell::{Destination, PaletteEffect, PaletteEntry, ShellCommand};
 use lib_viper::keymap::Palette;

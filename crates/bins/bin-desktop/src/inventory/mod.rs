@@ -65,7 +65,7 @@ impl InventorySetup {
         inventory: SharedInventory,
         reads: SharedReads,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-        config: &lib_config::KeyBindingConfig,
+        config: &lib_core::configuration::KeyBindingConfig,
     ) -> (InventoryPagePresenter, Self) {
         let presenter = InventoryPagePresenter::new(inventory.clone(), config);
         let setup = Self {
@@ -79,7 +79,7 @@ impl InventorySetup {
     /// `ports`' Inventory store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn sample(ports: &lib_database::LedgerPorts) -> (InventoryPagePresenter, Self) {
-        let config = lib_config::KeyBindingConfig::default();
+        let config = lib_core::configuration::KeyBindingConfig::default();
         Self::new(
             ports.inventory(),
             ports.inventory_reads(),

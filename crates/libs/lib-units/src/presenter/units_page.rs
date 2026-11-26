@@ -1190,7 +1190,7 @@ fn backfill_text(
 
 #[cfg(test)]
 mod tests {
-    use lib_config::KeyBindingConfig;
+    use lib_core::configuration::KeyBindingConfig;
 
     use super::super::test_support::{self, clock, sample};
     use super::*;

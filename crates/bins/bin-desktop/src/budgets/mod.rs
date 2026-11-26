@@ -26,7 +26,7 @@ impl BudgetsSetup {
         ports: SharedPorts,
         clock: lib_core::Clock,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-        config: &lib_config::KeyBindingConfig,
+        config: &lib_core::configuration::KeyBindingConfig,
     ) -> (presenter::BudgetsPagePresenter, Self) {
         let presenter = presenter::BudgetsPagePresenter::new(ports.clone(), clock.clone(), config);
         let setup = Self {

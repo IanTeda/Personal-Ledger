@@ -10,7 +10,7 @@
     reason = "test support: a sample row or count the test relies on missing should fail it loudly"
 )]
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use std::time::Duration;
 
 use super::common;

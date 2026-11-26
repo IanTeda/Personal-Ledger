@@ -385,7 +385,7 @@ fn enter_on_the_data_folder_opens_the_picker_and_u_writes_the_folder_it_shows() 
 
 #[test]
 fn the_picker_closes_on_the_user_s_own_back_key() {
-    let mut keybindings = lib_config::KeyBindingConfig::default();
+    let mut keybindings = lib_core::configuration::KeyBindingConfig::default();
     keybindings
         .bindings
         .insert("back".to_string(), "q".to_string());

@@ -88,9 +88,6 @@ pub use secrets::SecretsConfig;
 /// Sync-Server-only configuration (bind address and database URI).
 pub use sync_server::SyncServerConfig;
 
-/// Keyboard shortcut configuration, read by the TUI/Desktop Clients.
-pub use lib_core::configuration::KeyBindingConfig;
-
 /// Shared `--config`/`-c` CLI argument, flattened into each binary's own `clap::Parser`.
 pub use cli::ConfigArgs;
 

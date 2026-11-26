@@ -33,7 +33,7 @@ use crate::view::event::ViewEvent;
 pub fn transactions_page(
     ports: SharedPorts,
     announcer: &Entity<Announcer>,
-    config: &lib_config::KeyBindingConfig,
+    config: &lib_core::configuration::KeyBindingConfig,
     clock: Clock,
     cx: &mut App,
 ) -> Entity<TransactionsPage> {

@@ -12,7 +12,7 @@
 //! to the new one, so the page never strands itself in last month.
 
 use chrono::NaiveDate;
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_core::{BudgetId, Clock, DateStyle, Period};
 use lib_list_cursor::Step;
 use lib_locale::Segment;

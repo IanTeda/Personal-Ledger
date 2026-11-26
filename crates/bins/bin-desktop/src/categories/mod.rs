@@ -69,7 +69,7 @@ impl CategoriesSetup {
         budget_months: lib_categories::SharedBudgetMonths,
         deletion: lib_category_deletion::CategoryDeletionPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-        config: &lib_config::KeyBindingConfig,
+        config: &lib_core::configuration::KeyBindingConfig,
     ) -> (CategoriesPagePresenter, Self) {
         let presenter = CategoriesPagePresenter::new(categories.clone(), config);
         let setup = Self {
@@ -86,7 +86,7 @@ impl CategoriesSetup {
     /// directly.
     #[cfg(test)]
     pub fn sample(ports: &lib_database::LedgerPorts) -> (CategoriesPagePresenter, Self) {
-        let config = lib_config::KeyBindingConfig::default();
+        let config = lib_core::configuration::KeyBindingConfig::default();
         Self::new(
             ports.categories(),
             ports.category_save(),

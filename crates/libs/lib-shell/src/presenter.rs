@@ -13,7 +13,7 @@
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, NaiveDate, Utc};
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_core::{Clock, Period};
 use lib_list_cursor::{HALF_PAGE, Step};
 use lib_locale::msg;

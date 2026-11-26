@@ -311,7 +311,7 @@ impl InstitutionsPagePresenter {
 
 #[cfg(test)]
 mod tests {
-    use lib_config::KeyBindingConfig;
+    use lib_core::configuration::KeyBindingConfig;
 
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, RouterCall};

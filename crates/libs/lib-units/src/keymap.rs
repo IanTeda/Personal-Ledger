@@ -2,7 +2,7 @@
 //! shares keep their flat names from `lib_viper::keymap`; those only Units has are namespaced here
 //! (`units.set_base`).
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
     ARROW_DOWN, ARROW_UP, Binding, DELETE, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,

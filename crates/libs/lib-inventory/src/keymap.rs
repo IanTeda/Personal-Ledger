@@ -3,7 +3,7 @@
 //! flat `delete` defaults to `d` in `[keybindings]`, and the page has always removed on `x`. So are
 //! the tree's own commands, adding and reordering an Area and opening and folding a Location.
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
     ARROW_DOWN, ARROW_UP, Binding, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,

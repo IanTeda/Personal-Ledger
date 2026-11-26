@@ -4,7 +4,7 @@
 //! `new`, `edit` and `delete` are listed with an Argument (`accounts delete Home Loan`): the palette
 //! sends the typed Command, the key the plain verb.
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
     ARROW_DOWN, ARROW_UP, Binding, DELETE, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,

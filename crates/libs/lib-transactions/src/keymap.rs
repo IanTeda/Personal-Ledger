@@ -7,7 +7,7 @@
 //! the Dialog commands under their flat names, so one `[keybindings]` override moves them in every
 //! Dialog and here alike, and the popover's own `transactions.reset_filters`.
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
     ARROW_DOWN, ARROW_UP, BACK, BACK_DEFAULT, Binding, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP,

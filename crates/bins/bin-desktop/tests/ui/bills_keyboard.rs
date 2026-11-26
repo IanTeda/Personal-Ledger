@@ -4,7 +4,7 @@
 //! `lib-bills`; these check the wiring, the Dialogs the Router opens and the status line.
 
 use super::common;
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};

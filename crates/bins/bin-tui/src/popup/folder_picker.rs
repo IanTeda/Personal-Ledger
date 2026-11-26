@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_database::FsLedgerFolders;
 use lib_shell::{
     DialogCommand, EntryKind, ExplorerMode, ExplorerOutcome, ExplorerViewModel, LedgerFolders,

@@ -12,7 +12,7 @@
 )]
 
 use super::common;
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use bin_desktop::shell::router::SettingsGeneralSnapshot;

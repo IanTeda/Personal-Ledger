@@ -60,7 +60,7 @@ impl AccountsSetup {
         deletion: lib_account_deletion::DeletionPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         clock: lib_core::Clock,
-        config: &lib_config::KeyBindingConfig,
+        config: &lib_core::configuration::KeyBindingConfig,
     ) -> (AccountsPagePresenter, Self) {
         let presenter = AccountsPagePresenter::new(ports.clone(), config);
         let setup = Self {
@@ -79,7 +79,7 @@ impl AccountsSetup {
         ports: &lib_database::LedgerPorts,
         clock: &lib_core::Clock,
     ) -> (AccountsPagePresenter, Self) {
-        let config = lib_config::KeyBindingConfig::default();
+        let config = lib_core::configuration::KeyBindingConfig::default();
         Self::new(
             ports.accounts(),
             ports.account_deletion(),

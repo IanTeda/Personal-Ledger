@@ -95,6 +95,8 @@ deny = [
   { crate = "reqwest", wrappers = ["lib_price_feed", "bin_sync_server"], reason = "HTTP: only the price feed adapter, and the Sync Server's tests, may depend on it (ADR-0062)" },
   { crate = "lib_price_feed", wrappers = ["bin_desktop", "bin_tui"], reason = "price fetch adapter: only the two Clients may depend on it (ADR-0062)" },
   { crate = "lib_settings", wrappers = ["bin_desktop", "bin_tui", "lib_database"], reason = "the Settings module: only the two Clients and the adapter answering its ports may depend on it (VIPER Dependencies rule)" },
+  { crate = "lib_config", wrappers = ["bin_desktop", "bin_tui", "bin_sync_server", "lib_database"], reason = "Configuration: only the bins and the adapter may depend on it, a feature crate takes KeyBindingConfig from lib_core (VIPER Dependencies rule)" },
+  { crate = "lib_tracing", wrappers = ["bin_desktop", "bin_tui", "bin_sync_server", "lib_config"], reason = "telemetry: only the bins and lib_config may depend on it (VIPER Dependencies rule)" },
 ]
 
 # Only crates.io, plus any git dependency listed in `allow-git`.

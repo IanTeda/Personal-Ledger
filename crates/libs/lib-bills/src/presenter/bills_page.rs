@@ -369,8 +369,8 @@ mod tests {
     use std::rc::Rc;
 
     use chrono::NaiveDate;
-    use lib_config::KeyBindingConfig;
     use lib_core::TransactionId;
+    use lib_core::configuration::KeyBindingConfig;
 
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, Routed};

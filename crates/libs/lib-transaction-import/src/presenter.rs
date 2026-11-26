@@ -541,8 +541,8 @@ mod tests {
     use std::rc::Rc;
 
     use chrono::NaiveDate;
-    use lib_config::KeyBindingConfig;
     use lib_core::PayeeId;
+    use lib_core::configuration::KeyBindingConfig;
     use lib_viper::view::{Hint, legend};
 
     use super::*;

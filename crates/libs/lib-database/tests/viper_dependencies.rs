@@ -1,5 +1,5 @@
 //! Enforces the VIPER Dependencies rule over `cargo metadata`: a feature crate never
-//! depends on another feature crate, a UI toolkit or `lib_database`, and a cross-domain module
+//! depends on another feature crate, a UI toolkit, `lib_config`, `lib_tracing` or `lib_database`, and a cross-domain module
 //! depends on the feature crates it writes and nothing else does on it, and no crate but the bins
 //! and `lib_database` depends on `lib_shell`, which hosts the modules, and no feature or shared
 //! crate depends on an adapter crate (docs/development/viper-architecture.md, Rules > Dependencies;
@@ -49,8 +49,17 @@ const PRICE_FEED: &str = "lib_price_feed";
 /// The only feature crates [`PRICE_FEED`] may depend on.
 const PRICE_FEED_FEATURES: &[&str] = &["lib_units"];
 
-/// Crates no feature crate may depend on besides the other feature crates.
-const FORBIDDEN: &[&str] = &["gpui", "gpui-component", "ratatui", "crossterm"];
+/// Crates no feature crate may depend on besides the other feature crates: the toolkits, and
+/// `lib_config` and `lib_tracing`, which only the bins and `lib_database` reach (a feature crate
+/// takes `KeyBindingConfig` from `lib_core`, #1456).
+const FORBIDDEN: &[&str] = &[
+    "gpui",
+    "gpui-component",
+    "ratatui",
+    "crossterm",
+    "lib_config",
+    "lib_tracing",
+];
 
 /// Whether `dependency` is one `name` may not have: a feature crate (unless `name` is a
 /// cross-domain module that writes it), a toolkit, an adapter crate, a cross-domain module, or the
@@ -449,6 +458,28 @@ fn violations_keeps_lib_price_feed_off_every_feature_crate_but_lib_units() {
         vec![
             "lib_price_feed -> lib_accounts",
             "lib_price_feed -> lib_settings"
+        ]
+    );
+}
+
+#[test]
+fn violations_flags_a_feature_shared_or_cross_domain_crate_depending_on_lib_config_or_lib_tracing()
+{
+    let metadata = serde_json::json!({
+        "packages": [
+            { "name": "lib_units", "dependencies": [{ "name": "lib_core" }, { "name": "lib_config" }] },
+            { "name": "lib_toast", "dependencies": [{ "name": "lib_tracing" }] },
+            { "name": "lib_bill_payments", "dependencies": [{ "name": "lib_config" }] },
+            { "name": "bin_desktop", "dependencies": [{ "name": "lib_config" }, { "name": "lib_tracing" }] },
+        ]
+    });
+
+    assert_eq!(
+        violations(&metadata),
+        vec![
+            "lib_units -> lib_config",
+            "lib_toast -> lib_tracing",
+            "lib_bill_payments -> lib_config",
         ]
     );
 }

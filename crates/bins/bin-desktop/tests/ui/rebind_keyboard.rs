@@ -8,8 +8,8 @@ use super::common;
 use bin_desktop::shell::router::{DisplayDatesSnapshot, PageKeysSnapshot};
 use common::Harness;
 use gpui::TestAppContext;
-use lib_config::KeyBindingConfig;
 use lib_core::DateStyle;
+use lib_core::configuration::KeyBindingConfig;
 use lib_settings::SettingsPage;
 use lib_viper::keymap::MOVE_DOWN;
 

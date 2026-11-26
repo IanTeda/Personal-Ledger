@@ -9,7 +9,7 @@
 
 use super::common;
 use bin_desktop::shell::router::UnitPricesSnapshot;
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use bin_desktop::shell::router::PaletteSnapshot;

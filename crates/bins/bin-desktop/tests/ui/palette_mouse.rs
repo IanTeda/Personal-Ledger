@@ -2,7 +2,7 @@
 //! only mouse entry is the status line's `:` hint; running a result is a keyboard flow.
 
 use super::common;
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;

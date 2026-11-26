@@ -415,7 +415,7 @@ mod tests {
     use super::*;
     use crate::AccountRepository as _;
     use crate::fake::{RecordingRouter, RouterCall};
-    use lib_config::KeyBindingConfig;
+    use lib_core::configuration::KeyBindingConfig;
 
     struct Page {
         presenter: AccountsPagePresenter,

@@ -3,7 +3,7 @@
 //! read back from `Root`.
 
 use super::common;
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 
 use common::Harness;
 use gpui::TestAppContext;

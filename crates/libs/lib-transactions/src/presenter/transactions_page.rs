@@ -698,7 +698,7 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use lib_config::KeyBindingConfig;
+    use lib_core::configuration::KeyBindingConfig;
     use lib_core::{CategoryId, TransactionStatus, UnitId};
 
     use super::*;

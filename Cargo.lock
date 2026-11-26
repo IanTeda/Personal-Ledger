@@ -4733,7 +4733,6 @@ version = "0.1.0"
 dependencies = [
  "bigdecimal",
  "chrono",
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -4767,7 +4766,6 @@ version = "0.1.0"
 dependencies = [
  "bigdecimal",
  "chrono",
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -4784,7 +4782,6 @@ version = "0.1.0"
 dependencies = [
  "bigdecimal",
  "chrono",
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -4799,7 +4796,6 @@ dependencies = [
 name = "lib_categories"
 version = "0.1.0"
 dependencies = [
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -4946,7 +4942,6 @@ version = "0.1.0"
 dependencies = [
  "bigdecimal",
  "chrono",
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -4961,7 +4956,6 @@ dependencies = [
 name = "lib_institutions"
 version = "0.1.0"
 dependencies = [
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -4978,7 +4972,6 @@ version = "0.1.0"
 dependencies = [
  "bigdecimal",
  "chrono",
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -5049,7 +5042,6 @@ dependencies = [
 name = "lib_payees"
 version = "0.1.0"
 dependencies = [
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -5110,7 +5102,6 @@ name = "lib_shell"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -5142,7 +5133,6 @@ name = "lib_tags"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -5182,7 +5172,6 @@ version = "0.1.0"
 dependencies = [
  "bigdecimal",
  "chrono",
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -5201,7 +5190,6 @@ version = "0.1.0"
 dependencies = [
  "bigdecimal",
  "chrono",
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",
@@ -5232,7 +5220,6 @@ version = "0.1.0"
 dependencies = [
  "bigdecimal",
  "chrono",
- "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",

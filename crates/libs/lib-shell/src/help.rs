@@ -151,7 +151,7 @@ fn bound(keymap: &Keymap<ShellCommand>, command: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use lib_config::KeyBindingConfig;
+    use lib_core::configuration::KeyBindingConfig;
     use lib_toast::{Notice, Notify};
 
     use super::*;

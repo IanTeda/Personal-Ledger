@@ -5,7 +5,7 @@
 
 use super::common;
 use bin_desktop::shell::router::SettingsInstitutionsSnapshot;
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_database::Domain;
 
 use bin_desktop::navigation::nav::Noun;

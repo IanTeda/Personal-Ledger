@@ -353,7 +353,7 @@ mod tests {
     use super::*;
 
     fn sample() -> UnitsSetup {
-        UnitsSetup::sample(&lib_config::KeyBindingConfig::default())
+        UnitsSetup::sample(&lib_core::configuration::KeyBindingConfig::default())
     }
 
     fn render(guard: &BaseUnitGuardPopup) -> String {

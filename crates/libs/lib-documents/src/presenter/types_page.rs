@@ -319,7 +319,7 @@ fn remind_label(lead: RemindLead) -> String {
 
 #[cfg(test)]
 mod tests {
-    use lib_config::KeyBindingConfig;
+    use lib_core::configuration::KeyBindingConfig;
     use lib_toast::Notice;
 
     use super::super::test_support::sample;

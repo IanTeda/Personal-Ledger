@@ -13,7 +13,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_core::{Clock, DateStyle, DocumentId, FinancialYearStart, TransactionId};
 use lib_list_cursor::Step;
 use lib_toast::{Notice, ToastKind};
@@ -1311,8 +1311,8 @@ mod tests {
     use std::rc::Rc;
 
     use chrono::{Duration, NaiveDate};
-    use lib_config::KeyBindingConfig;
     use lib_core::PayeeId;
+    use lib_core::configuration::KeyBindingConfig;
 
     use super::*;
     use crate::DocumentRepository as _;

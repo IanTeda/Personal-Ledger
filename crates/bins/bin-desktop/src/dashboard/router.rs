@@ -28,7 +28,7 @@ impl DashboardRouter for PageRouter<'_, '_, DashboardPresenter> {
 pub fn dashboard_page(
     reads: std::rc::Rc<dyn DashboardReads>,
     announcer: &Entity<Announcer>,
-    config: &lib_config::KeyBindingConfig,
+    config: &lib_core::configuration::KeyBindingConfig,
     clock: Clock,
     cx: &mut gpui::App,
 ) -> Entity<DashboardPage> {

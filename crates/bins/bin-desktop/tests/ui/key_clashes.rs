@@ -4,7 +4,7 @@
 
 use super::common::Harness;
 use gpui::TestAppContext;
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_shell::keymap::keeps;
 use lib_transactions::keymap::RESET_FILTERS;
 use lib_viper::keymap::{BACK, PREVIOUS_FIELD, SEARCH};

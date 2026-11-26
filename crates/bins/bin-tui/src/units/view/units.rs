@@ -968,7 +968,7 @@ fn render_keybind_hints(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewM
 
 #[cfg(test)]
 mod tests {
-    use lib_config::KeyBindingConfig;
+    use lib_core::configuration::KeyBindingConfig;
     use lib_units::UnitId;
     use ratatui::{Terminal, backend::TestBackend};
 

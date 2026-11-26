@@ -7,7 +7,7 @@
 use std::convert::Infallible;
 use std::rc::Rc;
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 use lib_toast::{Notice, Notify};
 use lib_viper::keymap::{KeyBound, Keymap};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter};

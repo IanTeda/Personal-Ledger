@@ -52,7 +52,7 @@ impl DocumentTypesSetup {
     pub fn new(
         documents: lib_documents::SharedRepository,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-        config: &lib_config::KeyBindingConfig,
+        config: &lib_core::configuration::KeyBindingConfig,
     ) -> (DocumentTypesPagePresenter, Self) {
         let presenter = DocumentTypesPagePresenter::new(documents.clone(), config);
         (
@@ -67,7 +67,7 @@ impl DocumentTypesSetup {
     /// `ports`' Documents store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn sample(ports: &lib_database::LedgerPorts) -> (DocumentTypesPagePresenter, Self) {
-        let config = lib_config::KeyBindingConfig::default();
+        let config = lib_core::configuration::KeyBindingConfig::default();
         Self::new(
             ports.documents(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(

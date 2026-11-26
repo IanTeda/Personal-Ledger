@@ -74,7 +74,7 @@ pub fn documents_page(
     files: SharedFiles,
     reads: lib_documents::SharedReads,
     announcer: Entity<Announcer>,
-    config: &lib_config::KeyBindingConfig,
+    config: &lib_core::configuration::KeyBindingConfig,
     clock: Clock,
     dialog_keys: crate::dialog_keys::LiveDialogKeys,
     cx: &mut App,

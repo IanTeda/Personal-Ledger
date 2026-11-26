@@ -33,7 +33,7 @@ pub use error::{Error, Result};
 
 pub use shell::Shell;
 
-use lib_config::KeyBindingConfig;
+use lib_core::configuration::KeyBindingConfig;
 
 /// Builds the `Shell` the way `main` does, from the key bindings and the Colours already
 /// resolved, with no Ledger open: `:open` and `:new` open a Ledger file, and a bare `:open` opens
