@@ -4,6 +4,10 @@
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 
+use super::caret;
+use gpui_component::Sizable as _;
+
+use crate::assets::icon::DesktopIcon;
 use crate::{dialog, theme::color};
 
 /// Two fields side by side: `gap:16px`, each `flex:1`. Each column takes half the row from a zero
@@ -58,7 +62,7 @@ pub(crate) fn suffixed_label(
         .into_any_element()
 }
 
-/// A label above a clickable text box whose border turns `accent` with a trailing caret while
+/// A label above a clickable text box whose border turns `accent` with a blinking caret while
 /// focused -- the same look as the Settings dialogs' text fields.
 pub(crate) fn text_field(
     id: &'static str,
@@ -69,39 +73,97 @@ pub(crate) fn text_field(
     on_click: dialog::OnClick,
     cx: &App,
 ) -> AnyElement {
-    let caret = if focused { "\u{2502}" } else { "" };
-    let (text, text_color) = if value.is_empty() {
-        (
-            SharedString::from(format!("{placeholder}{caret}")),
-            color::faint_text(cx),
-        )
-    } else {
-        (
-            SharedString::from(format!("{value}{caret}")),
-            color::foreground(cx),
-        )
-    };
-
     div()
         .child(label)
         .child(
-            div()
-                .id(id)
-                .debug_selector(move || id.to_string())
-                .cursor_pointer()
-                .w_full()
-                .py(px(8.0))
-                .px(px(10.0))
-                .border_1()
-                .border_color(if focused {
-                    color::accent(cx)
-                } else {
-                    color::border(cx)
-                })
-                .text_size(px(13.0))
-                .text_color(text_color)
+            text_box(id, focused, cx)
                 .on_click(move |_event, window, cx| on_click(window, cx))
-                .child(text),
+                .child(caret::field_text(value, placeholder, focused, cx)),
         )
         .into_any_element()
+}
+
+/// What a number field's clicks send: a click on its box, and on its up and down arrows.
+pub(crate) struct StepperClicks {
+    pub on_click: dialog::OnClick,
+    pub on_up: dialog::OnClick,
+    pub on_down: dialog::OnClick,
+}
+
+/// [`text_field`] for a small whole number, with up and down arrows stacked at the box's right
+/// edge: the Precision field. Each arrow is its own click target, `<id>-up` and `<id>-down`, so a
+/// click on one steps the number rather than only focusing the box.
+pub(crate) fn stepper_field(
+    id: &'static str,
+    label: AnyElement,
+    value: &str,
+    placeholder: &str,
+    focused: bool,
+    clicks: StepperClicks,
+    cx: &App,
+) -> AnyElement {
+    let StepperClicks {
+        on_click,
+        on_up,
+        on_down,
+    } = clicks;
+    let (muted, ink) = (color::muted(cx), color::foreground(cx));
+    let arrow = |which: &'static str, icon: DesktopIcon, on_click: dialog::OnClick| {
+        let arrow_id = format!("{id}-{which}");
+        div()
+            .id(SharedString::from(arrow_id.clone()))
+            .debug_selector(move || arrow_id.clone())
+            .cursor_pointer()
+            .flex()
+            .items_center()
+            .justify_center()
+            .w(px(18.0))
+            .h(px(14.0))
+            .text_color(muted)
+            .hover(move |style| style.text_color(ink))
+            .on_click(move |_event, window, cx| {
+                cx.stop_propagation();
+                on_click(window, cx);
+            })
+            .child(icon.icon().with_size(px(14.0)))
+    };
+    div()
+        .child(label)
+        .child(
+            text_box(id, focused, cx)
+                .flex()
+                .items_center()
+                .justify_between()
+                .on_click(move |_event, window, cx| on_click(window, cx))
+                .child(caret::field_text(value, placeholder, focused, cx))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_none()
+                        // Into the box's padding, so the two arrows keep it a text box's height.
+                        .my(px(-6.0))
+                        .child(arrow("up", DesktopIcon::ChevronUp, on_up))
+                        .child(arrow("down", DesktopIcon::ChevronDown, on_down)),
+                ),
+        )
+        .into_any_element()
+}
+
+/// The clickable box a text field draws in: `padding:8px 10px`, its border `accent` while focused.
+fn text_box(id: &'static str, focused: bool, cx: &App) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .debug_selector(move || id.to_string())
+        .cursor_pointer()
+        .w_full()
+        .py(px(8.0))
+        .px(px(10.0))
+        .border_1()
+        .border_color(if focused {
+            color::accent(cx)
+        } else {
+            color::border(cx)
+        })
+        .text_size(px(13.0))
 }

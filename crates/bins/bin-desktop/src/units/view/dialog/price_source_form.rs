@@ -28,6 +28,7 @@ use lib_units::presenter::{
 use lib_viper::view::{Choice, SelectView, TextFieldView};
 
 use super::{help, refusal};
+use crate::form::caret;
 use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{
     dialog,
@@ -152,7 +153,7 @@ fn segmented<T: Copy + PartialEq + 'static>(
         .into_any_element()
 }
 
-/// A label above a clickable box, accent-bordered with a trailing caret while focused, and
+/// A label above a clickable box, accent-bordered with a blinking caret while focused, and
 /// monospace for the endpoint's parts.
 fn text_box(
     id: &'static str,
@@ -162,15 +163,6 @@ fn text_box(
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
-    let caret = if field.focused { "\u{2502}" } else { "" };
-    let (text, text_color) = if field.text.is_empty() {
-        (
-            format!("{}{caret}", field.placeholder),
-            color::faint_text(cx),
-        )
-    } else {
-        (format!("{}{caret}", field.text), color::foreground(cx))
-    };
     let on_click = actions.send(PriceSourceFormEvent::Focus(which));
     div()
         .child(field_label(field.label.clone()))
@@ -190,9 +182,13 @@ fn text_box(
                 })
                 .text_size(px(13.0))
                 .when(mono, |this| this.font_family(MONOSPACE))
-                .text_color(text_color)
                 .on_click(move |_event, window, cx| on_click(window, cx))
-                .child(text),
+                .child(caret::field_text(
+                    &field.text,
+                    &field.placeholder,
+                    field.focused,
+                    cx,
+                )),
         )
         .into_any_element()
 }

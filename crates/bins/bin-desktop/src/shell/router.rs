@@ -17,19 +17,20 @@
 //!
 //! The file holds the `Root` struct, [`build`], construction, persisted setters, the accessor
 //! surface, `impl Focusable`, per-domain wiring and the unit tests. Each cross-cutting concern
-//! lives in a bare-named child file (`commands`, `dialogs`, `explorer`, `focus`, `key_dispatch`,
-//! `log_feed`, `rail`, `render`, `root_router`, `status`, `toasts`) under `router/` that is an
-//! `impl Root` block, not the real module of the same name; a `_ui` suffix (`transactions_ui`)
-//! marks per-domain wiring. `open_ledger` is the exception: it holds [`OpenLedger`], everything
-//! built on a Ledger, which `Root` keeps as an `Option` (#975). With no Ledger open `Root` holds
-//! none, draws the Dashboard's no Ledger open content and Settings' This device pages, and refuses
-//! every input that needs a Ledger on the status line (#977).
+//! lives in a bare-named child file (`caret_blink`, `commands`, `dialogs`, `explorer`, `focus`,
+//! `key_dispatch`, `log_feed`, `rail`, `render`, `root_router`, `status`, `toasts`) under `router/`
+//! that is an `impl Root` block, not the real module of the same name; a `_ui` suffix
+//! (`transactions_ui`) marks per-domain wiring. `open_ledger` is the exception: it holds
+//! [`OpenLedger`], everything built on a Ledger, which `Root` keeps as an `Option` (#975). With no
+//! Ledger open `Root` holds none, draws the Dashboard's no Ledger open content and Settings' This
+//! device pages, and refuses every input that needs a Ledger on the status line (#977).
 //!
 //! `Root` holds exactly one `gpui::FocusHandle` for the whole window rather than one per
 //! zone: the three `FocusZone`s are our own conceptual navigation state
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
 
+mod caret_blink;
 mod commands;
 mod date_clock;
 mod dialogs;
@@ -199,6 +200,7 @@ pub fn build(
     );
     shell.start_toast_clock(cx);
     shell.start_date_clock(cx);
+    shell.start_caret_blink(cx);
     shell.set_log_capture(
         logs.buffer,
         crate::settings::tracing::log::opening_level(logs.configured_level),

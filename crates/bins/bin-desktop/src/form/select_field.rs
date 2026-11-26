@@ -10,6 +10,9 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
+use gpui_component::Sizable as _;
+
+use crate::assets::icon::DesktopIcon;
 use crate::{dialog, form::select::SelectState, theme::color};
 
 pub type OnOptionClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
@@ -70,15 +73,15 @@ pub fn render(props: SelectFieldProps<'_>, cx: &App) -> AnyElement {
         .text_size(px(13.0))
         .child(div().min_w(px(0.0)).truncate().child(text))
         .child(
-            div()
-                .flex_none()
-                .text_size(px(10.0))
-                .text_color(color::faint_text(cx))
-                .child(if state.is_open() {
-                    "\u{25b4}"
-                } else {
-                    "\u{25be}"
-                }),
+            if state.is_open() {
+                DesktopIcon::ChevronUp
+            } else {
+                DesktopIcon::ChevronDown
+            }
+            .icon()
+            .flex_none()
+            .with_size(px(14.0))
+            .text_color(color::muted(cx)),
         );
     field = if read_only.is_some() {
         field

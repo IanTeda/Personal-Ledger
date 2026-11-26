@@ -9,6 +9,7 @@ use lib_locale::format::upper;
 use lib_shell::Hint;
 
 use crate::dialog::OnClick;
+use crate::form::caret;
 use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks};
 use crate::theme::color;
 
@@ -186,7 +187,6 @@ fn render(view: &SwitcherViewModel, left: Pixels, clicks: &Clicks, cx: &App) -> 
     let on_manage = clicks.send(SwitcherEvent::Manage);
     let app: &App = cx;
 
-    let caret = if view.searching { "\u{2502}" } else { "" };
     let search_colour = if view.search_empty {
         color::faint_text(app)
     } else {
@@ -209,7 +209,12 @@ fn render(view: &SwitcherViewModel, left: Pixels, clicks: &Clicks, cx: &App) -> 
             .text_size(px(13.0))
             .text_color(search_colour)
             .on_click(move |_event, window, cx| on_search(window, cx))
-            .child(format!("{}{caret}", view.search)),
+            .child(caret::with_caret(
+                view.search.clone(),
+                view.searching,
+                view.search_empty,
+                app,
+            )),
     );
 
     let mut list: Vec<AnyElement> = Vec::new();

@@ -48,6 +48,28 @@ impl Precision {
     pub fn places(self) -> u32 {
         u32::from(self.0)
     }
+
+    /// Typed `text` one place up or down, kept from 0 to [`Self::MAX`]: what the Precision field's
+    /// arrows and `↑`/`↓` set. A number above the most steps from [`Self::MAX`], so a half-typed
+    /// `25` comes back into range; text that is no whole number gives `otherwise`, unstepped, as
+    /// there is nothing to step from.
+    pub fn step(text: &str, step: PrecisionStep, otherwise: Self) -> Self {
+        let Ok(typed) = text.trim().parse::<u32>() else {
+            return otherwise;
+        };
+        let from = u8::try_from(typed).map_or(Self::MAX, |places| places.min(Self::MAX));
+        Self(match step {
+            PrecisionStep::Up => (from + 1).min(Self::MAX),
+            PrecisionStep::Down => from.saturating_sub(1),
+        })
+    }
+}
+
+/// Which way the Precision field's arrows step it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrecisionStep {
+    Up,
+    Down,
 }
 
 impl std::fmt::Display for Precision {
@@ -89,5 +111,33 @@ mod tests {
             assert_eq!(Precision::parse(refused), None, "{refused:?}");
         }
         assert_eq!(Precision::new(19), None);
+    }
+
+    #[test]
+    fn a_step_moves_one_place_and_stays_from_0_to_18() {
+        let otherwise = Precision::of_kind(UnitKind::Crypto);
+        let stepped = |text, step| Precision::step(text, step, otherwise).places();
+
+        assert_eq!(stepped("2", PrecisionStep::Up), 3);
+        assert_eq!(stepped(" 2 ", PrecisionStep::Down), 1);
+        assert_eq!(stepped("0", PrecisionStep::Down), 0, "no fewer than none");
+        assert_eq!(
+            stepped("18", PrecisionStep::Up),
+            18,
+            "no more than the most"
+        );
+        assert_eq!(
+            stepped("25", PrecisionStep::Down),
+            17,
+            "out of range steps from 18"
+        );
+        assert_eq!(stepped("300", PrecisionStep::Up), 18);
+        for unsteppable in ["", "-1", "two"] {
+            assert_eq!(
+                stepped(unsteppable, PrecisionStep::Up),
+                8,
+                "{unsteppable:?}"
+            );
+        }
     }
 }

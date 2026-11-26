@@ -279,6 +279,22 @@ fn precision_follows_type_on_add_takes_typed_digits_and_reopens_in_edit(app: &mu
 }
 
 #[gpui::test]
+fn up_and_down_step_add_units_precision(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.press("n tab tab tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Precision"));
+    ui.press("down down down");
+    assert_eq!(
+        ui.dialog_value("precision").as_deref(),
+        Some("0"),
+        "no fewer than none"
+    );
+    ui.press("up");
+
+    assert_eq!(ui.dialog_value("precision").as_deref(), Some("1"));
+}
+
+#[gpui::test]
 fn a_select_opens_on_enter_moves_on_down_and_commits_on_enter(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     ui.press("n tab");

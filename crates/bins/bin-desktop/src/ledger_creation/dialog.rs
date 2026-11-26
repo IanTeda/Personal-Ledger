@@ -10,11 +10,13 @@ use lib_ledger_creation::presenter::{
     CreateLedgerEvent, CreateLedgerPresenter, CreateLedgerViewModel, LedgerField, LedgerStage,
 };
 use lib_shell::Hint;
-use lib_units::UnitKind;
+use lib_units::{PrecisionStep, UnitKind};
 use lib_viper::view::{SelectList, SelectView, TextFieldView};
 
 use crate::dialog::{self, OnClick};
-use crate::form::dialog_fields::{label, optional_label, text_field, two_up};
+use crate::form::dialog_fields::{
+    StepperClicks, label, optional_label, stepper_field, text_field, two_up,
+};
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{chosen_label, drawn, labels};
 use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks};
@@ -312,12 +314,18 @@ fn base_unit_body(
                     actions,
                     cx,
                 ),
-                text(
+                stepper_field(
                     "create-ledger-precision",
                     label(view.precision.label.clone()),
-                    &view.precision,
-                    LedgerField::Precision,
-                    actions,
+                    &view.precision.text,
+                    &view.precision.placeholder,
+                    view.precision.focused,
+                    StepperClicks {
+                        on_click: actions.send(CreateLedgerEvent::Focus(LedgerField::Precision)),
+                        on_up: actions.send(CreateLedgerEvent::StepPrecision(PrecisionStep::Up)),
+                        on_down: actions
+                            .send(CreateLedgerEvent::StepPrecision(PrecisionStep::Down)),
+                    },
                     cx,
                 ),
             ]))

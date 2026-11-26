@@ -1,6 +1,7 @@
 //! Form state and widgets shared by the Dialogs and Settings pages: the text input, the option
 //! picker, and the field widgets that draw them.
 
+pub(crate) mod caret;
 pub mod colour_field;
 pub mod dialog_fields;
 pub mod field;

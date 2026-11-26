@@ -4,15 +4,17 @@
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_shell::Hint;
+use lib_units::PrecisionStep;
 use lib_units::presenter::{UnitField, UnitFormEvent, UnitFormPresenter, UnitFormViewModel};
 use lib_viper::view::{SelectList, SelectView, TextFieldView};
 
 use super::{drawn, help, refusal, test_not_built};
+use crate::form::caret;
 use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{
     dialog,
     form::{
-        dialog_fields::{label, text_field, two_up},
+        dialog_fields::{StepperClicks, label, stepper_field, text_field, two_up},
         select_field::{self, SelectFieldProps},
     },
     theme::color,
@@ -157,7 +159,19 @@ fn render(
         div()
             .child(two_up([
                 text(ids.name, &view.name, UnitField::Name),
-                text(ids.precision, &view.precision, UnitField::Precision),
+                stepper_field(
+                    ids.precision,
+                    label(view.precision.label.clone()),
+                    &view.precision.text,
+                    &view.precision.placeholder,
+                    view.precision.focused,
+                    StepperClicks {
+                        on_click: actions.send(UnitFormEvent::Focus(UnitField::Precision)),
+                        on_up: actions.send(UnitFormEvent::StepPrecision(PrecisionStep::Up)),
+                        on_down: actions.send(UnitFormEvent::StepPrecision(PrecisionStep::Down)),
+                    },
+                    cx,
+                ),
             ]))
             .child(help(view.precision_help.clone(), cx))
             .into_any_element(),
@@ -295,15 +309,6 @@ fn group_label(text: String, cx: &App) -> AnyElement {
 
 /// The Symbol text box, in monospace: it holds the source's own id for the Unit.
 fn symbol_field(id: &'static str, field: &TextFieldView, actions: &Clicks, cx: &App) -> AnyElement {
-    let caret = if field.focused { "\u{2502}" } else { "" };
-    let (text, text_color) = if field.text.is_empty() {
-        (
-            format!("{}{caret}", field.placeholder),
-            color::faint_text(cx),
-        )
-    } else {
-        (format!("{}{caret}", field.text), color::foreground(cx))
-    };
     let on_click = actions.send(UnitFormEvent::Focus(UnitField::Symbol));
     div()
         .child(label(field.label.clone()))
@@ -323,9 +328,13 @@ fn symbol_field(id: &'static str, field: &TextFieldView, actions: &Clicks, cx: &
                 })
                 .font_family(MONOSPACE)
                 .text_size(px(13.0))
-                .text_color(text_color)
                 .on_click(move |_event, window, cx| on_click(window, cx))
-                .child(text),
+                .child(caret::field_text(
+                    &field.text,
+                    &field.placeholder,
+                    field.focused,
+                    cx,
+                )),
         )
         .into_any_element()
 }

@@ -496,6 +496,24 @@ fn clicking_a_changed_base_unit_through_the_dialog_makes_it_the_new_ledgers_base
 }
 
 #[gpui::test]
+fn the_create_ledger_precisions_arrows_focus_and_step_it(app: &mut TestAppContext) {
+    let folder = Folder::new();
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(folder.path());
+
+    ui.click("no-ledger-new");
+    ui.press("e m m a");
+    ui.click("explorer-open");
+    ui.click("create-ledger-precision-up");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Precision"));
+    ui.click("create-ledger-precision-up");
+    ui.click("create-ledger-precision-down");
+    ui.click("create-ledger-precision-up");
+
+    assert_eq!(ui.dialog_value("precision").as_deref(), Some("4"));
+}
+
+#[gpui::test]
 fn create_does_nothing_while_a_field_is_invalid(app: &mut TestAppContext) {
     let folder = Folder::new();
     let entries = folder.entries();

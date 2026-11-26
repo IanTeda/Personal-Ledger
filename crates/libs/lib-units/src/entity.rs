@@ -7,7 +7,7 @@ mod price_source;
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
-pub use precision::Precision;
+pub use precision::{Precision, PrecisionStep};
 pub use price_source::{
     BUILT_IN_SOURCES, BatchRequest, BuiltInOverride, BuiltInSource, COINGECKO, CustomSource,
     Endpoint, FRANKFURTER, HistoryEndpoint, HistoryRef, KeyPlacement, MANUAL_ENTRY, PriceSource,

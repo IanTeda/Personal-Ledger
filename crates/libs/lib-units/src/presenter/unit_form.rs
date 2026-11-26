@@ -17,7 +17,7 @@ use lib_viper::view::{
 use super::{UnitChange, UnitsOutcome, cycle, unique_label, uses_text};
 use crate::interactor::{AddUnit, EditUnit};
 use crate::protocols::SharedPorts;
-use crate::{Error, MANUAL_ENTRY, Precision, PriceLink, UnitUse, msg};
+use crate::{Error, MANUAL_ENTRY, Precision, PrecisionStep, PriceLink, UnitUse, msg};
 
 /// The form's fields, in `Tab` order: the mockup's reading order, Code and Type, Name and
 /// Precision, then the PRICE SOURCE group.
@@ -58,6 +58,8 @@ pub enum UnitFormEvent {
     Name(String),
     Precision(String),
     Symbol(String),
+    /// A click on one of the Precision field's arrows: focuses it and steps it a place.
+    StepPrecision(PrecisionStep),
     /// A select's chosen option, closing its list.
     Kind(UnitKind),
     Source(PriceSourceId),
@@ -265,6 +267,7 @@ impl Presenter for UnitFormPresenter {
                 | UnitFormEvent::NextField
                 | UnitFormEvent::PrevField
                 | UnitFormEvent::Focus(_)
+                | UnitFormEvent::StepPrecision(_)
         );
         if closes_list {
             self.list.close();
@@ -279,6 +282,10 @@ impl Presenter for UnitFormPresenter {
             UnitFormEvent::Precision(text) => {
                 self.precision = text;
                 self.precision_typed = true;
+            }
+            UnitFormEvent::StepPrecision(step) => {
+                self.focused = UnitField::Precision;
+                self.step_precision(step);
             }
             UnitFormEvent::Kind(kind) => self.pick_kind(kind),
             UnitFormEvent::Source(id) => self.pick_source(id),
@@ -447,6 +454,13 @@ impl UnitFormPresenter {
             // A select swallows typing, so it never reaches a text field.
             _ if on_select => self.select_input(input),
             DialogInput::Select => self.save(router),
+            // `↑` and `↓` step the Precision, as its arrows do.
+            DialogInput::SelectPrevious if self.focused == UnitField::Precision => {
+                self.step_precision(PrecisionStep::Up);
+            }
+            DialogInput::SelectNext if self.focused == UnitField::Precision => {
+                self.step_precision(PrecisionStep::Down);
+            }
             DialogInput::Char(ch) => {
                 // A Unit's code is upper case, so the Code field shows what will be saved.
                 let upper = self.focused == UnitField::Code;
@@ -485,6 +499,14 @@ impl UnitFormPresenter {
         if self.focused == UnitField::Precision {
             self.precision_typed = true;
         }
+    }
+
+    /// Steps the Precision a place, from the Type's when what is typed is no number. A stepped
+    /// Precision is a chosen one, so Add stops following Type, as it does for a typed one.
+    fn step_precision(&mut self, step: PrecisionStep) {
+        self.precision =
+            Precision::step(&self.precision, step, Precision::of_kind(self.kind)).to_string();
+        self.precision_typed = true;
     }
 
     /// `input` on the focused select's list, a pick sent as the select's own event.
@@ -1038,6 +1060,35 @@ mod tests {
         let added = ports.borrow().units.units.clone();
         assert_eq!(added.len(), 1, "{:?}", form.view_model().refusal);
         assert_eq!(added[0].link.quote, added[0].id);
+    }
+
+    #[test]
+    fn the_arrow_keys_and_arrows_step_the_precision_which_then_stops_following_the_type() {
+        let (_, ports) = sample();
+        let mut form = UnitFormPresenter::add(ports, DialogKeys::default());
+        send(
+            &mut form,
+            vec![UnitFormEvent::StepPrecision(PrecisionStep::Up)],
+        );
+        assert!(
+            form.view_model().precision.focused,
+            "an arrow focuses the field"
+        );
+        assert_eq!(form.view_model().precision.text, "3");
+
+        send(
+            &mut form,
+            vec![
+                UnitFormEvent::Input(DialogInput::SelectNext),
+                UnitFormEvent::Input(DialogInput::SelectNext),
+                UnitFormEvent::Kind(UnitKind::Crypto),
+            ],
+        );
+        assert_eq!(
+            form.view_model().precision.text,
+            "1",
+            "down twice, kept by Type"
+        );
     }
 
     #[test]

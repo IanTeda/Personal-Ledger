@@ -22,7 +22,7 @@ macro_rules! icon {
     };
 }
 
-/// Every bundled icon. A plain match table rather than `rust-embed`: 17 small SVGs don't need
+/// Every bundled icon. A plain match table rather than `rust-embed`: a few dozen small SVGs don't need
 /// a build-time directory scan.
 const ICONS: &[(&str, &[u8])] = &[
     icon!("layout-dashboard"),
@@ -57,6 +57,8 @@ const ICONS: &[(&str, &[u8])] = &[
     icon!("chevron-right"),
     icon!("undo-2"),
     icon!("chevron-down"),
+    // A select's open caret and the number field's up arrow.
+    icon!("chevron-up"),
     // The "1e" file explorer's row icons (issue #165) -- not in the handoff's own "Assets"
     // table either (its markup embeds hand-drawn 16x16 paths, not Lucide names); these are the
     // genuine Lucide `folder`/`file` icons, stroke-normalized the same as every other bundled

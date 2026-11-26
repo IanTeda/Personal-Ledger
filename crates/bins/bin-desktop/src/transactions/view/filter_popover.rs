@@ -15,8 +15,7 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, BoxShadow, ClickEvent, Pixels, Point, SharedString, Window, div, point,
-    prelude::*, px,
+    AnyElement, App, BoxShadow, ClickEvent, Pixels, Point, Window, div, point, prelude::*, px,
 };
 
 use lib_transactions::presenter::{
@@ -25,6 +24,7 @@ use lib_transactions::presenter::{
 use lib_viper::view::{SelectList, TextFieldView};
 
 use super::page::TransactionsPage;
+use crate::form::caret;
 use crate::{
     dialog,
     form::fields::{OnSegmentClick, segmented_control},
@@ -252,18 +252,6 @@ fn date_field(
         focused,
     } = field;
     let focused = *focused;
-    let caret = if focused { "\u{2502}" } else { "" };
-    let (text, text_color) = if value.is_empty() {
-        (
-            SharedString::from(format!("{placeholder}{caret}")),
-            color::faint_text(cx),
-        )
-    } else {
-        (
-            SharedString::from(format!("{value}{caret}")),
-            color::foreground(cx),
-        )
-    };
     let border = if error.is_some() {
         color::negative(cx)
     } else if focused {
@@ -286,10 +274,8 @@ fn date_field(
                 .border_1()
                 .border_color(border)
                 .text_size(px(13.0))
-                .text_color(text_color)
-                .truncate()
                 .on_click(move |_event, window, cx| on_click(window, cx))
-                .child(text),
+                .child(caret::field_text(value, placeholder, focused, cx)),
         )
         .children(error.map(|message| {
             div()

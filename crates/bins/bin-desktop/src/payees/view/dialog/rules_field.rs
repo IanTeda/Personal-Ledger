@@ -4,6 +4,7 @@
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 
+use crate::form::caret;
 use crate::shell::view::dialog_entity::OnChoose;
 use crate::{dialog, form::dialog_fields, theme::color};
 
@@ -50,12 +51,6 @@ pub(super) fn render(
             .collect()
     };
 
-    let caret = if focused { "\u{2502}" } else { "" };
-    let (text, text_color) = if input.is_empty() {
-        (format!("{placeholder}{caret}"), color::faint_text(cx))
-    } else {
-        (format!("{input}{caret}"), color::foreground(cx))
-    };
     let hover = color::hover(cx);
 
     div()
@@ -89,10 +84,8 @@ pub(super) fn render(
                         })
                         .font_family(MONOSPACE)
                         .text_size(px(12.5))
-                        .text_color(text_color)
-                        .truncate()
                         .on_click(move |_event, window, cx| on_input_click(window, cx))
-                        .child(text),
+                        .child(caret::field_text(input, &placeholder, focused, cx)),
                 )
                 .child(
                     div()

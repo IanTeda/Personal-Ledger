@@ -468,6 +468,23 @@ fn new_makes_a_missing_data_folder_and_creates_the_ledger_in_it(app: &mut TestAp
 }
 
 #[gpui::test]
+fn up_and_down_step_the_create_ledger_dialogs_precision(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(dir.path());
+
+    ui.press(": n e w enter");
+    ui.press("e m m a enter");
+    assert_eq!(ui.dialog(), Some("CreateLedger"));
+    ui.press("shift-tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Precision"));
+    ui.press("up up up down");
+
+    assert_eq!(ui.dialog_value("precision").as_deref(), Some("4"));
+    assert_eq!(ui.dialog_value("stage").as_deref(), Some("BaseUnit"));
+}
+
+#[gpui::test]
 fn new_refuses_a_name_already_in_the_folder_inline_and_writes_nothing(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let existing = dir.path().join("teda.pldb");

@@ -7,6 +7,10 @@
 //! (changed from the default) ends in a clickable `✕` that resets just that filter, and a click on
 //! the chip itself opens the filter popover.
 
+use gpui_component::Sizable as _;
+
+use crate::assets::icon::DesktopIcon;
+use crate::form::caret;
 use crate::navigation::nav::NounLabel;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -202,7 +206,12 @@ fn chip(
         base.border_color(color::border(cx))
             .text_color(color::muted(cx))
             .hover(move |style| style.bg(hover))
-            .child(div().text_size(px(9.0)).child("\u{25be}"))
+            .child(
+                DesktopIcon::ChevronDown
+                    .icon()
+                    .with_size(px(12.0))
+                    .text_color(color::muted(cx)),
+            )
             .into_any_element()
     }
 }
@@ -232,17 +241,17 @@ fn search_box(
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
-    let caret = if searching { "\u{2502}" } else { "" };
-    let (text, text_color) = if search.is_empty() && !searching {
-        (
-            SharedString::from(crate::msg::desktop_transactions_search_placeholder()),
-            color::faint_text(cx),
+    let text = if search.is_empty() && !searching {
+        caret::with_caret(
+            crate::msg::desktop_transactions_search_placeholder(),
+            false,
+            false,
+            cx,
         )
+        .text_color(color::faint_text(cx))
     } else {
-        (
-            SharedString::from(format!("{search}{caret}")),
-            color::foreground(cx),
-        )
+        caret::with_caret(search.to_string(), searching, false, cx)
+            .text_color(color::foreground(cx))
     };
     div()
         .id("transactions-search")
@@ -261,8 +270,6 @@ fn search_box(
             color::border(cx)
         })
         .text_size(px(12.0))
-        .text_color(text_color)
-        .truncate()
         .on_click(on_click)
         .child(text)
 }

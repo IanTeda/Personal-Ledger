@@ -15,7 +15,7 @@ use lib_core::{FinancialYearStart, LedgerName, Owner, UnitId};
 use lib_locale::Currency;
 use lib_locale::Label as _;
 use lib_units::interactor::AddUnit;
-use lib_units::{Precision, PriceLink, UnitKind};
+use lib_units::{Precision, PrecisionStep, PriceLink, UnitKind};
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{
@@ -103,6 +103,9 @@ pub enum CreateLedgerEvent {
     Code(String),
     Name(String),
     Precision(String),
+    /// A click on one of the Precision field's arrows: focuses it, closing an open list, and steps
+    /// it a place.
+    StepPrecision(PrecisionStep),
     LedgerName(String),
     Owner(String),
     /// A Type picked, closing its list.
@@ -234,6 +237,13 @@ impl CreateLedgerPresenter {
             // A select swallows typing, so it never reaches a text field.
             _ if self.focused.is_select() => self.select_input(input),
             DialogInput::Select => self.confirm(router),
+            // `↑` and `↓` step the Precision, as its arrows do.
+            DialogInput::SelectPrevious if self.focused == LedgerField::Precision => {
+                self.step_precision(PrecisionStep::Up);
+            }
+            DialogInput::SelectNext if self.focused == LedgerField::Precision => {
+                self.step_precision(PrecisionStep::Down);
+            }
             DialogInput::Char(ch) => {
                 // A Unit's code is upper case, so the Code field shows what will be saved.
                 let upper = self.focused == LedgerField::Code;
@@ -291,6 +301,14 @@ impl CreateLedgerPresenter {
         if self.focused == LedgerField::Precision {
             self.precision_typed = true;
         }
+    }
+
+    /// Steps the Precision a place, from the Type's when what is typed is no number. A stepped
+    /// Precision is a chosen one, so it stops following Type, as a typed one does.
+    fn step_precision(&mut self, step: PrecisionStep) {
+        self.precision =
+            Precision::step(&self.precision, step, Precision::of_kind(self.kind)).to_string();
+        self.precision_typed = true;
     }
 
     fn pick_kind(&mut self, kind: UnitKind) {
@@ -410,6 +428,11 @@ impl Presenter for CreateLedgerPresenter {
             CreateLedgerEvent::Precision(text) => {
                 self.precision = text;
                 self.precision_typed = true;
+            }
+            CreateLedgerEvent::StepPrecision(step) => {
+                self.list.close();
+                self.focused = LedgerField::Precision;
+                self.step_precision(step);
             }
             CreateLedgerEvent::LedgerName(text) => self.ledger_name = text,
             CreateLedgerEvent::Owner(text) => self.owner = text,
@@ -796,6 +819,38 @@ mod tests {
             CreateLedgerEvent::Kind(UnitKind::Crypto),
         ]);
         assert_eq!(dialog.presenter.view_model().precision.text, "4");
+    }
+
+    #[test]
+    fn the_arrow_keys_step_the_focused_precision_and_its_arrows_focus_and_step_it() {
+        let mut dialog = Dialog::new(Currency::Aud);
+        dialog.press([DialogInput::PreviousField]);
+        dialog.press([DialogInput::SelectPrevious, DialogInput::SelectPrevious]);
+        assert_eq!(
+            dialog.presenter.view_model().precision.text,
+            "4",
+            "up adds a place"
+        );
+        dialog.press([DialogInput::SelectNext]);
+        assert_eq!(
+            dialog.presenter.view_model().precision.text,
+            "3",
+            "down takes one"
+        );
+
+        dialog.send([CreateLedgerEvent::Kind(UnitKind::Crypto)]);
+        assert_eq!(
+            dialog.presenter.view_model().precision.text,
+            "3",
+            "a stepped Precision stops following the Type"
+        );
+
+        let mut dialog = Dialog::new(Currency::Aud);
+        dialog.send([CreateLedgerEvent::StepPrecision(PrecisionStep::Down)]);
+        let view = dialog.presenter.view_model();
+        assert!(view.precision.focused, "an arrow focuses the field");
+        assert_eq!(view.precision.text, "1");
+        assert_eq!(dialog.port.borrow().calls, 0, "stepping writes nothing");
     }
 
     #[test]

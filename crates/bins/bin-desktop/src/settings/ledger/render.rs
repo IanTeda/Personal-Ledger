@@ -11,6 +11,7 @@ use lib_settings::presenter::{
 };
 
 use super::{LedgerPage, LedgerWidgets};
+use crate::form::caret;
 use crate::form::fields::field_label;
 use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
@@ -88,11 +89,12 @@ fn text_field(
 ) -> impl IntoElement {
     let editing = view.editing;
     let view_field = &view.field;
-    let caret = if editing { "\u{2502}" } else { "" };
-    let (text, text_color) = if view_field.text.is_empty() && !editing {
-        (view_field.placeholder.clone(), color::faint_text(cx))
+    let text = if view_field.text.is_empty() && !editing {
+        caret::with_caret(view_field.placeholder.clone(), false, false, cx)
+            .text_color(color::faint_text(cx))
     } else {
-        (format!("{}{caret}", view_field.text), color::foreground(cx))
+        caret::with_caret(view_field.text.clone(), editing, false, cx)
+            .text_color(color::foreground(cx))
     };
     let border = if view.refused {
         color::negative(cx)
@@ -114,7 +116,6 @@ fn text_field(
             .border_color(border)
             .bg(color::background(cx))
             .text_size(px(13.0))
-            .text_color(text_color)
             .on_click({
                 let press = pressed(clicks, LedgerEvent::Press(field));
                 move |_event, window, cx| {

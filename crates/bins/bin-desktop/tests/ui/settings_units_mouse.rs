@@ -524,6 +524,25 @@ fn a_click_on_precision_focuses_it_for_typing(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn edit_units_precision_arrows_step_it(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+    ui.click("unit-row-1");
+    ui.press("e");
+    assert_eq!(ui.dialog_value("precision").as_deref(), Some("8"));
+
+    ui.click("edit-unit-precision-down");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Precision"));
+    ui.click("edit-unit-precision-down");
+    ui.click("edit-unit-precision-up");
+    ui.click("edit-unit-confirm");
+    assert_eq!(ui.dialog(), None);
+
+    ui.click("unit-row-1");
+    ui.press("e");
+    assert_eq!(ui.dialog_value("precision").as_deref(), Some("7"));
+}
+
+#[gpui::test]
 fn the_base_glyph_follows_the_unit_picked_on_ledger(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     assert_eq!(ui.base_unit_code().as_deref(), Some("AUD"));

@@ -10,7 +10,11 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use super::swatch::{swatch, swatch_colour};
 use lib_tags::presenter::ColourField;
 
-use crate::{dialog, form::dialog_fields::optional_label, theme::color};
+use crate::{
+    dialog,
+    form::{caret, dialog_fields::optional_label},
+    theme::color,
+};
 
 const SWATCH_SIZE: gpui::Pixels = px(26.0);
 /// The hex box's preview swatch.
@@ -96,15 +100,7 @@ fn hex_box(
     cx: &App,
 ) -> impl IntoElement {
     let focused = field.hex.focused;
-    let caret = if focused { "\u{2502}" } else { "" };
-    let (text, text_color) = if field.hex.text.is_empty() {
-        (
-            format!("{}{caret}", field.hex.placeholder),
-            color::faint_text(cx),
-        )
-    } else {
-        (format!("{}{caret}", field.hex.text), color::foreground(cx))
-    };
+    let text = caret::field_text(&field.hex.text, &field.hex.placeholder, focused, cx);
     let preview = field.preview.clone();
     div()
         .id(SharedString::from(format!("{id}-hex")))
@@ -123,7 +119,6 @@ fn hex_box(
             color::border(cx)
         })
         .text_size(px(12.0))
-        .text_color(text_color)
         .on_click(move |_event, window, cx| on_click(window, cx))
         .when_some(preview, |this, colour| {
             this.child(swatch(Some(&colour), PREVIEW_SIZE))

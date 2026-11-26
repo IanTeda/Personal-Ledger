@@ -27,6 +27,7 @@ use lib_documents::presenter::{
 };
 use lib_locale::format::upper;
 
+use crate::form::caret;
 use crate::{
     dialog::OnClick,
     documents::{DocumentsMode, LibrarySort, RailEntry},
@@ -360,17 +361,12 @@ fn search_box(
     library: &LibraryViewModel,
     cx: &App,
 ) -> impl IntoElement {
-    let caret = if library.searching { "\u{2502}" } else { "" };
-    let (text, text_color) = if library.query.is_empty() && !library.searching {
-        (
-            SharedString::from(view.labels.search_placeholder.clone()),
-            color::faint_text(cx),
-        )
+    let text = if library.query.is_empty() && !library.searching {
+        caret::with_caret(view.labels.search_placeholder.clone(), false, false, cx)
+            .text_color(color::faint_text(cx))
     } else {
-        (
-            SharedString::from(format!("{}{caret}", library.query)),
-            color::foreground(cx),
-        )
+        caret::with_caret(library.query.clone(), library.searching, false, cx)
+            .text_color(color::foreground(cx))
     };
     div()
         .id("documents-search")
@@ -388,8 +384,6 @@ fn search_box(
             color::border(cx)
         })
         .text_size(px(12.5))
-        .text_color(text_color)
-        .truncate()
         .on_click(clicks.send(DocumentsPageEvent::StartSearch))
         .child(text)
 }

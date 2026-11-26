@@ -62,6 +62,7 @@ impl Root {
         cx: &mut Context<'_, Self>,
     ) -> bool {
         let keystroke = &event.keystroke;
+        crate::form::caret::hold(cx);
         let cleared = self.presenter.keypress();
         // The top bar's History list is a mouse affordance; Esc closes it and nothing else.
         if self.state.undo_menu_open && keystroke.key == "escape" {

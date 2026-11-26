@@ -8,6 +8,7 @@ use lib_shell::Hint;
 
 use super::document_form::error_line;
 use crate::dialog;
+use crate::form::caret;
 use crate::form::dialog_fields::label;
 use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::theme::color;
@@ -43,21 +44,20 @@ impl DialogView for ImportPresenter {
 }
 
 fn render(view: &ImportViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+    // The box always has focus, so its caret always shows: before the placeholder, or after the
+    // last path's last character.
     let lines = if view.paths.is_empty() {
-        div()
+        caret::with_caret(view.placeholder.clone(), true, true, cx)
             .text_color(color::faint_text(cx))
-            .child(format!("{}\u{2502}", view.placeholder))
             .into_any_element()
     } else {
+        let count = view.paths.split('\n').count();
         div()
             .flex()
             .flex_col()
-            .children(
-                view.paths
-                    .split('\n')
-                    .map(|line| div().min_h(px(16.0)).child(line.to_string())),
-            )
-            .child(div().text_color(color::accent(cx)).child("\u{2502}"))
+            .children(view.paths.split('\n').enumerate().map(|(at, line)| {
+                caret::with_caret(line.to_string(), at + 1 == count, false, cx).min_h(px(16.0))
+            }))
             .into_any_element()
     };
     let field = div()

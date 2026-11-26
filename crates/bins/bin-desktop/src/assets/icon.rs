@@ -43,6 +43,10 @@ pub enum DesktopIcon {
     Undo,
     /// The caret opening the top bar's recent-actions list beside Undo.
     UndoMenu,
+    /// A closed select's caret, a filter chip's and a number field's down arrow.
+    ChevronDown,
+    /// An open select's caret and a number field's up arrow.
+    ChevronUp,
     /// The "1e" file explorer's row icon for a folder (issue #165).
     Folder,
     /// The "1e" file explorer's row icon for any non-folder entry, openable or not.
@@ -90,7 +94,8 @@ impl DesktopIcon {
             Self::NavBack => "icons/chevron-left.svg",
             Self::NavForward => "icons/chevron-right.svg",
             Self::Undo => "icons/undo-2.svg",
-            Self::UndoMenu => "icons/chevron-down.svg",
+            Self::UndoMenu | Self::ChevronDown => "icons/chevron-down.svg",
+            Self::ChevronUp => "icons/chevron-up.svg",
             Self::Folder => "icons/folder.svg",
             Self::File => "icons/file.svg",
             Self::SettingsGeneral => "icons/sliders-horizontal.svg",
