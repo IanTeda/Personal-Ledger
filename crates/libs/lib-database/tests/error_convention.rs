@@ -47,7 +47,7 @@ use quote::ToTokens;
 use serde_json::Value;
 use syn::visit::{self, Visit};
 
-use common::{crate_sources, is_cfg_test, item_attrs};
+use common::{crate_sources, impl_item_attrs, is_cfg_test, item_attrs, trait_item_attrs};
 
 /// The value errors (ADR-0060), each as the crate that declares it and its name: an enum beside
 /// one value type, naming only the ways a text or number fails to become that value, so any crate
@@ -658,19 +658,25 @@ impl<'ast> Visit<'ast> for Usage<'_> {
         self.generics.pop();
     }
 
-    fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
-        if is_cfg_test(&item.attrs) {
-            return;
+    fn visit_impl_item(&mut self, item: &'ast syn::ImplItem) {
+        if !is_cfg_test(impl_item_attrs(item)) {
+            visit::visit_impl_item(self, item);
         }
+    }
+
+    fn visit_trait_item(&mut self, item: &'ast syn::TraitItem) {
+        if !is_cfg_test(trait_item_attrs(item)) {
+            visit::visit_trait_item(self, item);
+        }
+    }
+
+    fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
         self.check_fn(&item.sig.ident, &item.sig);
         self.visit_block(&item.block);
         self.generics.pop();
     }
 
     fn visit_trait_item_fn(&mut self, item: &'ast syn::TraitItemFn) {
-        if is_cfg_test(&item.attrs) {
-            return;
-        }
         self.check_fn(&item.sig.ident, &item.sig);
         if let Some(block) = &item.default {
             self.visit_block(block);

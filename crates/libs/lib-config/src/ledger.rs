@@ -56,6 +56,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use config::{Config, ConfigBuilder, builder::DefaultState};
+use lib_core::configuration::KeyBindingConfig;
 
 /// Application name used for configuration directories, file names, and environment
 /// variable prefixes.
@@ -94,7 +95,7 @@ pub struct LedgerConfig {
     /// Keyboard shortcut configuration, read by the TUI/Desktop Clients. Populated from the
     /// `[keybindings]` section; the Sync Server merges its defaults in but never reads them.
     #[serde(alias = "Keybindings", alias = "KeyBindings")]
-    pub keybindings: lib_core::configuration::KeyBindingConfig,
+    pub keybindings: KeyBindingConfig,
 
     /// Sync-Server-only settings. Populated from the `[sync-server]` section (see
     /// [`Self::normalise_ini`] for the `-`/`_` translation); never read by Clients.
@@ -264,7 +265,7 @@ impl LedgerConfig {
             config_builder = config_builder.set_default(key, value)?;
         }
 
-        for (key, value) in lib_core::configuration::KeyBindingConfig::default_config_values() {
+        for (key, value) in KeyBindingConfig::default_config_values() {
             config_builder = config_builder.set_default(key, value)?;
         }
 
@@ -490,7 +491,7 @@ impl LedgerConfig {
     }
 
     /// Get the key binding configuration.
-    pub fn keybindings_config(&self) -> &lib_core::configuration::KeyBindingConfig {
+    pub fn keybindings_config(&self) -> &KeyBindingConfig {
         &self.keybindings
     }
 
